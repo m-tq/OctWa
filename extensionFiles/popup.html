@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Octra Wallet</title>
+    <link rel="stylesheet" href="assets/index.css" />
+    <link rel="stylesheet" href="assets/popup.css" />
+    <style>
+      /* Hide scrollbar but keep scroll functionality */
+      .popup-container {
+        overflow-y: auto;
+        scrollbar-width: none; /* Firefox */
+        -ms-overflow-style: none; /* Internet Explorer 10+ */
+      }
+      
+      .popup-container::-webkit-scrollbar {
+        display: none; /* WebKit browsers */
+      }
+      
+      /* Ensure content is focusable for keyboard navigation */
+      .popup-container {
+        outline: none;
+        scroll-behavior: smooth;
+      }
+      
+      /* Add subtle focus indicator when navigating with keyboard */
+      .popup-container:focus-visible {
+        box-shadow: inset 0 0 0 2px rgba(59, 130, 246, 0.3);
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root" class="popup-view"></div>
+    <script type="module" src="assets/popup.js"></script>
+  </body>
+</html>
