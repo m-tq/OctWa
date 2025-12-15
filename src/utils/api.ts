@@ -28,7 +28,11 @@ async function makeAPIRequest(endpoint: string, options: RequestInit = {}): Prom
   
   // Determine if we're in development, production, or extension
   const isDevelopment = import.meta.env.DEV;
-  const isExtension = typeof chrome !== 'undefined' && chrome.runtime;
+  // More robust extension detection - check for chrome.runtime.id which only exists in actual extensions
+  const isExtension = typeof chrome !== 'undefined' && 
+                      chrome.runtime && 
+                      typeof chrome.runtime.id === 'string' &&
+                      chrome.runtime.id.length > 0;
   
   const cleanEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
   
@@ -38,7 +42,7 @@ async function makeAPIRequest(endpoint: string, options: RequestInit = {}): Prom
     // Extension: make direct requests to RPC provider
     url = `${provider.url}${cleanEndpoint}`;
   } else if (isDevelopment) {
-    // Development: use Vite proxy
+    // Development: use Vite proxy to avoid CORS
     url = `/api${cleanEndpoint}`;
     headers['X-RPC-URL'] = provider.url;
   } else {
@@ -645,11 +649,11 @@ export function createTransaction(
   // Convert amount to micro units (multiply by 1,000,000)
   const amountMu = Math.floor(amount * MU_FACTOR);
   
-  // Determine OU based on amount
-  const ou = amount < 1000 ? "1" : "3";
+  // Determine OU based on amount (10000 for < 1000 OCT, 30000 for >= 1000 OCT) - matches CLI
+  const ou = amount < 1000 ? "10000" : "30000";
   
-  // Create timestamp with small random component exactly like CLI
-  const timestamp = Math.floor((Date.now() / 1000 + Math.random() * 0.01) * 1000) / 1000;
+  // Create timestamp exactly like CLI: time.time() equivalent
+  const timestamp = Date.now() / 1000;
 
   // Create base transaction object
   const transaction: Transaction = {

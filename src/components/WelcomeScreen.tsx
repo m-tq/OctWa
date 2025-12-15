@@ -62,7 +62,7 @@ export function WelcomeScreen({ onWalletCreated }: WelcomeScreenProps) {
               <WalletIcon className="h-10 w-10 text-primary" />
             </div>
           </div>
-          <h1 className="text-4xl font-bold mb-3 text-foreground">Octra Wallet</h1>
+          <h1 className="text-4xl font-bold mb-3 text-foreground">OctWa - Octra Wallet</h1>
           <p className="text-lg text-muted-foreground mb-8 max-w-2xl mx-auto">
             Your secure gateway to the Octra blockchain network
           </p>

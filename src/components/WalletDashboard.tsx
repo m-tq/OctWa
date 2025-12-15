@@ -90,7 +90,66 @@ export function WalletDashboard({
   const [showMobileMenu, setShowMobileMenu] = useState(false);
   const [isRefreshingData, setIsRefreshingData] = useState(false);
   const [encryptedBalance, setEncryptedBalance] = useState<any>(null);
+  const [rpcStatus, setRpcStatus] = useState<'connected' | 'disconnected' | 'checking'>('checking');
   const { toast } = useToast();
+
+  // Check RPC status every 1 minute using active RPC provider
+  useEffect(() => {
+    const checkRpcStatus = async () => {
+      try {
+        // Get active RPC provider from localStorage
+        let rpcUrl = 'https://octra.network';
+        try {
+          const providers = JSON.parse(localStorage.getItem('rpcProviders') || '[]');
+          const activeProvider = providers.find((p: any) => p.isActive);
+          if (activeProvider?.url) {
+            rpcUrl = activeProvider.url;
+          }
+        } catch (e) {
+          console.warn('Failed to get RPC provider:', e);
+        }
+
+        // Use the proxy in development mode
+        const isDevelopment = import.meta.env.DEV;
+        const isExtension = typeof chrome !== 'undefined' && 
+                            chrome.runtime && 
+                            typeof chrome.runtime.id === 'string' &&
+                            chrome.runtime.id.length > 0;
+        
+        let url: string;
+        const headers: Record<string, string> = {};
+        
+        if (isExtension) {
+          url = `${rpcUrl}/status`;
+        } else if (isDevelopment) {
+          url = '/api/status';
+          headers['X-RPC-URL'] = rpcUrl;
+        } else {
+          url = '/rpc-proxy/status';
+          headers['X-RPC-Target'] = rpcUrl;
+        }
+        
+        const response = await fetch(url, {
+          method: 'GET',
+          headers,
+          signal: AbortSignal.timeout(10000) // 10 second timeout
+        });
+        
+        setRpcStatus(response.status === 200 ? 'connected' : 'disconnected');
+      } catch (error) {
+        console.error('RPC status check failed:', error);
+        setRpcStatus('disconnected');
+      }
+    };
+
+    // Check immediately on mount
+    checkRpcStatus();
+
+    // Check every 1 minute
+    const interval = setInterval(checkRpcStatus, 60000);
+
+    return () => clearInterval(interval);
+  }, []);
 
   // Initial data fetch when wallet is connected
   useEffect(() => {
@@ -427,7 +486,7 @@ export function WalletDashboard({
                 </Avatar>
                 <div>
                   <h1 className={`${isPopupMode ? 'text-lg' : 'text-xl'} font-semibold text-foreground`}>
-                    Octra Wallet
+                    OctWa - Octra Wallet
                   </h1>
                   <div className="flex items-center space-x-2">
                     {/* Wallet Selector */}
@@ -535,8 +594,14 @@ export function WalletDashboard({
               {!isPopupMode && (
                 <div className="flex items-center space-x-2">
                   <Badge variant="secondary" className="hidden sm:inline-flex relative pl-4">
-                  <span className="absolute left-1 top-1/2 -translate-y-1/2 w-2 h-2 bg-green-500 rounded-full"></span>
-                    Connected
+                    <span className={`absolute left-1 top-1/2 -translate-y-1/2 w-2 h-2 rounded-full ${
+                      rpcStatus === 'connected' ? 'bg-green-500' : 
+                      rpcStatus === 'disconnected' ? 'bg-red-500' : 
+                      'bg-yellow-500 animate-pulse'
+                    }`}></span>
+                    {rpcStatus === 'connected' ? 'Connected' : 
+                     rpcStatus === 'disconnected' ? 'Disconnected' : 
+                     'Checking...'}
                   </Badge>
                   <Badge variant="outline" className="hidden sm:inline-flex text-xs">
                     Nonce: {nonce}
@@ -569,8 +634,14 @@ export function WalletDashboard({
                         <div className="p-3 bg-muted rounded-lg">
                           <div className="flex items-center space-x-2 mb-2">
                             <Badge variant="secondary" className="relative pl-4">
-                              <span className="absolute left-1 top-1/2 -translate-y-1/2 w-2 h-2 bg-green-500 rounded-full"></span>
-                              Connected
+                              <span className={`absolute left-1 top-1/2 -translate-y-1/2 w-2 h-2 rounded-full ${
+                                rpcStatus === 'connected' ? 'bg-green-500' : 
+                                rpcStatus === 'disconnected' ? 'bg-red-500' : 
+                                'bg-yellow-500 animate-pulse'
+                              }`}></span>
+                              {rpcStatus === 'connected' ? 'Connected' : 
+                               rpcStatus === 'disconnected' ? 'Disconnected' : 
+                               'Checking...'}
                             </Badge>
                           </div>
                           <div className="text-sm space-y-1">
@@ -1139,6 +1210,19 @@ export function WalletDashboard({
           </TabsContent>
         </Tabs>
       </main>
+
+      {/* Footer Credit */}
+      <footer className="fixed bottom-0 left-0 right-0 py-2 text-center text-xs text-muted-foreground bg-background/80 backdrop-blur-sm border-t border-border/40">
+        crafted by{' '}
+        <a 
+          href="https://x.com/Kang3s" 
+          target="_blank" 
+          rel="noopener noreferrer"
+          className="text-primary hover:underline font-medium"
+        >
+          @Kang3s
+        </a>
+      </footer>
     </div>
   );
 }
