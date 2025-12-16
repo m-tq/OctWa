@@ -347,10 +347,6 @@ export function WalletDashboard({
       // Find the best replacement wallet (first in the list)
       const newActiveWallet = remainingWallets[0];
       
-      // Update localStorage immediately with new active wallet
-      localStorage.setItem('activeWalletId', newActiveWallet.address);
-      localStorage.setItem('wallets', JSON.stringify(remainingWallets));
-      
       // Switch to the new wallet first
       onSwitchWallet(newActiveWallet);
       
@@ -381,18 +377,20 @@ export function WalletDashboard({
   };
 
   const handleImportSuccess = (newWallet: Wallet) => {
-    // Ensure the wallet is properly saved before adding
+    // Check if wallet already exists in current wallets state (source of truth)
+    const walletExists = wallets.some((w: Wallet) => w.address === newWallet.address);
+    if (walletExists) {
+      toast({
+        title: "Wallet Exists",
+        description: "This wallet is already in your wallet list",
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    // Add wallet through parent handler (which handles storage properly)
     onAddWallet(newWallet);
     setShowAddWalletDialog(false);
-    
-    // Force save to localStorage immediately
-    const currentWallets = JSON.parse(localStorage.getItem('wallets') || '[]');
-    const walletExists = currentWallets.some((w: Wallet) => w.address === newWallet.address);
-    if (!walletExists) {
-      const updatedWallets = [...currentWallets, newWallet];
-      localStorage.setItem('wallets', JSON.stringify(updatedWallets));
-      localStorage.setItem('activeWalletId', newWallet.address);
-    }
     
     toast({
       title: "Wallet Added",
@@ -401,18 +399,20 @@ export function WalletDashboard({
   };
 
   const handleGenerateSuccess = (newWallet: Wallet) => {
-    // Ensure the wallet is properly saved before adding
+    // Check if wallet already exists in current wallets state (source of truth)
+    const walletExists = wallets.some((w: Wallet) => w.address === newWallet.address);
+    if (walletExists) {
+      toast({
+        title: "Wallet Exists",
+        description: "This wallet is already in your wallet list",
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    // Add wallet through parent handler (which handles storage properly)
     onAddWallet(newWallet);
     setShowAddWalletDialog(false);
-    
-    // Force save to localStorage immediately
-    const currentWallets = JSON.parse(localStorage.getItem('wallets') || '[]');
-    const walletExists = currentWallets.some((w: Wallet) => w.address === newWallet.address);
-    if (!walletExists) {
-      const updatedWallets = [...currentWallets, newWallet];
-      localStorage.setItem('wallets', JSON.stringify(updatedWallets));
-      localStorage.setItem('activeWalletId', newWallet.address);
-    }
     
     toast({
       title: "Wallet Generated",

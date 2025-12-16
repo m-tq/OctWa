@@ -370,13 +370,27 @@ function PopupApp() {
   };
 
   const addWallet = async (newWallet: Wallet) => {
+    // Check if wallet already exists to prevent duplicates
+    const walletExists = wallets.some(w => w.address === newWallet.address);
+    if (walletExists) {
+      console.log('⚠️ PopupApp: Wallet already exists, skipping add:', newWallet.address);
+      return;
+    }
+    
     const updatedWallets = [...wallets, newWallet];
     setWallets(updatedWallets);
     setWallet(newWallet);
     
     try {
+      // Save to ExtensionStorageManager (chrome.storage)
       await ExtensionStorageManager.set('wallets', JSON.stringify(updatedWallets));
       await ExtensionStorageManager.set('activeWalletId', newWallet.address);
+      
+      // Also sync to localStorage to prevent inconsistency
+      localStorage.setItem('wallets', JSON.stringify(updatedWallets));
+      localStorage.setItem('activeWalletId', newWallet.address);
+      
+      console.log('✅ PopupApp: Wallet added, total wallets:', updatedWallets.length);
     } catch (error) {
       console.error('Failed to save wallet:', error);
     }
@@ -401,10 +415,18 @@ function PopupApp() {
     }
     
     try {
+      // Save to ExtensionStorageManager (chrome.storage)
       await ExtensionStorageManager.set('wallets', JSON.stringify(updatedWallets));
+      
+      // Also sync to localStorage to prevent inconsistency
+      localStorage.setItem('wallets', JSON.stringify(updatedWallets));
+      
       if (wallet?.address === walletToRemove.address && updatedWallets.length === 0) {
         await ExtensionStorageManager.remove('activeWalletId');
+        localStorage.removeItem('activeWalletId');
       }
+      
+      console.log('✅ PopupApp: Wallet removed, remaining wallets:', updatedWallets.length);
     } catch (error) {
       console.error('Failed to remove wallet:', error);
     }
