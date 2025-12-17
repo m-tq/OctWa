@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "OctWa - Octra Wallet",
-  "version": "1.0.0",
-  "description": "Secure wallet for Octra blockchain network",
+  "version": "1.0.2",
+  "description": "Browser Based Octra Wallet by Fan of Octra",
   "permissions": [
     "storage",
     "activeTab"
