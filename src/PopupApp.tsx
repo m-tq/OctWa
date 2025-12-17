@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { WelcomeScreen } from './components/WelcomeScreen';
 import { WalletDashboard } from './components/WalletDashboard';
 import { UnlockWallet } from './components/UnlockWallet';
@@ -23,8 +23,6 @@ function PopupApp() {
   useEffect(() => {
     const loadInitialData = async () => {
       try {
-        console.log('🔄 PopupApp: Loading initial data...');
-        
         // Detect if we're in popup mode
         const isPopup = window.location.pathname.includes('popup.html') || window.innerWidth <= 500;
         setIsPopupMode(isPopup);
@@ -62,10 +60,7 @@ function PopupApp() {
         // Use WalletManager to check if should show unlock screen
         const shouldShowUnlock = await WalletManager.shouldShowUnlockScreen();
         
-        console.log('🔒 PopupApp: Should show unlock:', shouldShowUnlock);
-        
         if (shouldShowUnlock) {
-          console.log('🔒 PopupApp: Showing unlock screen - wallet is locked');
           setIsLocked(true);
           setIsLoading(false);
           return;
@@ -88,7 +83,6 @@ function PopupApp() {
             
             if (Array.isArray(parsedWallets)) {
               loadedWallets = parsedWallets;
-              console.log('✅ PopupApp: Loaded wallets:', loadedWallets.length);
               
               if (loadedWallets.length > 0) {
                 activeWallet = loadedWallets[0];
@@ -98,11 +92,36 @@ function PopupApp() {
                     activeWallet = foundWallet;
                   }
                 }
-                console.log('🎯 PopupApp: Selected active wallet:', activeWallet?.address);
               }
             }
           } catch (error) {
             console.error('Failed to parse wallets:', error);
+          }
+        }
+        
+        // CRITICAL: Sync encryptedWallets with loaded wallets to prevent deleted wallets from reappearing
+        if (loadedWallets.length > 0) {
+          try {
+            const encryptedWalletsData = await ExtensionStorageManager.get('encryptedWallets');
+            if (encryptedWalletsData) {
+              const encryptedWallets = typeof encryptedWalletsData === 'string' 
+                ? JSON.parse(encryptedWalletsData) 
+                : encryptedWalletsData;
+              if (Array.isArray(encryptedWallets)) {
+                const validAddresses = new Set(loadedWallets.map(w => w.address));
+                const syncedEncryptedWallets = encryptedWallets.filter(
+                  (w: any) => validAddresses.has(w.address)
+                );
+                
+                // Only update if there's a difference (deleted wallets were found)
+                if (syncedEncryptedWallets.length !== encryptedWallets.length) {
+                  await ExtensionStorageManager.set('encryptedWallets', JSON.stringify(syncedEncryptedWallets));
+                  localStorage.setItem('encryptedWallets', JSON.stringify(syncedEncryptedWallets));
+                }
+              }
+            }
+          } catch (syncError) {
+            console.error('Failed to sync encryptedWallets on startup:', syncError);
           }
         }
         
@@ -111,10 +130,8 @@ function PopupApp() {
         setWallet(activeWallet);
         setIsLocked(false);
         
-        console.log('🔓 PopupApp: Wallet unlocked and ready');
-        
       } catch (error) {
-        console.error('❌ PopupApp: Failed to load wallet data:', error);
+        console.error('Failed to load wallet data:', error);
       } finally {
         setIsLoading(false);
       }
@@ -132,7 +149,6 @@ function PopupApp() {
       if (e.key === 'wallets' && e.newValue) {
         try {
           const newWallets = JSON.parse(e.newValue);
-          console.log('📦 PopupApp: Storage change detected - wallets updated:', newWallets.length);
           setWallets(newWallets);
           
           // Update active wallet if needed
@@ -154,7 +170,6 @@ function PopupApp() {
       if (e.key === 'activeWalletId' && e.newValue && wallets.length > 0) {
         const foundWallet = wallets.find((w: Wallet) => w.address === e.newValue);
         if (foundWallet) {
-          console.log('🎯 PopupApp: Active wallet changed:', e.newValue);
           setWallet(foundWallet);
         }
       }
@@ -184,7 +199,6 @@ function PopupApp() {
         if (changes.wallets && changes.wallets.newValue) {
           try {
             const newWallets = JSON.parse(changes.wallets.newValue);
-            console.log('🔧 PopupApp: Chrome storage change - wallets updated:', newWallets.length);
             setWallets(newWallets);
             
             // Update localStorage for consistency
@@ -209,7 +223,6 @@ function PopupApp() {
         if (changes.activeWalletId && changes.activeWalletId.newValue && wallets.length > 0) {
           const foundWallet = wallets.find((w: Wallet) => w.address === changes.activeWalletId.newValue);
           if (foundWallet) {
-            console.log('🎯 PopupApp: Chrome storage - Active wallet changed:', changes.activeWalletId.newValue);
             setWallet(foundWallet);
             localStorage.setItem('activeWalletId', changes.activeWalletId.newValue);
           }
@@ -285,19 +298,10 @@ function PopupApp() {
 
   // Enhanced unlock handler to properly restore wallet state and handle pending DApp requests
   const handleUnlock = (unlockedWallets: Wallet[]) => {
-    console.log('🔓 PopupApp: Handling unlock with wallets:', unlockedWallets.length);
-    console.log('🔓 PopupApp: Current state before unlock - isLocked:', isLocked, 'wallets:', wallets.length, 'wallet:', wallet?.address);
-    
     // CRITICAL FIX: Use synchronous state updates to prevent race conditions
     if (unlockedWallets.length > 0) {
-      console.log('🔓 PopupApp: Setting isLocked to false...');
       setIsLocked(false);
-      
-      console.log('🔓 PopupApp: Setting wallets...', unlockedWallets.length);
       setWallets(unlockedWallets);
-      
-      // Set the first wallet as active immediately
-      console.log('🔓 PopupApp: Setting active wallet...', unlockedWallets[0].address.slice(0, 8) + '...');
       setWallet(unlockedWallets[0]);
       
       // Handle active wallet selection and pending requests asynchronously
@@ -311,19 +315,13 @@ function PopupApp() {
             const foundWallet = unlockedWallets.find(w => w.address === activeWalletId);
             if (foundWallet) {
               activeWallet = foundWallet;
-              console.log('🎯 PopupApp: Restored active wallet:', activeWallet.address.slice(0, 8) + '...');
-              setWallet(activeWallet); // Update if different from first wallet
+              setWallet(activeWallet);
             } else {
-              console.log('🔄 PopupApp: Active wallet not found, using first wallet:', activeWallet.address.slice(0, 8) + '...');
               await ExtensionStorageManager.set('activeWalletId', activeWallet.address);
             }
           } else {
-            console.log('🆕 PopupApp: No active wallet stored, using first wallet:', activeWallet.address.slice(0, 8) + '...');
             await ExtensionStorageManager.set('activeWalletId', activeWallet.address);
           }
-          
-          // Check for pending DApp requests
-          console.log('🔗 PopupApp: Checking for pending DApp requests after unlock...');
           
           // Check for pending connection request
           const pendingRequest = await ExtensionStorageManager.get('pendingConnectionRequest');
@@ -332,7 +330,6 @@ function PopupApp() {
               const connectionReq = typeof pendingRequest === 'string' 
                 ? JSON.parse(pendingRequest) 
                 : pendingRequest;
-              console.log('🔗 PopupApp: Found pending connection request, continuing flow for:', connectionReq.origin);
               setConnectionRequest(connectionReq);
             } catch (error) {
               console.error('Failed to parse pending connection request after unlock:', error);
@@ -347,22 +344,18 @@ function PopupApp() {
               const contractReq = typeof pendingContractRequest === 'string' 
                 ? JSON.parse(pendingContractRequest) 
                 : pendingContractRequest;
-              console.log('🔗 PopupApp: Found pending contract request, continuing flow for:', contractReq.origin);
               setContractRequest(contractReq);
             } catch (error) {
               console.error('Failed to parse pending contract request after unlock:', error);
               await ExtensionStorageManager.remove('pendingContractRequest');
             }
           }
-          
-          console.log('✅ PopupApp: Unlock handling completed successfully');
         } catch (error) {
-          console.error('❌ PopupApp: Error in async unlock handler:', error);
+          console.error('Error in async unlock handler:', error);
         }
       }, 0);
       
     } else {
-      console.warn('⚠️ PopupApp: No wallets returned from unlock process');
       setIsLocked(false);
       setWallets([]);
       setWallet(null);
@@ -370,19 +363,33 @@ function PopupApp() {
   };
 
   const addWallet = async (newWallet: Wallet) => {
-    // Check if wallet already exists to prevent duplicates
-    const walletExists = wallets.some(w => w.address === newWallet.address);
-    if (walletExists) {
-      console.log('⚠️ PopupApp: Wallet already exists, skipping add:', newWallet.address);
-      return;
-    }
-    
-    const updatedWallets = [...wallets, newWallet];
-    setWallets(updatedWallets);
-    setWallet(newWallet);
-    
     try {
-      // Save to ExtensionStorageManager (chrome.storage)
+      // Read current wallets from storage to avoid stale state issues
+      const storedWallets = await ExtensionStorageManager.get('wallets');
+      let currentWallets: Wallet[] = [];
+      
+      if (storedWallets) {
+        try {
+          currentWallets = typeof storedWallets === 'string' 
+            ? JSON.parse(storedWallets) 
+            : storedWallets;
+          if (!Array.isArray(currentWallets)) {
+            currentWallets = [];
+          }
+        } catch (e) {
+          currentWallets = [];
+        }
+      }
+      
+      // Check if wallet already exists to prevent duplicates
+      const walletExists = currentWallets.some(w => w.address === newWallet.address);
+      if (walletExists) {
+        return;
+      }
+      
+      const updatedWallets = [...currentWallets, newWallet];
+      
+      // Save to ExtensionStorageManager (chrome.storage) first
       await ExtensionStorageManager.set('wallets', JSON.stringify(updatedWallets));
       await ExtensionStorageManager.set('activeWalletId', newWallet.address);
       
@@ -390,7 +397,43 @@ function PopupApp() {
       localStorage.setItem('wallets', JSON.stringify(updatedWallets));
       localStorage.setItem('activeWalletId', newWallet.address);
       
-      console.log('✅ PopupApp: Wallet added, total wallets:', updatedWallets.length);
+      // CRITICAL: Also sync encryptedWallets to match current wallets
+      // This ensures deleted wallets stay deleted and new wallets are properly tracked
+      try {
+        const encryptedWalletsData = await ExtensionStorageManager.get('encryptedWallets');
+        if (encryptedWalletsData) {
+          const encryptedWallets = typeof encryptedWalletsData === 'string' 
+            ? JSON.parse(encryptedWalletsData) 
+            : encryptedWalletsData;
+          if (Array.isArray(encryptedWallets)) {
+            // Filter encryptedWallets to only include wallets that exist in updatedWallets
+            const validAddresses = new Set(updatedWallets.map(w => w.address));
+            const syncedEncryptedWallets = encryptedWallets.filter(
+              (w: any) => validAddresses.has(w.address)
+            );
+            
+            // Add new wallet to encryptedWallets if not already there
+            const newWalletExists = syncedEncryptedWallets.some((w: any) => w.address === newWallet.address);
+            if (!newWalletExists) {
+              syncedEncryptedWallets.push({
+                address: newWallet.address,
+                encryptedData: JSON.stringify(newWallet),
+                createdAt: Date.now(),
+                needsEncryption: true
+              });
+            }
+            
+            await ExtensionStorageManager.set('encryptedWallets', JSON.stringify(syncedEncryptedWallets));
+            localStorage.setItem('encryptedWallets', JSON.stringify(syncedEncryptedWallets));
+          }
+        }
+      } catch (syncError) {
+        console.error('Failed to sync encryptedWallets:', syncError);
+      }
+      
+      // Update state after storage is saved
+      setWallets(updatedWallets);
+      setWallet(newWallet);
     } catch (error) {
       console.error('Failed to save wallet:', error);
     }
@@ -407,26 +450,67 @@ function PopupApp() {
   };
 
   const removeWallet = async (walletToRemove: Wallet) => {
-    const updatedWallets = wallets.filter(w => w.address !== walletToRemove.address);
-    setWallets(updatedWallets);
-    
-    if (wallet?.address === walletToRemove.address && updatedWallets.length === 0) {
-      setWallet(null);
-    }
-    
     try {
-      // Save to ExtensionStorageManager (chrome.storage)
+      // Read current wallets from storage to avoid stale state issues
+      const storedWallets = await ExtensionStorageManager.get('wallets');
+      let currentWallets: Wallet[] = [];
+      
+      if (storedWallets) {
+        try {
+          currentWallets = typeof storedWallets === 'string' 
+            ? JSON.parse(storedWallets) 
+            : storedWallets;
+          if (!Array.isArray(currentWallets)) {
+            currentWallets = [];
+          }
+        } catch (e) {
+          currentWallets = [];
+        }
+      }
+      
+      // Filter out the wallet to remove from storage data
+      const updatedWallets = currentWallets.filter(w => w.address !== walletToRemove.address);
+      
+      // Save to ExtensionStorageManager (chrome.storage) first
       await ExtensionStorageManager.set('wallets', JSON.stringify(updatedWallets));
       
       // Also sync to localStorage to prevent inconsistency
       localStorage.setItem('wallets', JSON.stringify(updatedWallets));
       
-      if (wallet?.address === walletToRemove.address && updatedWallets.length === 0) {
-        await ExtensionStorageManager.remove('activeWalletId');
-        localStorage.removeItem('activeWalletId');
+      // CRITICAL: Also remove from encryptedWallets storage to prevent resurrection on unlock
+      try {
+        const encryptedWalletsData = await ExtensionStorageManager.get('encryptedWallets');
+        if (encryptedWalletsData) {
+          const encryptedWallets = typeof encryptedWalletsData === 'string' 
+            ? JSON.parse(encryptedWalletsData) 
+            : encryptedWalletsData;
+          if (Array.isArray(encryptedWallets)) {
+            const updatedEncryptedWallets = encryptedWallets.filter(
+              (w: any) => w.address !== walletToRemove.address
+            );
+            await ExtensionStorageManager.set('encryptedWallets', JSON.stringify(updatedEncryptedWallets));
+            localStorage.setItem('encryptedWallets', JSON.stringify(updatedEncryptedWallets));
+          }
+        }
+      } catch (encError) {
+        console.error('Failed to remove from encryptedWallets:', encError);
       }
       
-      console.log('✅ PopupApp: Wallet removed, remaining wallets:', updatedWallets.length);
+      // Update state after storage is saved
+      setWallets(updatedWallets);
+      
+      if (wallet?.address === walletToRemove.address) {
+        if (updatedWallets.length > 0) {
+          // Switch to first remaining wallet
+          setWallet(updatedWallets[0]);
+          await ExtensionStorageManager.set('activeWalletId', updatedWallets[0].address);
+          localStorage.setItem('activeWalletId', updatedWallets[0].address);
+        } else {
+          setWallet(null);
+          await ExtensionStorageManager.remove('activeWalletId');
+          localStorage.removeItem('activeWalletId');
+        }
+      }
     } catch (error) {
       console.error('Failed to remove wallet:', error);
     }
@@ -441,8 +525,6 @@ function PopupApp() {
       setWallet(null);
       setWallets([]);
       setIsLocked(true);
-      
-      console.log('🔒 PopupApp: Wallet disconnected and locked');
     } catch (error) {
       console.error('Failed to lock wallet:', error);
     }
@@ -529,9 +611,8 @@ function PopupApp() {
     );
   }
 
-  // FORGE INSTRUCTION FIX: Show unlock screen for DApp requests when wallet is locked
+  // Show unlock screen for DApp requests when wallet is locked
   if (isLocked) {
-    console.log('🔒 PopupApp: Wallet is locked, showing unlock screen');
     return (
       <ThemeProvider defaultTheme="dark" storageKey="octra-wallet-theme">
         <div className="w-[400px] h-[600px] bg-background popup-view">
@@ -546,7 +627,6 @@ function PopupApp() {
 
   // Handle connection request - Show even if no wallets loaded yet
   if (connectionRequest) {
-    console.log('🔗 PopupApp: Showing connection request screen');
     return (
       <ThemeProvider defaultTheme="dark" storageKey="octra-wallet-theme">
         <div className="w-[400px] h-[600px] bg-background popup-view">
@@ -568,8 +648,6 @@ function PopupApp() {
 
   // Handle contract request - Show contract interaction interface
   if (contractRequest) {
-    console.log('🔗 PopupApp: Showing contract request screen');
-    
     // Find the wallet that is connected to this dApp
     const connectedWallet = contractRequest.connectedAddress 
       ? wallets.find(w => w.address === contractRequest.connectedAddress)
@@ -596,7 +674,6 @@ function PopupApp() {
 
   // Show welcome screen if no wallets
   if (wallets.length === 0) {
-    console.log('📝 PopupApp: No wallets found, showing welcome screen');
     return (
       <ThemeProvider defaultTheme="dark" storageKey="octra-wallet-theme">
         <div className="w-[400px] h-[600px] bg-background popup-view">
@@ -610,12 +687,8 @@ function PopupApp() {
   }
 
   // Show wallet dashboard
-  console.log('💰 PopupApp: Showing wallet dashboard for:', wallet?.address?.slice(0, 8) + '...');
-  console.log('💰 PopupApp: Wallet dashboard conditions - wallet exists:', !!wallet, 'wallets.length:', wallets.length, 'isLocked:', isLocked);
-  
-  // CRITICAL FIX: Ensure we have a valid wallet before rendering dashboard
+  // Ensure we have a valid wallet before rendering dashboard
   if (!wallet) {
-    console.log('⚠️ PopupApp: No active wallet available, showing loading or welcome screen');
     return (
       <ThemeProvider defaultTheme="dark" storageKey="octra-wallet-theme">
         <div className="w-[400px] h-[600px] bg-background popup-view">

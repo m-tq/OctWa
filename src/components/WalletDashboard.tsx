@@ -1,9 +1,8 @@
-import React, { useState, useEffect } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription } from '@/components/ui/dialog';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
@@ -27,13 +26,16 @@ import {
   Download,
   Menu
 } from 'lucide-react';
-import { Balance } from './Balance';
+import { PublicBalance } from './PublicBalance';
+import { PrivateBalance } from './PrivateBalance';
 import { MultiSend } from './MultiSend';
 import { SendTransaction } from './SendTransaction';
 import { PrivateTransfer } from './PrivateTransfer';
 import { ClaimTransfers } from './ClaimTransfers';
 import { FileMultiSend } from './FileMultiSend';
-import { TxHistory } from './TxHistory';
+import { UnifiedHistory } from './UnifiedHistory';
+import { ModeToggle } from './ModeToggle';
+import { ModeIndicator } from './ModeIndicator';
 import { ThemeToggle } from './ThemeToggle';
 import { ImportWallet } from './ImportWallet';
 import { GenerateWallet } from './GenerateWallet';
@@ -43,6 +45,7 @@ import { Wallet } from '../types/wallet';
 import { WalletManager } from '../utils/walletManager';
 import { fetchBalance, getTransactionHistory, fetchEncryptedBalance } from '../utils/api';
 import { useToast } from '@/hooks/use-toast';
+import { OperationMode, saveOperationMode, loadOperationMode, isPrivateModeAvailable } from '../utils/modeStorage';
 
 interface Transaction {
   hash: string;
@@ -74,13 +77,12 @@ export function WalletDashboard({
   onRemoveWallet,
   isPopupMode = false
 }: WalletDashboardProps) {
-  const [activeTab, setActiveTab] = useState<string>('overview');
+  const [activeTab, setActiveTab] = useState<string>('balance');
   const [balance, setBalance] = useState<number | null>(null);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [isLoadingBalance, setIsLoadingBalance] = useState(true);
   const [isLoadingTransactions, setIsLoadingTransactions] = useState(true);
   const [nonce, setNonce] = useState(0);
-  const [showImportDialog, setShowImportDialog] = useState(false);
   const [showAddWalletDialog, setShowAddWalletDialog] = useState(false);
   const [showRPCManager, setShowRPCManager] = useState(false);
   const [showDAppsManager, setShowDAppsManager] = useState(false);
@@ -91,7 +93,25 @@ export function WalletDashboard({
   const [isRefreshingData, setIsRefreshingData] = useState(false);
   const [encryptedBalance, setEncryptedBalance] = useState<any>(null);
   const [rpcStatus, setRpcStatus] = useState<'connected' | 'disconnected' | 'checking'>('checking');
+  const [operationMode, setOperationMode] = useState<OperationMode>('public');
   const { toast } = useToast();
+
+  // Determine if private mode is available
+  const privateEnabled = isPrivateModeAvailable(encryptedBalance?.encrypted || 0);
+
+  // Handle mode change
+  const handleModeChange = (mode: OperationMode) => {
+    setOperationMode(mode);
+    saveOperationMode(mode);
+    setActiveTab('balance'); // Reset to balance tab when switching modes
+  };
+
+  // Load operation mode on mount and when encrypted balance changes
+  useEffect(() => {
+    const encBalance = encryptedBalance?.encrypted || 0;
+    const savedMode = loadOperationMode(encBalance);
+    setOperationMode(savedMode);
+  }, [encryptedBalance]);
 
   // Check RPC status every 1 minute using active RPC provider
   useEffect(() => {
@@ -295,9 +315,6 @@ export function WalletDashboard({
 
   const handleDisconnect = async () => {
     try {
-      // CRITICAL FIX: Properly lock wallets using WalletManager
-      console.log('🔒 WalletDashboard: Locking wallets properly...');
-      
       // Use WalletManager to properly lock wallets (this will handle encryption)
       await WalletManager.lockWallets();
       
@@ -314,10 +331,8 @@ export function WalletDashboard({
       // Call the parent's disconnect handler to update UI state
       onDisconnect();
       setShowLockConfirm(false);
-      
-      console.log('✅ WalletDashboard: Wallets locked successfully');
     } catch (error) {
-      console.error('❌ WalletDashboard: Failed to lock wallets:', error);
+      console.error('Failed to lock wallets:', error);
       toast({
         title: "Lock Failed",
         description: "Failed to lock wallets properly",
@@ -326,7 +341,7 @@ export function WalletDashboard({
     }
   };
 
-  const handleRemoveWallet = () => {
+  const handleRemoveWallet = async () => {
     if (!walletToDelete) return;
     
     if (wallets.length === 1) {
@@ -339,11 +354,54 @@ export function WalletDashboard({
       return;
     }
     
+    const addressToDelete = walletToDelete.address;
+    
+    // Remove from encrypted wallets FIRST before calling onRemoveWallet
+    // This ensures the wallet is removed from all storage locations
+    try {
+      // Remove from localStorage
+      const localEncryptedWallets = JSON.parse(localStorage.getItem('encryptedWallets') || '[]');
+      const updatedLocalEncrypted = localEncryptedWallets.filter(
+        (w: any) => w.address !== addressToDelete
+      );
+      localStorage.setItem('encryptedWallets', JSON.stringify(updatedLocalEncrypted));
+      
+      // Remove from chrome.storage using Promise
+      if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
+        await new Promise<void>((resolve) => {
+          chrome.storage.local.get(['encryptedWallets'], (result) => {
+            if (result.encryptedWallets) {
+              try {
+                const chromeEncryptedWallets = typeof result.encryptedWallets === 'string' 
+                  ? JSON.parse(result.encryptedWallets) 
+                  : result.encryptedWallets;
+                const updatedChromeEncrypted = chromeEncryptedWallets.filter(
+                  (w: any) => w.address !== addressToDelete
+                );
+                chrome.storage.local.set({ 
+                  encryptedWallets: JSON.stringify(updatedChromeEncrypted) 
+                }, () => {
+                  resolve();
+                });
+              } catch (e) {
+                console.error('Failed to parse chrome encryptedWallets:', e);
+                resolve();
+              }
+            } else {
+              resolve();
+            }
+          });
+        });
+      }
+    } catch (error) {
+      console.error('Failed to remove from encryptedWallets:', error);
+    }
+    
     // Calculate remaining wallets after removal
-    const remainingWallets = wallets.filter(w => w.address !== walletToDelete.address);
+    const remainingWallets = wallets.filter(w => w.address !== addressToDelete);
     
     // If we're removing the active wallet, we need to switch to another wallet first
-    if (walletToDelete.address === wallet.address && remainingWallets.length > 0) {
+    if (addressToDelete === wallet.address && remainingWallets.length > 0) {
       // Find the best replacement wallet (first in the list)
       const newActiveWallet = remainingWallets[0];
       
@@ -358,13 +416,6 @@ export function WalletDashboard({
       // If we're not removing the active wallet, just remove it normally
       onRemoveWallet(walletToDelete);
     }
-    
-    // Also remove from encrypted wallets storage
-    const encryptedWallets = JSON.parse(localStorage.getItem('encryptedWallets') || '[]');
-    const updatedEncryptedWallets = encryptedWallets.filter(
-      (w: any) => w.address !== walletToDelete.address
-    );
-    localStorage.setItem('encryptedWallets', JSON.stringify(updatedEncryptedWallets));
     
     // Show success message and clear the deletion state
     setTimeout(() => {
@@ -645,7 +696,8 @@ export function WalletDashboard({
                             </Badge>
                           </div>
                           <div className="text-sm space-y-1">
-                            <span>Nonce : {nonce}</span>
+                            <div>Nonce : {nonce}</div>
+                            <div>Wallets : {wallets.length}</div>
                           </div>
                         </div>
 
@@ -1015,201 +1067,176 @@ export function WalletDashboard({
       </header>
 
       {/* Main Content */}
-      <main className={`octra-container ${isPopupMode ? 'py-2 px-2 pb-4 mt-2' : 'py-2 px-2 sm:py-8 sm:px-4'}`}>
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4 sm:space-y-4">
-          {isPopupMode ? (
-            // Popup mode - 3 tabs only
-            <TabsList className="grid w-full grid-cols-3 tabs-list h-auto p-1 mt-2">
-              <TabsTrigger value="overview" className="flex flex-col sm:flex-row items-center gap-1 tabs-trigger text-xs sm:text-sm">
-                <PieChart className="h-3 w-3 flex-shrink-0" />
-                <span className="text-[10px]">Overview</span>
-                {isRefreshingData && (
-                  <div className="animate-spin h-2 w-2 border border-primary border-t-transparent rounded-full" />
-                )}
+      <main className={`octra-container ${isPopupMode ? 'py-2 px-3 pb-14 mt-2 mb-8' : 'py-2 px-2 pb-16 sm:py-8 sm:px-4 sm:pb-20'}`}>
+        {/* Mode Toggle */}
+        <div className="flex items-center justify-between mb-3">
+          <ModeToggle
+            currentMode={operationMode}
+            onModeChange={handleModeChange}
+            privateEnabled={privateEnabled}
+            encryptedBalance={encryptedBalance?.encrypted || 0}
+          />
+          <ModeIndicator mode={operationMode} />
+        </div>
+
+        {/* Mode-based Tabs */}
+        <Tabs value={activeTab} onValueChange={(tab) => {
+          setActiveTab(tab);
+          // Fetch latest state when switching to balance or history tab
+          if (tab === 'balance' || tab === 'history') {
+            refreshWalletData();
+          }
+        }} className="space-y-3">
+          {operationMode === 'public' ? (
+            // Public Mode Tabs
+            <TabsList className="grid w-full grid-cols-3 h-auto p-1.5 rounded-lg bg-muted">
+              <TabsTrigger value="balance" className={`flex items-center justify-center gap-1.5 ${isPopupMode ? 'text-xs px-2' : 'text-xs sm:text-sm'} py-2.5 rounded-md`}>
+                <PieChart className="h-4 w-4" />
+                <span>Balance</span>
               </TabsTrigger>
-              <TabsTrigger value="send" className="flex flex-col sm:flex-row items-center gap-1 tabs-trigger text-xs sm:text-sm">
-                <Send className="h-3 w-3 flex-shrink-0" />
-                <span className="text-[10px]">Send</span>
+              <TabsTrigger value="send" className={`flex items-center justify-center gap-1.5 ${isPopupMode ? 'text-xs px-2' : 'text-xs sm:text-sm'} py-2.5 rounded-md`}>
+                <Send className="h-4 w-4" />
+                <span>Send</span>
               </TabsTrigger>
-              <TabsTrigger value="history" className="flex flex-col sm:flex-row items-center gap-1 tabs-trigger text-xs sm:text-sm">
-                <History className="h-3 w-3 flex-shrink-0" />
-                <span className="text-[10px]">History</span>
+              <TabsTrigger value="history" className={`flex items-center justify-center gap-1.5 ${isPopupMode ? 'text-xs px-2' : 'text-xs sm:text-sm'} py-2.5 rounded-md`}>
+                <History className="h-4 w-4" />
+                <span>History</span>
               </TabsTrigger>
             </TabsList>
           ) : (
-            // Expanded mode - 5 tabs
-            <TabsList className="grid w-full grid-cols-5 tabs-list h-auto p-0.5 sm:p-1">
-              <TabsTrigger value="overview" className="flex flex-col sm:flex-row items-center gap-1 tabs-trigger md:px-2 py-2 text-xs sm:text-sm">
-                <PieChart className="h-3 w-3 sm:h-4 sm:w-4 flex-shrink-0" />
-                <span className="hidden min-[480px]:inline">Overview</span>
-                <span className="min-[480px]:hidden text-[10px] leading-none mt-0.5">Over</span>
-                {isRefreshingData && (
-                  <div className="animate-spin h-2 w-2 sm:h-3 sm:w-3 border border-primary border-t-transparent rounded-full" />
-                )}
+            // Private Mode Tabs (with #0000db styling)
+            <TabsList className="grid w-full grid-cols-4 h-auto p-1.5 rounded-lg bg-[#0000db]/10">
+              <TabsTrigger value="balance" className={`flex items-center justify-center gap-1 ${isPopupMode ? 'text-[11px] px-1' : 'text-xs sm:text-sm'} py-2.5 rounded-md data-[state=active]:bg-[#0000db] data-[state=active]:text-white`}>
+                <Shield className={`${isPopupMode ? 'h-3.5 w-3.5' : 'h-4 w-4'}`} />
+                <span>{isPopupMode ? 'Bal' : 'Balance'}</span>
               </TabsTrigger>
-              <TabsTrigger value="send" className="flex flex-col sm:flex-row items-center gap-1 tabs-trigger md:px-2 py-2 text-xs sm:text-sm">
-                <Send className="h-3 w-3 sm:h-4 sm:w-4 flex-shrink-0" />
-                <span className="hidden min-[480px]:inline">Send</span>
-                <span className="min-[480px]:hidden text-[10px] leading-none mt-0.5">Send</span>
+              <TabsTrigger value="transfer" className={`flex items-center justify-center gap-1 ${isPopupMode ? 'text-[11px] px-1' : 'text-xs sm:text-sm'} py-2.5 rounded-md data-[state=active]:bg-[#0000db] data-[state=active]:text-white`}>
+                <Send className={`${isPopupMode ? 'h-3.5 w-3.5' : 'h-4 w-4'}`} />
+                <span>{isPopupMode ? 'Send' : 'Transfer'}</span>
               </TabsTrigger>
-              <TabsTrigger value="private" className="flex flex-col sm:flex-row items-center gap-1 tabs-trigger md:px-2 py-2 text-xs sm:text-sm">
-                <Shield className="h-3 w-3 sm:h-4 sm:w-4 flex-shrink-0" />
-                <span className="hidden min-[480px]:inline">Private</span>
-                <span className="min-[480px]:hidden text-[10px] leading-none mt-0.5">Priv</span>
+              <TabsTrigger value="claim" className={`flex items-center justify-center gap-1 ${isPopupMode ? 'text-[11px] px-1' : 'text-xs sm:text-sm'} py-2.5 rounded-md data-[state=active]:bg-[#0000db] data-[state=active]:text-white`}>
+                <Gift className={`${isPopupMode ? 'h-3.5 w-3.5' : 'h-4 w-4'}`} />
+                <span>Claim</span>
               </TabsTrigger>
-              <TabsTrigger value="claim" className="flex flex-col sm:flex-row items-center gap-1 tabs-trigger md:px-2 py-2 text-xs sm:text-sm">
-                <Gift className="h-3 w-3 sm:h-4 sm:w-4 flex-shrink-0" />
-                <span className="hidden min-[480px]:inline">Claim</span>
-                <span className="min-[480px]:hidden text-[10px] leading-none mt-0.5">Claim</span>
-              </TabsTrigger>
-              <TabsTrigger value="history" className="flex flex-col sm:flex-row items-center gap-1 tabs-trigger md:px-2 py-2 text-xs sm:text-sm">
-                <History className="h-3 w-3 sm:h-4 sm:w-4 flex-shrink-0" />
-                <span className="hidden min-[480px]:inline">History</span>
-                <span className="min-[480px]:hidden text-[10px] leading-none mt-0.5">Hist</span>
+              <TabsTrigger value="history" className={`flex items-center justify-center gap-1 ${isPopupMode ? 'text-[11px] px-1' : 'text-xs sm:text-sm'} py-2.5 rounded-md data-[state=active]:bg-[#0000db] data-[state=active]:text-white`}>
+                <History className={`${isPopupMode ? 'h-3.5 w-3.5' : 'h-4 w-4'}`} />
+                <span>{isPopupMode ? 'Hist' : 'History'}</span>
               </TabsTrigger>
             </TabsList>
           )}
 
-          <TabsContent value="overview" className="space-y-4 sm:space-y-6 mt-4">
-            <Balance 
-              wallet={wallet} 
-              balance={balance}
-              encryptedBalance={encryptedBalance}
-              onEncryptedBalanceUpdate={setEncryptedBalance}
-              onBalanceUpdate={handleBalanceUpdate}
-              isLoading={isLoadingBalance || isRefreshingData}
-            />
-          </TabsContent>
-
-          <TabsContent value="send" className="mt-4">
-            {isPopupMode ? (
-              // Popup mode - Include Private and Claim in Send tabs
-              <Tabs defaultValue="single" className="w-full">
-                <TabsList className="grid w-full grid-cols-4 h-auto p-1">
-                  <TabsTrigger value="single" className="text-xs sm:text-sm px-1 py-2">Single</TabsTrigger>
-                  <TabsTrigger value="multi" className="text-xs sm:text-sm px-1 py-2">Multi</TabsTrigger>
-                  <TabsTrigger value="private" className="text-xs sm:text-sm px-1 py-2">Private</TabsTrigger>
-                  <TabsTrigger value="claim" className="text-xs sm:text-sm px-1 py-2">Claim</TabsTrigger>
-                </TabsList>
-                
-                <TabsContent value="single" className="mt-4 sm:mt-6">
-                  <SendTransaction
-                    wallet={wallet} 
-                    balance={balance}
-                    nonce={nonce}
-                    onBalanceUpdate={handleBalanceUpdate}
-                    onNonceUpdate={handleNonceUpdate}
-                    onTransactionSuccess={handleTransactionSuccess}
-                  />
-                </TabsContent>
-                
-                <TabsContent value="multi" className="mt-4 sm:mt-6">
-                  <MultiSend 
-                    wallet={wallet} 
-                    balance={balance}
-                    nonce={nonce}
-                    onBalanceUpdate={handleBalanceUpdate}
-                    onNonceUpdate={handleNonceUpdate}
-                    onTransactionSuccess={handleTransactionSuccess}
-                  />
-                </TabsContent>
-                
-                <TabsContent value="private" className="mt-4 sm:mt-6">
-                  <PrivateTransfer
-                    wallet={wallet}
-                    balance={balance}
-                    nonce={nonce}
-                    onBalanceUpdate={handleBalanceUpdate}
-                    onNonceUpdate={handleNonceUpdate}
-                    onTransactionSuccess={handleTransactionSuccess}
-                  />
-                </TabsContent>
-
-                <TabsContent value="claim" className="mt-4 sm:mt-6">
-                  <ClaimTransfers
-                    wallet={wallet}
-                    onTransactionSuccess={handleTransactionSuccess}
-                  />
-                </TabsContent>
-              </Tabs>
+          {/* Balance Tab Content */}
+          <TabsContent value="balance" className="mt-4">
+            {operationMode === 'public' ? (
+              <PublicBalance 
+                wallet={wallet} 
+                balance={balance}
+                encryptedBalance={encryptedBalance}
+                onEncryptedBalanceUpdate={setEncryptedBalance}
+                onBalanceUpdate={handleBalanceUpdate}
+                isLoading={isLoadingBalance || isRefreshingData}
+              />
             ) : (
-              // Expanded mode - Original Send tabs
-              <Tabs defaultValue="single" className="w-full">
-                <TabsList className="grid w-full grid-cols-3 h-auto p-1">
-                  <TabsTrigger value="single" className="text-xs sm:text-sm px-2 py-2">Single Send</TabsTrigger>
-                  <TabsTrigger value="multi" className="text-xs sm:text-sm px-2 py-2">Multi Send</TabsTrigger>
-                  <TabsTrigger value="file" className="text-xs sm:text-sm px-2 py-2">File Multi</TabsTrigger>
-                </TabsList>
-                
-                <TabsContent value="single" className="mt-4 sm:mt-6">
-                  <SendTransaction
-                    wallet={wallet} 
-                    balance={balance}
-                    nonce={nonce}
-                    onBalanceUpdate={handleBalanceUpdate}
-                    onNonceUpdate={handleNonceUpdate}
-                    onTransactionSuccess={handleTransactionSuccess}
-                  />
-                </TabsContent>
-                
-                <TabsContent value="multi" className="mt-4 sm:mt-6">
-                  <MultiSend 
-                    wallet={wallet} 
-                    balance={balance}
-                    nonce={nonce}
-                    onBalanceUpdate={handleBalanceUpdate}
-                    onNonceUpdate={handleNonceUpdate}
-                    onTransactionSuccess={handleTransactionSuccess}
-                  />
-                </TabsContent>
-                
-                <TabsContent value="file" className="mt-4 sm:mt-6">
-                  <FileMultiSend 
-                    wallet={wallet} 
-                    balance={balance}
-                    nonce={nonce}
-                    onBalanceUpdate={handleBalanceUpdate}
-                    onNonceUpdate={handleNonceUpdate}
-                    onTransactionSuccess={handleTransactionSuccess}
-                  />
-                </TabsContent>
-              </Tabs>
+              <PrivateBalance 
+                wallet={wallet} 
+                balance={balance}
+                encryptedBalance={encryptedBalance}
+                onEncryptedBalanceUpdate={setEncryptedBalance}
+                onBalanceUpdate={handleBalanceUpdate}
+                isLoading={isLoadingBalance || isRefreshingData}
+              />
             )}
           </TabsContent>
 
-          {/* Only show these tabs in expanded mode */}
-          {!isPopupMode && (
-            <>
-              <TabsContent value="private" className="mt-4">
-                <PrivateTransfer
-                  wallet={wallet}
-                  balance={balance}
-                  nonce={nonce}
-                  onBalanceUpdate={handleBalanceUpdate}
-                  onNonceUpdate={handleNonceUpdate}
-                  onTransactionSuccess={handleTransactionSuccess}
-                />
-              </TabsContent>
-
-              <TabsContent value="claim" className="mt-4">
-                <ClaimTransfers
-                  wallet={wallet}
-                  onTransactionSuccess={handleTransactionSuccess}
-                />
-              </TabsContent>
-            </>
+          {/* Send Tab (Public Mode) */}
+          {operationMode === 'public' && (
+            <TabsContent value="send" className="mt-4">
+              <Tabs defaultValue="single" className="w-full">
+                <TabsList className={`grid w-full ${isPopupMode ? 'grid-cols-2' : 'grid-cols-3'} h-auto p-1`}>
+                  <TabsTrigger value="single" className="text-xs sm:text-sm py-2">Single</TabsTrigger>
+                  <TabsTrigger value="multi" className="text-xs sm:text-sm py-2">Multi</TabsTrigger>
+                  {!isPopupMode && (
+                    <TabsTrigger value="file" className="text-xs sm:text-sm py-2">File</TabsTrigger>
+                  )}
+                </TabsList>
+                
+                <TabsContent value="single" className="mt-4">
+                  <SendTransaction
+                    wallet={wallet} 
+                    balance={balance}
+                    nonce={nonce}
+                    onBalanceUpdate={handleBalanceUpdate}
+                    onNonceUpdate={handleNonceUpdate}
+                    onTransactionSuccess={handleTransactionSuccess}
+                  />
+                </TabsContent>
+                
+                <TabsContent value="multi" className="mt-4">
+                  <MultiSend 
+                    wallet={wallet} 
+                    balance={balance}
+                    nonce={nonce}
+                    onBalanceUpdate={handleBalanceUpdate}
+                    onNonceUpdate={handleNonceUpdate}
+                    onTransactionSuccess={handleTransactionSuccess}
+                  />
+                </TabsContent>
+                
+                {!isPopupMode && (
+                  <TabsContent value="file" className="mt-4">
+                    <FileMultiSend 
+                      wallet={wallet} 
+                      balance={balance}
+                      nonce={nonce}
+                      onBalanceUpdate={handleBalanceUpdate}
+                      onNonceUpdate={handleNonceUpdate}
+                      onTransactionSuccess={handleTransactionSuccess}
+                    />
+                  </TabsContent>
+                )}
+              </Tabs>
+            </TabsContent>
           )}
 
+          {/* Transfer Tab (Private Mode) */}
+          {operationMode === 'private' && (
+            <TabsContent value="transfer" className="mt-4">
+              <PrivateTransfer
+                wallet={wallet}
+                balance={balance}
+                nonce={nonce}
+                onBalanceUpdate={handleBalanceUpdate}
+                onNonceUpdate={handleNonceUpdate}
+                onTransactionSuccess={handleTransactionSuccess}
+              />
+            </TabsContent>
+          )}
+
+          {/* Claim Tab (Private Mode) */}
+          {operationMode === 'private' && (
+            <TabsContent value="claim" className="mt-4">
+              <ClaimTransfers
+                wallet={wallet}
+                onTransactionSuccess={handleTransactionSuccess}
+              />
+            </TabsContent>
+          )}
+
+          {/* History Tab (Both Modes) */}
           <TabsContent value="history" className="mt-4">
-            <TxHistory 
+            <UnifiedHistory 
               wallet={wallet} 
               transactions={transactions}
               onTransactionsUpdate={handleTransactionsUpdate}
               isLoading={isLoadingTransactions}
+              isPopupMode={isPopupMode}
             />
           </TabsContent>
         </Tabs>
       </main>
+
+      {/* Footer Spacer - to prevent content from being hidden behind fixed footer */}
+      <div className={`${isPopupMode ? 'h-12' : 'h-10'}`} />
 
       {/* Footer Credit */}
       <footer className="fixed bottom-0 left-0 right-0 py-2 text-center text-xs text-muted-foreground bg-background/80 backdrop-blur-sm border-t border-border/40">

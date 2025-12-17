@@ -278,17 +278,17 @@ export function PrivateTransfer({
   }
 
   return (
-    <Card>
+    <Card className="border-[#0000db]/20">
       <CardHeader>
-        <CardTitle className="flex items-center gap-2">
+        <CardTitle className="flex items-center gap-2 text-[#0000db]">
           <Shield className="h-5 w-5" />
           Private Transfer
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-6">
-        <Alert>
+        <Alert className="border-[#0000db]/20 bg-[#0000db]/5">
           <div className="flex items-start space-x-3">
-            <Shield className="h-4 w-4 mt-0.5 flex-shrink-0" />
+            <Shield className="h-4 w-4 mt-0.5 flex-shrink-0 text-[#0000db]" />
             <AlertDescription>
               Private transfers use your encrypted balance and are completely anonymous. The recipient can claim the transfer in the next epoch.
             </AlertDescription>
@@ -296,10 +296,10 @@ export function PrivateTransfer({
         </Alert>
 
         {/* Encrypted Balance Display */}
-        <div className="p-3 bg-muted rounded-md">
+        <div className="p-3 bg-[#0000db]/5 border border-[#0000db]/20 rounded-md">
           <div className="flex justify-between items-center">
             <span className="text-sm font-medium">Available Private Balance</span>
-            <span className="font-mono text-lg font-bold text-yellow-600">
+            <span className="font-mono text-lg font-bold text-[#0000db]">
               {encryptedBalance.encrypted.toFixed(8)} OCT
             </span>
           </div>
@@ -459,7 +459,7 @@ export function PrivateTransfer({
             !recipientInfo.has_public_key ||
             parseFloat(amount) > encryptedBalance.encrypted
           }
-          className="w-full"
+          className="w-full bg-[#0000db] hover:bg-[#0000db]/90"
           size="lg"
         >
           {isSending ? (

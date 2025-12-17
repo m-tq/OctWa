@@ -1,10 +1,8 @@
-import React, { useState } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
@@ -214,30 +212,13 @@ ${wallet.mnemonic}
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Key className="h-5 w-5" />
+    <Dialog open={isOpen} onOpenChange={setIsOpen}>
+      <DialogTrigger asChild>
+        <Button className="w-full py-6" size="lg">
+          <Lock className="h-4 w-4 mr-2" />
           Export Private Keys
-        </CardTitle>
-      </CardHeader>
-      <CardContent>
-        <Alert className="mb-4">
-          <div className="flex items-start space-x-3">
-            <Shield className="h-4 w-4 mt-0.5 flex-shrink-0" />
-            <AlertDescription>
-              Export your private keys and mnemonic phrase securely. Password verification required for access.
-            </AlertDescription>
-          </div>
-        </Alert>
-
-        <Dialog open={isOpen} onOpenChange={setIsOpen}>
-          <DialogTrigger asChild>
-            <Button className="w-full" size="lg">
-              <Lock className="h-4 w-4 mr-2" />
-              Export Private Keys
-            </Button>
-          </DialogTrigger>
+        </Button>
+      </DialogTrigger>
           <DialogContent className="sm:max-w-2xl max-h-[90vh]" onInteractOutside={(e) => e.preventDefault()}>
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
@@ -504,7 +485,5 @@ ${wallet.mnemonic}
             </ScrollArea>
           </DialogContent>
         </Dialog>
-      </CardContent>
-    </Card>
   );
 }

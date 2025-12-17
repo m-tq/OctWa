@@ -318,3 +318,73 @@
   top: 2px;
   height: calc(100% - 4px);
 }
+
+
+/* Private Mode Styling - #0000db accent color */
+:root {
+  --private-primary: 240 100% 43%; /* #0000db */
+  --private-primary-foreground: 0 0% 100%;
+}
+
+/* Private mode utility classes */
+.private-mode {
+  --primary: var(--private-primary);
+  --primary-foreground: var(--private-primary-foreground);
+}
+
+.private-accent {
+  color: hsl(240, 100%, 43%);
+}
+
+.private-bg {
+  background-color: hsl(240, 100%, 43%);
+}
+
+.private-bg-subtle {
+  background-color: hsl(240, 100%, 43%, 0.1);
+}
+
+.private-border {
+  border-color: hsl(240, 100%, 43%, 0.3);
+}
+
+.private-text {
+  color: hsl(240, 100%, 43%);
+}
+
+/* Private mode button styling */
+.btn-private {
+  @apply bg-[#0000db] text-white hover:bg-[#0000db]/90;
+}
+
+.btn-private-outline {
+  @apply border-[#0000db]/30 text-[#0000db] hover:bg-[#0000db]/5;
+}
+
+/* Private mode card styling */
+.card-private {
+  @apply border-[#0000db]/20;
+}
+
+.card-private .card-header {
+  @apply border-b-[#0000db]/10;
+}
+
+/* Private mode badge styling */
+.badge-private {
+  @apply bg-[#0000db] text-white;
+}
+
+/* Private mode tab styling */
+.tabs-private .tabs-list {
+  @apply bg-[#0000db]/10;
+}
+
+.tabs-private [data-state="active"] {
+  @apply bg-[#0000db] text-white;
+}
+
+/* Mode transition animation */
+.mode-transition {
+  @apply transition-all duration-300 ease-in-out;
+}

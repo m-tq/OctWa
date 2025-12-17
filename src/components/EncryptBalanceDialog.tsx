@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Lock, Loader2, AlertTriangle } from 'lucide-react';
 import { Wallet } from '../types/wallet';
 import { encryptBalance } from '../utils/api';
@@ -28,7 +29,7 @@ export function EncryptBalanceDialog({
   const [isEncrypting, setIsEncrypting] = useState(false);
   const { toast } = useToast();
 
-  const maxEncryptable = Math.max(0, publicBalance - 0.5); // Reserve 0.5 OCT for fees
+  const maxEncryptable = Math.max(0, publicBalance - 0.005); // Reserve 0.005 OCT for fees
 
   const handleEncrypt = async () => {
     const amountNum = parseFloat(amount);
@@ -108,11 +109,11 @@ export function EncryptBalanceDialog({
 
           <div className="space-y-2">
             <Label>Maximum Encryptable</Label>
-            <div className="p-3 bg-muted rounded-md font-mono text-yellow-600">
+            <div className="p-3 bg-[#0000db]/5 border border-[#0000db]/20 rounded-md font-mono text-[#0000db]">
               {maxEncryptable.toFixed(8)} OCT
             </div>
             <p className="text-xs text-muted-foreground">
-              (1 OCT reserved for transaction fees)
+              (0.005 OCT reserved for transaction fees)
             </p>
           </div>
 
@@ -140,23 +141,44 @@ export function EncryptBalanceDialog({
             >
               Cancel
             </Button>
-            <Button
-              onClick={handleEncrypt}
-              disabled={isEncrypting || !amount || parseFloat(amount) <= 0 || parseFloat(amount) > maxEncryptable}
-              className="flex-1"
-            >
-              {isEncrypting ? (
-                <>
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Encrypting...
-                </>
-              ) : (
-                <>
-                  <Lock className="h-4 w-4 mr-2" />
-                  Encrypt
-                </>
-              )}
-            </Button>
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <div className="flex-1">
+                    <Button
+                      onClick={handleEncrypt}
+                      disabled={isEncrypting || !amount || parseFloat(amount) <= 0 || parseFloat(amount) > maxEncryptable || maxEncryptable <= 0}
+                      className="w-full"
+                    >
+                      {isEncrypting ? (
+                        <>
+                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                          Encrypting...
+                        </>
+                      ) : (
+                        <>
+                          <Lock className="h-4 w-4 mr-2" />
+                          Encrypt
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                </TooltipTrigger>
+                {(isEncrypting || !amount || parseFloat(amount) <= 0 || parseFloat(amount) > maxEncryptable || maxEncryptable <= 0) && !isEncrypting && (
+                  <TooltipContent side="top" className="max-w-[250px]">
+                    <p className="text-xs">
+                      {maxEncryptable <= 0 
+                        ? "Insufficient balance. Need at least 0.005 OCT for fees."
+                        : !amount || parseFloat(amount) <= 0
+                          ? "Enter an amount to encrypt"
+                          : parseFloat(amount) > maxEncryptable
+                            ? `Amount exceeds maximum (${maxEncryptable.toFixed(6)} OCT)`
+                            : ""}
+                    </p>
+                  </TooltipContent>
+                )}
+              </Tooltip>
+            </TooltipProvider>
           </div>
         </div>
       </DialogContent>

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { WelcomeScreen } from './components/WelcomeScreen';
 import { WalletDashboard } from './components/WalletDashboard';
 import { UnlockWallet } from './components/UnlockWallet';
@@ -32,10 +32,7 @@ function ExpandedApp() {
         // Use WalletManager to check if should show unlock screen
         const shouldShowUnlock = await WalletManager.shouldShowUnlockScreen();
 
-        console.log('🔒 ExpandedApp: Should show unlock:', shouldShowUnlock);
-
         if (shouldShowUnlock) {
-          console.log('🔒 ExpandedApp: Showing unlock screen - wallet is locked');
           setIsLocked(true);
           setIsLoading(false);
           return;
@@ -73,10 +70,34 @@ function ExpandedApp() {
           }
         }
         
+        // CRITICAL: Sync encryptedWallets with loaded wallets to prevent deleted wallets from reappearing
+        if (loadedWallets.length > 0) {
+          try {
+            const encryptedWalletsData = await ExtensionStorageManager.get('encryptedWallets');
+            if (encryptedWalletsData) {
+              const encryptedWallets = typeof encryptedWalletsData === 'string' 
+                ? JSON.parse(encryptedWalletsData) 
+                : encryptedWalletsData;
+              if (Array.isArray(encryptedWallets)) {
+                const validAddresses = new Set(loadedWallets.map(w => w.address));
+                const syncedEncryptedWallets = encryptedWallets.filter(
+                  (w: any) => validAddresses.has(w.address)
+                );
+                
+                // Only update if there's a difference (deleted wallets were found)
+                if (syncedEncryptedWallets.length !== encryptedWallets.length) {
+                  await ExtensionStorageManager.set('encryptedWallets', JSON.stringify(syncedEncryptedWallets));
+                  localStorage.setItem('encryptedWallets', JSON.stringify(syncedEncryptedWallets));
+                }
+              }
+            }
+          } catch (syncError) {
+            console.error('Failed to sync encryptedWallets on startup:', syncError);
+          }
+        }
+        
         setWallets(loadedWallets);
         setIsLocked(false);
-        
-        console.log('🔓 ExpandedApp: Wallet unlocked and ready');
       } catch (error) {
         console.error('Failed to load wallet data:', error);
       } finally {
@@ -87,59 +108,63 @@ function ExpandedApp() {
     loadInitialData();
   }, []); // NO dependencies - only run once
 
-  // Simple unlock handler - NO async operations
+  // Simple unlock handler
   const handleUnlock = (unlockedWallets: Wallet[]) => {
-    console.log('🔓 ExpandedApp: Handling unlock with wallets:', unlockedWallets.length);
-    
-    // CRITICAL FIX: Ensure we preserve all wallets from the unlock process
     if (unlockedWallets.length > 0) {
       setWallets(unlockedWallets);
       setIsLocked(false);
       
       // Set active wallet - prioritize stored activeWalletId, fallback to first wallet
       const activeWalletId = localStorage.getItem('activeWalletId');
-      let activeWallet = unlockedWallets[0]; // Default to first wallet
+      let activeWallet = unlockedWallets[0];
       
       if (activeWalletId) {
         const foundWallet = unlockedWallets.find(w => w.address === activeWalletId);
         if (foundWallet) {
           activeWallet = foundWallet;
-          console.log('🎯 ExpandedApp: Restored active wallet:', activeWallet.address.slice(0, 8) + '...');
         } else {
-          console.log('🔄 ExpandedApp: Active wallet not found, using first wallet:', activeWallet.address.slice(0, 8) + '...');
-          // Update stored activeWalletId to match the new active wallet
           localStorage.setItem('activeWalletId', activeWallet.address);
         }
       } else {
-        console.log('🆕 ExpandedApp: No active wallet stored, using first wallet:', activeWallet.address.slice(0, 8) + '...');
         localStorage.setItem('activeWalletId', activeWallet.address);
       }
       
       setWallet(activeWallet);
     } else {
-      console.warn('⚠️ ExpandedApp: No wallets returned from unlock process');
       setWallets([]);
       setWallet(null);
       setIsLocked(false);
     }
-    
-    console.log('✅ ExpandedApp: Unlock handling completed successfully');
   };
 
   const addWallet = async (newWallet: Wallet) => {
-    // Check if wallet already exists to prevent duplicates
-    const walletExists = wallets.some(w => w.address === newWallet.address);
-    if (walletExists) {
-      console.log('⚠️ ExpandedApp: Wallet already exists, skipping add:', newWallet.address);
-      return;
-    }
-    
-    const updatedWallets = [...wallets, newWallet];
-    setWallets(updatedWallets);
-    setWallet(newWallet);
-    
     try {
-      // Save to ExtensionStorageManager (chrome.storage)
+      // Read current wallets from storage to avoid stale state issues
+      const storedWallets = await ExtensionStorageManager.get('wallets');
+      let currentWallets: Wallet[] = [];
+      
+      if (storedWallets) {
+        try {
+          currentWallets = typeof storedWallets === 'string' 
+            ? JSON.parse(storedWallets) 
+            : storedWallets;
+          if (!Array.isArray(currentWallets)) {
+            currentWallets = [];
+          }
+        } catch (e) {
+          currentWallets = [];
+        }
+      }
+      
+      // Check if wallet already exists to prevent duplicates
+      const walletExists = currentWallets.some(w => w.address === newWallet.address);
+      if (walletExists) {
+        return;
+      }
+      
+      const updatedWallets = [...currentWallets, newWallet];
+      
+      // Save to ExtensionStorageManager (chrome.storage) first
       await ExtensionStorageManager.set('wallets', JSON.stringify(updatedWallets));
       await ExtensionStorageManager.set('activeWalletId', newWallet.address);
       
@@ -147,7 +172,43 @@ function ExpandedApp() {
       localStorage.setItem('wallets', JSON.stringify(updatedWallets));
       localStorage.setItem('activeWalletId', newWallet.address);
       
-      console.log('✅ ExpandedApp: Wallet added, total wallets:', updatedWallets.length);
+      // CRITICAL: Also sync encryptedWallets to match current wallets
+      // This ensures deleted wallets stay deleted and new wallets are properly tracked
+      try {
+        const encryptedWalletsData = await ExtensionStorageManager.get('encryptedWallets');
+        if (encryptedWalletsData) {
+          const encryptedWallets = typeof encryptedWalletsData === 'string' 
+            ? JSON.parse(encryptedWalletsData) 
+            : encryptedWalletsData;
+          if (Array.isArray(encryptedWallets)) {
+            // Filter encryptedWallets to only include wallets that exist in updatedWallets
+            const validAddresses = new Set(updatedWallets.map(w => w.address));
+            const syncedEncryptedWallets = encryptedWallets.filter(
+              (w: any) => validAddresses.has(w.address)
+            );
+            
+            // Add new wallet to encryptedWallets if not already there
+            const newWalletExists = syncedEncryptedWallets.some((w: any) => w.address === newWallet.address);
+            if (!newWalletExists) {
+              syncedEncryptedWallets.push({
+                address: newWallet.address,
+                encryptedData: JSON.stringify(newWallet),
+                createdAt: Date.now(),
+                needsEncryption: true
+              });
+            }
+            
+            await ExtensionStorageManager.set('encryptedWallets', JSON.stringify(syncedEncryptedWallets));
+            localStorage.setItem('encryptedWallets', JSON.stringify(syncedEncryptedWallets));
+          }
+        }
+      } catch (syncError) {
+        console.error('Failed to sync encryptedWallets:', syncError);
+      }
+      
+      // Update state after storage is saved
+      setWallets(updatedWallets);
+      setWallet(newWallet);
     } catch (error) {
       console.error('Failed to save wallet:', error);
     }
@@ -165,26 +226,67 @@ function ExpandedApp() {
   };
 
   const removeWallet = async (walletToRemove: Wallet) => {
-    const updatedWallets = wallets.filter(w => w.address !== walletToRemove.address);
-    setWallets(updatedWallets);
-    
-    if (wallet?.address === walletToRemove.address && updatedWallets.length === 0) {
-      setWallet(null);
-    }
-    
     try {
-      // Save to ExtensionStorageManager (chrome.storage)
+      // Read current wallets from storage to avoid stale state issues
+      const storedWallets = await ExtensionStorageManager.get('wallets');
+      let currentWallets: Wallet[] = [];
+      
+      if (storedWallets) {
+        try {
+          currentWallets = typeof storedWallets === 'string' 
+            ? JSON.parse(storedWallets) 
+            : storedWallets;
+          if (!Array.isArray(currentWallets)) {
+            currentWallets = [];
+          }
+        } catch (e) {
+          currentWallets = [];
+        }
+      }
+      
+      // Filter out the wallet to remove from storage data
+      const updatedWallets = currentWallets.filter(w => w.address !== walletToRemove.address);
+      
+      // Save to ExtensionStorageManager (chrome.storage) first
       await ExtensionStorageManager.set('wallets', JSON.stringify(updatedWallets));
       
       // Also sync to localStorage to prevent inconsistency
       localStorage.setItem('wallets', JSON.stringify(updatedWallets));
       
-      if (wallet?.address === walletToRemove.address && updatedWallets.length === 0) {
-        await ExtensionStorageManager.remove('activeWalletId');
-        localStorage.removeItem('activeWalletId');
+      // CRITICAL: Also remove from encryptedWallets storage to prevent resurrection on unlock
+      try {
+        const encryptedWalletsData = await ExtensionStorageManager.get('encryptedWallets');
+        if (encryptedWalletsData) {
+          const encryptedWallets = typeof encryptedWalletsData === 'string' 
+            ? JSON.parse(encryptedWalletsData) 
+            : encryptedWalletsData;
+          if (Array.isArray(encryptedWallets)) {
+            const updatedEncryptedWallets = encryptedWallets.filter(
+              (w: any) => w.address !== walletToRemove.address
+            );
+            await ExtensionStorageManager.set('encryptedWallets', JSON.stringify(updatedEncryptedWallets));
+            localStorage.setItem('encryptedWallets', JSON.stringify(updatedEncryptedWallets));
+          }
+        }
+      } catch (encError) {
+        console.error('Failed to remove from encryptedWallets:', encError);
       }
       
-      console.log('✅ ExpandedApp: Wallet removed, remaining wallets:', updatedWallets.length);
+      // Update state after storage is saved
+      setWallets(updatedWallets);
+      
+      if (wallet?.address === walletToRemove.address) {
+        if (updatedWallets.length > 0) {
+          // Switch to first remaining wallet
+          setWallet(updatedWallets[0]);
+          await ExtensionStorageManager.set('activeWalletId', updatedWallets[0].address);
+          localStorage.setItem('activeWalletId', updatedWallets[0].address);
+        } else {
+          setWallet(null);
+          await ExtensionStorageManager.remove('activeWalletId');
+          localStorage.removeItem('activeWalletId');
+        }
+      }
     } catch (error) {
       console.error('Failed to remove wallet:', error);
     }
@@ -199,8 +301,6 @@ function ExpandedApp() {
       setWallet(null);
       setWallets([]);
       setIsLocked(true);
-      
-      console.log('🔒 ExpandedApp: Wallet disconnected and locked');
     } catch (error) {
       console.error('Failed to lock wallet:', error);
     }

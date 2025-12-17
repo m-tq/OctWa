@@ -202,9 +202,9 @@ export function ClaimTransfers({ wallet, onTransactionSuccess }: ClaimTransfersP
   }
 
   return (
-    <Card>
+    <Card className="border-[#0000db]/20">
       <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
-        <CardTitle className="flex items-center gap-2">
+        <CardTitle className="flex items-center gap-2 text-[#0000db]">
           <Gift className="h-5 w-5" />
           Claim Private Transfers
           {transfers.length > 0 && (
@@ -230,8 +230,7 @@ export function ClaimTransfers({ wallet, onTransactionSuccess }: ClaimTransfersP
             <Button
               onClick={handleClaimAll}
               disabled={claimingAll || claimingId !== null}
-              className="w-full"
-              variant="default"
+              className="w-full bg-[#0000db] hover:bg-[#0000db]/90"
             >
               {claimingAll ? (
                 <>
@@ -307,7 +306,7 @@ export function ClaimTransfers({ wallet, onTransactionSuccess }: ClaimTransfersP
                     onClick={() => handleClaim(transfer.id)}
                     disabled={claimingId === transfer.id || claimingAll}
                     size="sm"
-                    className="flex items-center gap-2"
+                    className="flex items-center gap-2 bg-[#0000db] hover:bg-[#0000db]/90"
                   >
                     {claimingId === transfer.id || claimingAll ? (
                       <>
