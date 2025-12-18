@@ -97,7 +97,7 @@ export async function generateWalletFromMnemonic(mnemonic: string) {
 }
 
 // New encryption functions for private balance
-export function deriveEncryptionKey(privkeyB64: string): Uint8Array {
+export async function deriveEncryptionKey(privkeyB64: string): Promise<Uint8Array> {
   const privkeyBytes = base64ToBuffer(privkeyB64);
   const salt = new TextEncoder().encode("octra_encrypted_balance_v2");
   
@@ -107,9 +107,8 @@ export function deriveEncryptionKey(privkeyB64: string): Uint8Array {
   combined.set(privkeyBytes, salt.length);
   
   // Use crypto.subtle.digest to create SHA-256 hash
-  return crypto.subtle.digest('SHA-256', combined).then(hash => {
-    return new Uint8Array(hash).slice(0, 32);
-  }) as any; // This will be awaited where used
+  const hash = await crypto.subtle.digest('SHA-256', combined);
+  return new Uint8Array(hash).slice(0, 32);
 }
 
 export async function encryptClientBalance(balance: number, privkeyB64: string): Promise<string> {

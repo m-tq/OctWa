@@ -8,8 +8,8 @@ import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Textarea } from '@/components/ui/textarea';
-import { Upload, FileText, AlertTriangle, Wallet as WalletIcon, CheckCircle, ExternalLink, Copy, Zap, Trash2 } from 'lucide-react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Upload, FileText, AlertTriangle, Wallet as WalletIcon, CheckCircle, ExternalLink, Copy, Zap, Trash2, Settings2 } from 'lucide-react';
 import { Wallet } from '../types/wallet';
 import { fetchBalance, sendTransaction, createTransaction } from '../utils/api';
 import { useToast } from '@/hooks/use-toast';
@@ -55,9 +55,18 @@ function validateRecipientInput(input: string): { isValid: boolean; error?: stri
   };
 }
 
-export function FileMultiSend({ wallet, balance, nonce, onBalanceUpdate, onNonceUpdate, onTransactionSuccess }: FileMultiSendProps) {
+export function FileMultiSend({ wallet, balance, onBalanceUpdate, onNonceUpdate, onTransactionSuccess }: FileMultiSendProps) {
   const [recipients, setRecipients] = useState<FileRecipient[]>([]);
   const [amountMode, setAmountMode] = useState<'same' | 'different'>('same');
+  const [ouOption, setOuOption] = useState<string>('auto');
+  const [customOu, setCustomOu] = useState('');
+
+  // Get OU value based on selection
+  const getOuValue = (amount: number): number | undefined => {
+    if (ouOption === 'auto') return undefined;
+    if (ouOption === 'custom') return parseInt(customOu) || undefined;
+    return parseInt(ouOption);
+  };
   const [sameAmount, setSameAmount] = useState('');
   const [isDragOver, setIsDragOver] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -325,7 +334,8 @@ export function FileMultiSend({ wallet, balance, nonce, onBalanceUpdate, onNonce
             currentNonce + 1,
             wallet.privateKey,
             wallet.publicKey || '',
-            undefined // No message support in file multi-send
+            undefined, // No message support in file multi-send
+            getOuValue(amount)
           );
 
           const sendResult = await sendTransaction(transaction);
@@ -733,6 +743,41 @@ export function FileMultiSend({ wallet, balance, nonce, onBalanceUpdate, onNonce
             ))}
           </div>
         )}
+
+        {/* OU (Gas) Settings */}
+        <div className="space-y-2">
+          <Label className="flex items-center gap-2">
+            <Settings2 className="h-4 w-4" />
+            OU (Gas) Settings
+          </Label>
+          <Select value={ouOption} onValueChange={setOuOption}>
+            <SelectTrigger>
+              <SelectValue placeholder="Select OU option" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="auto">Auto (Default based on amount)</SelectItem>
+              <SelectItem value="10000">10,000 OU</SelectItem>
+              <SelectItem value="20000">20,000 OU</SelectItem>
+              <SelectItem value="30000">30,000 OU</SelectItem>
+              <SelectItem value="50000">50,000 OU</SelectItem>
+              <SelectItem value="100000">100,000 OU</SelectItem>
+              <SelectItem value="custom">Custom</SelectItem>
+            </SelectContent>
+          </Select>
+          {ouOption === 'custom' && (
+            <Input
+              type="number"
+              placeholder="Enter custom OU value (e.g., 15000)"
+              value={customOu}
+              onChange={(e) => setCustomOu(e.target.value)}
+              min="1000"
+              step="1000"
+            />
+          )}
+          <p className="text-xs text-muted-foreground">
+            If transactions fail, try increasing the OU value.
+          </p>
+        </div>
 
         <Button
           onClick={handleSendAll}

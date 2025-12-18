@@ -6,8 +6,31 @@ import * as nacl from 'tweetnacl';
 
 const MU_FACTOR = 1_000_000;
 
-// Use the active RPC provider for API requests
-async function makeAPIRequest(endpoint: string, options: RequestInit = {}): Promise<Response> {
+// Retry configuration
+const MAX_RETRIES = 3;
+const RETRY_DELAY_MS = 1000; // 1 second base delay
+const RETRY_BACKOFF_MULTIPLIER = 2; // Exponential backoff
+
+// Helper function to delay execution
+const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+// Helper function to check if error is retryable
+const isRetryableError = (error: any, response?: Response): boolean => {
+  // Network errors are retryable
+  if (error instanceof TypeError && error.message.includes('fetch')) return true;
+  if (error?.name === 'AbortError') return false; // Timeout - don't retry
+  
+  // Server errors (5xx) are retryable
+  if (response && response.status >= 500) return true;
+  
+  // Rate limiting (429) is retryable
+  if (response && response.status === 429) return true;
+  
+  return false;
+};
+
+// Use the active RPC provider for API requests with retry logic
+async function makeAPIRequest(endpoint: string, options: RequestInit = {}, retryCount = 0): Promise<Response> {
   const provider = getActiveRPCProvider();
   
   if (!provider) {
@@ -61,9 +84,25 @@ async function makeAPIRequest(endpoint: string, options: RequestInit = {}): Prom
       signal: AbortSignal.timeout(30000) // 30 second timeout
     });
     
+    // Check if we should retry on server errors
+    if (isRetryableError(null, response) && retryCount < MAX_RETRIES) {
+      const delayMs = RETRY_DELAY_MS * Math.pow(RETRY_BACKOFF_MULTIPLIER, retryCount);
+      console.warn(`API request to ${cleanEndpoint} failed with status ${response.status}, retrying in ${delayMs}ms (attempt ${retryCount + 1}/${MAX_RETRIES})`);
+      await delay(delayMs);
+      return makeAPIRequest(endpoint, options, retryCount + 1);
+    }
+    
     return response;
   } catch (error) {
-    console.error(`API request failed for ${url}:`, error);
+    // Check if we should retry on network errors
+    if (isRetryableError(error) && retryCount < MAX_RETRIES) {
+      const delayMs = RETRY_DELAY_MS * Math.pow(RETRY_BACKOFF_MULTIPLIER, retryCount);
+      console.warn(`API request to ${cleanEndpoint} failed with error, retrying in ${delayMs}ms (attempt ${retryCount + 1}/${MAX_RETRIES}):`, error);
+      await delay(delayMs);
+      return makeAPIRequest(endpoint, options, retryCount + 1);
+    }
+    
+    console.error(`API request failed for ${url} after ${retryCount} retries:`, error);
     // Return a failed response object instead of throwing
     return new Response(null, {
       status: 500,
@@ -644,13 +683,15 @@ export function createTransaction(
   nonce: number,
   privateKeyBase64: string,
   publicKeyHex: string,
-  message?: string
+  message?: string,
+  customOu?: number
 ): Transaction {
   // Convert amount to micro units (multiply by 1,000,000)
   const amountMu = Math.floor(amount * MU_FACTOR);
   
-  // Determine OU based on amount (10000 for < 1000 OCT, 30000 for >= 1000 OCT) - matches CLI
-  const ou = amount < 1000 ? "10000" : "30000";
+  // Use custom OU if provided, otherwise determine based on amount (10000 for < 1000 OCT, 30000 for >= 1000 OCT)
+  const defaultOu = amount < 1000 ? 10000 : 30000;
+  const ou = (customOu || defaultOu).toString();
   
   // Create timestamp exactly like CLI: time.time() equivalent
   const timestamp = Date.now() / 1000;

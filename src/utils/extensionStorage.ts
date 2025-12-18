@@ -56,24 +56,28 @@ export class ExtensionStorageManager {
   
   static async set(key: string, value: string): Promise<void> {
     if (this.isExtension) {
+      let chromeSuccess = false;
+      let localSuccess = false;
+      
+      // Try chrome.storage first (primary)
       try {
         await chrome.storage.local.set({ [key]: value });
-        // CRITICAL FIX: Also update localStorage for immediate consistency
-        try {
-          localStorage.setItem(key, value);
-        } catch (localStorageError) {
-          console.warn('Failed to update localStorage:', localStorageError);
-          // Don't fail the entire operation if localStorage fails
-        }
+        chromeSuccess = true;
       } catch (error) {
         console.error('Failed to set in chrome.storage:', error);
-        // Fallback to localStorage
-        try {
-          localStorage.setItem(key, value);
-        } catch (localStorageError) {
-          console.error('Failed to set in localStorage fallback:', localStorageError);
-          throw error; // Re-throw original error
-        }
+      }
+      
+      // Also update localStorage for immediate consistency (secondary)
+      try {
+        localStorage.setItem(key, value);
+        localSuccess = true;
+      } catch (localStorageError) {
+        console.warn('Failed to update localStorage:', localStorageError);
+      }
+      
+      // Throw error only if both failed
+      if (!chromeSuccess && !localSuccess) {
+        throw new Error(`Failed to save ${key} to any storage`);
       }
     } else {
       localStorage.setItem(key, value);
@@ -82,24 +86,28 @@ export class ExtensionStorageManager {
   
   static async remove(key: string): Promise<void> {
     if (this.isExtension) {
+      let chromeSuccess = false;
+      let localSuccess = false;
+      
+      // Try chrome.storage first (primary)
       try {
         await chrome.storage.local.remove(key);
-        // CRITICAL FIX: Also remove from localStorage for consistency
-        try {
-          localStorage.removeItem(key);
-        } catch (localStorageError) {
-          console.warn('Failed to remove from localStorage:', localStorageError);
-          // Don't fail the entire operation if localStorage fails
-        }
+        chromeSuccess = true;
       } catch (error) {
         console.error('Failed to remove from chrome.storage:', error);
-        // Fallback to localStorage
-        try {
-          localStorage.removeItem(key);
-        } catch (localStorageError) {
-          console.error('Failed to remove from localStorage fallback:', localStorageError);
-          throw error; // Re-throw original error
-        }
+      }
+      
+      // Also remove from localStorage for consistency (secondary)
+      try {
+        localStorage.removeItem(key);
+        localSuccess = true;
+      } catch (localStorageError) {
+        console.warn('Failed to remove from localStorage:', localStorageError);
+      }
+      
+      // Throw error only if both failed
+      if (!chromeSuccess && !localSuccess) {
+        throw new Error(`Failed to remove ${key} from any storage`);
       }
     } else {
       localStorage.removeItem(key);

@@ -6,11 +6,15 @@ import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Separator } from '@/components/ui/separator';
-import { Badge } from '@/components/ui/badge';
-import { Send, AlertTriangle, Wallet as WalletIcon, CheckCircle, ExternalLink, Copy, MessageSquare, Calculator, Loader2 } from 'lucide-react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
+import { Send, AlertTriangle, Wallet as WalletIcon, CheckCircle, ExternalLink, Copy, MessageSquare, Calculator, Settings2 } from 'lucide-react';
 import { Wallet } from '../types/wallet';
 import { fetchBalance, sendTransaction, createTransaction } from '../utils/api';
 import { useToast } from '@/hooks/use-toast';
+
+// Threshold for confirmation dialog (500 OCT)
+const LARGE_TRANSACTION_THRESHOLD = 500;
 
 interface SendTransactionProps {
   wallet: Wallet | null;
@@ -51,9 +55,19 @@ export function SendTransaction({ wallet, balance, nonce, onBalanceUpdate, onNon
   const [addressValidation, setAddressValidation] = useState<{ isValid: boolean; error?: string } | null>(null);
   const [amount, setAmount] = useState('');
   const [message, setMessage] = useState('');
+  const [ouOption, setOuOption] = useState<string>('auto');
+  const [customOu, setCustomOu] = useState('');
   const [isSending, setIsSending] = useState(false);
   const [result, setResult] = useState<{ success: boolean; hash?: string; error?: string } | null>(null);
+  const [showConfirmDialog, setShowConfirmDialog] = useState(false);
   const { toast } = useToast();
+
+  // Get OU value based on selection
+  const getOuValue = (): number | undefined => {
+    if (ouOption === 'auto') return undefined;
+    if (ouOption === 'custom') return parseInt(customOu) || undefined;
+    return parseInt(ouOption);
+  };
 
   // Validate recipient address when input changes
   useEffect(() => {
@@ -92,14 +106,15 @@ export function SendTransaction({ wallet, balance, nonce, onBalanceUpdate, onNon
     }
   };
 
-  const handleSend = async () => {
+  // Pre-validation before showing confirmation or sending
+  const validateBeforeSend = (): boolean => {
     if (!wallet) {
       toast({
         title: "Error",
         description: "No wallet connected",
         variant: "destructive",
       });
-      return;
+      return false;
     }
 
     const validation = validateRecipientInput(recipientAddress);
@@ -109,7 +124,7 @@ export function SendTransaction({ wallet, balance, nonce, onBalanceUpdate, onNon
         description: validation.error || "Invalid recipient address",
         variant: "destructive",
       });
-      return;
+      return false;
     }
 
     if (!validateAmount(amount)) {
@@ -118,7 +133,7 @@ export function SendTransaction({ wallet, balance, nonce, onBalanceUpdate, onNon
         description: "Invalid amount",
         variant: "destructive",
       });
-      return;
+      return false;
     }
 
     const amountNum = parseFloat(amount);
@@ -131,21 +146,44 @@ export function SendTransaction({ wallet, balance, nonce, onBalanceUpdate, onNon
         description: `Insufficient balance. Need ${totalCost.toFixed(8)} OCT (${amountNum.toFixed(8)} + ${fee.toFixed(8)} fee)`,
         variant: "destructive",
       });
-      return;
+      return false;
     }
 
-    // Validate message length (max 1024 characters like CLI)
     if (message && message.length > 1024) {
       toast({
         title: "Error",
         description: "Message too long (max 1024 characters)",
         variant: "destructive",
       });
-      return;
+      return false;
     }
 
+    return true;
+  };
+
+  // Handle send button click - show confirmation for large amounts
+  const handleSendClick = () => {
+    if (!validateBeforeSend()) return;
+    
+    const amountNum = parseFloat(amount);
+    
+    // Show confirmation dialog for large transactions (>= 500 OCT)
+    if (amountNum >= LARGE_TRANSACTION_THRESHOLD) {
+      setShowConfirmDialog(true);
+    } else {
+      executeSend();
+    }
+  };
+
+  // Execute the actual send transaction
+  const executeSend = async () => {
+    if (!wallet) return;
+    
+    setShowConfirmDialog(false);
     setIsSending(true);
     setResult(null);
+
+    const amountNum = parseFloat(amount);
 
     try {
       // Refresh nonce before sending like CLI does
@@ -159,7 +197,8 @@ export function SendTransaction({ wallet, balance, nonce, onBalanceUpdate, onNon
         currentNonce + 1,
         wallet.privateKey,
         wallet.publicKey || '',
-        message || undefined
+        message || undefined,
+        getOuValue()
       );
 
       const sendResult = await sendTransaction(transaction);
@@ -171,6 +210,9 @@ export function SendTransaction({ wallet, balance, nonce, onBalanceUpdate, onNon
           title: "Transaction Sent!",
           description: "Transaction has been submitted successfully",
         });
+        // Reset OU to auto on success
+        setOuOption('auto');
+        setCustomOu('');
 
         // Reset form
         setRecipientAddress('');
@@ -193,27 +235,38 @@ export function SendTransaction({ wallet, balance, nonce, onBalanceUpdate, onNon
 
         onTransactionSuccess();
       } else {
+        const errorMsg = sendResult.error || "Unknown error occurred";
+        const ouSuggestion = errorMsg.toLowerCase().includes('gas') || 
+                            errorMsg.toLowerCase().includes('ou') ||
+                            errorMsg.toLowerCase().includes('insufficient') ||
+                            errorMsg.toLowerCase().includes('failed')
+          ? " Try adjusting the OU (gas) value in Advanced Settings."
+          : "";
         toast({
           title: "Transaction Failed",
-          description: sendResult.error || "Unknown error occurred",
+          description: errorMsg + ouSuggestion,
           variant: "destructive",
         });
       }
     } catch (error) {
       console.error('Send transaction error:', error);
+      const errorMsg = error instanceof Error ? error.message : 'Unknown error';
       toast({
         title: "Error",
-        description: "Failed to send transaction",
+        description: `Failed to send transaction. ${errorMsg}. Try adjusting the OU (gas) value.`,
         variant: "destructive",
       });
       setResult({
         success: false,
-        error: error instanceof Error ? error.message : 'Unknown error'
+        error: errorMsg + ". Try adjusting the OU (gas) value in Advanced Settings."
       });
     } finally {
       setIsSending(false);
     }
   };
+
+  // Legacy handler for backward compatibility
+  const handleSend = handleSendClick;
 
   if (!wallet) {
     return (
@@ -330,6 +383,41 @@ export function SendTransaction({ wallet, balance, nonce, onBalanceUpdate, onNon
           </div>
         </div>
 
+        {/* OU (Gas) Settings */}
+        <div className="space-y-2">
+          <Label className="flex items-center gap-2">
+            <Settings2 className="h-4 w-4" />
+            OU (Gas) Settings
+          </Label>
+          <Select value={ouOption} onValueChange={setOuOption}>
+            <SelectTrigger>
+              <SelectValue placeholder="Select OU option" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="auto">Auto (Default: {amountNum < 1000 ? '10,000' : '30,000'})</SelectItem>
+              <SelectItem value="10000">10,000 OU</SelectItem>
+              <SelectItem value="20000">20,000 OU</SelectItem>
+              <SelectItem value="30000">30,000 OU</SelectItem>
+              <SelectItem value="50000">50,000 OU</SelectItem>
+              <SelectItem value="100000">100,000 OU</SelectItem>
+              <SelectItem value="custom">Custom</SelectItem>
+            </SelectContent>
+          </Select>
+          {ouOption === 'custom' && (
+            <Input
+              type="number"
+              placeholder="Enter custom OU value (e.g., 15000)"
+              value={customOu}
+              onChange={(e) => setCustomOu(e.target.value)}
+              min="1000"
+              step="1000"
+            />
+          )}
+          <p className="text-xs text-muted-foreground">
+            If transaction fails, try increasing the OU value. Higher OU = higher priority.
+          </p>
+        </div>
+
         {/* Fee Calculation */}
         {amount && validateAmount(amount) && (
           <div className="p-3 bg-muted rounded-md space-y-2">
@@ -415,7 +503,7 @@ export function SendTransaction({ wallet, balance, nonce, onBalanceUpdate, onNon
         )}
 
         <Button 
-          onClick={handleSend}
+          onClick={handleSendClick}
           disabled={
             isSending || 
             !addressValidation?.isValid ||
@@ -428,6 +516,52 @@ export function SendTransaction({ wallet, balance, nonce, onBalanceUpdate, onNon
         >
           {isSending ? "Sending..." : `Send ${amountNum.toFixed(8)} OCT`}
         </Button>
+
+        {/* Large Transaction Confirmation Dialog */}
+        <AlertDialog open={showConfirmDialog} onOpenChange={setShowConfirmDialog}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle className="flex items-center gap-2 text-orange-500">
+                <AlertTriangle className="h-5 w-5" />
+                Confirm Large Transaction
+              </AlertDialogTitle>
+              <AlertDialogDescription className="space-y-3">
+                <p>You are about to send a large amount:</p>
+                <div className="bg-muted p-3 rounded-md space-y-2 font-mono text-sm">
+                  <div className="flex justify-between">
+                    <span>Amount:</span>
+                    <span className="font-bold text-orange-500">{amountNum.toFixed(8)} OCT</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Fee:</span>
+                    <span>{fee.toFixed(8)} OCT</span>
+                  </div>
+                  <Separator />
+                  <div className="flex justify-between font-bold">
+                    <span>Total:</span>
+                    <span>{totalCost.toFixed(8)} OCT</span>
+                  </div>
+                </div>
+                <div className="text-xs break-all">
+                  <span className="text-muted-foreground">To: </span>
+                  <span className="font-mono">{recipientAddress}</span>
+                </div>
+                <p className="text-orange-500 font-medium">
+                  Please double-check the recipient address. This transaction cannot be reversed!
+                </p>
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction 
+                onClick={executeSend}
+                className="bg-orange-500 hover:bg-orange-600"
+              >
+                Confirm & Send
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </CardContent>
     </Card>
   );

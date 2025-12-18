@@ -7,7 +7,8 @@ import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
-import { Users, Plus, Trash2, AlertTriangle, Wallet as WalletIcon, CheckCircle, ExternalLink, Copy, MessageSquare, Loader2 } from 'lucide-react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Users, Plus, Trash2, AlertTriangle, Wallet as WalletIcon, CheckCircle, ExternalLink, Copy, MessageSquare, Loader2, Settings2 } from 'lucide-react';
 import { Wallet } from '../types/wallet';
 import { fetchBalance, sendTransaction, createTransaction } from '../utils/api';
 import { useToast } from '@/hooks/use-toast';
@@ -59,27 +60,33 @@ export function MultiSend({ wallet, balance, nonce, onBalanceUpdate, onNonceUpda
   ]);
   const [isSending, setIsSending] = useState(false);
   const [results, setResults] = useState<Array<{ success: boolean; hash?: string; error?: string; recipient: string; amount: string }>>([]);
+  const [ouOption, setOuOption] = useState<string>('auto');
+  const [customOu, setCustomOu] = useState('');
   const { toast } = useToast();
 
-  // Validate addresses when recipient addresses change
-  useEffect(() => {
-    const updatedRecipients = recipients.map((recipient) => {
-      if (!recipient.address.trim()) {
-        return {
-          ...recipient,
-          addressValidation: undefined
-        };
+  // Get OU value based on selection
+  const getOuValue = (amount: number): number | undefined => {
+    if (ouOption === 'auto') return undefined;
+    if (ouOption === 'custom') return parseInt(customOu) || undefined;
+    return parseInt(ouOption);
+  };
+
+  // Validate address when updating recipient - moved to updateRecipient function
+  const validateAndUpdateRecipient = (index: number, field: keyof Recipient, value: string) => {
+    const updated = [...recipients];
+    updated[index] = { ...updated[index], [field]: value };
+    
+    // Auto-validate address when address field changes
+    if (field === 'address') {
+      if (!value.trim()) {
+        updated[index].addressValidation = undefined;
+      } else {
+        updated[index].addressValidation = validateRecipientInput(value);
       }
-
-      const validation = validateRecipientInput(recipient.address);
-      return {
-        ...recipient,
-        addressValidation: validation
-      };
-    });
-
-    setRecipients(updatedRecipients);
-  }, [recipients.map(r => r.address).join(',')]);
+    }
+    
+    setRecipients(updated);
+  };
 
   const validateAmount = (amountStr: string) => {
     const num = parseFloat(amountStr);
@@ -118,9 +125,7 @@ export function MultiSend({ wallet, balance, nonce, onBalanceUpdate, onNonceUpda
   };
 
   const updateRecipient = (index: number, field: keyof Recipient, value: string) => {
-    const updated = [...recipients];
-    updated[index] = { ...updated[index], [field]: value };
-    setRecipients(updated);
+    validateAndUpdateRecipient(index, field, value);
   };
 
   const validateAllRecipients = () => {
@@ -204,7 +209,8 @@ export function MultiSend({ wallet, balance, nonce, onBalanceUpdate, onNonceUpda
             currentNonce + 1,
             wallet.privateKey,
             wallet.publicKey || '',
-            recipient.message || undefined
+            recipient.message || undefined,
+            getOuValue(amount)
           );
 
           const sendResult = await sendTransaction(transaction);
@@ -547,6 +553,41 @@ export function MultiSend({ wallet, balance, nonce, onBalanceUpdate, onNonceUpda
             ))}
           </div>
         )}
+
+        {/* OU (Gas) Settings */}
+        <div className="space-y-2">
+          <Label className="flex items-center gap-2">
+            <Settings2 className="h-4 w-4" />
+            OU (Gas) Settings
+          </Label>
+          <Select value={ouOption} onValueChange={setOuOption}>
+            <SelectTrigger>
+              <SelectValue placeholder="Select OU option" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="auto">Auto (Default based on amount)</SelectItem>
+              <SelectItem value="10000">10,000 OU</SelectItem>
+              <SelectItem value="20000">20,000 OU</SelectItem>
+              <SelectItem value="30000">30,000 OU</SelectItem>
+              <SelectItem value="50000">50,000 OU</SelectItem>
+              <SelectItem value="100000">100,000 OU</SelectItem>
+              <SelectItem value="custom">Custom</SelectItem>
+            </SelectContent>
+          </Select>
+          {ouOption === 'custom' && (
+            <Input
+              type="number"
+              placeholder="Enter custom OU value (e.g., 15000)"
+              value={customOu}
+              onChange={(e) => setCustomOu(e.target.value)}
+              min="1000"
+              step="1000"
+            />
+          )}
+          <p className="text-xs text-muted-foreground">
+            If transactions fail, try increasing the OU value.
+          </p>
+        </div>
 
         <Button
           onClick={handleSendAll}

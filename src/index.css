@@ -388,3 +388,133 @@
 .mode-transition {
   @apply transition-all duration-300 ease-in-out;
 }
+
+/* Mode switching page transitions */
+body.mode-switching main {
+  animation: modeSwitch 0.5s ease-out;
+}
+
+body.mode-switching.to-private main {
+  animation: modeSwitchToPrivate 0.5s ease-out;
+}
+
+body.mode-switching.to-public main {
+  animation: modeSwitchToPublic 0.5s ease-out;
+}
+
+@keyframes modeSwitch {
+  0% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  30% {
+    opacity: 0.7;
+    transform: scale(0.98);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes modeSwitchToPrivate {
+  0% {
+    opacity: 1;
+    transform: translateX(0);
+    filter: blur(0);
+  }
+  30% {
+    opacity: 0.5;
+    transform: translateX(-10px);
+    filter: blur(2px);
+  }
+  60% {
+    opacity: 0.8;
+    transform: translateX(5px);
+    filter: blur(1px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateX(0);
+    filter: blur(0);
+  }
+}
+
+@keyframes modeSwitchToPublic {
+  0% {
+    opacity: 1;
+    transform: translateX(0);
+    filter: blur(0);
+  }
+  30% {
+    opacity: 0.5;
+    transform: translateX(10px);
+    filter: blur(2px);
+  }
+  60% {
+    opacity: 0.8;
+    transform: translateX(-5px);
+    filter: blur(1px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateX(0);
+    filter: blur(0);
+  }
+}
+
+/* Shimmer animation for mode toggle */
+@keyframes shimmer {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+.animate-shimmer {
+  animation: shimmer 0.6s ease-out;
+}
+
+/* Tab content transition */
+.mode-switching [data-state="active"] {
+  animation: tabFadeIn 0.4s ease-out 0.15s both;
+}
+
+@keyframes tabFadeIn {
+  0% {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Private mode glow effect */
+body.to-private .bg-\[\#0000db\] {
+  box-shadow: 0 0 20px rgba(0, 0, 219, 0.4);
+}
+
+/* Smooth color transitions for mode-aware elements */
+.mode-aware {
+  transition: background-color 0.3s ease, border-color 0.3s ease, color 0.3s ease;
+}
+
+/* Fade in up animation for incognito avatar */
+@keyframes fadeInUp {
+  0% {
+    opacity: 0;
+    transform: translateY(20px) scale(0.8);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.animate-fade-in-up {
+  animation: fadeInUp 0.5s ease-out forwards;
+}

@@ -53,10 +53,25 @@ export function ImportWallet({ onWalletImported }: ImportWalletProps) {
         title: "Success!",
         description: "Wallet imported successfully",
       });
-    } catch (error) {
+    } catch (error: unknown) {
+      let errorMessage = "Failed to import wallet";
+      
+      if (error instanceof Error) {
+        const msg = error.message.toLowerCase();
+        if (msg.includes('invalid') || msg.includes('decode') || msg.includes('base64')) {
+          errorMessage = "Invalid private key format. Please check your key and try again.";
+        } else if (msg.includes('length') || msg.includes('size')) {
+          errorMessage = "Private key has incorrect length. Expected 32 bytes in Base64 format.";
+        } else if (msg.includes('checksum')) {
+          errorMessage = "Private key checksum failed. The key may be corrupted.";
+        } else {
+          errorMessage = error.message || errorMessage;
+        }
+      }
+      
       toast({
-        title: "Error",
-        description: "Import failed",
+        title: "Import Failed",
+        description: errorMessage,
         variant: "destructive",
       });
     } finally {
@@ -96,10 +111,27 @@ export function ImportWallet({ onWalletImported }: ImportWalletProps) {
         title: "Success!",
         description: "Wallet imported successfully",
       });
-    } catch (error) {
+    } catch (error: unknown) {
+      let errorMessage = "Failed to import wallet";
+      
+      if (error instanceof Error) {
+        const msg = error.message.toLowerCase();
+        if (msg.includes('invalid mnemonic') || msg.includes('invalid word')) {
+          errorMessage = "Invalid mnemonic phrase. Please check for typos or missing words.";
+        } else if (msg.includes('checksum')) {
+          errorMessage = "Mnemonic checksum failed. One or more words may be incorrect.";
+        } else if (msg.includes('word') && msg.includes('not in wordlist')) {
+          errorMessage = "One or more words are not valid BIP39 words.";
+        } else if (msg.includes('12') || msg.includes('24') || msg.includes('length')) {
+          errorMessage = "Mnemonic must be 12 or 24 words. Please check your phrase.";
+        } else {
+          errorMessage = error.message || errorMessage;
+        }
+      }
+      
       toast({
-        title: "Error",
-        description: "Import failed",
+        title: "Import Failed",
+        description: errorMessage,
         variant: "destructive",
       });
     } finally {

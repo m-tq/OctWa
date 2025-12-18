@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -24,6 +24,8 @@ export function PasswordSetup({ wallet, onPasswordSet, onBack }: PasswordSetupPr
   const [acknowledgeRecovery, setAcknowledgeRecovery] = useState(false);
   const [acknowledgeBrowser, setAcknowledgeBrowser] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
+  const [passwordTouched, setPasswordTouched] = useState(false);
+  const [confirmTouched, setConfirmTouched] = useState(false);
   const { toast } = useToast();
 
   const validatePassword = () => {
@@ -149,7 +151,19 @@ export function PasswordSetup({ wallet, onPasswordSet, onBack }: PasswordSetupPr
     }
   };
 
-  const passwordError = validatePassword();
+  // Only show error after user has interacted with the fields
+  const getPasswordError = () => {
+    if (!passwordTouched && !confirmTouched) return null;
+    if (passwordTouched && password.length > 0 && password.length < 8) {
+      return 'Password must be at least 8 characters long';
+    }
+    if (confirmTouched && confirmPassword.length > 0 && password !== confirmPassword) {
+      return 'Passwords do not match';
+    }
+    return null;
+  };
+
+  const passwordError = getPasswordError();
 
   return (
     <div className="max-w-md mx-auto">
@@ -162,10 +176,12 @@ export function PasswordSetup({ wallet, onPasswordSet, onBack }: PasswordSetupPr
         </CardHeader>
         <CardContent className="space-y-6">
           <Alert>
-            <AlertTriangle className="h-4 w-4" />
-            <AlertDescription>
-              Create a password to protect your wallet. This password will be required when dApps request to connect to your wallet.
-            </AlertDescription>
+            <div className="flex items-start space-x-3">
+              <AlertTriangle className="h-4 w-4 mt-0.5 flex-shrink-0" />
+              <AlertDescription>
+                Create a password to protect your wallet.
+              </AlertDescription>
+            </div>
           </Alert>
 
           {/* Password Field */}
@@ -178,6 +194,7 @@ export function PasswordSetup({ wallet, onPasswordSet, onBack }: PasswordSetupPr
                 placeholder="Enter a strong password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
+                onBlur={() => setPasswordTouched(true)}
                 className="pr-10"
               />
               <Button
@@ -206,6 +223,7 @@ export function PasswordSetup({ wallet, onPasswordSet, onBack }: PasswordSetupPr
                 placeholder="Confirm your password"
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
+                onBlur={() => setConfirmTouched(true)}
                 className="pr-10"
               />
               <Button
@@ -234,8 +252,9 @@ export function PasswordSetup({ wallet, onPasswordSet, onBack }: PasswordSetupPr
                 id="acknowledge-recovery"
                 checked={acknowledgeRecovery}
                 onCheckedChange={(checked) => setAcknowledgeRecovery(checked as boolean)}
+                className="mt-0.5"
               />
-              <Label htmlFor="acknowledge-recovery" className="text-sm leading-5">
+              <Label htmlFor="acknowledge-recovery" className="text-sm leading-5 cursor-pointer">
                 I acknowledge that this password can not be used to recover my accounts, I still need to preserve the recovery methods used when first creating my accounts (seed phrase etc.)
               </Label>
             </div>
@@ -245,8 +264,9 @@ export function PasswordSetup({ wallet, onPasswordSet, onBack }: PasswordSetupPr
                 id="acknowledge-browser"
                 checked={acknowledgeBrowser}
                 onCheckedChange={(checked) => setAcknowledgeBrowser(checked as boolean)}
+                className="mt-0.5"
               />
-              <Label htmlFor="acknowledge-browser" className="text-sm leading-5">
+              <Label htmlFor="acknowledge-browser" className="text-sm leading-5 cursor-pointer">
                 I acknowledge that storing this password in my browser's password manager exposes me to additional risk (we recommend you do not).
               </Label>
             </div>

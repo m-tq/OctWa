@@ -172,39 +172,8 @@ function ExpandedApp() {
       localStorage.setItem('wallets', JSON.stringify(updatedWallets));
       localStorage.setItem('activeWalletId', newWallet.address);
       
-      // CRITICAL: Also sync encryptedWallets to match current wallets
-      // This ensures deleted wallets stay deleted and new wallets are properly tracked
-      try {
-        const encryptedWalletsData = await ExtensionStorageManager.get('encryptedWallets');
-        if (encryptedWalletsData) {
-          const encryptedWallets = typeof encryptedWalletsData === 'string' 
-            ? JSON.parse(encryptedWalletsData) 
-            : encryptedWalletsData;
-          if (Array.isArray(encryptedWallets)) {
-            // Filter encryptedWallets to only include wallets that exist in updatedWallets
-            const validAddresses = new Set(updatedWallets.map(w => w.address));
-            const syncedEncryptedWallets = encryptedWallets.filter(
-              (w: any) => validAddresses.has(w.address)
-            );
-            
-            // Add new wallet to encryptedWallets if not already there
-            const newWalletExists = syncedEncryptedWallets.some((w: any) => w.address === newWallet.address);
-            if (!newWalletExists) {
-              syncedEncryptedWallets.push({
-                address: newWallet.address,
-                encryptedData: JSON.stringify(newWallet),
-                createdAt: Date.now(),
-                needsEncryption: true
-              });
-            }
-            
-            await ExtensionStorageManager.set('encryptedWallets', JSON.stringify(syncedEncryptedWallets));
-            localStorage.setItem('encryptedWallets', JSON.stringify(syncedEncryptedWallets));
-          }
-        }
-      } catch (syncError) {
-        console.error('Failed to sync encryptedWallets:', syncError);
-      }
+      // Encrypt and store the new wallet
+      await WalletManager.addEncryptedWallet(newWallet);
       
       // Update state after storage is saved
       setWallets(updatedWallets);
@@ -253,24 +222,8 @@ function ExpandedApp() {
       // Also sync to localStorage to prevent inconsistency
       localStorage.setItem('wallets', JSON.stringify(updatedWallets));
       
-      // CRITICAL: Also remove from encryptedWallets storage to prevent resurrection on unlock
-      try {
-        const encryptedWalletsData = await ExtensionStorageManager.get('encryptedWallets');
-        if (encryptedWalletsData) {
-          const encryptedWallets = typeof encryptedWalletsData === 'string' 
-            ? JSON.parse(encryptedWalletsData) 
-            : encryptedWalletsData;
-          if (Array.isArray(encryptedWallets)) {
-            const updatedEncryptedWallets = encryptedWallets.filter(
-              (w: any) => w.address !== walletToRemove.address
-            );
-            await ExtensionStorageManager.set('encryptedWallets', JSON.stringify(updatedEncryptedWallets));
-            localStorage.setItem('encryptedWallets', JSON.stringify(updatedEncryptedWallets));
-          }
-        }
-      } catch (encError) {
-        console.error('Failed to remove from encryptedWallets:', encError);
-      }
+      // Remove from encrypted storage
+      await WalletManager.removeEncryptedWallet(walletToRemove.address);
       
       // Update state after storage is saved
       setWallets(updatedWallets);

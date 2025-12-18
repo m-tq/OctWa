@@ -24,8 +24,10 @@ import {
   Check,
   Wifi,
   Download,
-  Menu
+  Menu,
+  RotateCcw
 } from 'lucide-react';
+import { ExtensionStorageManager } from '../utils/extensionStorage';
 import { PublicBalance } from './PublicBalance';
 import { PrivateBalance } from './PrivateBalance';
 import { MultiSend } from './MultiSend';
@@ -94,6 +96,8 @@ export function WalletDashboard({
   const [encryptedBalance, setEncryptedBalance] = useState<any>(null);
   const [rpcStatus, setRpcStatus] = useState<'connected' | 'disconnected' | 'checking'>('checking');
   const [operationMode, setOperationMode] = useState<OperationMode>('public');
+  const [showResetConfirm, setShowResetConfirm] = useState(false);
+  const [isExportingBackup, setIsExportingBackup] = useState(false);
   const { toast } = useToast();
 
   // Determine if private mode is available
@@ -104,6 +108,8 @@ export function WalletDashboard({
     setOperationMode(mode);
     saveOperationMode(mode);
     setActiveTab('balance'); // Reset to balance tab when switching modes
+    // Refresh session timeout on user activity
+    WalletManager.refreshSessionTimeout();
   };
 
   // Load operation mode on mount and when encrypted balance changes
@@ -341,6 +347,92 @@ export function WalletDashboard({
     }
   };
 
+  const handleExportBackup = async () => {
+    setIsExportingBackup(true);
+    try {
+      const result = await WalletManager.exportBackup();
+      
+      if (result.success && result.data) {
+        // Create and download file
+        const blob = new Blob([result.data], { type: 'text/plain' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `octra-wallet-backup-${new Date().toISOString().split('T')[0]}.octbak`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        
+        toast({
+          title: "Backup Exported",
+          description: "Your encrypted wallet backup has been downloaded. Keep it safe!",
+        });
+      } else {
+        toast({
+          title: "Export Failed",
+          description: result.error || "Failed to export backup",
+          variant: "destructive",
+        });
+      }
+    } catch (error) {
+      console.error('Failed to export backup:', error);
+      toast({
+        title: "Export Failed",
+        description: "An error occurred while exporting backup",
+        variant: "destructive",
+      });
+    } finally {
+      setIsExportingBackup(false);
+    }
+  };
+
+  const handleResetAll = async () => {
+    try {
+      // Clear all wallet-related data from ExtensionStorageManager
+      await Promise.all([
+        ExtensionStorageManager.remove('wallets'),
+        ExtensionStorageManager.remove('encryptedWallets'),
+        ExtensionStorageManager.remove('activeWalletId'),
+        ExtensionStorageManager.remove('walletPasswordHash'),
+        ExtensionStorageManager.remove('walletPasswordSalt'),
+        ExtensionStorageManager.remove('isWalletLocked'),
+        ExtensionStorageManager.remove('connectedDApps'),
+      ]);
+
+      // Clear localStorage
+      localStorage.removeItem('wallets');
+      localStorage.removeItem('encryptedWallets');
+      localStorage.removeItem('activeWalletId');
+      localStorage.removeItem('walletPasswordHash');
+      localStorage.removeItem('walletPasswordSalt');
+      localStorage.removeItem('isWalletLocked');
+      localStorage.removeItem('connectedDApps');
+
+      // Clear session password
+      WalletManager.clearSessionPassword();
+
+      setShowResetConfirm(false);
+
+      toast({
+        title: "Reset Complete",
+        description: "All wallet data has been cleared. Reloading...",
+      });
+
+      // Reload the page to reset state
+      setTimeout(() => {
+        window.location.reload();
+      }, 1000);
+    } catch (error) {
+      console.error('Failed to reset wallet:', error);
+      toast({
+        title: "Reset Failed",
+        description: "Failed to reset wallet data",
+        variant: "destructive",
+      });
+    }
+  };
+
   const handleRemoveWallet = async () => {
     if (!walletToDelete) return;
     
@@ -491,6 +583,9 @@ export function WalletDashboard({
   };
 
   const handleTransactionSuccess = async () => {
+    // Refresh session timeout on transaction activity
+    WalletManager.refreshSessionTimeout();
+    
     // Refresh transaction history and balance after successful transaction
     const refreshData = async () => {
       try {
@@ -523,7 +618,11 @@ export function WalletDashboard({
   };
 
   return (
-    <div className="min-h-screen">
+    <div className={`min-h-screen transition-all duration-300 ${
+      operationMode === 'private' 
+        ? 'ring-1 ring-[#0000db] ring-inset' 
+        : ''
+    }`}>
       {/* Header */}
       <header className="octra-header sticky top-0 z-50">
         <div className="octra-container">
@@ -623,10 +722,18 @@ export function WalletDashboard({
                         <DropdownMenuSeparator />
                         <div
                           onClick={() => setShowAddWalletDialog(true)}
-                          className="flex items-center justify-center space-x-2 p-3 cursor-pointer hover:bg-accent hover:text-accent-foreground rounded-sm mx-1 mb-1"
+                          className="flex items-center justify-center space-x-2 p-3 cursor-pointer hover:bg-accent hover:text-accent-foreground rounded-sm mx-1"
                         >
                           <Plus className="h-4 w-4" />
                           <span>Add Wallet</span>
+                        </div>
+                        <DropdownMenuSeparator />
+                        <div
+                          onClick={() => setShowResetConfirm(true)}
+                          className="flex items-center justify-center space-x-2 p-3 cursor-pointer hover:bg-red-500/10 text-red-500 rounded-sm mx-1 mb-1"
+                        >
+                          <RotateCcw className="h-4 w-4" />
+                          <span>Reset All</span>
                         </div>
                       </DropdownMenuContent>
                     </DropdownMenu>
@@ -757,6 +864,20 @@ export function WalletDashboard({
                         >
                           <Plus className="h-4 w-4" />
                           Add Wallet
+                        </Button>
+
+                        {/* Export Backup */}
+                        <Button
+                          variant="outline"
+                          onClick={() => {
+                            handleExportBackup();
+                            setShowMobileMenu(false);
+                          }}
+                          disabled={isExportingBackup}
+                          className="w-full justify-start gap-2"
+                        >
+                          <Download className="h-4 w-4" />
+                          {isExportingBackup ? 'Exporting...' : 'Export Backup'}
                         </Button>
 
                         {/* Lock Wallet */}
@@ -923,6 +1044,20 @@ export function WalletDashboard({
                             Add Wallet
                           </Button>
 
+                          {/* Export Backup */}
+                          <Button
+                            variant="outline"
+                            onClick={() => {
+                              handleExportBackup();
+                              setShowMobileMenu(false);
+                            }}
+                            disabled={isExportingBackup}
+                            className="w-full justify-start gap-2"
+                          >
+                            <Download className="h-4 w-4" />
+                            {isExportingBackup ? 'Exporting...' : 'Export Backup'}
+                          </Button>
+
                           {/* Lock Wallet */}
                           <Button
                             variant="outline"
@@ -1057,6 +1192,30 @@ export function WalletDashboard({
                     <AlertDialogCancel>Cancel</AlertDialogCancel>
                     <AlertDialogAction onClick={handleDisconnect} className="bg-orange-600 hover:bg-orange-700">
                       Lock Wallet
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+
+              <AlertDialog open={showResetConfirm} onOpenChange={setShowResetConfirm}>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle className="text-red-500">Reset All Wallets</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      <span className="font-semibold text-red-500">Warning:</span> This will permanently delete ALL wallet data including:
+                      <ul className="list-disc list-inside mt-2 space-y-1">
+                        <li>All imported/generated wallets</li>
+                        <li>Your password protection</li>
+                        <li>Connected dApps</li>
+                        <li>All encrypted data</li>
+                      </ul>
+                      <p className="mt-3 font-semibold">Make sure you have backed up your private keys or seed phrases before proceeding!</p>
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                    <AlertDialogAction onClick={handleResetAll} className="bg-red-600 hover:bg-red-700">
+                      Reset All
                     </AlertDialogAction>
                   </AlertDialogFooter>
                 </AlertDialogContent>
