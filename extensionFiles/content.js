@@ -17,6 +17,8 @@
     if (event.source !== window) return;
     if (event.data.source !== 'octra-provider') return;
     
+    console.log('[Content Script] Received message from provider:', event.data.type, event.data);
+    
     // Forward message ke extension background script
     chrome.runtime.sendMessage({
       source: 'octra-content-script',
@@ -24,6 +26,7 @@
       requestId: event.data.requestId,
       data: event.data.data
     }).then(response => {
+      console.log('[Content Script] Received response from background:', response);
       // Forward response kembali ke provider
       window.postMessage({
         source: 'octra-content-script',
@@ -34,6 +37,7 @@
         error: response.error
       }, '*');
     }).catch(error => {
+      console.error('[Content Script] Error from background:', error);
       // Handle error
       window.postMessage({
         source: 'octra-content-script',

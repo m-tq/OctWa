@@ -40,6 +40,13 @@ export function RPCProviderManager({ onClose, onRPCChange }: RPCProviderManagerP
     if (savedProviders) {
       const parsed = JSON.parse(savedProviders);
       setProviders(parsed.sort((a: RPCProvider, b: RPCProvider) => a.priority - b.priority));
+      
+      // Sync to chrome.storage.local for background script access
+      if (typeof chrome !== 'undefined' && chrome.storage?.local) {
+        chrome.storage.local.set({ rpcProviders: savedProviders }).catch(err => {
+          console.warn('Failed to sync rpcProviders to chrome.storage:', err);
+        });
+      }
     } else {
       // Initialize with default provider
       const defaultProvider: RPCProvider = {
@@ -52,7 +59,15 @@ export function RPCProviderManager({ onClose, onRPCChange }: RPCProviderManagerP
         createdAt: Date.now()
       };
       setProviders([defaultProvider]);
-      localStorage.setItem('rpcProviders', JSON.stringify([defaultProvider]));
+      const providersJson = JSON.stringify([defaultProvider]);
+      localStorage.setItem('rpcProviders', providersJson);
+      
+      // Also save to chrome.storage.local for background script access
+      if (typeof chrome !== 'undefined' && chrome.storage?.local) {
+        chrome.storage.local.set({ rpcProviders: providersJson }).catch(err => {
+          console.warn('Failed to save rpcProviders to chrome.storage:', err);
+        });
+      }
     }
   };
 
@@ -60,6 +75,13 @@ export function RPCProviderManager({ onClose, onRPCChange }: RPCProviderManagerP
     const sorted = updatedProviders.sort((a, b) => a.priority - b.priority);
     setProviders(sorted);
     localStorage.setItem('rpcProviders', JSON.stringify(sorted));
+    
+    // Also save to chrome.storage.local for background script access
+    if (typeof chrome !== 'undefined' && chrome.storage?.local) {
+      chrome.storage.local.set({ rpcProviders: JSON.stringify(sorted) }).catch(err => {
+        console.warn('Failed to save rpcProviders to chrome.storage:', err);
+      });
+    }
   };
 
   const resetForm = () => {

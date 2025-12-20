@@ -107,17 +107,21 @@
         this._pendingRequests = this._pendingRequests || {};
         this._pendingRequests[requestId] = { resolve, reject };
         
+        const targetAddress = address || this.selectedAddress;
+        console.log('[Provider] Sending GET_BALANCE request for:', targetAddress, 'requestId:', requestId);
+        
         window.postMessage({
           source: 'octra-provider',
           type: 'GET_BALANCE',
           requestId,
           data: {
-            address: address || this.selectedAddress
+            address: targetAddress
           }
         }, '*');
         
         setTimeout(() => {
           if (this._pendingRequests[requestId]) {
+            console.log('[Provider] GET_BALANCE request timed out for:', targetAddress);
             delete this._pendingRequests[requestId];
             reject(new Error('Get balance request timeout'));
           }
@@ -333,7 +337,10 @@
     _handleResponse(data) {
       const { requestId, type, success, result, error } = data;
       
+      console.log('[Provider] _handleResponse received:', { requestId, type, success, result, error });
+      
       if (!this._pendingRequests || !this._pendingRequests[requestId]) {
+        console.log('[Provider] No pending request found for requestId:', requestId);
         return;
       }
       
@@ -356,6 +363,7 @@
             break;
             
           case 'BALANCE_RESPONSE':
+            console.log('[Provider] BALANCE_RESPONSE resolved with:', result);
             resolve(result);
             break;
             

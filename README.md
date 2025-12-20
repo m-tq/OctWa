@@ -2,6 +2,32 @@
 
 A secure browser-based wallet for the Octra blockchain network. Available as both a web application and Chrome/Edge browser extension.
 
+## Screenshots
+
+<p align="center">
+  <img src="public/screenshot/welcome.png" alt="Welcome Screen" width="400">
+  <br>
+  <em>Welcome Screen - Create or Import Wallet</em>
+</p>
+
+<p align="center">
+  <img src="public/screenshot/password.png" alt="Password Setup" width="400">
+  <br>
+  <em>Password Setup - Secure your wallet</em>
+</p>
+
+<p align="center">
+  <img src="public/screenshot/dashboard.png" alt="Dashboard" width="400">
+  <br>
+  <em>Dashboard - Manage your assets</em>
+</p>
+
+<p align="center">
+  <img src="public/screenshot/private.png" alt="Private Mode" width="400">
+  <br>
+  <em>Private Mode - Confidential transactions</em>
+</p>
+
 ## Features
 
 ### Wallet Management

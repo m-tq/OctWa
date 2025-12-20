@@ -1,22 +1,30 @@
 import { RPCProvider } from '../types/wallet';
 
+// Sync rpcProviders to chrome.storage.local for background script access
+function syncToExtensionStorage(providers: RPCProvider[]) {
+  if (typeof chrome !== 'undefined' && chrome.storage?.local) {
+    chrome.storage.local.set({ rpcProviders: JSON.stringify(providers) }).catch(err => {
+      console.warn('Failed to sync rpcProviders to chrome.storage:', err);
+    });
+  }
+}
+
 export function getActiveRPCProvider(): RPCProvider | null {
   try {
     const providers = JSON.parse(localStorage.getItem('rpcProviders') || '[]');
     const activeProvider = providers.find((p: RPCProvider) => p.isActive);
     
     if (activeProvider) {
-      // console.log('Using RPC provider:', activeProvider.name, activeProvider.url);
+      // Sync to chrome.storage.local for background script access
+      syncToExtensionStorage(providers);
       return activeProvider;
     }
   } catch (error) {
     console.error('Error loading RPC providers:', error);
   }
   
-  // console.log('No active RPC provider found, using default');
-  
   // Return default if no active provider
-  const defaultProvider = {
+  const defaultProvider: RPCProvider = {
     id: 'default',
     name: 'Octra Network (Default)',
     url: 'https://octra.network',
@@ -29,6 +37,8 @@ export function getActiveRPCProvider(): RPCProvider | null {
   // Save default provider if none exists
   try {
     localStorage.setItem('rpcProviders', JSON.stringify([defaultProvider]));
+    // Also sync to chrome.storage.local
+    syncToExtensionStorage([defaultProvider]);
   } catch (error) {
     console.error('Error saving default RPC provider:', error);
   }

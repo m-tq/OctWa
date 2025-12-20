@@ -90,30 +90,32 @@ export function ModeToggle({
       <TooltipProvider>
         <Tooltip>
           <TooltipTrigger asChild>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => handleModeChange('private')}
-              disabled={!privateEnabled}
-              className={`relative z-10 flex items-center justify-center gap-1.5 px-4 py-1.5 h-8 transition-all duration-300 bg-transparent hover:bg-transparent ${
-                displayMode === 'private'
-                  ? 'text-white'
-                  : privateEnabled
-                    ? 'text-muted-foreground hover:text-[#0000db]'
-                    : 'opacity-50 cursor-not-allowed text-muted-foreground'
-              }`}
-            >
-              <div className={`transition-transform duration-300 ${
-                displayMode === 'private' ? 'scale-110' : 'scale-100'
-              }`}>
-                {privateEnabled ? (
-                  <Shield className="h-3.5 w-3.5" />
-                ) : (
-                  <Lock className="h-3.5 w-3.5" />
-                )}
-              </div>
-              <span className="text-xs font-medium">Private</span>
-            </Button>
+            <span className="inline-flex">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => handleModeChange('private')}
+                disabled={!privateEnabled}
+                className={`relative z-10 flex items-center justify-center gap-1.5 px-4 py-1.5 h-8 transition-all duration-300 bg-transparent hover:bg-transparent ${
+                  displayMode === 'private'
+                    ? 'text-white'
+                    : privateEnabled
+                      ? 'text-muted-foreground hover:text-[#0000db]'
+                      : 'opacity-50 cursor-not-allowed text-muted-foreground'
+                }`}
+              >
+                <div className={`transition-transform duration-300 ${
+                  displayMode === 'private' ? 'scale-110' : 'scale-100'
+                }`}>
+                  {privateEnabled ? (
+                    <Shield className="h-3.5 w-3.5" />
+                  ) : (
+                    <Lock className="h-3.5 w-3.5" />
+                  )}
+                </div>
+                <span className="text-xs font-medium">Private</span>
+              </Button>
+            </span>
           </TooltipTrigger>
           {!privateEnabled && (
             <TooltipContent side="bottom" className="max-w-[200px]">

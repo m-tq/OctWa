@@ -8,6 +8,8 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Avatar } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { 
   Send, 
   History, 
@@ -23,7 +25,9 @@ import {
   Wifi,
   Download,
   Menu,
-  RotateCcw
+  RotateCcw,
+  Eye,
+  EyeOff
 } from 'lucide-react';
 import { ExtensionStorageManager } from '../utils/extensionStorage';
 import { PublicBalance } from './PublicBalance';
@@ -46,6 +50,7 @@ import { WalletManager } from '../utils/walletManager';
 import { fetchBalance, getTransactionHistory, fetchEncryptedBalance } from '../utils/api';
 import { useToast } from '@/hooks/use-toast';
 import { OperationMode, saveOperationMode, loadOperationMode, isPrivateModeAvailable } from '../utils/modeStorage';
+import { verifyPassword } from '../utils/password';
 
 interface Transaction {
   hash: string;
@@ -95,6 +100,9 @@ export function WalletDashboard({
   const [rpcStatus, setRpcStatus] = useState<'connected' | 'disconnected' | 'checking'>('checking');
   const [operationMode, setOperationMode] = useState<OperationMode>('public');
   const [showResetConfirm, setShowResetConfirm] = useState(false);
+  const [resetPassword, setResetPassword] = useState('');
+  const [showResetPassword, setShowResetPassword] = useState(false);
+  const [isVerifyingReset, setIsVerifyingReset] = useState(false);
   const [isExportingBackup, setIsExportingBackup] = useState(false);
   const { toast } = useToast();
 
@@ -386,7 +394,45 @@ export function WalletDashboard({
   };
 
   const handleResetAll = async () => {
+    if (!resetPassword) {
+      toast({
+        title: "Password Required",
+        description: "Please enter your wallet password to confirm reset",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsVerifyingReset(true);
+
     try {
+      // Verify password first
+      const hashedPassword = localStorage.getItem('walletPasswordHash');
+      const salt = localStorage.getItem('walletPasswordSalt');
+
+      if (!hashedPassword || !salt) {
+        toast({
+          title: "No Password Set",
+          description: "No wallet password found",
+          variant: "destructive",
+        });
+        setIsVerifyingReset(false);
+        return;
+      }
+
+      const isValid = await verifyPassword(resetPassword, hashedPassword, salt);
+
+      if (!isValid) {
+        toast({
+          title: "Invalid Password",
+          description: "The password you entered is incorrect",
+          variant: "destructive",
+        });
+        setIsVerifyingReset(false);
+        return;
+      }
+
+      // Password verified, proceed with reset
       // Clear all wallet-related data from ExtensionStorageManager
       await Promise.all([
         ExtensionStorageManager.remove('wallets'),
@@ -410,7 +456,10 @@ export function WalletDashboard({
       // Clear session password
       WalletManager.clearSessionPassword();
 
+      // Reset state
       setShowResetConfirm(false);
+      setResetPassword('');
+      setShowResetPassword(false);
 
       toast({
         title: "Reset Complete",
@@ -428,6 +477,8 @@ export function WalletDashboard({
         description: "Failed to reset wallet data",
         variant: "destructive",
       });
+    } finally {
+      setIsVerifyingReset(false);
     }
   };
 
@@ -1228,26 +1279,71 @@ export function WalletDashboard({
                 </AlertDialogContent>
               </AlertDialog>
 
-              <AlertDialog open={showResetConfirm} onOpenChange={setShowResetConfirm}>
+              <AlertDialog
+                open={showResetConfirm}
+                onOpenChange={(open) => {
+                  setShowResetConfirm(open);
+                  if (!open) {
+                    setResetPassword('');
+                    setShowResetPassword(false);
+                  }
+                }}
+              >
                 <AlertDialogContent>
                   <AlertDialogHeader>
                     <AlertDialogTitle className="text-red-500">Reset All Wallets</AlertDialogTitle>
-                    <AlertDialogDescription>
-                      <span className="font-semibold text-red-500">Warning:</span> This will permanently delete ALL wallet data including:
-                      <ul className="list-disc list-inside mt-2 space-y-1">
-                        <li>All imported/generated wallets</li>
-                        <li>Your password protection</li>
-                        <li>Connected dApps</li>
-                        <li>All encrypted data</li>
-                      </ul>
-                      <p className="mt-3 font-semibold">Make sure you have backed up your private keys or seed phrases before proceeding!</p>
+                    <AlertDialogDescription asChild>
+                      <div>
+                        <span className="font-semibold text-red-500">Warning:</span> This will permanently delete ALL wallet data including:
+                        <ul className="list-disc list-inside mt-2 space-y-1">
+                          <li>All imported/generated wallets</li>
+                          <li>Your password protection</li>
+                          <li>Connected dApps</li>
+                          <li>All encrypted data</li>
+                        </ul>
+                        <p className="mt-3 font-semibold">Make sure you have backed up your private keys or seed phrases before proceeding!</p>
+
+                        <div className="mt-4 space-y-2">
+                          <Label htmlFor="resetPassword" className="text-foreground">Enter your password to confirm</Label>
+                          <div className="relative">
+                            <Input
+                              id="resetPassword"
+                              type={showResetPassword ? 'text' : 'password'}
+                              placeholder="Enter your wallet password"
+                              value={resetPassword}
+                              onChange={(e) => setResetPassword(e.target.value)}
+                              onKeyPress={(e) => e.key === 'Enter' && handleResetAll()}
+                              className="pr-10"
+                              disabled={isVerifyingReset}
+                            />
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
+                              onClick={() => setShowResetPassword(!showResetPassword)}
+                              disabled={isVerifyingReset}
+                            >
+                              {showResetPassword ? (
+                                <EyeOff className="h-4 w-4" />
+                              ) : (
+                                <Eye className="h-4 w-4" />
+                              )}
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
                     </AlertDialogDescription>
                   </AlertDialogHeader>
                   <AlertDialogFooter>
-                    <AlertDialogCancel>Cancel</AlertDialogCancel>
-                    <AlertDialogAction onClick={handleResetAll} className="bg-red-600 hover:bg-red-700">
-                      Reset All
-                    </AlertDialogAction>
+                    <AlertDialogCancel disabled={isVerifyingReset}>Cancel</AlertDialogCancel>
+                    <Button
+                      onClick={handleResetAll}
+                      disabled={isVerifyingReset || !resetPassword}
+                      className="bg-red-600 hover:bg-red-700"
+                    >
+                      {isVerifyingReset ? 'Verifying...' : 'Reset All'}
+                    </Button>
                   </AlertDialogFooter>
                 </AlertDialogContent>
               </AlertDialog>

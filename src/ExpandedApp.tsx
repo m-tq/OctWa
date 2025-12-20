@@ -108,6 +108,117 @@ function ExpandedApp() {
     loadInitialData();
   }, []); // NO dependencies - only run once
 
+  // Listen for storage changes across extension contexts
+  useEffect(() => {
+    const handleStorageChange = (e: StorageEvent) => {
+      if (isLocked) return; // Don't update if locked
+      
+      // Handle wallet data changes
+      if (e.key === 'wallets' && e.newValue) {
+        try {
+          const newWallets = JSON.parse(e.newValue);
+          setWallets(newWallets);
+          
+          // Update active wallet if needed
+          const activeWalletId = localStorage.getItem('activeWalletId');
+          if (activeWalletId && newWallets.length > 0) {
+            const foundWallet = newWallets.find((w: Wallet) => w.address === activeWalletId);
+            if (foundWallet) {
+              setWallet(foundWallet);
+            }
+          } else if (newWallets.length > 0 && !wallet) {
+            setWallet(newWallets[0]);
+          }
+        } catch (error) {
+          console.error('Failed to parse wallets from storage change:', error);
+        }
+      }
+      
+      // Handle active wallet changes
+      if (e.key === 'activeWalletId' && e.newValue && wallets.length > 0) {
+        const foundWallet = wallets.find((w: Wallet) => w.address === e.newValue);
+        if (foundWallet) {
+          setWallet(foundWallet);
+        }
+      }
+      
+      // Handle wallet lock state changes
+      if (e.key === 'isWalletLocked') {
+        const locked = e.newValue === 'true';
+        setIsLocked(locked);
+        
+        if (locked) {
+          setWallet(null);
+          setWallets([]);
+        }
+      }
+    };
+
+    // Listen for localStorage changes
+    window.addEventListener('storage', handleStorageChange);
+    
+    // Listen for chrome.storage changes if available
+    let chromeStorageListener: ((changes: any) => void) | null = null;
+    if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.onChanged) {
+      chromeStorageListener = (changes: any) => {
+        if (isLocked) return;
+        
+        // Handle wallets change
+        if (changes.wallets && changes.wallets.newValue) {
+          try {
+            const newWallets = JSON.parse(changes.wallets.newValue);
+            setWallets(newWallets);
+            
+            // Update localStorage for consistency
+            localStorage.setItem('wallets', changes.wallets.newValue);
+            
+            // Update active wallet
+            const activeWalletId = localStorage.getItem('activeWalletId');
+            if (activeWalletId && newWallets.length > 0) {
+              const foundWallet = newWallets.find((w: Wallet) => w.address === activeWalletId);
+              if (foundWallet) {
+                setWallet(foundWallet);
+              }
+            } else if (newWallets.length > 0 && !wallet) {
+              setWallet(newWallets[0]);
+            }
+          } catch (error) {
+            console.error('Failed to parse wallets from chrome storage change:', error);
+          }
+        }
+        
+        // Handle activeWalletId change
+        if (changes.activeWalletId && changes.activeWalletId.newValue && wallets.length > 0) {
+          const foundWallet = wallets.find((w: Wallet) => w.address === changes.activeWalletId.newValue);
+          if (foundWallet) {
+            setWallet(foundWallet);
+            localStorage.setItem('activeWalletId', changes.activeWalletId.newValue);
+          }
+        }
+        
+        // Handle lock state change
+        if (changes.isWalletLocked) {
+          const locked = changes.isWalletLocked.newValue === 'true';
+          setIsLocked(locked);
+          
+          if (locked) {
+            setWallet(null);
+            setWallets([]);
+          }
+        }
+      };
+      
+      chrome.storage.onChanged.addListener(chromeStorageListener);
+    }
+    
+    return () => {
+      window.removeEventListener('storage', handleStorageChange);
+      if (chromeStorageListener && chrome.storage && chrome.storage.onChanged) {
+        chrome.storage.onChanged.removeListener(chromeStorageListener);
+      }
+    };
+  }, [isLocked, wallets, wallet]);
+
   // Simple unlock handler
   const handleUnlock = (unlockedWallets: Wallet[]) => {
     if (unlockedWallets.length > 0) {

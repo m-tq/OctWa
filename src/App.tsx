@@ -119,6 +119,14 @@ function App() {
   useEffect(() => {
     const checkWalletStatus = async () => {
       try {
+        // Sync rpcProviders to chrome.storage.local for background script access
+        const rpcProviders = localStorage.getItem('rpcProviders');
+        if (rpcProviders && typeof chrome !== 'undefined' && chrome.storage?.local) {
+          chrome.storage.local.set({ rpcProviders }).catch(err => {
+            console.warn('Failed to sync rpcProviders to chrome.storage:', err);
+          });
+        }
+        
         // Check if wallet is locked
         const walletLocked = localStorage.getItem('isWalletLocked');
         const hasPassword = localStorage.getItem('walletPasswordHash');

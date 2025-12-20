@@ -413,6 +413,7 @@ function PopupApp() {
     
     try {
       await ExtensionStorageManager.set('activeWalletId', selectedWallet.address);
+      localStorage.setItem('activeWalletId', selectedWallet.address);
     } catch (error) {
       console.error('Failed to switch wallet:', error);
     }
