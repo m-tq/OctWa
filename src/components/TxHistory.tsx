@@ -116,11 +116,6 @@ export function TxHistory({ wallet, transactions, onTransactionsUpdate, isLoadin
       // Also reload contract history
       loadContractHistory();
       
-      toast({
-        title: "Transactions Updated",
-        description: `Loaded ${transformedTxs.length} transactions and ${contractHistory.length} contract interactions`,
-      });
-      
     } catch (error) {
       console.error('Error fetching transactions:', error);
       toast({

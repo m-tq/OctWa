@@ -23,6 +23,7 @@ interface SendTransactionProps {
   onBalanceUpdate: (balance: number) => void;
   onNonceUpdate: (nonce: number) => void;
   onTransactionSuccess: () => void;
+  isCompact?: boolean;
 }
 
 // Simple address validation function
@@ -50,7 +51,7 @@ function validateRecipientInput(input: string): { isValid: boolean; error?: stri
   };
 }
 
-export function SendTransaction({ wallet, balance, nonce, onBalanceUpdate, onNonceUpdate, onTransactionSuccess }: SendTransactionProps) {
+export function SendTransaction({ wallet, balance, nonce, onBalanceUpdate, onNonceUpdate, onTransactionSuccess, isCompact = false }: SendTransactionProps) {
   const [recipientAddress, setRecipientAddress] = useState('');
   const [addressValidation, setAddressValidation] = useState<{ isValid: boolean; error?: string } | null>(null);
   const [amount, setAmount] = useState('');
@@ -286,6 +287,135 @@ export function SendTransaction({ wallet, balance, nonce, onBalanceUpdate, onNon
   const totalCost = amountNum + fee;
   const currentBalance = balance || 0;
 
+  // Compact mode for popup
+  if (isCompact) {
+    return (
+      <div className="space-y-3">
+        {/* Recipient Address */}
+        <div className="space-y-1">
+          <Label htmlFor="recipient" className="text-xs">Recipient</Label>
+          <Input
+            id="recipient"
+            placeholder="oct..."
+            value={recipientAddress}
+            onChange={(e) => setRecipientAddress(e.target.value)}
+            className="font-mono text-xs h-8"
+          />
+          {recipientAddress.trim() && addressValidation && !addressValidation.isValid && (
+            <p className="text-[10px] text-red-600">{addressValidation.error}</p>
+          )}
+        </div>
+
+        {/* Amount */}
+        <div className="space-y-1">
+          <Label htmlFor="amount" className="text-xs">Amount (OCT)</Label>
+          <Input
+            id="amount"
+            type="number"
+            placeholder="0.00"
+            value={amount}
+            onChange={(e) => setAmount(e.target.value)}
+            step="0.1"
+            min="0"
+            className="text-xs h-8"
+          />
+        </div>
+
+        {/* OU (Gas) - Simplified */}
+        <div className="space-y-1">
+          <Label className="text-xs">OU (Gas)</Label>
+          <Select value={ouOption} onValueChange={setOuOption}>
+            <SelectTrigger className="h-8 text-xs">
+              <SelectValue placeholder="Auto" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="auto" className="text-xs">Auto</SelectItem>
+              <SelectItem value="10000" className="text-xs">10,000</SelectItem>
+              <SelectItem value="30000" className="text-xs">30,000</SelectItem>
+              <SelectItem value="50000" className="text-xs">50,000</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
+        {/* Fee Summary - Compact */}
+        {amount && validateAmount(amount) && (
+          <div className="p-2 bg-muted rounded text-[10px] space-y-0.5">
+            <div className="flex justify-between">
+              <span>Amount:</span>
+              <span className="font-mono">{amountNum.toFixed(4)} OCT</span>
+            </div>
+            <div className="flex justify-between">
+              <span>Fee:</span>
+              <span className="font-mono">{fee.toFixed(4)} OCT</span>
+            </div>
+            <div className="flex justify-between font-medium border-t pt-0.5 mt-0.5">
+              <span>Total:</span>
+              <span className="font-mono">{totalCost.toFixed(4)} OCT</span>
+            </div>
+          </div>
+        )}
+
+        {/* Result */}
+        {result && (
+          <div className={`rounded p-2 text-xs ${result.success ? 'bg-green-50 dark:bg-green-950/50' : 'bg-red-50 dark:bg-red-950/50'}`}>
+            {result.success ? (
+              <div className="flex items-center gap-1">
+                <CheckCircle className="h-3 w-3 text-green-600" />
+                <span className="text-green-700 dark:text-green-300">Sent!</span>
+                {result.hash && (
+                  <a
+                    href={`https://octrascan.io/tx/${result.hash}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="ml-auto text-blue-600"
+                  >
+                    <ExternalLink className="h-3 w-3" />
+                  </a>
+                )}
+              </div>
+            ) : (
+              <div className="flex items-center gap-1 text-red-700 dark:text-red-300">
+                <AlertTriangle className="h-3 w-3" />
+                <span className="truncate">{result.error || 'Failed'}</span>
+              </div>
+            )}
+          </div>
+        )}
+
+        <Button
+          onClick={handleSendClick}
+          disabled={
+            isSending ||
+            !addressValidation?.isValid ||
+            !validateAmount(amount) ||
+            totalCost > currentBalance
+          }
+          className="w-full h-8 text-xs"
+          size="sm"
+        >
+          {isSending ? 'Sending...' : `Send ${amountNum.toFixed(4)} OCT`}
+        </Button>
+
+        {/* Large Transaction Confirmation Dialog */}
+        <AlertDialog open={showConfirmDialog} onOpenChange={setShowConfirmDialog}>
+          <AlertDialogContent className="max-w-sm">
+            <AlertDialogHeader>
+              <AlertDialogTitle className="text-sm">Confirm Large Transaction</AlertDialogTitle>
+              <AlertDialogDescription className="text-xs">
+                You are about to send {amountNum.toFixed(4)} OCT. Continue?
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel className="h-8 text-xs">Cancel</AlertDialogCancel>
+              <AlertDialogAction onClick={executeSend} className="h-8 text-xs">Confirm</AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      </div>
+    );
+  }
+
+  // Full mode (expanded view)
   return (
     <Card>
       <CardHeader>

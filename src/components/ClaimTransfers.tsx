@@ -19,9 +19,10 @@ function julianToDate(jd: number): Date {
 interface ClaimTransfersProps {
   wallet: Wallet | null;
   onTransactionSuccess: () => void;
+  isPopupMode?: boolean;
 }
 
-export function ClaimTransfers({ wallet, onTransactionSuccess }: ClaimTransfersProps) {
+export function ClaimTransfers({ wallet, onTransactionSuccess, isPopupMode = false }: ClaimTransfersProps) {
   const [transfers, setTransfers] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [claimingId, setClaimingId] = useState<string | null>(null);
@@ -60,13 +61,6 @@ export function ClaimTransfers({ wallet, onTransactionSuccess }: ClaimTransfersP
       );
       
       setTransfers(transfersWithAmounts);
-      
-      if (transfersWithAmounts.length > 0) {
-        toast({
-          title: "Transfers Loaded",
-          description: `Found ${transfersWithAmounts.length} claimable transfers`,
-        });
-      }
     } catch (error) {
       console.error('Error fetching transfers:', error);
       toast({
@@ -203,12 +197,12 @@ export function ClaimTransfers({ wallet, onTransactionSuccess }: ClaimTransfersP
 
   return (
     <Card className="border-[#0000db]/20">
-      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
-        <CardTitle className="flex items-center gap-2 text-[#0000db]">
-          <Gift className="h-5 w-5" />
-          Claim Private Transfers
+      <CardHeader className={`flex flex-row items-center justify-between space-y-0 ${isPopupMode ? 'pb-2 px-3 pt-3' : 'pb-4'}`}>
+        <CardTitle className={`flex items-center gap-2 text-[#0000db] ${isPopupMode ? 'text-sm' : ''}`}>
+          <Gift className={isPopupMode ? 'h-4 w-4' : 'h-5 w-5'} />
+          {isPopupMode ? 'Claim Transfers' : 'Claim Private Transfers'}
           {transfers.length > 0 && (
-            <Badge variant="secondary" className="ml-2">
+            <Badge variant="secondary" className={isPopupMode ? 'ml-1 text-[10px]' : 'ml-2'}>
               {transfers.length}
             </Badge>
           )}
@@ -218,29 +212,30 @@ export function ClaimTransfers({ wallet, onTransactionSuccess }: ClaimTransfersP
           size="sm"
           onClick={fetchTransfers}
           disabled={isLoading}
+          className={isPopupMode ? 'h-7 px-2' : ''}
         >
-          <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
-          Refresh
+          <RefreshCw className={`${isPopupMode ? 'h-3 w-3' : 'h-4 w-4'} ${isPopupMode ? '' : 'mr-2'} ${isLoading ? 'animate-spin' : ''}`} />
+          {!isPopupMode && 'Refresh'}
         </Button>
       </CardHeader>
-      <CardContent>
+      <CardContent className={isPopupMode ? 'px-3 pb-3 pt-0' : ''}>
         {/* Claim All Button - Show only when there are multiple transfers */}
         {transfers.length > 1 && (
-          <div className="mb-4">
+          <div className={isPopupMode ? 'mb-2' : 'mb-4'}>
             <Button
               onClick={handleClaimAll}
               disabled={claimingAll || claimingId !== null}
-              className="w-full bg-[#0000db] hover:bg-[#0000db]/90"
+              className={`w-full bg-[#0000db] hover:bg-[#0000db]/90 ${isPopupMode ? 'h-8 text-xs' : ''}`}
             >
               {claimingAll ? (
                 <>
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Claiming All Transfers...
+                  <Loader2 className={`${isPopupMode ? 'h-3 w-3 mr-1' : 'h-4 w-4 mr-2'} animate-spin`} />
+                  {isPopupMode ? 'Claiming...' : 'Claiming All Transfers...'}
                 </>
               ) : (
                 <>
-                  <Package className="h-4 w-4 mr-2" />
-                  Claim All {transfers.length} Transfers
+                  <Package className={isPopupMode ? 'h-3 w-3 mr-1' : 'h-4 w-4 mr-2'} />
+                  Claim All {transfers.length}
                 </>
               )}
             </Button>
@@ -248,56 +243,65 @@ export function ClaimTransfers({ wallet, onTransactionSuccess }: ClaimTransfersP
         )}
         
         {isLoading ? (
-          <div className="space-y-4">
-            <div className="text-sm text-muted-foreground">Loading pending transfers...</div>
-            {[...Array(2)].map((_, i) => (
-              <div key={i} className="space-y-2 p-4 border rounded-lg">
+          <div className={isPopupMode ? 'space-y-2' : 'space-y-4'}>
+            <div className={`text-muted-foreground ${isPopupMode ? 'text-xs' : 'text-sm'}`}>Loading...</div>
+            {[...Array(isPopupMode ? 1 : 2)].map((_, i) => (
+              <div key={i} className={`space-y-2 border rounded-lg ${isPopupMode ? 'p-2' : 'p-4'}`}>
                 <Skeleton className="h-4 w-full" />
                 <Skeleton className="h-4 w-3/4" />
-                <Skeleton className="h-8 w-24" />
               </div>
             ))}
           </div>
         ) : transfers.length === 0 ? (
-          <Alert>
-            <div className="flex items-start space-x-3">
-              <Gift className="h-4 w-4 mt-0.5 flex-shrink-0" />
-              <AlertDescription>
-                No pending private transfers found. When someone sends you a private transfer, it will appear here for claiming.
+          <Alert className={isPopupMode ? 'py-2' : ''}>
+            <div className={`flex items-start ${isPopupMode ? 'space-x-2' : 'space-x-3'}`}>
+              <Gift className={`${isPopupMode ? 'h-3 w-3' : 'h-4 w-4'} mt-0.5 flex-shrink-0`} />
+              <AlertDescription className={isPopupMode ? 'text-[11px] leading-tight' : ''}>
+                {isPopupMode 
+                  ? 'No pending transfers. Private transfers will appear here.'
+                  : 'No pending private transfers found. When someone sends you a private transfer, it will appear here for claiming.'
+                }
               </AlertDescription>
             </div>
           </Alert>
         ) : (
-          <div className="space-y-4">
-            <div className="text-sm text-muted-foreground">
-              Found {transfers.length} claimable transfer{transfers.length !== 1 ? 's' : ''}
-            </div>
+          <div className={isPopupMode ? 'space-y-2' : 'space-y-4'}>
+            {!isPopupMode && (
+              <div className="text-sm text-muted-foreground">
+                Found {transfers.length} claimable transfer{transfers.length !== 1 ? 's' : ''}
+              </div>
+            )}
             
             {transfers.map((transfer, index) => (
-              <div key={transfer.id} className="border rounded-lg p-4 space-y-3">
+              <div key={transfer.id} className={`border rounded-lg ${isPopupMode ? 'p-2 space-y-1.5' : 'p-4 space-y-3'}`}>
                 <div className="flex items-center justify-between">
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm font-medium">Transfer #{transfer.id}</span>
-                      <Badge variant="outline" className="text-xs">
+                  <div className={isPopupMode ? 'space-y-0.5' : 'space-y-1'}>
+                    <div className="flex items-center gap-1.5">
+                      <span className={`font-medium ${isPopupMode ? 'text-xs' : 'text-sm'}`}>#{transfer.id}</span>
+                      <Badge variant="outline" className={isPopupMode ? 'text-[9px] px-1 py-0' : 'text-xs'}>
                         E.{transfer.epoch_id}
                       </Badge>
                     </div>
-                    <div className="text-xs text-muted-foreground">
-                      From: {transfer.sender.slice(0, 12)}...{transfer.sender.slice(-8)}
+                    <div className={`text-muted-foreground ${isPopupMode ? 'text-[10px]' : 'text-xs'}`}>
+                      {isPopupMode 
+                        ? `${transfer.sender.slice(0, 6)}...${transfer.sender.slice(-4)}`
+                        : `From: ${transfer.sender.slice(0, 12)}...${transfer.sender.slice(-8)}`
+                      }
                     </div>
                   </div>
                   
-                  <div className="text-right space-y-1">
-                    <div className="font-mono font-bold text-green-600">
+                  <div className={`text-right ${isPopupMode ? 'space-y-0' : 'space-y-1'}`}>
+                    <div className={`font-mono font-bold text-green-600 ${isPopupMode ? 'text-xs' : ''}`}>
                       {transfer.decryptedAmount !== null 
-                        ? `${transfer.decryptedAmount.toFixed(8)} OCT`
+                        ? `${transfer.decryptedAmount.toFixed(isPopupMode ? 4 : 8)} OCT`
                         : '[Encrypted]'
                       }
                     </div>
-                    <div className="text-xs text-muted-foreground">
-                    {julianToDate(transfer.created_at).toLocaleDateString()}
-                    </div>
+                    {!isPopupMode && (
+                      <div className="text-xs text-muted-foreground">
+                        {julianToDate(transfer.created_at).toLocaleDateString()}
+                      </div>
+                    )}
                   </div>
                 </div>
                 
@@ -306,17 +310,17 @@ export function ClaimTransfers({ wallet, onTransactionSuccess }: ClaimTransfersP
                     onClick={() => handleClaim(transfer.id)}
                     disabled={claimingId === transfer.id || claimingAll}
                     size="sm"
-                    className="flex items-center gap-2 bg-[#0000db] hover:bg-[#0000db]/90"
+                    className={`flex items-center gap-1.5 bg-[#0000db] hover:bg-[#0000db]/90 ${isPopupMode ? 'h-7 text-xs px-2' : ''}`}
                   >
                     {claimingId === transfer.id || claimingAll ? (
                       <>
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                        {claimingAll ? 'Processing...' : 'Claiming...'}
+                        <Loader2 className={`${isPopupMode ? 'h-3 w-3' : 'h-4 w-4'} animate-spin`} />
+                        {isPopupMode ? '...' : (claimingAll ? 'Processing...' : 'Claiming...')}
                       </>
                     ) : (
                       <>
-                        <Gift className="h-4 w-4" />
-                        Claim Transfer
+                        <Gift className={isPopupMode ? 'h-3 w-3' : 'h-4 w-4'} />
+                        Claim
                       </>
                     )}
                   </Button>

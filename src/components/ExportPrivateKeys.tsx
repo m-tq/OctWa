@@ -214,7 +214,7 @@ ${wallet.mnemonic}
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
       <DialogTrigger asChild>
-        <Button variant="destructive" className="w-full py-6" size="lg">
+        <Button variant="destructive" className="w-full py-4 mt-2" size="lg">
           <Lock className="h-4 w-4 mr-2" />
           Export Private Keys
         </Button>

@@ -62,10 +62,6 @@ export function PublicBalance({
         console.error('Failed to fetch encrypted balance:', encError);
       }
       
-      toast({
-        title: "Balance Updated",
-        description: "Balance has been refreshed successfully",
-      });
     } catch (error) {
       toast({
         title: "Error",
@@ -119,62 +115,63 @@ export function PublicBalance({
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       <Card>
-        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
-          <CardTitle className="flex items-center gap-2">
-            <Globe className="h-5 w-5" />
+        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+          <CardTitle className="flex items-center gap-2 text-base">
+            <Globe className="h-4 w-4" />
             Public Balance
           </CardTitle>
           <Button variant="outline" size="sm" onClick={fetchWalletBalance} disabled={refreshing}>
-            <RefreshCw className={`h-4 w-4 mr-2 ${refreshing ? 'animate-spin' : ''}`} />
+            <RefreshCw className={`h-4 w-4 mr-1.5 ${refreshing ? 'animate-spin' : ''}`} />
             Refresh
           </Button>
         </CardHeader>
-        <CardContent className="space-y-6">
+        <CardContent className="pt-2 pb-4">
           {/* Public Balance Display */}
-          <div className="text-center py-4">
-            <div className="flex items-center justify-center gap-2 mb-2">
-              <Wallet className="h-5 w-5 text-muted-foreground" />
-              <span className="text-sm font-medium text-muted-foreground">Available Balance</span>
+          <div className="text-center py-3">
+            <div className="flex items-center justify-center gap-1.5 mb-1">
+              <Wallet className="h-4 w-4 text-muted-foreground" />
+              <span className="text-xs font-medium text-muted-foreground">Available Balance</span>
             </div>
             {isLoading ? (
-              <Skeleton className="h-12 w-48 mx-auto" />
+              <Skeleton className="h-10 w-40 mx-auto" />
             ) : (
               <div className="flex items-center justify-center gap-2">
-                <div className="text-4xl font-bold">
+                <div className="text-3xl font-bold">
                   {balance !== null ? balance.toFixed(8) : '0.00000000'}
                 </div>
-                <Badge variant="secondary" className="text-sm font-bold">OCT</Badge>
+                <Badge variant="secondary" className="text-xs font-bold">OCT</Badge>
               </div>
             )}
           </div>
 
           {/* Total Balance Info */}
           {encryptedBalance && encryptedBalance.encrypted > 0 && (
-            <div className="pt-4 border-t text-center">
-              <span className="text-sm text-muted-foreground">
+            <div className="pt-3 mt-3 border-t text-center">
+              <span className="text-xs text-muted-foreground">
                 Total (incl. private): {encryptedBalance.total.toFixed(8)} OCT
               </span>
             </div>
           )}
 
           {/* Encrypt Action */}
-          <div className="flex justify-center pt-4 border-t">
+          <div className="flex justify-center pt-3 mt-3 border-t">
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <div>
+                  <span className="inline-flex">
                     <Button
                       variant="outline"
+                      size="sm"
                       onClick={() => setShowEncryptDialog(true)}
                       disabled={!balance || balance <= 0.005}
-                      className="flex items-center gap-2"
+                      className="flex items-center gap-1.5"
                     >
-                      <Lock className="h-4 w-4" />
+                      <Lock className="h-3.5 w-3.5" />
                       Encrypt OCT
                     </Button>
-                  </div>
+                  </span>
                 </TooltipTrigger>
                 {(!balance || balance <= 0.005) && (
                   <TooltipContent side="top" className="max-w-[200px]">

@@ -127,13 +127,6 @@ export function WelcomeScreen({ onWalletCreated }: WelcomeScreenProps) {
             </Tabs>
           </CardContent>
         </Card>
-
-        {/* Footer */}
-        <div className="text-center mt-8 text-sm text-muted-foreground space-y-2">
-          <p>
-            Always keep your private keys and mnemonic phrase secure and never share them with anyone.
-          </p>
-        </div>
       </div>
 
       {/* GitHub Link - Fixed position bottom left */}

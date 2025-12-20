@@ -284,16 +284,12 @@ export function WalletDashboard({
         setTransactions([]);
       }
       
-      toast({
-        title: "Data Refreshed",
-        description: "Wallet data has been updated with new RPC provider",
-      });
     } catch (error) {
       console.error('Failed to refresh wallet data:', error);
       
       toast({
         title: "Refresh Failed",
-        description: "Failed to refresh data with new RPC provider",
+        description: "Failed to refresh data.",
         variant: "destructive",
       });
     } finally {
@@ -913,20 +909,6 @@ export function WalletDashboard({
                           Add Wallet
                         </Button>
 
-                        {/* Export Backup */}
-                        <Button
-                          variant="outline"
-                          onClick={() => {
-                            handleExportBackup();
-                            setShowMobileMenu(false);
-                          }}
-                          disabled={isExportingBackup}
-                          className="w-full justify-start gap-2"
-                        >
-                          <Download className="h-4 w-4" />
-                          {isExportingBackup ? 'Exporting...' : 'Export Backup'}
-                        </Button>
-
                         {/* Lock Wallet */}
                         <Button
                           variant="outline"
@@ -1111,20 +1093,6 @@ export function WalletDashboard({
                           >
                             <Plus className="h-4 w-4" />
                             Add Wallet
-                          </Button>
-
-                          {/* Export Backup */}
-                          <Button
-                            variant="outline"
-                            onClick={() => {
-                              handleExportBackup();
-                              setShowMobileMenu(false);
-                            }}
-                            disabled={isExportingBackup}
-                            className="w-full justify-start gap-2"
-                          >
-                            <Download className="h-4 w-4" />
-                            {isExportingBackup ? 'Exporting...' : 'Export Backup'}
                           </Button>
 
                           {/* Lock Wallet */}
@@ -1355,12 +1323,13 @@ export function WalletDashboard({
       {/* Main Content */}
       <main className={`octra-container ${isPopupMode ? 'py-2 px-3 pb-14 mt-2 mb-8' : 'py-2 px-2 pb-16 sm:py-8 sm:px-4 sm:pb-20'}`}>
         {/* Mode Toggle */}
-        <div className="flex items-center justify-between mb-3">
+        <div className={`flex items-center justify-between ${isPopupMode ? 'mb-2' : 'mb-3'}`}>
           <ModeToggle
             currentMode={operationMode}
             onModeChange={handleModeChange}
             privateEnabled={privateEnabled}
             encryptedBalance={encryptedBalance?.encrypted || 0}
+            isCompact={isPopupMode}
           />
           <ModeIndicator mode={operationMode} />
         </div>
@@ -1372,40 +1341,40 @@ export function WalletDashboard({
           if (tab === 'balance' || tab === 'history') {
             refreshWalletData();
           }
-        }} className="space-y-3">
+        }} className={isPopupMode ? 'space-y-2' : 'space-y-3'}>
           {operationMode === 'public' ? (
             // Public Mode Tabs
-            <TabsList className="grid w-full grid-cols-3 h-auto p-1.5 rounded-lg bg-muted">
-              <TabsTrigger value="balance" className={`flex items-center justify-center gap-1.5 ${isPopupMode ? 'text-xs px-2' : 'text-xs sm:text-sm'} py-2.5 rounded-md`}>
-                <PieChart className="h-4 w-4" />
-                <span>Balance</span>
+            <TabsList className={`grid w-full grid-cols-3 h-auto ${isPopupMode ? 'p-1' : 'p-1.5'} rounded-lg bg-muted`}>
+              <TabsTrigger value="balance" className={`flex items-center justify-center gap-1 ${isPopupMode ? 'text-[11px] px-1.5 py-1.5' : 'text-xs sm:text-sm py-2.5'} rounded-md`}>
+                <PieChart className={isPopupMode ? 'h-3 w-3' : 'h-4 w-4'} />
+                <span>{isPopupMode ? 'Bal' : 'Balance'}</span>
               </TabsTrigger>
-              <TabsTrigger value="send" className={`flex items-center justify-center gap-1.5 ${isPopupMode ? 'text-xs px-2' : 'text-xs sm:text-sm'} py-2.5 rounded-md`}>
-                <Send className="h-4 w-4" />
+              <TabsTrigger value="send" className={`flex items-center justify-center gap-1 ${isPopupMode ? 'text-[11px] px-1.5 py-1.5' : 'text-xs sm:text-sm py-2.5'} rounded-md`}>
+                <Send className={isPopupMode ? 'h-3 w-3' : 'h-4 w-4'} />
                 <span>Send</span>
               </TabsTrigger>
-              <TabsTrigger value="history" className={`flex items-center justify-center gap-1.5 ${isPopupMode ? 'text-xs px-2' : 'text-xs sm:text-sm'} py-2.5 rounded-md`}>
-                <History className="h-4 w-4" />
-                <span>History</span>
+              <TabsTrigger value="history" className={`flex items-center justify-center gap-1 ${isPopupMode ? 'text-[11px] px-1.5 py-1.5' : 'text-xs sm:text-sm py-2.5'} rounded-md`}>
+                <History className={isPopupMode ? 'h-3 w-3' : 'h-4 w-4'} />
+                <span>{isPopupMode ? 'Hist' : 'History'}</span>
               </TabsTrigger>
             </TabsList>
           ) : (
             // Private Mode Tabs (with #0000db styling)
-            <TabsList className="grid w-full grid-cols-4 h-auto p-1.5 rounded-lg bg-[#0000db]/10">
-              <TabsTrigger value="balance" className={`flex items-center justify-center gap-1 ${isPopupMode ? 'text-[11px] px-1' : 'text-xs sm:text-sm'} py-2.5 rounded-md data-[state=active]:bg-[#0000db] data-[state=active]:text-white`}>
-                <Shield className={`${isPopupMode ? 'h-3.5 w-3.5' : 'h-4 w-4'}`} />
+            <TabsList className={`grid w-full grid-cols-4 h-auto ${isPopupMode ? 'p-1' : 'p-1.5'} rounded-lg bg-[#0000db]/10`}>
+              <TabsTrigger value="balance" className={`flex items-center justify-center gap-1 ${isPopupMode ? 'text-[10px] px-1 py-1.5' : 'text-xs sm:text-sm py-2.5'} rounded-md data-[state=active]:bg-[#0000db] data-[state=active]:text-white`}>
+                <Shield className={isPopupMode ? 'h-3 w-3' : 'h-4 w-4'} />
                 <span>{isPopupMode ? 'Bal' : 'Balance'}</span>
               </TabsTrigger>
-              <TabsTrigger value="transfer" className={`flex items-center justify-center gap-1 ${isPopupMode ? 'text-[11px] px-1' : 'text-xs sm:text-sm'} py-2.5 rounded-md data-[state=active]:bg-[#0000db] data-[state=active]:text-white`}>
-                <Send className={`${isPopupMode ? 'h-3.5 w-3.5' : 'h-4 w-4'}`} />
-                <span>{isPopupMode ? 'Send' : 'Transfer'}</span>
+              <TabsTrigger value="transfer" className={`flex items-center justify-center gap-1 ${isPopupMode ? 'text-[10px] px-1 py-1.5' : 'text-xs sm:text-sm py-2.5'} rounded-md data-[state=active]:bg-[#0000db] data-[state=active]:text-white`}>
+                <Send className={isPopupMode ? 'h-3 w-3' : 'h-4 w-4'} />
+                <span>Send</span>
               </TabsTrigger>
-              <TabsTrigger value="claim" className={`flex items-center justify-center gap-1 ${isPopupMode ? 'text-[11px] px-1' : 'text-xs sm:text-sm'} py-2.5 rounded-md data-[state=active]:bg-[#0000db] data-[state=active]:text-white`}>
-                <Gift className={`${isPopupMode ? 'h-3.5 w-3.5' : 'h-4 w-4'}`} />
+              <TabsTrigger value="claim" className={`flex items-center justify-center gap-1 ${isPopupMode ? 'text-[10px] px-1 py-1.5' : 'text-xs sm:text-sm py-2.5'} rounded-md data-[state=active]:bg-[#0000db] data-[state=active]:text-white`}>
+                <Gift className={isPopupMode ? 'h-3 w-3' : 'h-4 w-4'} />
                 <span>Claim</span>
               </TabsTrigger>
-              <TabsTrigger value="history" className={`flex items-center justify-center gap-1 ${isPopupMode ? 'text-[11px] px-1' : 'text-xs sm:text-sm'} py-2.5 rounded-md data-[state=active]:bg-[#0000db] data-[state=active]:text-white`}>
-                <History className={`${isPopupMode ? 'h-3.5 w-3.5' : 'h-4 w-4'}`} />
+              <TabsTrigger value="history" className={`flex items-center justify-center gap-1 ${isPopupMode ? 'text-[10px] px-1 py-1.5' : 'text-xs sm:text-sm py-2.5'} rounded-md data-[state=active]:bg-[#0000db] data-[state=active]:text-white`}>
+                <History className={isPopupMode ? 'h-3 w-3' : 'h-4 w-4'} />
                 <span>{isPopupMode ? 'Hist' : 'History'}</span>
               </TabsTrigger>
             </TabsList>
@@ -1436,42 +1405,30 @@ export function WalletDashboard({
 
           {/* Send Tab (Public Mode) */}
           {operationMode === 'public' && (
-            <TabsContent value="send" className="mt-4">
-              <Tabs defaultValue="single" className="w-full">
-                <TabsList className={`grid w-full ${isPopupMode ? 'grid-cols-2' : 'grid-cols-3'} h-auto p-1`}>
-                  <TabsTrigger value="single" className="text-xs sm:text-sm py-2">Single</TabsTrigger>
-                  <TabsTrigger value="multi" className="text-xs sm:text-sm py-2">Multi</TabsTrigger>
-                  {!isPopupMode && (
+            <TabsContent value="send" className={isPopupMode ? 'mt-2' : 'mt-4'}>
+              {isPopupMode ? (
+                // Popup mode: Single send only, no sub-tabs
+                <SendTransaction
+                  wallet={wallet}
+                  balance={balance}
+                  nonce={nonce}
+                  onBalanceUpdate={handleBalanceUpdate}
+                  onNonceUpdate={handleNonceUpdate}
+                  onTransactionSuccess={handleTransactionSuccess}
+                  isCompact={true}
+                />
+              ) : (
+                // Expanded mode: Full tabs with Single, Multi, File
+                <Tabs defaultValue="single" className="w-full">
+                  <TabsList className="grid w-full grid-cols-3 h-auto p-1">
+                    <TabsTrigger value="single" className="text-xs sm:text-sm py-2">Single</TabsTrigger>
+                    <TabsTrigger value="multi" className="text-xs sm:text-sm py-2">Multi</TabsTrigger>
                     <TabsTrigger value="file" className="text-xs sm:text-sm py-2">File</TabsTrigger>
-                  )}
-                </TabsList>
-                
-                <TabsContent value="single" className="mt-4">
-                  <SendTransaction
-                    wallet={wallet} 
-                    balance={balance}
-                    nonce={nonce}
-                    onBalanceUpdate={handleBalanceUpdate}
-                    onNonceUpdate={handleNonceUpdate}
-                    onTransactionSuccess={handleTransactionSuccess}
-                  />
-                </TabsContent>
-                
-                <TabsContent value="multi" className="mt-4">
-                  <MultiSend 
-                    wallet={wallet} 
-                    balance={balance}
-                    nonce={nonce}
-                    onBalanceUpdate={handleBalanceUpdate}
-                    onNonceUpdate={handleNonceUpdate}
-                    onTransactionSuccess={handleTransactionSuccess}
-                  />
-                </TabsContent>
-                
-                {!isPopupMode && (
-                  <TabsContent value="file" className="mt-4">
-                    <FileMultiSend 
-                      wallet={wallet} 
+                  </TabsList>
+
+                  <TabsContent value="single" className="mt-4">
+                    <SendTransaction
+                      wallet={wallet}
                       balance={balance}
                       nonce={nonce}
                       onBalanceUpdate={handleBalanceUpdate}
@@ -1479,21 +1436,45 @@ export function WalletDashboard({
                       onTransactionSuccess={handleTransactionSuccess}
                     />
                   </TabsContent>
-                )}
-              </Tabs>
+
+                  <TabsContent value="multi" className="mt-4">
+                    <MultiSend
+                      wallet={wallet}
+                      balance={balance}
+                      nonce={nonce}
+                      onBalanceUpdate={handleBalanceUpdate}
+                      onNonceUpdate={handleNonceUpdate}
+                      onTransactionSuccess={handleTransactionSuccess}
+                    />
+                  </TabsContent>
+
+                  <TabsContent value="file" className="mt-4">
+                    <FileMultiSend
+                      wallet={wallet}
+                      balance={balance}
+                      nonce={nonce}
+                      onBalanceUpdate={handleBalanceUpdate}
+                      onNonceUpdate={handleNonceUpdate}
+                      onTransactionSuccess={handleTransactionSuccess}
+                    />
+                  </TabsContent>
+                </Tabs>
+              )}
             </TabsContent>
           )}
 
           {/* Transfer Tab (Private Mode) */}
           {operationMode === 'private' && (
-            <TabsContent value="transfer" className="mt-4">
+            <TabsContent value="transfer" className={isPopupMode ? 'mt-2' : 'mt-4'}>
               <PrivateTransfer
                 wallet={wallet}
                 balance={balance}
                 nonce={nonce}
+                encryptedBalance={encryptedBalance}
                 onBalanceUpdate={handleBalanceUpdate}
                 onNonceUpdate={handleNonceUpdate}
                 onTransactionSuccess={handleTransactionSuccess}
+                isCompact={isPopupMode}
               />
             </TabsContent>
           )}
@@ -1504,6 +1485,7 @@ export function WalletDashboard({
               <ClaimTransfers
                 wallet={wallet}
                 onTransactionSuccess={handleTransactionSuccess}
+                isPopupMode={isPopupMode}
               />
             </TabsContent>
           )}
@@ -1548,15 +1530,17 @@ export function WalletDashboard({
 
       {/* Footer Credit */}
       <footer className="fixed bottom-0 left-0 right-0 py-2 text-center text-xs text-muted-foreground bg-background/80 backdrop-blur-sm border-t border-border/40">
-        crafted by{' '}
-        <a 
-          href="https://x.com/Kang3s" 
-          target="_blank" 
-          rel="noopener noreferrer"
-          className="text-primary hover:underline font-medium"
-        >
-          @Kang3s
-        </a>
+        <span className="flex items-center justify-center gap-1">
+          Made with
+          <svg
+            viewBox="0 0 24 24"
+            className="h-3.5 w-3.5 text-[#0000db]"
+            fill="currentColor"
+          >
+            <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" />
+          </svg>
+          for Octra
+        </span>
       </footer>
     </div>
   );

@@ -9,12 +9,14 @@ interface ModeToggleProps {
   onModeChange: (mode: OperationMode) => void;
   privateEnabled: boolean;
   encryptedBalance?: number;
+  isCompact?: boolean;
 }
 
-export function ModeToggle({ 
-  currentMode, 
-  onModeChange, 
-  privateEnabled
+export function ModeToggle({
+  currentMode,
+  onModeChange,
+  privateEnabled,
+  isCompact = false
 }: ModeToggleProps) {
   const [isTransitioning, setIsTransitioning] = useState(false);
   const [displayMode, setDisplayMode] = useState(currentMode);
@@ -30,7 +32,7 @@ export function ModeToggle({
     if (mode === currentMode) return;
 
     setIsTransitioning(true);
-    
+
     // Trigger page transition effect
     document.body.classList.add('mode-switching');
     if (mode === 'private') {
@@ -55,17 +57,17 @@ export function ModeToggle({
   };
 
   return (
-    <div className="relative grid grid-cols-2 gap-1 p-1 bg-muted rounded-lg">
+    <div className={`relative grid grid-cols-2 gap-0.5 ${isCompact ? 'p-0.5' : 'p-1'} bg-muted rounded-lg`}>
       {/* Animated Background Slider */}
-      <div 
-        className={`absolute top-1 bottom-1 left-1 right-1 rounded-md transition-all duration-300 ease-out pointer-events-none ${
-          displayMode === 'public' 
-            ? 'bg-background shadow-md border border-border' 
+      <div
+        className={`absolute top-0.5 bottom-0.5 left-0.5 right-0.5 rounded-md transition-all duration-300 ease-out pointer-events-none ${
+          displayMode === 'public'
+            ? 'bg-background shadow-md border border-border'
             : 'bg-[#0000db] shadow-lg shadow-[#0000db]/30'
         }`}
         style={{
-          width: 'calc(50% - 6.5px)',
-          transform: displayMode === 'private' ? 'translateX(calc(100% + 4px))' : 'translateX(0)'
+          width: isCompact ? 'calc(50% - 3px)' : 'calc(50% - 6.5px)',
+          transform: displayMode === 'private' ? `translateX(calc(100% + ${isCompact ? '2px' : '4px'}))` : 'translateX(0)'
         }}
       />
 
@@ -74,16 +76,18 @@ export function ModeToggle({
         variant="ghost"
         size="sm"
         onClick={() => handleModeChange('public')}
-        className={`relative z-10 flex items-center justify-center gap-1.5 px-4 py-1.5 h-8 transition-all duration-300 bg-transparent hover:bg-transparent ${
-          displayMode === 'public' 
-            ? 'text-foreground' 
+        className={`relative z-10 flex items-center justify-center ${isCompact ? 'gap-1 px-2 py-1 h-6' : 'gap-1.5 px-4 py-1.5 h-8'} transition-all duration-300 bg-transparent hover:bg-transparent ${
+          displayMode === 'public'
+            ? 'text-foreground'
             : 'text-muted-foreground hover:text-foreground'
         }`}
       >
-        <Globe className={`h-3.5 w-3.5 transition-transform duration-300 ${
-          displayMode === 'public' ? 'scale-110' : 'scale-100'
-        }`} />
-        <span className="text-xs font-medium">Public</span>
+        <Globe
+          className={`${isCompact ? 'h-3 w-3' : 'h-3.5 w-3.5'} transition-transform duration-300 ${
+            displayMode === 'public' ? 'scale-110' : 'scale-100'
+          }`}
+        />
+        <span className={`${isCompact ? 'text-[10px]' : 'text-xs'} font-medium`}>Public</span>
       </Button>
 
       {/* Private Mode Button */}
@@ -96,7 +100,7 @@ export function ModeToggle({
                 size="sm"
                 onClick={() => handleModeChange('private')}
                 disabled={!privateEnabled}
-                className={`relative z-10 flex items-center justify-center gap-1.5 px-4 py-1.5 h-8 transition-all duration-300 bg-transparent hover:bg-transparent ${
+                className={`relative z-10 flex items-center justify-center ${isCompact ? 'gap-1 px-2 py-1 h-6' : 'gap-1.5 px-4 py-1.5 h-8'} transition-all duration-300 bg-transparent hover:bg-transparent ${
                   displayMode === 'private'
                     ? 'text-white'
                     : privateEnabled
@@ -104,24 +108,24 @@ export function ModeToggle({
                       : 'opacity-50 cursor-not-allowed text-muted-foreground'
                 }`}
               >
-                <div className={`transition-transform duration-300 ${
-                  displayMode === 'private' ? 'scale-110' : 'scale-100'
-                }`}>
+                <div
+                  className={`transition-transform duration-300 ${
+                    displayMode === 'private' ? 'scale-110' : 'scale-100'
+                  }`}
+                >
                   {privateEnabled ? (
-                    <Shield className="h-3.5 w-3.5" />
+                    <Shield className={`${isCompact ? 'h-3 w-3' : 'h-3.5 w-3.5'}`} />
                   ) : (
-                    <Lock className="h-3.5 w-3.5" />
+                    <Lock className={`${isCompact ? 'h-3 w-3' : 'h-3.5 w-3.5'}`} />
                   )}
                 </div>
-                <span className="text-xs font-medium">Private</span>
+                <span className={`${isCompact ? 'text-[10px]' : 'text-xs'} font-medium`}>Private</span>
               </Button>
             </span>
           </TooltipTrigger>
           {!privateEnabled && (
             <TooltipContent side="bottom" className="max-w-[200px]">
-              <p className="text-xs">
-                Encrypt some OCT to access Private features
-              </p>
+              <p className="text-xs">Encrypt some OCT to access Private features</p>
             </TooltipContent>
           )}
         </Tooltip>
@@ -130,11 +134,13 @@ export function ModeToggle({
       {/* Sparkle effect on transition */}
       {isTransitioning && (
         <div className="absolute inset-0 pointer-events-none overflow-hidden rounded-lg">
-          <div className={`absolute inset-0 ${
-            displayMode === 'private' 
-              ? 'bg-gradient-to-r from-transparent via-[#0000db]/20 to-transparent' 
-              : 'bg-gradient-to-r from-transparent via-white/20 to-transparent'
-          } animate-shimmer`} />
+          <div
+            className={`absolute inset-0 ${
+              displayMode === 'private'
+                ? 'bg-gradient-to-r from-transparent via-[#0000db]/20 to-transparent'
+                : 'bg-gradient-to-r from-transparent via-white/20 to-transparent'
+            } animate-shimmer`}
+          />
         </div>
       )}
     </div>

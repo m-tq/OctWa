@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -92,11 +92,6 @@ export function UnifiedHistory({ wallet, transactions, onTransactionsUpdate, isL
       
       onTransactionsUpdate(transformedTxs);
       loadContractHistory();
-      
-      toast({
-        title: "History Updated",
-        description: `Loaded ${transformedTxs.length} transactions and ${contractHistory.length} contract interactions`,
-      });
     } catch (error) {
       toast({
         title: "Error",
@@ -172,39 +167,47 @@ export function UnifiedHistory({ wallet, transactions, onTransactionsUpdate, isL
 
   return (
     <Card>
-      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
-        <CardTitle className="flex items-center gap-2">
-          <History className="h-5 w-5" />
+      <CardHeader className={`flex flex-row items-center justify-between space-y-0 ${isPopupMode ? 'pb-2 px-3 pt-3' : 'pb-4'}`}>
+        <CardTitle className={`flex items-center gap-2 ${isPopupMode ? 'text-sm' : ''}`}>
+          <History className={isPopupMode ? 'h-4 w-4' : 'h-5 w-5'} />
           History
           {pendingCount > 0 && (
-            <Badge variant="secondary" className="ml-2">{pendingCount} pending</Badge>
+            <Badge variant="secondary" className={isPopupMode ? 'ml-1 text-[10px]' : 'ml-2'}>{pendingCount}</Badge>
           )}
         </CardTitle>
-        <Button variant="outline" size="sm" onClick={fetchTransactions} disabled={refreshing}>
-          <RefreshCw className={`h-4 w-4 mr-2 ${refreshing ? 'animate-spin' : ''}`} />
-          Refresh
+        <Button variant="outline" size="sm" onClick={fetchTransactions} disabled={refreshing} className={isPopupMode ? 'h-7 px-2' : ''}>
+          <RefreshCw className={`${isPopupMode ? 'h-3 w-3' : 'h-4 w-4'} ${isPopupMode ? '' : 'mr-2'} ${refreshing ? 'animate-spin' : ''}`} />
+          {!isPopupMode && 'Refresh'}
         </Button>
       </CardHeader>
-      <CardContent>
+      <CardContent className={isPopupMode ? 'px-3 pb-3 pt-0' : ''}>
         {/* Filter Buttons */}
-        <div className="flex gap-2 mb-4">
-          {(['all', 'transfers', 'contracts'] as HistoryFilter[]).map((filter) => (
-            <Button
-              key={filter}
-              variant={activeFilter === filter ? 'default' : 'outline'}
-              size="sm"
-              onClick={() => setActiveFilter(filter)}
-              className="capitalize"
-            >
-              {filter}
-              {filter === 'transfers' && transactions.length > 0 && (
-                <Badge variant="secondary" className="ml-1.5 text-xs">{transactions.length}</Badge>
-              )}
-              {filter === 'contracts' && contractHistory.length > 0 && (
-                <Badge variant="secondary" className="ml-1.5 text-xs">{contractHistory.length}</Badge>
-              )}
-            </Button>
-          ))}
+        <div className={`flex flex-wrap ${isPopupMode ? 'gap-1 mb-2' : 'gap-2 mb-4'}`}>
+          {(['all', 'sent', 'received', 'contract'] as HistoryFilter[]).map((filter) => {
+            const sentCount = transactions.filter(tx => tx.type === 'sent').length;
+            const receivedCount = transactions.filter(tx => tx.type === 'received').length;
+            
+            return (
+              <Button
+                key={filter}
+                variant={activeFilter === filter ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => setActiveFilter(filter)}
+                className={`capitalize ${isPopupMode ? 'h-6 px-2 text-[10px]' : ''}`}
+              >
+                {filter}
+                {filter === 'sent' && sentCount > 0 && (
+                  <Badge variant="secondary" className={isPopupMode ? 'ml-1 text-[9px] px-1' : 'ml-1.5 text-xs'}>{sentCount}</Badge>
+                )}
+                {filter === 'received' && receivedCount > 0 && (
+                  <Badge variant="secondary" className={isPopupMode ? 'ml-1 text-[9px] px-1' : 'ml-1.5 text-xs'}>{receivedCount}</Badge>
+                )}
+                {filter === 'contract' && contractHistory.length > 0 && (
+                  <Badge variant="secondary" className={isPopupMode ? 'ml-1 text-[9px] px-1' : 'ml-1.5 text-xs'}>{contractHistory.length}</Badge>
+                )}
+              </Button>
+            );
+          })}
         </div>
 
         {/* History List */}
@@ -455,7 +458,7 @@ function TransferItem({
   
   // Expanded mode: full view
   return (
-    <>
+    <div className="relative">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           {tx.type === 'sent' ? (
@@ -464,20 +467,6 @@ function TransferItem({
             <ArrowDownLeft className="h-4 w-4 text-green-500" />
           )}
           <span className="font-medium capitalize text-sm">{tx.type}</span>
-          
-          {/* Type Badge */}
-          {isPrivate ? (
-            <Badge className="bg-[#0000db] text-white text-xs">
-              <Shield className="h-3 w-3 mr-1" />
-              Private
-            </Badge>
-          ) : (
-            <Badge variant="outline" className="text-xs">
-              <ArrowUpRight className="h-3 w-3 mr-1" />
-              Transfer
-            </Badge>
-          )}
-          
           {getStatusIcon(tx.status)}
         </div>
         <div className="flex items-center gap-1">
@@ -493,7 +482,7 @@ function TransferItem({
           )}
         </div>
       </div>
-      <div className="grid grid-cols-2 gap-2 text-xs">
+      <div className="grid grid-cols-2 gap-2 text-xs mt-2">
         <div>
           <span className="text-muted-foreground">Amount: </span>
           {isPrivate ? (
@@ -515,7 +504,20 @@ function TransferItem({
           <span>{new Date(tx.timestamp * 1000).toLocaleString()}</span>
         </div>
       </div>
-    </>
+      {/* Type Badge - Bottom Right */}
+      <div className="absolute bottom-0 right-0">
+        {isPrivate ? (
+          <Badge className="bg-[#0000db] text-white text-[10px] px-1.5 py-0.5">
+            <Shield className="h-2.5 w-2.5 mr-0.5" />
+            Private
+          </Badge>
+        ) : (
+          <Badge variant="outline" className="text-[10px] px-1.5 py-0.5">
+            Account
+          </Badge>
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -561,22 +563,14 @@ function ContractItem({ contract, truncateAddress, copyToClipboard, isPopupMode 
   
   // Expanded mode: full view
   return (
-    <>
+    <div className="relative">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Code className="h-4 w-4 text-purple-500" />
           <span className="font-medium text-sm">{contract.methodName}</span>
-          
-          {/* Type Badge */}
-          <Badge variant="outline" className="text-xs bg-purple-50 text-purple-700 border-purple-200">
-            <Zap className="h-3 w-3 mr-1" />
-            Contract
-          </Badge>
-          
           <Badge variant={contract.type === 'view' ? 'secondary' : 'default'} className="text-xs">
             {contract.type}
           </Badge>
-          
           {contract.success ? (
             <CheckCircle className="h-4 w-4 text-green-500" />
           ) : (
@@ -591,7 +585,7 @@ function ContractItem({ contract, truncateAddress, copyToClipboard, isPopupMode 
           </Button>
         )}
       </div>
-      <div className="grid grid-cols-2 gap-2 text-xs">
+      <div className="grid grid-cols-2 gap-2 text-xs mt-2">
         <div>
           <span className="text-muted-foreground">Contract: </span>
           <span className="font-mono">{truncateAddress(contract.contractAddress)}</span>
@@ -607,6 +601,13 @@ function ContractItem({ contract, truncateAddress, copyToClipboard, isPopupMode 
           </div>
         )}
       </div>
-    </>
+      {/* Type Badge - Bottom Right */}
+      <div className="absolute bottom-0 right-0">
+        <Badge variant="outline" className="text-[10px] px-1.5 py-0.5 bg-purple-50 text-purple-700 border-purple-200">
+          <Zap className="h-2.5 w-2.5 mr-0.5" />
+          Contract
+        </Badge>
+      </div>
+    </div>
   );
 }

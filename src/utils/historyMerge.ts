@@ -43,7 +43,7 @@ export interface UnifiedHistoryItem {
 }
 
 // Filter type for history
-export type HistoryFilter = 'all' | 'transfers' | 'contracts';
+export type HistoryFilter = 'all' | 'account' | 'sent' | 'received' | 'contract';
 
 /**
  * Merges transactions and contract interactions into a unified history list.
@@ -96,7 +96,7 @@ export function sortHistoryByTimestamp(items: UnifiedHistoryItem[]): UnifiedHist
  * Filters history items by type.
  * 
  * @param items - Array of unified history items
- * @param filter - Filter to apply ('all', 'transfers', or 'contracts')
+ * @param filter - Filter to apply ('all', 'account', 'sent', 'received', or 'contract')
  * @returns Filtered array
  */
 export function filterHistory(
@@ -107,11 +107,19 @@ export function filterHistory(
     return items;
   }
 
-  if (filter === 'transfers') {
+  if (filter === 'account') {
     return items.filter(item => item.type === 'transfer');
   }
 
-  if (filter === 'contracts') {
+  if (filter === 'sent') {
+    return items.filter(item => item.type === 'transfer' && item.transaction?.type === 'sent');
+  }
+
+  if (filter === 'received') {
+    return items.filter(item => item.type === 'transfer' && item.transaction?.type === 'received');
+  }
+
+  if (filter === 'contract') {
     return items.filter(item => item.type === 'contract');
   }
 

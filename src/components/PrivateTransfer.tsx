@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -13,9 +13,11 @@ interface PrivateTransferProps {
   wallet: Wallet | null;
   balance: number | null;
   nonce: number;
+  encryptedBalance?: any;
   onBalanceUpdate: (newBalance: number) => void;
   onNonceUpdate: (newNonce: number) => void;
   onTransactionSuccess: () => void;
+  isCompact?: boolean;
 }
 
 // Simple address validation function
@@ -43,30 +45,35 @@ function validateRecipientInput(input: string): { isValid: boolean; error?: stri
   };
 }
 
-export function PrivateTransfer({ 
-  wallet, 
-  balance, 
-  nonce, 
-  onBalanceUpdate, 
-  onNonceUpdate, 
-  onTransactionSuccess 
+export function PrivateTransfer({
+  wallet,
+  balance,
+  nonce,
+  encryptedBalance: propEncryptedBalance,
+  onBalanceUpdate,
+  onNonceUpdate,
+  onTransactionSuccess,
+  isCompact = false
 }: PrivateTransferProps) {
   const [recipientAddress, setRecipientAddress] = useState('');
   const [addressValidation, setAddressValidation] = useState<{ isValid: boolean; error?: string } | null>(null);
   const [amount, setAmount] = useState('');
   const [isSending, setIsSending] = useState(false);
   const [isCheckingRecipient, setIsCheckingRecipient] = useState(false);
-  const [encryptedBalance, setEncryptedBalance] = useState<any>(null);
+  const [localEncryptedBalance, setLocalEncryptedBalance] = useState<any>(null);
   const [recipientInfo, setRecipientInfo] = useState<any>(null);
   const [result, setResult] = useState<{ success: boolean; tx_hash?: string; ephemeral_key?: string; error?: string } | null>(null);
   const { toast } = useToast();
 
-  // Fetch encrypted balance when wallet changes
+  // Use prop if available, otherwise use local state
+  const encryptedBalance = propEncryptedBalance || localEncryptedBalance;
+
+  // Only fetch encrypted balance if not provided via props
   useEffect(() => {
-    if (wallet) {
-      fetchEncryptedBalance(wallet.address, wallet.privateKey).then(setEncryptedBalance);
+    if (wallet && !propEncryptedBalance) {
+      fetchEncryptedBalance(wallet.address, wallet.privateKey).then(setLocalEncryptedBalance);
     }
-  }, [wallet]);
+  }, [wallet, propEncryptedBalance]);
 
   // Validate recipient address when input changes
   useEffect(() => {
@@ -214,8 +221,8 @@ export function PrivateTransfer({
         setAmount('');
         setRecipientInfo(null);
 
-        // Refresh encrypted balance
-        fetchEncryptedBalance(wallet.address, wallet.privateKey).then(setEncryptedBalance);
+        // Refresh encrypted balance after transaction
+        fetchEncryptedBalance(wallet.address, wallet.privateKey).then(setLocalEncryptedBalance);
 
         onTransactionSuccess();
       } else {
@@ -255,7 +262,13 @@ export function PrivateTransfer({
   }
 
   if (!encryptedBalance || encryptedBalance.encrypted <= 0) {
-    return (
+    return isCompact ? (
+      <Alert className="border-[#0000db]/20">
+        <AlertDescription className="text-xs">
+          No encrypted balance. Encrypt some OCT first.
+        </AlertDescription>
+      </Alert>
+    ) : (
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
@@ -277,6 +290,103 @@ export function PrivateTransfer({
     );
   }
 
+  // Compact mode for popup
+  if (isCompact) {
+    return (
+      <div className="space-y-3">
+        {/* Private Balance - Compact */}
+        <div className="p-2 bg-[#0000db]/5 border border-[#0000db]/20 rounded text-xs">
+          <div className="flex justify-between items-center">
+            <span>Private Balance</span>
+            <span className="font-mono font-bold text-[#0000db]">
+              {encryptedBalance.encrypted.toFixed(4)} OCT
+            </span>
+          </div>
+        </div>
+
+        {/* Recipient */}
+        <div className="space-y-1">
+          <Label htmlFor="recipient" className="text-xs">Recipient</Label>
+          <Input
+            id="recipient"
+            placeholder="oct..."
+            value={recipientAddress}
+            onChange={(e) => setRecipientAddress(e.target.value)}
+            className="font-mono text-xs h-8"
+          />
+          {recipientAddress.trim() && addressValidation && !addressValidation.isValid && (
+            <p className="text-[10px] text-red-600">{addressValidation.error}</p>
+          )}
+          {recipientInfo && !recipientInfo.has_public_key && (
+            <p className="text-[10px] text-red-600">⚠️ Recipient needs a public key</p>
+          )}
+        </div>
+
+        {/* Amount */}
+        <div className="space-y-1">
+          <Label htmlFor="amount" className="text-xs">Amount (OCT)</Label>
+          <Input
+            id="amount"
+            type="number"
+            placeholder="0.00"
+            value={amount}
+            onChange={(e) => setAmount(e.target.value)}
+            step="0.1"
+            min="0"
+            max={encryptedBalance.encrypted}
+            className="text-xs h-8"
+          />
+        </div>
+
+        {/* Result */}
+        {result && (
+          <div className={`rounded p-2 text-xs ${result.success ? 'bg-green-50 dark:bg-green-950/50' : 'bg-red-50 dark:bg-red-950/50'}`}>
+            {result.success ? (
+              <div className="flex items-center gap-1">
+                <CheckCircle className="h-3 w-3 text-green-600" />
+                <span className="text-green-700 dark:text-green-300">Sent!</span>
+                {result.tx_hash && (
+                  <a
+                    href={`https://octrascan.io/tx/${result.tx_hash}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="ml-auto text-blue-600"
+                  >
+                    <ExternalLink className="h-3 w-3" />
+                  </a>
+                )}
+              </div>
+            ) : (
+              <div className="flex items-center gap-1 text-red-700 dark:text-red-300">
+                <AlertTriangle className="h-3 w-3" />
+                <span className="truncate">{result.error || 'Failed'}</span>
+              </div>
+            )}
+          </div>
+        )}
+
+        <Button
+          onClick={handleSend}
+          disabled={
+            isSending ||
+            !addressValidation?.isValid ||
+            isCheckingRecipient ||
+            !validateAmount(amount) ||
+            !recipientInfo ||
+            recipientInfo.error ||
+            !recipientInfo.has_public_key ||
+            parseFloat(amount) > encryptedBalance.encrypted
+          }
+          className="w-full h-8 text-xs bg-[#0000db] hover:bg-[#0000db]/90"
+          size="sm"
+        >
+          {isSending ? 'Sending...' : 'Send Private'}
+        </Button>
+      </div>
+    );
+  }
+
+  // Full mode
   return (
     <Card className="border-[#0000db]/20">
       <CardHeader>
