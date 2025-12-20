@@ -5,11 +5,10 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, Dialog
 import { DropdownMenu, DropdownMenuContent, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { Avatar } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { 
-  Wallet as WalletIcon, 
   Send, 
   History, 
   Lock,
@@ -21,7 +20,6 @@ import {
   ChevronDown,
   Plus,
   Trash2,
-  Check,
   Wifi,
   Download,
   Menu,
@@ -624,15 +622,17 @@ export function WalletDashboard({
         : ''
     }`}>
       {/* Header */}
-      <header className="octra-header sticky top-0 z-50">
-        <div className="octra-container">
+      <header className="octra-header sticky top-0 z-50 w-full">
+        <div className="w-full px-4">
           <div className="flex items-center justify-between py-2 sm:py-4">
             <div className="flex items-center space-x-4">
               <div className="flex items-center space-x-3">
                 <Avatar className={`${isPopupMode ? 'h-8 w-8' : 'h-10 w-10'}`}>
-                  <AvatarFallback className="bg-primary/10 text-primary border border-primary/20">
-                    <WalletIcon className={`${isPopupMode ? 'h-4 w-4' : 'h-5 w-5'}`} />
-                  </AvatarFallback>
+                  <img 
+                    src={isPopupMode ? "/icons/octwa32x32.png" : "/icons/octwa48x48.png"}
+                    alt="OctWa Logo" 
+                    className="h-full w-full object-contain"
+                  />
                 </Avatar>
                 <div>
                   <h1 className={`${isPopupMode ? 'text-lg' : 'text-xl'} font-semibold text-foreground`}>
@@ -651,7 +651,7 @@ export function WalletDashboard({
                           </div>
                         </Button>
                       </DropdownMenuTrigger>
-                      <DropdownMenuContent align="start" className="w-80 max-h-[70vh] p-0">
+                      <DropdownMenuContent align="start" className={`${isPopupMode ? 'w-72' : 'w-[480px]'} max-h-[70vh] p-0`}>
                         <div className="px-2 pt-1.5 pb-1 text-sm font-medium text-center w-full">
                           Select Wallet ( {wallets.length} )
                         </div>
@@ -664,76 +664,72 @@ export function WalletDashboard({
                           }}
                           className="p-2" // Add your padding here
                         >
-                          {wallets.map((w, i) => (
-                            <div
-                              key={w.address}
-                              className="flex items-center justify-between p-3 rounded-sm hover:bg-accent hover:text-accent-foreground cursor-pointer group"
-                              onClick={() => onSwitchWallet(w)}
-                            >
-                              <div className="flex-1 min-w-0">
-                                <div className="flex items-center space-x-2">
-                                  <span className="font-mono text-sm truncate">
-                                  #{i + 1} {truncateAddress(w.address)}
-                                  </span>
-                                  {w.address === wallet.address && (
-                                    <Check className="h-4 w-4 text-green-500 flex-shrink-0" />
+                          {wallets.map((w, i) => {
+                            const isActive = w.address === wallet.address;
+                            return (
+                              <div
+                                key={w.address}
+                                className={`flex items-center justify-between p-3 rounded-sm cursor-pointer group gap-2 ${
+                                  isActive 
+                                    ? 'bg-[#0000db]/10 border border-[#0000db]/30 text-[#0000db]' 
+                                    : 'hover:bg-accent hover:text-accent-foreground'
+                                }`}
+                                onClick={() => onSwitchWallet(w)}
+                              >
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center space-x-2">
+                                    <span className={`font-mono text-sm ${isPopupMode ? 'truncate' : ''} ${isActive ? 'font-semibold' : ''}`}>
+                                      #{i + 1} {isPopupMode ? truncateAddress(w.address) : w.address}
+                                    </span>
+                                  </div>
+                                  {w.type && (
+                                    <div className={`text-xs mt-1 ${isActive ? 'text-[#0000db]/70' : 'text-muted-foreground'}`}>
+                                      {w.type === 'generated' && 'Generated wallet'}
+                                      {w.type === 'imported-mnemonic' && 'Imported wallet (mnemonic)'}
+                                      {w.type === 'imported-private-key' && 'Imported wallet (private key)'}
+                                    </div>
                                   )}
                                 </div>
-                                {w.type && (
-                                  <div className="text-xs text-muted-foreground mt-1">
-                                    {w.type === 'generated' && 'Generated wallet'}
-                                    {w.type === 'imported-mnemonic' && 'Imported wallet (mnemonic)'}
-                                    {w.type === 'imported-private-key' && 'Imported wallet (private key)'}
-                                  </div>
-                                )}
-                              </div>
-                              <div className="flex items-center space-x-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    copyToClipboard(w.address, 'Address');
-                                  }}
-                                  className="h-6 w-6 p-0 text-muted-foreground hover:text-foreground"
-                                  title="Copy address"
-                                >
-                                  <Copy className="h-3 w-3" />
-                                </Button>
-                                {wallets.length > 1 && (
+                                <div className="flex items-center space-x-1 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
                                   <Button
                                     variant="ghost"
                                     size="sm"
                                     onClick={(e) => {
                                       e.stopPropagation();
-                                      setWalletToDelete(w);
+                                      copyToClipboard(w.address, 'Address');
                                     }}
-                                    className="h-6 w-6 p-0 text-red-500 hover:text-red-700"
-                                    title="Remove wallet"
+                                    className="h-6 w-6 p-0 text-muted-foreground hover:text-foreground"
+                                    title="Copy address"
                                   >
-                                    <Trash2 className="h-3 w-3" />
+                                    <Copy className="h-3 w-3" />
                                   </Button>
-                                )}
+                                  {wallets.length > 1 && (
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setWalletToDelete(w);
+                                      }}
+                                      className="h-6 w-6 p-0 text-red-500 hover:text-red-700"
+                                      title="Remove wallet"
+                                    >
+                                      <Trash2 className="h-3 w-3" />
+                                    </Button>
+                                  )}
+                                </div>
                               </div>
-                            </div>
-                          ))}
+                            );
+                          })}
                           </div>
                         </ScrollArea>
                         <DropdownMenuSeparator />
                         <div
                           onClick={() => setShowAddWalletDialog(true)}
-                          className="flex items-center justify-center space-x-2 p-3 cursor-pointer hover:bg-accent hover:text-accent-foreground rounded-sm mx-1"
+                          className="flex items-center justify-center space-x-2 p-3 cursor-pointer hover:bg-accent hover:text-accent-foreground rounded-sm mx-1 mb-1"
                         >
                           <Plus className="h-4 w-4" />
                           <span>Add Wallet</span>
-                        </div>
-                        <DropdownMenuSeparator />
-                        <div
-                          onClick={() => setShowResetConfirm(true)}
-                          className="flex items-center justify-center space-x-2 p-3 cursor-pointer hover:bg-red-500/10 text-red-500 rounded-sm mx-1 mb-1"
-                        >
-                          <RotateCcw className="h-4 w-4" />
-                          <span>Reset All</span>
                         </div>
                       </DropdownMenuContent>
                     </DropdownMenu>
@@ -892,6 +888,19 @@ export function WalletDashboard({
                           <Lock className="h-4 w-4" />
                           Lock Wallet
                         </Button>
+
+                        {/* Reset All */}
+                        <Button
+                          variant="outline"
+                          onClick={() => {
+                            setShowResetConfirm(true);
+                            setShowMobileMenu(false);
+                          }}
+                          className="w-full justify-start gap-2 text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300"
+                        >
+                          <RotateCcw className="h-4 w-4" />
+                          Reset All
+                        </Button>
                       </div>
                     </SheetContent>
                   </Sheet>
@@ -990,6 +999,15 @@ export function WalletDashboard({
                         </AlertDialogFooter>
                       </AlertDialogContent>
                     </AlertDialog>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setShowResetConfirm(true)}
+                      className="text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 flex items-center gap-2 desktop-only"
+                    >
+                      <RotateCcw className="h-4 w-4" />
+                      Reset All
+                    </Button>
                   </div>
 
                   {/* Mobile Hamburger Menu */}
@@ -1069,6 +1087,19 @@ export function WalletDashboard({
                           >
                             <Lock className="h-4 w-4" />
                             Lock Wallet
+                          </Button>
+
+                          {/* Reset All */}
+                          <Button
+                            variant="outline"
+                            onClick={() => {
+                              setShowResetConfirm(true);
+                              setShowMobileMenu(false);
+                            }}
+                            className="w-full justify-start gap-2 text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300"
+                          >
+                            <RotateCcw className="h-4 w-4" />
+                            Reset All
                           </Button>
                         </div>
                       </SheetContent>
@@ -1396,6 +1427,28 @@ export function WalletDashboard({
 
       {/* Footer Spacer - to prevent content from being hidden behind fixed footer */}
       <div className={`${isPopupMode ? 'h-12' : 'h-10'}`} />
+
+      {/* GitHub Link - Only in expanded mode */}
+      {!isPopupMode && (
+        <a
+          href="https://github.com/m-tq/OctWa"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="fixed bottom-10 left-4 p-2 rounded-full bg-background/80 backdrop-blur-sm border border-border/40 hover:bg-accent transition-colors z-50"
+          title="View on GitHub"
+        >
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            width="20"
+            height="20"
+            viewBox="0 0 24 24"
+            fill="currentColor"
+            className="text-foreground"
+          >
+            <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/>
+          </svg>
+        </a>
+      )}
 
       {/* Footer Credit */}
       <footer className="fixed bottom-0 left-0 right-0 py-2 text-center text-xs text-muted-foreground bg-background/80 backdrop-blur-sm border-t border-border/40">

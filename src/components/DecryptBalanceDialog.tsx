@@ -93,13 +93,13 @@ export function DecryptBalanceDialog({
           <Alert>
             <AlertTriangle className="h-4 w-4" />
             <AlertDescription>
-              Decrypting balance converts private OCT back to public OCT. This operation requires a transaction fee.
+              Decrypting balance converts private OCT back to public OCT.
             </AlertDescription>
           </Alert>
 
           <div className="space-y-2">
             <Label>Current Private Balance</Label>
-            <div className="p-3 bg-muted rounded-md font-mono text-yellow-600">
+            <div className="p-3 bg-[#0000db]/5 border border-[#0000db]/20 rounded-md font-mono text-[#0000db]">
               {encryptedBalance.toFixed(8)} OCT
             </div>
           </div>

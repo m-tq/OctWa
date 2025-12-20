@@ -96,7 +96,7 @@ export function EncryptBalanceDialog({
           <Alert>
             <AlertTriangle className="h-4 w-4" />
             <AlertDescription>
-              Encrypting balance converts public OCT to private OCT. This operation requires a transaction fee.
+              Encrypting balance converts public OCT to private OCT.
             </AlertDescription>
           </Alert>
 
@@ -109,7 +109,7 @@ export function EncryptBalanceDialog({
 
           <div className="space-y-2">
             <Label>Maximum Encryptable</Label>
-            <div className="p-3 bg-[#0000db]/5 border border-[#0000db]/20 rounded-md font-mono text-[#0000db]">
+            <div className="p-3 bg-muted rounded-md font-mono">
               {maxEncryptable.toFixed(8)} OCT
             </div>
             <p className="text-xs text-muted-foreground">

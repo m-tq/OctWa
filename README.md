@@ -1,4 +1,52 @@
-# Octra Wallet Deployment Guide
+# OctWa - Octra Wallet
+
+A secure browser-based wallet for the Octra blockchain network. Available as both a web application and Chrome/Edge browser extension.
+
+## Features
+
+### Wallet Management
+- **Create New Wallet** - Generate a new wallet with secure mnemonic phrase (BIP39)
+- **Import Wallet** - Restore wallet using private key or mnemonic phrase
+- **Multiple Wallets** - Manage multiple wallets in a single interface
+- **Export Private Keys** - Securely export your private keys with password protection
+- **Password Protection** - Encrypt your wallets with a master password
+- **Auto-Lock** - Automatic wallet locking after inactivity for security
+
+### Transactions
+- **Send Transaction** - Send OCT tokens to any address
+- **Multi-Send** - Send tokens to multiple recipients in one transaction
+- **File Multi-Send** - Import recipient list from CSV/TXT file for bulk transfers
+- **Transaction History** - View complete transaction history with status tracking
+
+### Privacy Features (Confidential Transactions)
+- **Public/Private Mode Toggle** - Switch between public and private operation modes
+- **Encrypt Balance** - Convert public balance to encrypted/private balance
+- **Decrypt Balance** - Convert encrypted balance back to public balance
+- **Private Transfer** - Send confidential transactions with encrypted amounts
+- **Claim Transfers** - Claim incoming private transfers
+
+### dApp Integration
+- **Web3 Provider** - Inject `window.octra` provider for dApp connectivity
+- **Connection Approval** - Approve/reject dApp connection requests
+- **Transaction Signing** - Sign transactions requested by dApps
+- **Smart Contract Interaction** - Call and invoke smart contract methods
+- **Connected dApps Manager** - View and manage connected dApps
+
+### Developer SDK
+- **@octwa/sdk** - NPM package for dApp developers to integrate with OctWa
+- **TypeScript Support** - Full type definitions for all SDK methods
+- **Event System** - Subscribe to wallet events (connect, disconnect, accountChanged)
+
+### User Experience
+- **Dark/Light Theme** - Toggle between dark and light themes
+- **Responsive Design** - Works on desktop and mobile browsers
+- **Popup & Expanded View** - Compact popup or full-page expanded interface
+- **RPC Provider Manager** - Configure and switch between RPC endpoints
+- **Connection Status** - Real-time RPC connection status indicator
+
+---
+
+## Deployment Guide
 
 This project ships as both a web app and a Chrome/Edge browser extension. The web app is built with Vite + React, and the extension bundles the same UI with additional background/content/provider scripts.
 

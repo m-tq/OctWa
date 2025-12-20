@@ -6,7 +6,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { GenerateWallet } from './GenerateWallet';
 import { ImportWallet } from './ImportWallet';
 import { PasswordSetup } from './PasswordSetup';
-import { Wallet as WalletIcon, Plus, Download, Info } from 'lucide-react';
+import { Plus, Download, Info } from 'lucide-react';
 import { Wallet } from '../types/wallet';
 
 interface WelcomeScreenProps {
@@ -59,7 +59,11 @@ export function WelcomeScreen({ onWalletCreated }: WelcomeScreenProps) {
         <div className="text-center mb-8 octra-fade-in">
           <div className="flex items-center justify-center mb-6">
             <div className="p-4 bg-primary/10 rounded-full border border-primary/20">
-              <WalletIcon className="h-10 w-10 text-primary" />
+              <img 
+                src="/icons/octwa128x128.png" 
+                alt="OctWa Logo" 
+                className="h-10 w-10"
+              />
             </div>
           </div>
           <h1 className="text-4xl font-bold mb-3 text-foreground">OctWa - Octra Wallet</h1>

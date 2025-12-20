@@ -141,7 +141,7 @@ export function UnifiedHistory({ wallet, transactions, onTransactionsUpdate, isL
 
   const getStatusIcon = (status: string) => {
     switch (status) {
-      case 'confirmed': return <CheckCircle className="h-4 w-4 text-green-500" />;
+      case 'confirmed': return <CheckCircle className="h-4 w-4" style={{ color: '#0000db' }} />;
       case 'pending': return <Clock className="h-4 w-4 text-yellow-500" />;
       case 'failed': return <XCircle className="h-4 w-4 text-red-500" />;
       default: return <Clock className="h-4 w-4 text-gray-500" />;
@@ -478,12 +478,7 @@ function TransferItem({
             </Badge>
           )}
           
-          <div className="flex items-center gap-1">
-            {getStatusIcon(tx.status)}
-            <Badge variant={getStatusColor(tx.status) as any} className="text-xs">
-              {tx.status}
-            </Badge>
-          </div>
+          {getStatusIcon(tx.status)}
         </div>
         <div className="flex items-center gap-1">
           <Button variant="ghost" size="sm" onClick={() => onViewDetails(tx.hash, tx.status === 'pending')}>

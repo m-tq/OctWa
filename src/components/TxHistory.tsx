@@ -190,7 +190,7 @@ export function TxHistory({ wallet, transactions, onTransactionsUpdate, isLoadin
   const getStatusIcon = (status: string) => {
     switch (status) {
       case 'confirmed':
-        return <CheckCircle className="h-4 w-4 text-green-500" />;
+        return <CheckCircle className="h-4 w-4" style={{ color: '#0000db' }} />;
       case 'pending':
         return <Clock className="h-4 w-4 text-yellow-500" />;
       case 'failed':
@@ -316,12 +316,7 @@ export function TxHistory({ wallet, transactions, onTransactionsUpdate, isLoadin
                             <ArrowDownLeft className="h-4 w-4 text-green-500" />
                           )}
                           <span className="font-medium capitalize">{tx.type}</span>
-                          <div className="flex items-center gap-1">
-                            {getStatusIcon(tx.status)}
-                            <Badge variant={getStatusColor(tx.status)} className="text-xs">
-                              {tx.status}
-                            </Badge>
-                          </div>
+                          {getStatusIcon(tx.status)}
                         </div>
                         <div className="flex items-center gap-2">
                           <Dialog>
