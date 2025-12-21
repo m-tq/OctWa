@@ -4,10 +4,11 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Shield, AlertTriangle, Wallet as WalletIcon, CheckCircle, ExternalLink, Copy, Loader2 } from 'lucide-react';
+import { Shield, AlertTriangle, Wallet as WalletIcon, CheckCircle, Loader2 } from 'lucide-react';
 import { Wallet } from '../types/wallet';
 import { fetchEncryptedBalance, createPrivateTransfer, getAddressInfo } from '../utils/api';
 import { useToast } from '@/hooks/use-toast';
+import { TransactionModal, TransactionStatus, TransactionResult } from './TransactionModal';
 
 interface PrivateTransferProps {
   wallet: Wallet | null;
@@ -62,7 +63,9 @@ export function PrivateTransfer({
   const [isCheckingRecipient, setIsCheckingRecipient] = useState(false);
   const [localEncryptedBalance, setLocalEncryptedBalance] = useState<any>(null);
   const [recipientInfo, setRecipientInfo] = useState<any>(null);
-  const [result, setResult] = useState<{ success: boolean; tx_hash?: string; ephemeral_key?: string; error?: string } | null>(null);
+  const [showTxModal, setShowTxModal] = useState(false);
+  const [txModalStatus, setTxModalStatus] = useState<TransactionStatus>('idle');
+  const [txModalResult, setTxModalResult] = useState<TransactionResult>({});
   const { toast } = useToast();
 
   // Use prop if available, otherwise use local state
@@ -121,22 +124,6 @@ export function PrivateTransfer({
   const validateAmount = (amountStr: string) => {
     const num = parseFloat(amountStr);
     return !isNaN(num) && num > 0;
-  };
-
-  const copyToClipboard = async (text: string, label: string) => {
-    try {
-      await navigator.clipboard.writeText(text);
-      toast({
-        title: "Copied!",
-        description: `${label} copied to clipboard`,
-      });
-    } catch (error) {
-      toast({
-        title: "Error",
-        description: "Copy failed",
-        variant: "destructive",
-      });
-    }
   };
 
   const handleSend = async () => {
@@ -198,7 +185,11 @@ export function PrivateTransfer({
     }
 
     setIsSending(true);
-    setResult(null);
+    
+    // Show modal with sending state
+    setTxModalStatus('sending');
+    setTxModalResult({});
+    setShowTxModal(true);
 
     try {
       const transferResult = await createPrivateTransfer(
@@ -208,13 +199,10 @@ export function PrivateTransfer({
         wallet.privateKey
       );
 
-      setResult(transferResult);
-
       if (transferResult.success) {
-        toast({
-          title: "Private Transfer Sent!",
-          description: "Private transfer has been submitted successfully",
-        });
+        // Update modal to success state
+        setTxModalStatus('success');
+        setTxModalResult({ hash: transferResult.tx_hash, amount: amountNum.toFixed(8) });
 
         // Reset form
         setRecipientAddress('');
@@ -226,23 +214,16 @@ export function PrivateTransfer({
 
         onTransactionSuccess();
       } else {
-        toast({
-          title: "Transfer Failed",
-          description: transferResult.error || "Unknown error occurred",
-          variant: "destructive",
-        });
+        // Update modal to error state
+        setTxModalStatus('error');
+        setTxModalResult({ error: transferResult.error || "Unknown error occurred" });
       }
     } catch (error) {
       console.error('Private transfer error:', error);
-      toast({
-        title: "Error",
-        description: "Failed to send private transfer",
-        variant: "destructive",
-      });
-      setResult({
-        success: false,
-        error: error instanceof Error ? error.message : 'Unknown error'
-      });
+      const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+      // Update modal to error state
+      setTxModalStatus('error');
+      setTxModalResult({ error: errorMsg });
     } finally {
       setIsSending(false);
     }
@@ -338,33 +319,6 @@ export function PrivateTransfer({
           />
         </div>
 
-        {/* Result */}
-        {result && (
-          <div className={`rounded p-2 text-xs ${result.success ? 'bg-green-50 dark:bg-green-950/50' : 'bg-red-50 dark:bg-red-950/50'}`}>
-            {result.success ? (
-              <div className="flex items-center gap-1">
-                <CheckCircle className="h-3 w-3 text-green-600" />
-                <span className="text-green-700 dark:text-green-300">Sent!</span>
-                {result.tx_hash && (
-                  <a
-                    href={`https://octrascan.io/tx/${result.tx_hash}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="ml-auto text-blue-600"
-                  >
-                    <ExternalLink className="h-3 w-3" />
-                  </a>
-                )}
-              </div>
-            ) : (
-              <div className="flex items-center gap-1 text-red-700 dark:text-red-300">
-                <AlertTriangle className="h-3 w-3" />
-                <span className="truncate">{result.error || 'Failed'}</span>
-              </div>
-            )}
-          </div>
-        )}
-
         <Button
           onClick={handleSend}
           disabled={
@@ -382,6 +336,15 @@ export function PrivateTransfer({
         >
           {isSending ? 'Sending...' : 'Send Private'}
         </Button>
+
+        {/* Transaction Modal */}
+        <TransactionModal
+          open={showTxModal}
+          onOpenChange={setShowTxModal}
+          status={txModalStatus}
+          result={txModalResult}
+          type="transfer"
+        />
       </div>
     );
   }
@@ -484,79 +447,6 @@ export function PrivateTransfer({
           )}
         </div>
 
-        {/* Transaction Result */}
-        {result && (
-          <div className={`rounded-lg p-4 ${result.success ? 'bg-green-50 border border-green-200 dark:bg-green-950/50 dark:border-green-800' : 'bg-red-50 border border-red-200 dark:bg-red-950/50 dark:border-red-800'}`}>
-            <div className="flex items-start space-x-2">
-              {result.success ? (
-                <CheckCircle className="h-5 w-5 text-green-600 dark:text-green-400 mr-2 mt-0.5 flex-shrink-0" />
-              ) : (
-                <AlertTriangle className="h-5 w-5 text-red-600 dark:text-red-400 mr-2 mt-0.5 flex-shrink-0" />
-              )}
-              <div className="flex-1">
-                <p className={`text-sm font-medium ${result.success ? 'text-green-800 dark:text-green-200' : 'text-red-800 dark:text-red-200'}`}>
-                  {result.success ? 'Private Transfer Sent Successfully!' : 'Private Transfer Failed'}
-                </p>
-                {result.success && result.tx_hash && (
-                  <div className="mt-2 space-y-2">
-                    <div>
-                      <p className="text-green-700 dark:text-green-300 text-sm">Transaction Hash:</p>
-                      <div className="flex flex-col sm:flex-row sm:items-center mt-1 space-y-1 sm:space-y-0 sm:space-x-2">
-                        <code className="text-xs bg-green-100 dark:bg-green-900/50 px-2 py-1 rounded font-mono break-all text-green-800 dark:text-green-200 flex-1">
-                          {result.tx_hash}
-                        </code>
-                        <div className="flex space-x-1">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => copyToClipboard(result.tx_hash!, 'Transaction Hash')}
-                            className="h-6 w-6 p-0"
-                          >
-                            <Copy className="h-3 w-3" />
-                          </Button>
-                          <a
-                            href={`https://octrascan.io/tx/${result.tx_hash}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="inline-flex items-center justify-center h-6 w-6 text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 transition-colors"
-                            title="View on OctraScan"
-                          >
-                            <ExternalLink className="h-3 w-3" />
-                          </a>
-                        </div>
-                      </div>
-                    </div>
-                    {result.ephemeral_key && (
-                      <div>
-                        <p className="text-green-700 dark:text-green-300 text-sm">Ephemeral Key:</p>
-                        <div className="flex flex-col sm:flex-row sm:items-center mt-1 space-y-1 sm:space-y-0 sm:space-x-2">
-                          <code className="text-xs bg-green-100 dark:bg-green-900/50 px-2 py-1 rounded font-mono break-all text-green-800 dark:text-green-200 flex-1">
-                            {result.ephemeral_key}
-                          </code>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => copyToClipboard(result.ephemeral_key!, 'Ephemeral Key')}
-                            className="h-6 w-6 p-0"
-                          >
-                            <Copy className="h-3 w-3" />
-                          </Button>
-                        </div>
-                      </div>
-                    )}
-                    <p className="text-green-700 dark:text-green-300 text-sm">
-                      Recipient can claim in next epoch
-                    </p>
-                  </div>
-                )}
-                {result.error && (
-                  <p className="text-red-700 dark:text-red-300 text-sm mt-1 break-words">{result.error}</p>
-                )}
-              </div>
-            </div>
-          </div>
-        )}
-
         <Button 
           onClick={handleSend}
           disabled={
@@ -584,6 +474,15 @@ export function PrivateTransfer({
             </>
           )}
         </Button>
+
+        {/* Transaction Modal */}
+        <TransactionModal
+          open={showTxModal}
+          onOpenChange={setShowTxModal}
+          status={txModalStatus}
+          result={txModalResult}
+          type="transfer"
+        />
       </CardContent>
     </Card>
   );

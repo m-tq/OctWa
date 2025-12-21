@@ -97,16 +97,16 @@ export function TxHistory({ wallet, transactions, onTransactionsUpdate, isLoadin
     setRefreshing(true);
     
     try {
-      const historyData = await getTransactionHistory(wallet.address);
+      const result = await getTransactionHistory(wallet.address);
       
-      if (!Array.isArray(historyData)) {
-        console.error('Transaction history data is not an array:', historyData);
+      if (!Array.isArray(result.transactions)) {
+        console.error('Transaction history data is not an array:', result);
         onTransactionsUpdate([]);
         return;
       }
       
       // Transform the data to match our interface
-      const transformedTxs = historyData.map((tx) => ({
+      const transformedTxs = result.transactions.map((tx) => ({
         ...tx,
         type: tx.from?.toLowerCase() === wallet.address.toLowerCase() ? 'sent' : 'received'
       } as Transaction));

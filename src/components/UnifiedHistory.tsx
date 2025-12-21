@@ -19,7 +19,9 @@ import {
   XCircle,
   Shield,
   Code,
-  Zap
+  Zap,
+  ChevronLeft,
+  ChevronRight
 } from 'lucide-react';
 import { Wallet } from '../types/wallet';
 import { getTransactionHistory, fetchTransactionDetails, fetchPendingTransactionByHash } from '../utils/api';
@@ -32,6 +34,8 @@ import {
   getUnifiedHistory,
   isPrivateTransfer
 } from '../utils/historyMerge';
+
+const PAGE_SIZE = 20;
 
 interface UnifiedHistoryProps {
   wallet: Wallet | null;
@@ -48,6 +52,8 @@ export function UnifiedHistory({ wallet, transactions, onTransactionsUpdate, isL
   const [showDetailsDialog, setShowDetailsDialog] = useState(false);
   const [contractHistory, setContractHistory] = useState<ContractInteraction[]>([]);
   const [activeFilter, setActiveFilter] = useState<HistoryFilter>('all');
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
   const { toast } = useToast();
 
   // Load contract history when wallet changes
@@ -72,13 +78,17 @@ export function UnifiedHistory({ wallet, transactions, onTransactionsUpdate, isL
     }
   };
 
-  const fetchTransactions = async () => {
+  const fetchTransactions = async (page: number = 1) => {
     if (!wallet) return;
     
     setRefreshing(true);
     
     try {
-      const historyData = await getTransactionHistory(wallet.address);
+      const offset = (page - 1) * PAGE_SIZE;
+      const result = await getTransactionHistory(wallet.address, { limit: PAGE_SIZE, offset });
+      
+      const historyData = result.transactions;
+      setTotalCount(result.totalCount);
       
       if (!Array.isArray(historyData)) {
         onTransactionsUpdate([]);
@@ -101,6 +111,11 @@ export function UnifiedHistory({ wallet, transactions, onTransactionsUpdate, isL
     } finally {
       setRefreshing(false);
     }
+  };
+
+  const handlePageChange = (newPage: number) => {
+    setCurrentPage(newPage);
+    fetchTransactions(newPage);
   };
 
   const fetchTxDetails = async (hash: string, isPending: boolean = false) => {
@@ -168,14 +183,19 @@ export function UnifiedHistory({ wallet, transactions, onTransactionsUpdate, isL
   return (
     <Card>
       <CardHeader className={`flex flex-row items-center justify-between space-y-0 ${isPopupMode ? 'pb-2 px-3 pt-3' : 'pb-4'}`}>
-        <CardTitle className={`flex items-center gap-2 ${isPopupMode ? 'text-sm' : ''}`}>
-          <History className={isPopupMode ? 'h-4 w-4' : 'h-5 w-5'} />
-          History
-          {pendingCount > 0 && (
-            <Badge variant="secondary" className={isPopupMode ? 'ml-1 text-[10px]' : 'ml-2'}>{pendingCount}</Badge>
-          )}
-        </CardTitle>
-        <Button variant="outline" size="sm" onClick={fetchTransactions} disabled={refreshing} className={isPopupMode ? 'h-7 px-2' : ''}>
+        <div className="flex flex-col gap-0.5">
+          <CardTitle className={`flex items-center gap-2 ${isPopupMode ? 'text-sm' : ''}`}>
+            <History className={isPopupMode ? 'h-4 w-4' : 'h-5 w-5'} />
+            History
+            {pendingCount > 0 && (
+              <Badge variant="secondary" className={isPopupMode ? 'ml-1 text-[10px]' : 'ml-2'}>{pendingCount}</Badge>
+            )}
+          </CardTitle>
+          <span className={`text-muted-foreground ${isPopupMode ? 'text-[10px]' : 'text-xs'}`}>
+            {isPopupMode ? `Last ${PAGE_SIZE} tx` : `Last ${PAGE_SIZE} transactions per page`}
+          </span>
+        </div>
+        <Button variant="outline" size="sm" onClick={() => { setCurrentPage(1); fetchTransactions(1); }} disabled={refreshing} className={isPopupMode ? 'h-7 px-2' : ''}>
           <RefreshCw className={`${isPopupMode ? 'h-3 w-3' : 'h-4 w-4'} ${isPopupMode ? '' : 'mr-2'} ${refreshing ? 'animate-spin' : ''}`} />
           {!isPopupMode && 'Refresh'}
         </Button>
@@ -250,6 +270,38 @@ export function UnifiedHistory({ wallet, transactions, onTransactionsUpdate, isL
                 )}
               </div>
             ))}
+          </div>
+        )}
+
+        {/* Pagination Controls */}
+        {totalCount > PAGE_SIZE && (
+          <div className={`flex items-center justify-between ${isPopupMode ? 'mt-2 pt-2' : 'mt-4 pt-4'} border-t`}>
+            <div className={`text-muted-foreground ${isPopupMode ? 'text-[10px]' : 'text-xs'}`}>
+              {isPopupMode 
+                ? `${currentPage}/${Math.ceil(totalCount / PAGE_SIZE)}`
+                : `Page ${currentPage} of ${Math.ceil(totalCount / PAGE_SIZE)} (${totalCount} total)`
+              }
+            </div>
+            <div className="flex items-center gap-1">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => handlePageChange(currentPage - 1)}
+                disabled={currentPage === 1 || refreshing}
+                className={isPopupMode ? 'h-6 w-6 p-0' : 'h-8 px-2'}
+              >
+                <ChevronLeft className={isPopupMode ? 'h-3 w-3' : 'h-4 w-4'} />
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => handlePageChange(currentPage + 1)}
+                disabled={currentPage >= Math.ceil(totalCount / PAGE_SIZE) || refreshing}
+                className={isPopupMode ? 'h-6 w-6 p-0' : 'h-8 px-2'}
+              >
+                <ChevronRight className={isPopupMode ? 'h-3 w-3' : 'h-4 w-4'} />
+              </Button>
+            </div>
           </div>
         )}
 
@@ -419,7 +471,7 @@ function TransferItem({
   // Popup mode: simplified compact view
   if (isPopupMode) {
     return (
-      <div className="flex items-center justify-between gap-2">
+      <div className="relative flex items-center justify-between gap-2">
         <div className="flex items-center gap-2 flex-1 min-w-0">
           {tx.type === 'sent' ? (
             <ArrowUpRight className="h-3.5 w-3.5 text-red-500 flex-shrink-0" />
@@ -450,6 +502,19 @@ function TransferItem({
                 <ExternalLink className="h-3.5 w-3.5" />
               </a>
             </Button>
+          )}
+        </div>
+        {/* Type Badge - Bottom Right for popup */}
+        <div className="absolute -bottom-1 right-0">
+          {isPrivate ? (
+            <Badge className="bg-[#0000db] text-white text-[8px] px-1 py-0">
+              <Shield className="h-2 w-2 mr-0.5" />
+              Private
+            </Badge>
+          ) : (
+            <Badge variant="outline" className="text-[8px] px-1 py-0">
+              Account
+            </Badge>
           )}
         </div>
       </div>

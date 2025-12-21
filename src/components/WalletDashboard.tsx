@@ -206,10 +206,10 @@ export function WalletDashboard({
       try {
         // Fetch transaction history
         setIsLoadingTransactions(true);
-        const historyData = await getTransactionHistory(wallet.address);
+        const result = await getTransactionHistory(wallet.address);
         
-        if (Array.isArray(historyData)) {
-          const transformedTxs = historyData.map((tx) => ({
+        if (Array.isArray(result.transactions)) {
+          const transformedTxs = result.transactions.map((tx) => ({
             ...tx,
             type: tx.from?.toLowerCase() === wallet.address.toLowerCase() ? 'sent' : 'received'
           } as Transaction));
@@ -268,10 +268,10 @@ export function WalletDashboard({
       
       // Fetch transaction history
       try {
-        const historyData = await getTransactionHistory(wallet.address);
+        const result = await getTransactionHistory(wallet.address);
         
-        if (Array.isArray(historyData)) {
-          const transformedTxs = historyData.map((tx) => ({
+        if (Array.isArray(result.transactions)) {
+          const transformedTxs = result.transactions.map((tx) => ({
             ...tx,
             type: tx.from?.toLowerCase() === wallet.address.toLowerCase() ? 'sent' : 'received'
           } as Transaction));
@@ -640,10 +640,10 @@ export function WalletDashboard({
         setNonce(balanceData.nonce);
 
         // Refresh transaction history
-        const historyData = await getTransactionHistory(wallet.address);
+        const result = await getTransactionHistory(wallet.address);
         
-        if (Array.isArray(historyData)) {
-          const transformedTxs = historyData.map((tx) => ({
+        if (Array.isArray(result.transactions)) {
+          const transformedTxs = result.transactions.map((tx) => ({
             ...tx,
             type: tx.from?.toLowerCase() === wallet.address.toLowerCase() ? 'sent' : 'received'
           } as Transaction));

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -8,10 +8,11 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Separator } from '@/components/ui/separator';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
-import { Send, AlertTriangle, Wallet as WalletIcon, CheckCircle, ExternalLink, Copy, MessageSquare, Calculator, Settings2 } from 'lucide-react';
+import { Send, AlertTriangle, Wallet as WalletIcon, CheckCircle, MessageSquare, Calculator, Settings2 } from 'lucide-react';
 import { Wallet } from '../types/wallet';
 import { fetchBalance, sendTransaction, createTransaction } from '../utils/api';
 import { useToast } from '@/hooks/use-toast';
+import { TransactionModal, TransactionStatus, TransactionResult } from './TransactionModal';
 
 // Threshold for confirmation dialog (500 OCT)
 const LARGE_TRANSACTION_THRESHOLD = 500;
@@ -59,8 +60,10 @@ export function SendTransaction({ wallet, balance, nonce, onBalanceUpdate, onNon
   const [ouOption, setOuOption] = useState<string>('auto');
   const [customOu, setCustomOu] = useState('');
   const [isSending, setIsSending] = useState(false);
-  const [result, setResult] = useState<{ success: boolean; hash?: string; error?: string } | null>(null);
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
+  const [showTxModal, setShowTxModal] = useState(false);
+  const [txModalStatus, setTxModalStatus] = useState<TransactionStatus>('idle');
+  const [txModalResult, setTxModalResult] = useState<TransactionResult>({});
   const { toast } = useToast();
 
   // Get OU value based on selection
@@ -182,7 +185,11 @@ export function SendTransaction({ wallet, balance, nonce, onBalanceUpdate, onNon
     
     setShowConfirmDialog(false);
     setIsSending(true);
-    setResult(null);
+    
+    // Show modal with sending state
+    setTxModalStatus('sending');
+    setTxModalResult({});
+    setShowTxModal(true);
 
     const amountNum = parseFloat(amount);
 
@@ -204,13 +211,11 @@ export function SendTransaction({ wallet, balance, nonce, onBalanceUpdate, onNon
 
       const sendResult = await sendTransaction(transaction);
 
-      setResult(sendResult);
-
       if (sendResult.success) {
-        toast({
-          title: "Transaction Sent!",
-          description: "Transaction has been submitted successfully",
-        });
+        // Update modal to success state
+        setTxModalStatus('success');
+        setTxModalResult({ hash: sendResult.hash, amount: amountNum.toFixed(8) });
+        
         // Reset OU to auto on success
         setOuOption('auto');
         setCustomOu('');
@@ -237,37 +242,20 @@ export function SendTransaction({ wallet, balance, nonce, onBalanceUpdate, onNon
         onTransactionSuccess();
       } else {
         const errorMsg = sendResult.error || "Unknown error occurred";
-        const ouSuggestion = errorMsg.toLowerCase().includes('gas') || 
-                            errorMsg.toLowerCase().includes('ou') ||
-                            errorMsg.toLowerCase().includes('insufficient') ||
-                            errorMsg.toLowerCase().includes('failed')
-          ? " Try adjusting the OU (gas) value in Advanced Settings."
-          : "";
-        toast({
-          title: "Transaction Failed",
-          description: errorMsg + ouSuggestion,
-          variant: "destructive",
-        });
+        // Update modal to error state
+        setTxModalStatus('error');
+        setTxModalResult({ error: errorMsg });
       }
     } catch (error) {
       console.error('Send transaction error:', error);
       const errorMsg = error instanceof Error ? error.message : 'Unknown error';
-      toast({
-        title: "Error",
-        description: `Failed to send transaction. ${errorMsg}. Try adjusting the OU (gas) value.`,
-        variant: "destructive",
-      });
-      setResult({
-        success: false,
-        error: errorMsg + ". Try adjusting the OU (gas) value in Advanced Settings."
-      });
+      // Update modal to error state
+      setTxModalStatus('error');
+      setTxModalResult({ error: errorMsg });
     } finally {
       setIsSending(false);
     }
   };
-
-  // Legacy handler for backward compatibility
-  const handleSend = handleSendClick;
 
   if (!wallet) {
     return (
@@ -355,33 +343,6 @@ export function SendTransaction({ wallet, balance, nonce, onBalanceUpdate, onNon
           </div>
         )}
 
-        {/* Result */}
-        {result && (
-          <div className={`rounded p-2 text-xs ${result.success ? 'bg-green-50 dark:bg-green-950/50' : 'bg-red-50 dark:bg-red-950/50'}`}>
-            {result.success ? (
-              <div className="flex items-center gap-1">
-                <CheckCircle className="h-3 w-3 text-green-600" />
-                <span className="text-green-700 dark:text-green-300">Sent!</span>
-                {result.hash && (
-                  <a
-                    href={`https://octrascan.io/tx/${result.hash}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="ml-auto text-blue-600"
-                  >
-                    <ExternalLink className="h-3 w-3" />
-                  </a>
-                )}
-              </div>
-            ) : (
-              <div className="flex items-center gap-1 text-red-700 dark:text-red-300">
-                <AlertTriangle className="h-3 w-3" />
-                <span className="truncate">{result.error || 'Failed'}</span>
-              </div>
-            )}
-          </div>
-        )}
-
         <Button
           onClick={handleSendClick}
           disabled={
@@ -411,6 +372,15 @@ export function SendTransaction({ wallet, balance, nonce, onBalanceUpdate, onNon
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
+
+        {/* Transaction Modal */}
+        <TransactionModal
+          open={showTxModal}
+          onOpenChange={setShowTxModal}
+          status={txModalStatus}
+          result={txModalResult}
+          type="send"
+        />
       </div>
     );
   }
@@ -582,56 +552,6 @@ export function SendTransaction({ wallet, balance, nonce, onBalanceUpdate, onNon
           </div>
         )}
 
-        {/* Transaction Result */}
-        {result && (
-          <div className={`rounded-lg p-4 ${result.success ? 'bg-green-50 border border-green-200 dark:bg-green-950/50 dark:border-green-800' : 'bg-red-50 border border-red-200 dark:bg-red-950/50 dark:border-red-800'}`}>
-            <div className="flex items-start space-x-2">
-              {result.success ? (
-                <CheckCircle className="h-5 w-5 text-green-600 dark:text-green-400 mr-2 mt-0.5 flex-shrink-0" />
-              ) : (
-                <AlertTriangle className="h-5 w-5 text-red-600 dark:text-red-400 mr-2 mt-0.5 flex-shrink-0" />
-              )}
-              <div className="flex-1">
-                <p className={`text-sm font-medium ${result.success ? 'text-green-800 dark:text-green-200' : 'text-red-800 dark:text-red-200'}`}>
-                  {result.success ? 'Transaction Sent Successfully!' : 'Transaction Failed'}
-                </p>
-                {result.success && result.hash && (
-                  <div className="mt-2">
-                    <p className="text-green-700 dark:text-green-300 text-sm">Transaction Hash:</p>
-                    <div className="flex flex-col sm:flex-row sm:items-center mt-1 space-y-1 sm:space-y-0 sm:space-x-2">
-                      <code className="text-xs bg-green-100 dark:bg-green-900/50 px-2 py-1 rounded font-mono break-all text-green-800 dark:text-green-200 flex-1">
-                        {result.hash}
-                      </code>
-                      <div className="flex space-x-1">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => copyToClipboard(result.hash!, 'Transaction Hash')}
-                          className="h-6 w-6 p-0"
-                        >
-                          <Copy className="h-3 w-3" />
-                        </Button>
-                        <a
-                          href={`https://octrascan.io/tx/${result.hash}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="inline-flex items-center justify-center h-6 w-6 text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 transition-colors"
-                          title="View on OctraScan"
-                        >
-                          <ExternalLink className="h-3 w-3" />
-                        </a>
-                      </div>
-                    </div>
-                  </div>
-                )}
-                {result.error && (
-                  <p className="text-red-700 dark:text-red-300 text-sm mt-1 break-words">{result.error}</p>
-                )}
-              </div>
-            </div>
-          </div>
-        )}
-
         <Button 
           onClick={handleSendClick}
           disabled={
@@ -692,6 +612,15 @@ export function SendTransaction({ wallet, balance, nonce, onBalanceUpdate, onNon
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
+
+        {/* Transaction Modal */}
+        <TransactionModal
+          open={showTxModal}
+          onOpenChange={setShowTxModal}
+          status={txModalStatus}
+          result={txModalResult}
+          type="send"
+        />
       </CardContent>
     </Card>
   );

@@ -193,11 +193,16 @@ export async function sendTransaction(transaction: Transaction): Promise<{ succe
 }
 
 // Update fetchTransactionHistory to handle errors better
-export async function fetchTransactionHistory(address: string): Promise<AddressHistoryResponse> {
+export async function fetchTransactionHistory(
+  address: string, 
+  options: HistoryPaginationOptions = {}
+): Promise<AddressHistoryResponse & { totalCount: number }> {
+  const { limit = 20, offset = 0 } = options;
+  
   try {
     // Fetch both confirmed and pending transactions
     const [confirmedResponse, pendingTransactions] = await Promise.all([
-      makeAPIRequest(`/address/${address}`),
+      makeAPIRequest(`/address/${address}?limit=${limit}&offset=${offset}`),
       fetchPendingTransactions(address).catch(() => []) // Return empty array on error
     ]);
     
@@ -207,7 +212,8 @@ export async function fetchTransactionHistory(address: string): Promise<AddressH
       // Return empty history instead of throwing
       return {
         transactions: [],
-        balance: 0
+        balance: 0,
+        totalCount: 0
       };
     }
     
@@ -218,7 +224,8 @@ export async function fetchTransactionHistory(address: string): Promise<AddressH
       console.error('Failed to parse transaction history JSON:', parseError);
       return {
         transactions: [],
-        balance: 0
+        balance: 0,
+        totalCount: 0
       };
     }
     
@@ -266,21 +273,23 @@ export async function fetchTransactionHistory(address: string): Promise<AddressH
     }));
     
     // Combine and sort by timestamp (newest first)
-    const allTransactions = [...pendingTransactionsFormatted, ...confirmedTransactions]
+    // Only include pending transactions on first page (offset 0)
+    const pendingToInclude = offset === 0 ? pendingTransactionsFormatted : [];
+    const allTransactions = [...pendingToInclude, ...confirmedTransactions]
       .sort((a, b) => b.timestamp - a.timestamp);
     
-    const result: AddressHistoryResponse = {
+    return {
       transactions: allTransactions,
-      balance: parseFloat(apiData.balance)
+      balance: parseFloat(apiData.balance),
+      totalCount: apiData.transaction_count || 0
     };
-    
-    return result;
   } catch (error) {
     console.error('Error fetching transaction history:', error);
     // Return empty history instead of throwing
     return {
       transactions: [],
-      balance: 0
+      balance: 0,
+      totalCount: 0
     };
   }
 }
@@ -759,6 +768,12 @@ interface AddressApiResponse {
   }>;
 }
 
+// Pagination options for transaction history
+export interface HistoryPaginationOptions {
+  limit?: number;
+  offset?: number;
+}
+
 // Wrapper functions for compatibility with existing components
 export async function getBalance(address: string): Promise<number> {
   try {
@@ -798,13 +813,18 @@ export async function sendMultipleTransactions(transactions: any[]): Promise<str
   }
 }
 
-export async function getTransactionHistory(address: string): Promise<any[]> {
+export async function getTransactionHistory(
+  address: string, 
+  options: HistoryPaginationOptions = {}
+): Promise<{ transactions: any[]; totalCount: number }> {
   try {
-    const result = await fetchTransactionHistory(address);
-    return result.transactions || [];
+    const result = await fetchTransactionHistory(address, options);
+    return { 
+      transactions: result.transactions || [], 
+      totalCount: result.totalCount || 0 
+    };
   } catch (error) {
     console.error('Error fetching transaction history:', error);
-    // Return empty array instead of mock data
-    return [];
+    return { transactions: [], totalCount: 0 };
   }
 }

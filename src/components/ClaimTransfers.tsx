@@ -9,6 +9,7 @@ import { Wallet } from '../types/wallet';
 import { getPendingPrivateTransfers, claimPrivateTransfer, fetchEncryptedBalance } from '../utils/api';
 import { deriveSharedSecretForClaim, decryptPrivateAmount } from '../utils/crypto';
 import { useToast } from '@/hooks/use-toast';
+import { TransactionModal, TransactionStatus, TransactionResult } from './TransactionModal';
 
 function julianToDate(jd: number): Date {
   const JD_UNIX_EPOCH = 2440587.5; // Julian Date of Unix epoch 1970-01-01
@@ -27,6 +28,9 @@ export function ClaimTransfers({ wallet, onTransactionSuccess, isPopupMode = fal
   const [isLoading, setIsLoading] = useState(false);
   const [claimingId, setClaimingId] = useState<string | null>(null);
   const [claimingAll, setClaimingAll] = useState(false);
+  const [showTxModal, setShowTxModal] = useState(false);
+  const [txModalStatus, setTxModalStatus] = useState<TransactionStatus>('idle');
+  const [txModalResult, setTxModalResult] = useState<TransactionResult>({});
   const { toast } = useToast();
 
   const fetchTransfers = async () => {
@@ -84,14 +88,18 @@ export function ClaimTransfers({ wallet, onTransactionSuccess, isPopupMode = fal
     
     setClaimingId(transferId);
     
+    // Show modal with claiming state
+    setTxModalStatus('sending');
+    setTxModalResult({});
+    setShowTxModal(true);
+    
     try {
       const result = await claimPrivateTransfer(wallet.address, wallet.privateKey, transferId);
       
       if (result.success) {
-        toast({
-          title: "Transfer Claimed!",
-          description: `Successfully claimed ${result.amount || 'transfer'}`,
-        });
+        // Update modal to success state
+        setTxModalStatus('success');
+        setTxModalResult({ amount: result.amount });
         
         // Refresh transfers list
         await fetchTransfers();
@@ -99,19 +107,16 @@ export function ClaimTransfers({ wallet, onTransactionSuccess, isPopupMode = fal
         // Notify parent component
         onTransactionSuccess();
       } else {
-        toast({
-          title: "Claim Failed",
-          description: result.error || "Unknown error occurred",
-          variant: "destructive",
-        });
+        // Update modal to error state
+        setTxModalStatus('error');
+        setTxModalResult({ error: result.error || "Unknown error occurred" });
       }
     } catch (error) {
       console.error('Claim error:', error);
-      toast({
-        title: "Error",
-        description: "Failed to claim transfer",
-        variant: "destructive",
-      });
+      const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+      // Update modal to error state
+      setTxModalStatus('error');
+      setTxModalResult({ error: errorMsg });
     } finally {
       setClaimingId(null);
     }
@@ -329,6 +334,15 @@ export function ClaimTransfers({ wallet, onTransactionSuccess, isPopupMode = fal
             ))}
           </div>
         )}
+
+        {/* Transaction Modal */}
+        <TransactionModal
+          open={showTxModal}
+          onOpenChange={setShowTxModal}
+          status={txModalStatus}
+          result={txModalResult}
+          type="claim"
+        />
       </CardContent>
     </Card>
   );
