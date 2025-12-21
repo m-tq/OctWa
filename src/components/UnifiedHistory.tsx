@@ -195,7 +195,8 @@ export function UnifiedHistory({ wallet, transactions, onTransactionsUpdate, isL
     const checkScrollPosition = () => {
       const { scrollTop, scrollHeight, clientHeight } = scrollContainer;
       const isAtTop = scrollTop < 50;
-      const isAtBottom = scrollTop + clientHeight >= scrollHeight - 50;
+      // Only hide scroll down when truly at bottom (within 20px)
+      const isAtBottom = scrollTop + clientHeight >= scrollHeight - 20;
       const hasScrollableContent = scrollHeight > clientHeight;
 
       // Show down arrow if not at bottom and has scrollable content
@@ -231,7 +232,7 @@ export function UnifiedHistory({ wallet, transactions, onTransactionsUpdate, isL
             )}
           </CardTitle>
           <span className={`text-muted-foreground ${isPopupMode ? 'text-[10px]' : 'text-xs'}`}>
-            {isPopupMode ? `Last ${PAGE_SIZE} tx` : `Last ${PAGE_SIZE} transactions per page`}
+            {isPopupMode ? `Last ${PAGE_SIZE} tx` : `Last ${PAGE_SIZE} transactions`}
           </span>
         </div>
         <Button variant="outline" size="sm" onClick={() => { setCurrentPage(1); fetchTransactions(1); }} disabled={refreshing} className={isPopupMode ? 'h-7 px-2' : ''}>
@@ -284,7 +285,7 @@ export function UnifiedHistory({ wallet, transactions, onTransactionsUpdate, isL
             <AlertDescription>No history found for this filter.</AlertDescription>
           </Alert>
         ) : (
-          <div ref={historyListRef} className={`${isPopupMode ? 'space-y-2' : 'space-y-3'}`}>
+          <div ref={historyListRef} className={`${isPopupMode ? 'space-y-2 mb-[110px]' : 'space-y-3'}`}>
             {unifiedHistory.map((item) => (
               <div key={item.id} className={`border rounded-lg ${isPopupMode ? 'p-2' : 'p-3'} space-y-2`}>
                 {item.type === 'transfer' && item.transaction && (
@@ -312,18 +313,18 @@ export function UnifiedHistory({ wallet, transactions, onTransactionsUpdate, isL
           </div>
         )}
 
-        {/* Scroll Up Indicator - Fixed at top for Popup Mode */}
+        {/* Scroll Up Indicator - Fixed below header for Popup Mode */}
         {isPopupMode && showScrollUpIndicator && (
           <div
-            className="fixed top-[120px] left-1/2 -translate-x-1/2 z-30 animate-bounce cursor-pointer"
+            className="fixed top-[100px] left-1/2 -translate-x-1/2 z-[100] animate-bounce cursor-pointer"
             onClick={() => {
               const scrollContainer = document.querySelector('.popup-container');
               if (scrollContainer) {
-                scrollContainer.scrollBy({ top: -200, behavior: 'smooth' });
+                scrollContainer.scrollBy({ top: -250, behavior: 'smooth' });
               }
             }}
           >
-            <div className="flex flex-col items-center text-muted-foreground bg-background/80 backdrop-blur-sm px-3 py-1 rounded-full border border-border/50 shadow-sm">
+            <div className="flex flex-col items-center text-muted-foreground bg-background/90 backdrop-blur-sm px-3 py-1.5 rounded-full border border-border shadow-md">
               <ChevronUp className="h-4 w-4" />
             </div>
           </div>
@@ -332,16 +333,15 @@ export function UnifiedHistory({ wallet, transactions, onTransactionsUpdate, isL
         {/* Scroll Down Indicator - Fixed above footer for Popup Mode */}
         {isPopupMode && showScrollIndicator && (
           <div
-            className="fixed bottom-[40px] left-1/2 -translate-x-1/2 z-30 animate-bounce cursor-pointer"
+            className="fixed bottom-[110px] left-1/2 -translate-x-1/2 z-[100] animate-bounce cursor-pointer"
             onClick={() => {
-              // popup-container is the actual scrollable element in extension popup
               const scrollContainer = document.querySelector('.popup-container');
               if (scrollContainer) {
                 scrollContainer.scrollBy({ top: 200, behavior: 'smooth' });
               }
             }}
           >
-            <div className="flex flex-col items-center text-muted-foreground bg-background/80 backdrop-blur-sm px-3 py-1 rounded-full border border-border/50 shadow-sm">
+            <div className="flex flex-col items-center text-muted-foreground bg-background/90 backdrop-blur-sm px-3 py-1.5 rounded-full border border-border shadow-md">
               <ChevronDown className="h-4 w-4" />
             </div>
           </div>
