@@ -9,7 +9,8 @@ import { Badge } from '@/components/ui/badge';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Upload, FileText, AlertTriangle, Wallet as WalletIcon, CheckCircle, ExternalLink, Copy, Zap, Trash2, Settings2 } from 'lucide-react';
+import { Dialog, DialogContent } from '@/components/ui/dialog';
+import { Upload, FileText, AlertTriangle, Wallet as WalletIcon, CheckCircle, Zap, Trash2, Settings2, Loader2, XCircle } from 'lucide-react';
 import { Wallet } from '../types/wallet';
 import { fetchBalance, sendTransaction, createTransaction } from '../utils/api';
 import { useToast } from '@/hooks/use-toast';
@@ -60,6 +61,9 @@ export function FileMultiSend({ wallet, balance, onBalanceUpdate, onNonceUpdate,
   const [amountMode, setAmountMode] = useState<'same' | 'different'>('same');
   const [ouOption, setOuOption] = useState<string>('auto');
   const [customOu, setCustomOu] = useState('');
+  const [showTxModal, setShowTxModal] = useState(false);
+  const [txProgress, setTxProgress] = useState({ current: 0, total: 0 });
+  const [txModalStatus, setTxModalStatus] = useState<'sending' | 'success' | 'error' | 'partial'>('sending');
 
   // Get OU value based on selection
   const getOuValue = (amount: number): number | undefined => {
@@ -76,22 +80,6 @@ export function FileMultiSend({ wallet, balance, onBalanceUpdate, onNonceUpdate,
 
   const calculateFee = (amount: number) => {
     return amount < 1000 ? 0.001 : 0.003;
-  };
-
-  const copyToClipboard = async (text: string, label: string) => {
-    try {
-      await navigator.clipboard.writeText(text);
-      toast({
-        title: "Copied!",
-        description: `${label} copied to clipboard`,
-      });
-    } catch (error) {
-      toast({
-        title: "Error",
-        description: "Copy failed",
-        variant: "destructive",
-      });
-    }
   };
 
   const validateAmount = (amountStr: string) => {
@@ -315,6 +303,9 @@ export function FileMultiSend({ wallet, balance, onBalanceUpdate, onNonceUpdate,
 
     setIsSending(true);
     setResults([]);
+    setShowTxModal(true);
+    setTxModalStatus('sending');
+    setTxProgress({ current: 0, total: validRecipients.length });
 
     try {
       // Refresh nonce before sending
@@ -323,8 +314,10 @@ export function FileMultiSend({ wallet, balance, onBalanceUpdate, onNonceUpdate,
 
       const sendResults: Array<{ success: boolean; hash?: string; error?: string; recipient: string; amount: string }> = [];
 
-      for (const recipient of validRecipients) {
+      for (let i = 0; i < validRecipients.length; i++) {
+        const recipient = validRecipients[i];
         const amount = parseFloat(recipient.amount);
+        setTxProgress({ current: i + 1, total: validRecipients.length });
         
         try {
           const transaction = createTransaction(
@@ -365,10 +358,11 @@ export function FileMultiSend({ wallet, balance, onBalanceUpdate, onNonceUpdate,
       const failCount = sendResults.length - successCount;
 
       if (successCount > 0) {
-        toast({
-          title: "Transactions Sent!",
-          description: `${successCount} transaction(s) sent successfully${failCount > 0 ? `, ${failCount} failed` : ''}`,
-        });
+        if (failCount === 0) {
+          setTxModalStatus('success');
+        } else {
+          setTxModalStatus('partial');
+        }
 
         // Update nonce and balance
         onNonceUpdate(currentNonce);
@@ -389,19 +383,11 @@ export function FileMultiSend({ wallet, balance, onBalanceUpdate, onNonceUpdate,
           onTransactionSuccess();
         }
       } else {
-        toast({
-          title: "All Transactions Failed",
-          description: "No transactions were sent successfully",
-          variant: "destructive",
-        });
+        setTxModalStatus('error');
       }
     } catch (error) {
       console.error('File multi-send error:', error);
-      toast({
-        title: "Error",
-        description: "Failed to send transactions",
-        variant: "destructive",
-      });
+      setTxModalStatus('error');
     } finally {
       setIsSending(false);
     }
@@ -682,67 +668,106 @@ export function FileMultiSend({ wallet, balance, onBalanceUpdate, onNonceUpdate,
           </div>
         )}
 
-        {/* Transaction Results */}
-        {results.length > 0 && (
-          <div className="space-y-3">
-            <Label className="text-base font-medium">Transaction Results</Label>
-            {results.map((result, index) => (
-              <div
-                key={index}
-                className={`rounded-lg p-3 ${result.success ? 'bg-green-50 border border-green-200 dark:bg-green-950/50 dark:border-green-800' : 'bg-red-50 border border-red-200 dark:bg-red-950/50 dark:border-red-800'}`}
-              >
-                <div className="flex items-start space-x-2">
-                  {result.success ? (
-                    <CheckCircle className="h-4 w-4 text-green-600 dark:text-green-400 mt-0.5 flex-shrink-0" />
-                  ) : (
-                    <AlertTriangle className="h-4 w-4 text-red-600 dark:text-red-400 mt-0.5 flex-shrink-0" />
-                  )}
-                  <div className="flex-1 min-w-0">
-                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1">
-                      <p className={`text-sm font-medium ${result.success ? 'text-green-800 dark:text-green-200' : 'text-red-800 dark:text-red-200'}`}>
-                        {result.success ? 'Success' : 'Failed'} - {result.amount} OCT
-                      </p>
-                      <code className="text-xs font-mono break-all text-muted-foreground">
-                        {result.recipient.slice(0, 10)}...{result.recipient.slice(-8)}
-                      </code>
+        {/* Transaction Results removed - now shown in modal */}
+
+        {/* Transaction Modal */}
+        <Dialog open={showTxModal} onOpenChange={txModalStatus === 'sending' ? undefined : setShowTxModal}>
+          <DialogContent className="sm:max-w-md" onPointerDownOutside={(e) => txModalStatus === 'sending' && e.preventDefault()}>
+            <div className="flex flex-col items-center justify-center py-6 space-y-4">
+              {/* Sending State */}
+              {txModalStatus === 'sending' && (
+                <>
+                  <div className="relative w-20 h-20">
+                    <div className="absolute inset-0 rounded-full border-4 border-[#0000db]/20" />
+                    <div className="absolute inset-0 rounded-full border-4 border-transparent border-t-[#0000db] animate-spin" />
+                    <div className="absolute inset-0 flex items-center justify-center">
+                      <Loader2 className="w-8 h-8 text-[#0000db] animate-spin" />
                     </div>
-                    {result.success && result.hash && (
-                      <div className="mt-1">
-                        <div className="flex flex-col sm:flex-row sm:items-center gap-1">
-                          <code className="text-xs bg-green-100 dark:bg-green-900/50 px-2 py-1 rounded font-mono break-all text-green-800 dark:text-green-200 flex-1">
-                            {result.hash}
-                          </code>
-                          <div className="flex space-x-1">
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => copyToClipboard(result.hash!, 'Transaction Hash')}
-                              className="h-6 w-6 p-0"
-                            >
-                              <Copy className="h-3 w-3" />
-                            </Button>
-                            <a
-                              href={`https://octrascan.io/tx/${result.hash}`}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="inline-flex items-center justify-center h-6 w-6 text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 transition-colors"
-                              title="View on OctraScan"
-                            >
-                              <ExternalLink className="h-3 w-3" />
-                            </a>
-                          </div>
-                        </div>
-                      </div>
-                    )}
-                    {result.error && (
-                      <p className="text-red-700 dark:text-red-300 text-xs mt-1 break-words">{result.error}</p>
-                    )}
                   </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
+                  <div className="text-center space-y-2">
+                    <h3 className="text-lg font-semibold">File Multi Send</h3>
+                    <p className="text-sm text-muted-foreground">
+                      Sending transaction {txProgress.current} of {txProgress.total}...
+                    </p>
+                  </div>
+                  <div className="flex gap-1.5">
+                    {[0, 1, 2].map((i) => (
+                      <div
+                        key={i}
+                        className="w-2 h-2 rounded-full bg-[#0000db] animate-bounce"
+                        style={{ animationDelay: `${i * 0.15}s` }}
+                      />
+                    ))}
+                  </div>
+                </>
+              )}
+
+              {/* Success State */}
+              {txModalStatus === 'success' && (
+                <>
+                  <div className="w-20 h-20 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center animate-in zoom-in-50 duration-300">
+                    <CheckCircle className="w-12 h-12 text-green-600 dark:text-green-400" />
+                  </div>
+                  <div className="text-center space-y-2">
+                    <h3 className="text-lg font-semibold text-green-600 dark:text-green-400">All Sent!</h3>
+                    <p className="text-sm text-muted-foreground">
+                      {results.length} transaction(s) sent successfully
+                    </p>
+                  </div>
+                  <Badge variant="secondary" className="text-sm px-3 py-1">
+                    {results.reduce((sum, r) => sum + (parseFloat(r.amount) || 0), 0).toFixed(8)} OCT Total
+                  </Badge>
+                  <Button onClick={() => { setShowTxModal(false); setResults([]); }} className="mt-4 bg-[#0000db] hover:bg-[#0000db]/90">
+                    Close
+                  </Button>
+                </>
+              )}
+
+              {/* Partial Success State */}
+              {txModalStatus === 'partial' && (
+                <>
+                  <div className="w-20 h-20 rounded-full bg-yellow-100 dark:bg-yellow-900/30 flex items-center justify-center animate-in zoom-in-50 duration-300">
+                    <AlertTriangle className="w-12 h-12 text-yellow-600 dark:text-yellow-400" />
+                  </div>
+                  <div className="text-center space-y-2">
+                    <h3 className="text-lg font-semibold text-yellow-600 dark:text-yellow-400">Partial Success</h3>
+                    <p className="text-sm text-muted-foreground">
+                      {results.filter(r => r.success).length} sent, {results.filter(r => !r.success).length} failed
+                    </p>
+                  </div>
+                  <div className="w-full max-h-40 overflow-y-auto space-y-2">
+                    {results.map((result, idx) => (
+                      <div key={idx} className={`flex items-center gap-2 p-2 rounded text-xs ${result.success ? 'bg-green-50 dark:bg-green-950/50' : 'bg-red-50 dark:bg-red-950/50'}`}>
+                        {result.success ? <CheckCircle className="h-3 w-3 text-green-500" /> : <XCircle className="h-3 w-3 text-red-500" />}
+                        <span className="font-mono truncate flex-1">{result.recipient.slice(0, 8)}...{result.recipient.slice(-6)}</span>
+                        <span>{result.amount} OCT</span>
+                      </div>
+                    ))}
+                  </div>
+                  <Button onClick={() => { setShowTxModal(false); setResults([]); }} variant="outline" className="mt-4">
+                    Close
+                  </Button>
+                </>
+              )}
+
+              {/* Error State */}
+              {txModalStatus === 'error' && (
+                <>
+                  <div className="w-20 h-20 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center animate-in zoom-in-50 duration-300">
+                    <XCircle className="w-12 h-12 text-red-600 dark:text-red-400" />
+                  </div>
+                  <div className="text-center space-y-2">
+                    <h3 className="text-lg font-semibold text-red-600 dark:text-red-400">All Failed</h3>
+                    <p className="text-sm text-muted-foreground">No transactions were sent successfully</p>
+                  </div>
+                  <Button onClick={() => { setShowTxModal(false); setResults([]); }} variant="outline" className="mt-4">
+                    Close
+                  </Button>
+                </>
+              )}
+            </div>
+          </DialogContent>
+        </Dialog>
 
         {/* OU (Gas) Settings */}
         <div className="space-y-2">
@@ -791,7 +816,10 @@ export function FileMultiSend({ wallet, balance, onBalanceUpdate, onNonceUpdate,
           size="lg"
         >
           {isSending ? (
-            `Sending ${validRecipients.length} Transaction(s)...`
+            <>
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              Sending {validRecipients.length} Transaction(s)...
+            </>
           ) : (
             `Send to ${validRecipients.length} Recipient(s) - ${totalCost.toFixed(8)} OCT Total`
           )}

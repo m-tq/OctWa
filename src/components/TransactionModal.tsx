@@ -88,15 +88,20 @@ export function TransactionModal({
           {/* Loading State */}
           {status === 'sending' && (
             <>
-              <div className="relative">
-                <div className="w-20 h-20 rounded-full border-4 border-muted animate-pulse" />
-                <Loader2 className="w-10 h-10 absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-[#0000db] animate-spin" />
+              <div className="relative w-20 h-20">
+                {/* Spinning circle border */}
+                <div className="absolute inset-0 rounded-full border-4 border-[#0000db]/20" />
+                <div className="absolute inset-0 rounded-full border-4 border-transparent border-t-[#0000db] animate-spin" />
+                {/* Center icon */}
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <Loader2 className="w-8 h-8 text-[#0000db] animate-spin" />
+                </div>
               </div>
               <div className="text-center space-y-2">
                 <h3 className="text-lg font-semibold">{getTitle()}</h3>
-                <p className="text-sm text-muted-foreground animate-pulse">{getLoadingText()}</p>
+                <p className="text-sm text-muted-foreground">{getLoadingText()}</p>
               </div>
-              <div className="flex gap-1">
+              <div className="flex gap-1.5">
                 {[0, 1, 2].map((i) => (
                   <div
                     key={i}

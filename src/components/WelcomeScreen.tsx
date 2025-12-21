@@ -29,9 +29,12 @@ export function WelcomeScreen({ onWalletCreated }: WelcomeScreenProps) {
   };
 
   const handlePasswordSet = (wallet: Wallet) => {
+    console.log('🔑 WelcomeScreen: handlePasswordSet called with wallet:', wallet.address);
     setShowPasswordSetup(false);
     setPendingWallet(null);
+    console.log('🚀 WelcomeScreen: Calling onWalletCreated...');
     onWalletCreated(wallet);
+    console.log('✅ WelcomeScreen: onWalletCreated called');
   };
 
   const handleBackToWalletCreation = () => {

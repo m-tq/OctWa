@@ -952,23 +952,43 @@ export function WalletDashboard({
                         <SheetTitle>Wallet Menu</SheetTitle>
                       </SheetHeader>
                       <div className="mt-6 space-y-4">
-                        {/* Wallet Info */}
-                        <div className="p-3 bg-muted rounded-lg">
-                          <div className="flex items-center space-x-2 mb-2">
-                            <Badge variant="secondary" className="relative pl-4">
-                              <span className={`absolute left-1 top-1/2 -translate-y-1/2 w-2 h-2 rounded-full ${
-                                rpcStatus === 'connected' ? 'bg-green-500' : 
-                                rpcStatus === 'disconnected' ? 'bg-red-500' : 
+                        {/* Wallet Info Card */}
+                        <div className="p-4 bg-gradient-to-br from-[#0000db]/5 to-[#0000db]/10 border border-[#0000db]/20 rounded-xl">
+                          {/* Status Badge */}
+                          <div className="flex items-center justify-between mb-3">
+                            <div className="flex items-center gap-2">
+                              <div className={`w-2.5 h-2.5 rounded-full ${
+                                rpcStatus === 'connected' ? 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.5)]' : 
+                                rpcStatus === 'disconnected' ? 'bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.5)]' : 
                                 'bg-yellow-500 animate-pulse'
-                              }`}></span>
-                              {rpcStatus === 'connected' ? 'Connected' : 
-                               rpcStatus === 'disconnected' ? 'Disconnected' : 
-                               'Checking...'}
-                            </Badge>
+                              }`}></div>
+                              <span className={`text-sm font-medium ${
+                                rpcStatus === 'connected' ? 'text-green-600' : 
+                                rpcStatus === 'disconnected' ? 'text-red-500' : 
+                                'text-yellow-600'
+                              }`}>
+                                {rpcStatus === 'connected' ? 'Connected' : 
+                                 rpcStatus === 'disconnected' ? 'Disconnected' : 
+                                 'Checking...'}
+                              </span>
+                            </div>
+                            <Wifi className={`h-4 w-4 ${
+                              rpcStatus === 'connected' ? 'text-green-500' : 
+                              rpcStatus === 'disconnected' ? 'text-red-500' : 
+                              'text-yellow-500'
+                            }`} />
                           </div>
-                          <div className="text-sm space-y-1">
-                            <div>Nonce : {nonce}</div>
-                            <div>Wallets : {wallets.length}</div>
+                          
+                          {/* Stats Grid */}
+                          <div className="grid grid-cols-2 gap-3">
+                            <div className="bg-background/60 rounded-lg p-2.5 text-center">
+                              <div className="text-xs text-muted-foreground mb-0.5">Nonce</div>
+                              <div className="text-lg font-semibold text-[#0000db]">{nonce}</div>
+                            </div>
+                            <div className="bg-background/60 rounded-lg p-2.5 text-center">
+                              <div className="text-xs text-muted-foreground mb-0.5">Wallets</div>
+                              <div className="text-lg font-semibold text-[#0000db]">{wallets.length}</div>
+                            </div>
                           </div>
                         </div>
 
@@ -1642,7 +1662,7 @@ export function WalletDashboard({
                   }`}
                 >
                   <PieChart className="h-3 w-3" />
-                  <span>Bal</span>
+                  <span>Balance</span>
                 </button>
                 <button
                   onClick={() => setActiveTab('send')}
@@ -1660,7 +1680,7 @@ export function WalletDashboard({
                   }`}
                 >
                   <History className="h-3 w-3" />
-                  <span>Hist</span>
+                  <span>History</span>
                 </button>
               </div>
             ) : (
@@ -1672,7 +1692,7 @@ export function WalletDashboard({
                   }`}
                 >
                   <Shield className="h-3 w-3" />
-                  <span>Bal</span>
+                  <span>Balance</span>
                 </button>
                 <button
                   onClick={() => setActiveTab('transfer')}
@@ -1699,7 +1719,7 @@ export function WalletDashboard({
                   }`}
                 >
                   <History className="h-3 w-3" />
-                  <span>Hist</span>
+                  <span>History</span>
                 </button>
               </div>
             )}

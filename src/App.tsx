@@ -218,6 +218,7 @@ function App() {
   };
 
   const addWallet = async (newWallet: Wallet) => {
+    console.log('📥 App.tsx addWallet called with:', newWallet.address);
     try {
       // Read current wallets from storage to avoid overwriting
       const currentWalletsData = await ExtensionStorageManager.get('wallets');
@@ -226,6 +227,7 @@ function App() {
       if (currentWalletsData) {
         try {
           currentWallets = JSON.parse(currentWalletsData);
+          console.log('📦 App.tsx: Found', currentWallets.length, 'wallets in storage');
         } catch (error) {
           console.error('Failed to parse current wallets:', error);
           currentWallets = wallets; // fallback to state
@@ -237,14 +239,19 @@ function App() {
       // Check if wallet already exists in current data
       const existingWallet = currentWallets.find(w => w.address === newWallet.address);
       if (existingWallet) {
-        // If wallet exists, just switch to it
+        // Wallet exists in storage (e.g., from PasswordSetup)
+        // Update state to reflect storage
+        console.log('✅ App.tsx: Wallet exists in storage, syncing state');
+        setWallets(currentWallets);
         setWallet(existingWallet);
         await ExtensionStorageManager.set('activeWalletId', existingWallet.address);
+        localStorage.setItem('activeWalletId', existingWallet.address);
         return;
       }
       
       // Add new wallet to current data
       const updatedWallets = [...currentWallets, newWallet];
+      console.log('➕ App.tsx: Adding new wallet, total:', updatedWallets.length);
       
       // Update state immediately for UI responsiveness
       setWallets(updatedWallets);

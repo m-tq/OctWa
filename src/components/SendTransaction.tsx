@@ -278,25 +278,46 @@ export function SendTransaction({ wallet, balance, nonce, onBalanceUpdate, onNon
   // Compact mode for popup
   if (isCompact) {
     return (
-      <div className="space-y-3">
+      <div className="space-y-4">
         {/* Recipient Address */}
-        <div className="space-y-1">
-          <Label htmlFor="recipient" className="text-xs">Recipient</Label>
+        <div className="space-y-1.5">
+          <Label htmlFor="recipient" className="text-sm">Recipient</Label>
           <Input
             id="recipient"
             placeholder="oct..."
             value={recipientAddress}
             onChange={(e) => setRecipientAddress(e.target.value)}
-            className="font-mono text-xs h-8"
+            className="font-mono text-sm h-9"
           />
           {recipientAddress.trim() && addressValidation && !addressValidation.isValid && (
-            <p className="text-[10px] text-red-600">{addressValidation.error}</p>
+            <p className="text-xs text-red-600">{addressValidation.error}</p>
           )}
         </div>
 
         {/* Amount */}
-        <div className="space-y-1">
-          <Label htmlFor="amount" className="text-xs">Amount (OCT)</Label>
+        <div className="space-y-1.5">
+          <div className="flex items-center justify-between">
+            <Label htmlFor="amount" className="text-sm">Amount (OCT)</Label>
+            <div className="flex items-center gap-2 text-xs">
+              <span className="text-muted-foreground">
+                Balance: <span className="font-mono">{currentBalance.toFixed(4)}</span>
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  // Calculate max amount: balance - fee (use higher fee for safety)
+                  const maxFee = 0.003; // Use higher fee for safety
+                  const maxAmount = Math.max(0, currentBalance - maxFee);
+                  if (maxAmount > 0) {
+                    setAmount(maxAmount.toFixed(8));
+                  }
+                }}
+                className="text-[#0000db] hover:text-[#0000db]/80 font-medium hover:underline"
+              >
+                Max
+              </button>
+            </div>
+          </div>
           <Input
             id="amount"
             type="number"
@@ -305,29 +326,29 @@ export function SendTransaction({ wallet, balance, nonce, onBalanceUpdate, onNon
             onChange={(e) => setAmount(e.target.value)}
             step="0.1"
             min="0"
-            className="text-xs h-8"
+            className="text-sm h-9"
           />
         </div>
 
         {/* OU (Gas) - Simplified */}
-        <div className="space-y-1">
-          <Label className="text-xs">OU (Gas)</Label>
+        <div className="space-y-1.5">
+          <Label className="text-sm">OU (Gas)</Label>
           <Select value={ouOption} onValueChange={setOuOption}>
-            <SelectTrigger className="h-8 text-xs">
+            <SelectTrigger className="h-9 text-sm">
               <SelectValue placeholder="Auto" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="auto" className="text-xs">Auto</SelectItem>
-              <SelectItem value="10000" className="text-xs">10,000</SelectItem>
-              <SelectItem value="30000" className="text-xs">30,000</SelectItem>
-              <SelectItem value="50000" className="text-xs">50,000</SelectItem>
+              <SelectItem value="auto" className="text-sm">Auto</SelectItem>
+              <SelectItem value="10000" className="text-sm">10,000</SelectItem>
+              <SelectItem value="30000" className="text-sm">30,000</SelectItem>
+              <SelectItem value="50000" className="text-sm">50,000</SelectItem>
             </SelectContent>
           </Select>
         </div>
 
         {/* Fee Summary - Compact */}
         {amount && validateAmount(amount) && (
-          <div className="p-2 bg-muted rounded text-[10px] space-y-0.5">
+          <div className="p-2.5 bg-muted rounded text-xs space-y-1">
             <div className="flex justify-between">
               <span>Amount:</span>
               <span className="font-mono">{amountNum.toFixed(4)} OCT</span>
@@ -336,7 +357,7 @@ export function SendTransaction({ wallet, balance, nonce, onBalanceUpdate, onNon
               <span>Fee:</span>
               <span className="font-mono">{fee.toFixed(4)} OCT</span>
             </div>
-            <div className="flex justify-between font-medium border-t pt-0.5 mt-0.5">
+            <div className="flex justify-between font-medium border-t pt-1 mt-1">
               <span>Total:</span>
               <span className="font-mono">{totalCost.toFixed(4)} OCT</span>
             </div>
@@ -351,7 +372,7 @@ export function SendTransaction({ wallet, balance, nonce, onBalanceUpdate, onNon
             !validateAmount(amount) ||
             totalCost > currentBalance
           }
-          className="w-full h-8 text-xs"
+          className="w-full h-9 text-sm"
           size="sm"
         >
           {isSending ? 'Sending...' : `Send ${amountNum.toFixed(4)} OCT`}
@@ -362,13 +383,13 @@ export function SendTransaction({ wallet, balance, nonce, onBalanceUpdate, onNon
           <AlertDialogContent className="max-w-sm">
             <AlertDialogHeader>
               <AlertDialogTitle className="text-sm">Confirm Large Transaction</AlertDialogTitle>
-              <AlertDialogDescription className="text-xs">
+              <AlertDialogDescription className="text-sm">
                 You are about to send {amountNum.toFixed(4)} OCT. Continue?
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
-              <AlertDialogCancel className="h-8 text-xs">Cancel</AlertDialogCancel>
-              <AlertDialogAction onClick={executeSend} className="h-8 text-xs">Confirm</AlertDialogAction>
+              <AlertDialogCancel className="h-9 text-sm">Cancel</AlertDialogCancel>
+              <AlertDialogAction onClick={executeSend} className="h-9 text-sm">Confirm</AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>

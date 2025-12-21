@@ -8,6 +8,39 @@ chrome.runtime.onInstalled.addListener((details) => {
   }
 });
 
+// Lock wallet when browser is closing (all windows closed)
+chrome.windows.onRemoved.addListener(async (windowId) => {
+  // Check if there are any remaining windows
+  const windows = await chrome.windows.getAll();
+  
+  if (windows.length === 0) {
+    // All windows closed - lock the wallet
+    console.log('[Background] All windows closed, locking wallet...');
+    await lockWallet();
+  }
+});
+
+// Also lock on browser startup to ensure clean state
+chrome.runtime.onStartup.addListener(async () => {
+  console.log('[Background] Browser started, ensuring wallet is locked...');
+  await lockWallet();
+});
+
+// Function to lock wallet
+async function lockWallet() {
+  try {
+    // Set wallet as locked in storage
+    await setStorageData('isWalletLocked', 'true');
+    
+    // Clear session-related data but keep encrypted wallets
+    await chrome.storage.local.remove(['wallets', 'activeWalletId']);
+    
+    console.log('[Background] Wallet locked successfully');
+  } catch (error) {
+    console.error('[Background] Failed to lock wallet:', error);
+  }
+}
+
 // Handle messages between popup and expanded views, plus dApp communication
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   // Handle existing message types

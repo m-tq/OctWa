@@ -178,12 +178,14 @@ function ExpandedApp() {
     let chromeStorageListener: ((changes: any) => void) | null = null;
     if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.onChanged) {
       chromeStorageListener = (changes: any) => {
+        console.log('🔔 chrome.storage.onChanged triggered:', Object.keys(changes));
         if (isLocked) return;
         
         // Handle wallets change
         if (changes.wallets && changes.wallets.newValue) {
           try {
             const newWallets = JSON.parse(changes.wallets.newValue);
+            console.log('📦 Storage listener: Setting wallets to', newWallets.length, 'wallets');
             setWallets(newWallets);
             
             // Update localStorage for consistency
@@ -194,9 +196,11 @@ function ExpandedApp() {
             if (activeWalletId && newWallets.length > 0) {
               const foundWallet = newWallets.find((w: Wallet) => w.address === activeWalletId);
               if (foundWallet) {
+                console.log('👤 Storage listener: Setting active wallet to', foundWallet.address);
                 setWallet(foundWallet);
               }
             } else if (newWallets.length > 0 && !wallet) {
+              console.log('👤 Storage listener: Setting first wallet as active:', newWallets[0].address);
               setWallet(newWallets[0]);
             }
           } catch (error) {
@@ -266,9 +270,12 @@ function ExpandedApp() {
   };
 
   const addWallet = async (newWallet: Wallet) => {
+    console.log('📥 addWallet called with:', newWallet.address);
     try {
       // Read current wallets from storage to avoid stale state issues
       const storedWallets = await ExtensionStorageManager.get('wallets');
+      console.log('📦 storedWallets from ExtensionStorage:', storedWallets);
+      
       let currentWallets: Wallet[] = [];
       
       if (storedWallets) {
@@ -280,19 +287,34 @@ function ExpandedApp() {
             currentWallets = [];
           }
         } catch (e) {
+          console.error('Failed to parse storedWallets:', e);
           currentWallets = [];
         }
       }
       
-      // Check if wallet already exists to prevent duplicates
-      const walletExists = currentWallets.some(w => w.address === newWallet.address);
-      if (walletExists) {
+      console.log('📋 currentWallets parsed:', currentWallets.length, 'wallets');
+      
+      // Check if wallet already exists in storage
+      const walletExistsInStorage = currentWallets.some(w => w.address === newWallet.address);
+      console.log('🔍 walletExistsInStorage:', walletExistsInStorage);
+      
+      if (walletExistsInStorage) {
+        // Wallet already in storage (e.g., from PasswordSetup)
+        // Just update state to reflect storage
+        console.log('✅ Wallet already in storage, syncing state with', currentWallets.length, 'wallets');
+        setWallets(currentWallets);
+        setWallet(newWallet);
         return;
       }
       
       const updatedWallets = [...currentWallets, newWallet];
+      console.log('➕ Adding new wallet, total:', updatedWallets.length);
       
-      // Save to ExtensionStorageManager (chrome.storage) first
+      // Update state FIRST for immediate UI feedback
+      setWallets(updatedWallets);
+      setWallet(newWallet);
+      
+      // Then save to storage
       await ExtensionStorageManager.set('wallets', JSON.stringify(updatedWallets));
       await ExtensionStorageManager.set('activeWalletId', newWallet.address);
       
@@ -300,14 +322,14 @@ function ExpandedApp() {
       localStorage.setItem('wallets', JSON.stringify(updatedWallets));
       localStorage.setItem('activeWalletId', newWallet.address);
       
-      // Encrypt and store the new wallet
-      await WalletManager.addEncryptedWallet(newWallet);
+      // Encrypt and store the new wallet (don't block UI)
+      WalletManager.addEncryptedWallet(newWallet).catch(err => {
+        console.error('Failed to encrypt wallet:', err);
+      });
       
-      // Update state after storage is saved
-      setWallets(updatedWallets);
-      setWallet(newWallet);
+      console.log('🎉 Wallet added successfully, total wallets:', updatedWallets.length);
     } catch (error) {
-      console.error('Failed to save wallet:', error);
+      console.error('❌ Failed to save wallet:', error);
     }
   };
 
@@ -424,7 +446,29 @@ function ExpandedApp() {
     <ThemeProvider defaultTheme="dark" storageKey="octra-wallet-theme">
       <div className="min-h-screen bg-background expanded-view">
         {!wallet ? (
-          <WelcomeScreen onWalletCreated={addWallet} />
+          <WelcomeScreen onWalletCreated={async (w) => {
+            console.log('🎯 ExpandedApp: onWalletCreated called with:', w.address);
+            
+            // Read wallets from storage (PasswordSetup already saved them)
+            const storedWallets = await ExtensionStorageManager.get('wallets');
+            let walletsFromStorage: Wallet[] = [];
+            
+            if (storedWallets) {
+              try {
+                walletsFromStorage = typeof storedWallets === 'string' 
+                  ? JSON.parse(storedWallets) 
+                  : storedWallets;
+              } catch (e) {
+                walletsFromStorage = [w];
+              }
+            } else {
+              walletsFromStorage = [w];
+            }
+            
+            console.log('📦 ExpandedApp: Setting wallets from storage:', walletsFromStorage.length);
+            setWallets(walletsFromStorage);
+            setWallet(w);
+          }} />
         ) : (
           <WalletDashboard 
             wallet={wallet} 

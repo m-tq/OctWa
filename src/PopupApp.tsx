@@ -398,15 +398,25 @@ function PopupApp() {
         }
       }
       
-      // Check if wallet already exists to prevent duplicates
-      const walletExists = currentWallets.some(w => w.address === newWallet.address);
-      if (walletExists) {
+      // Check if wallet already exists in storage
+      const walletExistsInStorage = currentWallets.some(w => w.address === newWallet.address);
+      
+      if (walletExistsInStorage) {
+        // Wallet already in storage (e.g., from PasswordSetup)
+        // Just update state to reflect storage
+        console.log('Wallet already in storage, syncing state with storage');
+        setWallets(currentWallets);
+        setWallet(newWallet);
         return;
       }
       
       const updatedWallets = [...currentWallets, newWallet];
       
-      // Save to ExtensionStorageManager (chrome.storage) first
+      // Update state FIRST for immediate UI feedback
+      setWallets(updatedWallets);
+      setWallet(newWallet);
+      
+      // Then save to storage
       await ExtensionStorageManager.set('wallets', JSON.stringify(updatedWallets));
       await ExtensionStorageManager.set('activeWalletId', newWallet.address);
       
@@ -414,12 +424,12 @@ function PopupApp() {
       localStorage.setItem('wallets', JSON.stringify(updatedWallets));
       localStorage.setItem('activeWalletId', newWallet.address);
       
-      // Encrypt and store the new wallet
-      await WalletManager.addEncryptedWallet(newWallet);
+      // Encrypt and store the new wallet (don't block UI)
+      WalletManager.addEncryptedWallet(newWallet).catch(err => {
+        console.error('Failed to encrypt wallet:', err);
+      });
       
-      // Update state after storage is saved
-      setWallets(updatedWallets);
-      setWallet(newWallet);
+      console.log('Wallet added successfully, total wallets:', updatedWallets.length);
     } catch (error) {
       console.error('Failed to save wallet:', error);
     }

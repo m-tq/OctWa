@@ -274,9 +274,9 @@ export function PrivateTransfer({
   // Compact mode for popup
   if (isCompact) {
     return (
-      <div className="space-y-3">
+      <div className="space-y-4">
         {/* Private Balance - Compact */}
-        <div className="p-2 bg-[#0000db]/5 border border-[#0000db]/20 rounded text-xs">
+        <div className="p-2.5 bg-[#0000db]/5 border border-[#0000db]/20 rounded text-sm">
           <div className="flex justify-between items-center">
             <span>Private Balance</span>
             <span className="font-mono font-bold text-[#0000db]">
@@ -286,26 +286,26 @@ export function PrivateTransfer({
         </div>
 
         {/* Recipient */}
-        <div className="space-y-1">
-          <Label htmlFor="recipient" className="text-xs">Recipient</Label>
+        <div className="space-y-1.5">
+          <Label htmlFor="recipient" className="text-sm">Recipient</Label>
           <Input
             id="recipient"
             placeholder="oct..."
             value={recipientAddress}
             onChange={(e) => setRecipientAddress(e.target.value)}
-            className="font-mono text-xs h-8"
+            className="font-mono text-sm h-9"
           />
           {recipientAddress.trim() && addressValidation && !addressValidation.isValid && (
-            <p className="text-[10px] text-red-600">{addressValidation.error}</p>
+            <p className="text-xs text-red-600">{addressValidation.error}</p>
           )}
           {recipientInfo && !recipientInfo.has_public_key && (
-            <p className="text-[10px] text-red-600">⚠️ Recipient needs a public key</p>
+            <p className="text-xs text-red-600">⚠️ Recipient needs a public key</p>
           )}
         </div>
 
         {/* Amount */}
-        <div className="space-y-1">
-          <Label htmlFor="amount" className="text-xs">Amount (OCT)</Label>
+        <div className="space-y-1.5">
+          <Label htmlFor="amount" className="text-sm">Amount (OCT)</Label>
           <Input
             id="amount"
             type="number"
@@ -315,7 +315,7 @@ export function PrivateTransfer({
             step="0.1"
             min="0"
             max={encryptedBalance.encrypted}
-            className="text-xs h-8"
+            className="text-sm h-9"
           />
         </div>
 
@@ -331,7 +331,7 @@ export function PrivateTransfer({
             !recipientInfo.has_public_key ||
             parseFloat(amount) > encryptedBalance.encrypted
           }
-          className="w-full h-8 text-xs bg-[#0000db] hover:bg-[#0000db]/90"
+          className="w-full h-9 text-sm bg-[#0000db] hover:bg-[#0000db]/90"
           size="sm"
         >
           {isSending ? 'Sending...' : 'Send Private'}

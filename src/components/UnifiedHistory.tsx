@@ -235,10 +235,18 @@ export function UnifiedHistory({ wallet, transactions, onTransactionsUpdate, isL
             {isPopupMode ? `Last ${PAGE_SIZE} tx` : `Last ${PAGE_SIZE} transactions`}
           </span>
         </div>
-        <Button variant="outline" size="sm" onClick={() => { setCurrentPage(1); fetchTransactions(1); }} disabled={refreshing} className={isPopupMode ? 'h-7 px-2' : ''}>
-          <RefreshCw className={`${isPopupMode ? 'h-3 w-3' : 'h-4 w-4'} ${isPopupMode ? '' : 'mr-2'} ${refreshing ? 'animate-spin' : ''}`} />
-          {!isPopupMode && 'Refresh'}
-        </Button>
+        <div className="flex items-center gap-1">
+          <Button variant="outline" size="sm" onClick={() => { setCurrentPage(1); fetchTransactions(1); }} disabled={refreshing} className={isPopupMode ? 'h-7 px-2' : ''}>
+            <RefreshCw className={`${isPopupMode ? 'h-3 w-3' : 'h-4 w-4'} ${isPopupMode ? '' : 'mr-2'} ${refreshing ? 'animate-spin' : ''}`} />
+            {!isPopupMode && 'Refresh'}
+          </Button>
+          <Button variant="outline" size="sm" asChild className={isPopupMode ? 'h-7 px-2' : ''}>
+            <a href={`https://octrascan.io/addresses/${wallet.address}`} target="_blank" rel="noopener noreferrer">
+              <ExternalLink className={`${isPopupMode ? 'h-3 w-3' : 'h-4 w-4'} ${isPopupMode ? '' : 'mr-2'}`} />
+              {!isPopupMode && 'View All'}
+            </a>
+          </Button>
+        </div>
       </CardHeader>
       <CardContent className={isPopupMode ? 'px-3 pb-3 pt-0' : ''}>
         {/* Filter Buttons */}
@@ -316,7 +324,7 @@ export function UnifiedHistory({ wallet, transactions, onTransactionsUpdate, isL
         {/* Scroll Up Indicator - Fixed below header for Popup Mode */}
         {isPopupMode && showScrollUpIndicator && (
           <div
-            className="fixed top-[100px] left-1/2 -translate-x-1/2 z-[100] animate-bounce cursor-pointer"
+            className="fixed top-[100px] left-1/2 -translate-x-1/2 z-40 animate-bounce cursor-pointer"
             onClick={() => {
               const scrollContainer = document.querySelector('.popup-container');
               if (scrollContainer) {
@@ -333,7 +341,7 @@ export function UnifiedHistory({ wallet, transactions, onTransactionsUpdate, isL
         {/* Scroll Down Indicator - Fixed above footer for Popup Mode */}
         {isPopupMode && showScrollIndicator && (
           <div
-            className="fixed bottom-[110px] left-1/2 -translate-x-1/2 z-[100] animate-bounce cursor-pointer"
+            className="fixed bottom-[110px] left-1/2 -translate-x-1/2 z-40 animate-bounce cursor-pointer"
             onClick={() => {
               const scrollContainer = document.querySelector('.popup-container');
               if (scrollContainer) {
