@@ -29,6 +29,23 @@ function PopupApp() {
 
         await ExtensionStorageManager.init();
         
+        // CRITICAL: Sync password hash from localStorage to ExtensionStorage if missing
+        // This handles the case where password was set in expanded mode but not synced to extension storage
+        const extPasswordHash = await ExtensionStorageManager.get('walletPasswordHash');
+        const localPasswordHash = localStorage.getItem('walletPasswordHash');
+        
+        if (!extPasswordHash && localPasswordHash) {
+          console.log('🔄 PopupApp: Syncing password hash from localStorage to ExtensionStorage');
+          const localSalt = localStorage.getItem('walletPasswordSalt');
+          const localEncryptedWallets = localStorage.getItem('encryptedWallets');
+          const localIsLocked = localStorage.getItem('isWalletLocked');
+          
+          await ExtensionStorageManager.set('walletPasswordHash', localPasswordHash);
+          if (localSalt) await ExtensionStorageManager.set('walletPasswordSalt', localSalt);
+          if (localEncryptedWallets) await ExtensionStorageManager.set('encryptedWallets', localEncryptedWallets);
+          if (localIsLocked) await ExtensionStorageManager.set('isWalletLocked', localIsLocked);
+        }
+        
         // Check for pending connection request first
         const pendingRequest = await ExtensionStorageManager.get('pendingConnectionRequest');
         if (pendingRequest) {

@@ -8,28 +8,6 @@ chrome.runtime.onInstalled.addListener((details) => {
   }
 });
 
-// Test balance fetch on startup
-(async function testBalanceFetch() {
-  console.log('[Background] Testing balance fetch...');
-  try {
-    const testAddress = 'octAuNz35Tc3BfGurox4c82aZMLN3RvXDJ1T9HVTwqK7et1';
-    const apiUrl = 'https://octra.network';
-    console.log('[Background] Fetching from:', `${apiUrl}/balance/${testAddress}`);
-    
-    const response = await fetch(`${apiUrl}/balance/${testAddress}`);
-    console.log('[Background] Test response status:', response.status);
-    
-    const text = await response.text();
-    console.log('[Background] Test response text:', text);
-    
-    const data = JSON.parse(text);
-    console.log('[Background] Test parsed data:', data);
-    console.log('[Background] Test balance:', data.balance);
-  } catch (error) {
-    console.error('[Background] Test fetch error:', error);
-  }
-})();
-
 // Handle messages between popup and expanded views, plus dApp communication
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   // Handle existing message types
@@ -358,21 +336,15 @@ async function getActiveRPCUrl() {
 async function handleBalanceRequest(data, sender) {
   const { address } = data;
   
-  console.log('[Background] handleBalanceRequest called for:', address);
-  
   try {
     // Get active RPC URL from chrome.storage.local
     const apiUrl = await getActiveRPCUrl();
-    console.log('[Background] Using RPC URL:', apiUrl);
-    console.log('[Background] Fetching balance from:', `${apiUrl}/balance/${address}`);
     
     // Fetch balance from API
     const response = await fetch(`${apiUrl}/balance/${address}`);
-    console.log('[Background] API response status:', response.status);
     
     if (!response.ok) {
       // For 404 or other errors, return 0 balance (new address)
-      console.log('[Background] API returned non-OK status:', response.status);
       if (response.status === 404) {
         return {
           type: 'BALANCE_RESPONSE',
@@ -387,10 +359,8 @@ async function handleBalanceRequest(data, sender) {
     }
     
     const responseText = await response.text();
-    console.log('[Background] API response text:', responseText);
     
     if (!responseText.trim()) {
-      console.log('[Background] Empty response, returning 0 balance');
       return {
         type: 'BALANCE_RESPONSE',
         success: true,
@@ -402,13 +372,10 @@ async function handleBalanceRequest(data, sender) {
     }
     
     const responseData = JSON.parse(responseText);
-    console.log('[Background] API response data:', responseData);
     
     const balance = typeof responseData.balance === 'string' 
       ? parseFloat(responseData.balance) 
       : (responseData.balance || 0);
-    
-    console.log('[Background] Parsed balance:', balance);
     
     return {
       type: 'BALANCE_RESPONSE',

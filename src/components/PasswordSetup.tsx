@@ -9,6 +9,8 @@ import { Shield, Eye, EyeOff, AlertTriangle } from 'lucide-react';
 import { Wallet } from '../types/wallet';
 import { hashPassword, encryptWalletData } from '../utils/password';
 import { useToast } from '@/hooks/use-toast';
+import { ExtensionStorageManager } from '../utils/extensionStorage';
+import { WalletManager } from '../utils/walletManager';
 
 interface PasswordSetupProps {
   wallet: Wallet;
@@ -111,14 +113,23 @@ export function PasswordSetup({ wallet, onPasswordSet, onBack }: PasswordSetupPr
       
       console.log(`✅ PasswordSetup: Successfully encrypted ${encryptedWallets.length} wallets`);
       
-      // Store password hash and set wallet as unlocked initially
+      // Store password hash in BOTH localStorage AND ExtensionStorageManager for cross-context sync
       localStorage.setItem('walletPasswordHash', hashedPassword);
       localStorage.setItem('walletPasswordSalt', salt);
       localStorage.setItem('isWalletLocked', 'false');
       
+      // CRITICAL: Also store in ExtensionStorageManager for popup mode
+      await ExtensionStorageManager.set('walletPasswordHash', hashedPassword);
+      await ExtensionStorageManager.set('walletPasswordSalt', salt);
+      await ExtensionStorageManager.set('isWalletLocked', 'false');
+      
+      // Set session password so new wallets can be encrypted
+      WalletManager.setSessionPassword(password);
+      
       // CRITICAL FIX: Store ALL encrypted wallets (this replaces any existing encrypted wallets)
       if (encryptedWallets.length > 0) {
         localStorage.setItem('encryptedWallets', JSON.stringify(encryptedWallets));
+        await ExtensionStorageManager.set('encryptedWallets', JSON.stringify(encryptedWallets));
         console.log(`📦 PasswordSetup: Stored ${encryptedWallets.length} encrypted wallets`);
       } else {
         console.error('❌ PasswordSetup: No wallets were successfully encrypted!');
@@ -127,10 +138,12 @@ export function PasswordSetup({ wallet, onPasswordSet, onBack }: PasswordSetupPr
       
       // Ensure all wallets are also available in unencrypted storage for immediate use
       localStorage.setItem('wallets', JSON.stringify(walletsToEncrypt));
+      await ExtensionStorageManager.set('wallets', JSON.stringify(walletsToEncrypt));
       console.log(`💾 PasswordSetup: Maintained ${walletsToEncrypt.length} wallets in unencrypted storage`);
       
       // Set the current wallet as the active wallet
       localStorage.setItem('activeWalletId', wallet.address);
+      await ExtensionStorageManager.set('activeWalletId', wallet.address);
       
       toast({
         title: "Password Created!",

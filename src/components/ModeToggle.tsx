@@ -1,5 +1,4 @@
 import { useState, useEffect } from 'react';
-import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Globe, Shield, Lock } from 'lucide-react';
 import { OperationMode } from '../utils/modeStorage';
@@ -57,55 +56,55 @@ export function ModeToggle({
   };
 
   return (
-    <div className={`relative grid grid-cols-2 gap-0.5 ${isCompact ? 'p-0.5' : 'p-1'} bg-muted rounded-lg`}>
-      {/* Animated Background Slider */}
-      <div
-        className={`absolute top-0.5 bottom-0.5 left-0.5 right-0.5 rounded-md transition-all duration-300 ease-out pointer-events-none ${
-          displayMode === 'public'
-            ? 'bg-background shadow-md border border-border'
-            : 'bg-[#0000db] shadow-lg shadow-[#0000db]/30'
-        }`}
-        style={{
-          width: isCompact ? 'calc(50% - 3px)' : 'calc(50% - 6.5px)',
-          transform: displayMode === 'private' ? `translateX(calc(100% + ${isCompact ? '2px' : '4px'}))` : 'translateX(0)'
-        }}
-      />
-
-      {/* Public Mode Button */}
-      <Button
-        variant="ghost"
-        size="sm"
-        onClick={() => handleModeChange('public')}
-        className={`relative z-10 flex items-center justify-center ${isCompact ? 'gap-1 px-2 py-1 h-6' : 'gap-1.5 px-4 py-1.5 h-8'} transition-all duration-300 bg-transparent hover:bg-transparent ${
-          displayMode === 'public'
-            ? 'text-foreground'
-            : 'text-muted-foreground hover:text-foreground'
-        }`}
-      >
-        <Globe
-          className={`${isCompact ? 'h-3 w-3' : 'h-3.5 w-3.5'} transition-transform duration-300 ${
-            displayMode === 'public' ? 'scale-110' : 'scale-100'
+    <div className="w-full relative">
+      {/* Full-width Tab Container */}
+      <div className={`relative w-full grid grid-cols-2 ${isCompact ? 'h-10' : 'h-12'} bg-muted rounded-xl overflow-hidden border-2 border-border/50`}>
+        {/* Animated Background Slider */}
+        <div
+          className={`absolute top-0 bottom-0 w-1/2 transition-all duration-300 ease-out ${
+            displayMode === 'public'
+              ? 'left-0 bg-background border border-border shadow-sm'
+              : 'left-1/2 bg-gradient-to-r from-[#0000db] to-[#0000aa]'
           }`}
+          style={{
+            boxShadow: displayMode === 'private' 
+              ? '0 0 20px rgba(0, 0, 219, 0.4)' 
+              : undefined
+          }}
         />
-        <span className={`${isCompact ? 'text-[10px]' : 'text-xs'} font-medium`}>Public</span>
-      </Button>
 
-      {/* Private Mode Button */}
-      <TooltipProvider>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <span className="inline-flex">
-              <Button
-                variant="ghost"
-                size="sm"
+        {/* Public Mode Tab */}
+        <button
+          onClick={() => handleModeChange('public')}
+          className={`relative z-10 flex items-center justify-center gap-2 transition-all duration-300 ${
+            displayMode === 'public'
+              ? 'text-foreground font-semibold'
+              : 'text-muted-foreground hover:text-foreground'
+          }`}
+        >
+          <Globe
+            className={`${isCompact ? 'h-4 w-4' : 'h-5 w-5'} transition-transform duration-300 ${
+              displayMode === 'public' ? 'scale-110' : 'scale-100'
+            }`}
+          />
+          <span className={`${isCompact ? 'text-xs' : 'text-sm'} font-medium`}>
+            Public
+          </span>
+        </button>
+
+        {/* Private Mode Tab */}
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
                 onClick={() => handleModeChange('private')}
                 disabled={!privateEnabled}
-                className={`relative z-10 flex items-center justify-center ${isCompact ? 'gap-1 px-2 py-1 h-6' : 'gap-1.5 px-4 py-1.5 h-8'} transition-all duration-300 bg-transparent hover:bg-transparent ${
+                className={`relative z-10 flex items-center justify-center gap-2 transition-all duration-300 ${
                   displayMode === 'private'
-                    ? 'text-white'
+                    ? 'text-white font-semibold'
                     : privateEnabled
                       ? 'text-muted-foreground hover:text-[#0000db]'
-                      : 'opacity-50 cursor-not-allowed text-muted-foreground'
+                      : 'opacity-40 cursor-not-allowed text-muted-foreground'
                 }`}
               >
                 <div
@@ -114,35 +113,40 @@ export function ModeToggle({
                   }`}
                 >
                   {privateEnabled ? (
-                    <Shield className={`${isCompact ? 'h-3 w-3' : 'h-3.5 w-3.5'}`} />
+                    <Shield className={`${isCompact ? 'h-4 w-4' : 'h-5 w-5'}`} />
                   ) : (
-                    <Lock className={`${isCompact ? 'h-3 w-3' : 'h-3.5 w-3.5'}`} />
+                    <Lock className={`${isCompact ? 'h-4 w-4' : 'h-5 w-5'}`} />
                   )}
                 </div>
-                <span className={`${isCompact ? 'text-[10px]' : 'text-xs'} font-medium`}>Private</span>
-              </Button>
-            </span>
-          </TooltipTrigger>
-          {!privateEnabled && (
-            <TooltipContent side="bottom" className="max-w-[200px]">
-              <p className="text-xs">Encrypt some OCT to access Private features</p>
-            </TooltipContent>
-          )}
-        </Tooltip>
-      </TooltipProvider>
+                <span className={`${isCompact ? 'text-xs' : 'text-sm'} font-medium`}>
+                  Private
+                </span>
+                {!privateEnabled && (
+                  <Lock className={`${isCompact ? 'h-3 w-3' : 'h-3.5 w-3.5'} ml-0.5 opacity-60`} />
+                )}
+              </button>
+            </TooltipTrigger>
+            {!privateEnabled && (
+              <TooltipContent side="bottom" className="max-w-[200px]">
+                <p className="text-xs">Encrypt some OCT to access Private features</p>
+              </TooltipContent>
+            )}
+          </Tooltip>
+        </TooltipProvider>
 
-      {/* Sparkle effect on transition */}
-      {isTransitioning && (
-        <div className="absolute inset-0 pointer-events-none overflow-hidden rounded-lg">
-          <div
-            className={`absolute inset-0 ${
-              displayMode === 'private'
-                ? 'bg-gradient-to-r from-transparent via-[#0000db]/20 to-transparent'
-                : 'bg-gradient-to-r from-transparent via-white/20 to-transparent'
-            } animate-shimmer`}
-          />
-        </div>
-      )}
+        {/* Shimmer effect on transition */}
+        {isTransitioning && (
+          <div className="absolute inset-0 pointer-events-none overflow-hidden">
+            <div
+              className={`absolute inset-0 ${
+                displayMode === 'private'
+                  ? 'bg-gradient-to-r from-transparent via-[#0000db]/30 to-transparent'
+                  : 'bg-gradient-to-r from-transparent via-foreground/10 to-transparent'
+              } animate-shimmer`}
+            />
+          </div>
+        )}
+      </div>
     </div>
   );
 }

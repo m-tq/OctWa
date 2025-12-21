@@ -1322,8 +1322,8 @@ export function WalletDashboard({
 
       {/* Main Content */}
       <main className={`octra-container ${isPopupMode ? 'py-2 px-3 pb-14 mt-2 mb-8' : 'py-2 px-2 pb-16 sm:py-8 sm:px-4 sm:pb-20'}`}>
-        {/* Mode Toggle */}
-        <div className={`flex items-center justify-between ${isPopupMode ? 'mb-2' : 'mb-3'}`}>
+        {/* Mode Toggle - Full Width */}
+        <div className={`${isPopupMode ? 'mb-3' : 'mb-4'}`}>
           <ModeToggle
             currentMode={operationMode}
             onModeChange={handleModeChange}
@@ -1331,7 +1331,6 @@ export function WalletDashboard({
             encryptedBalance={encryptedBalance?.encrypted || 0}
             isCompact={isPopupMode}
           />
-          <ModeIndicator mode={operationMode} />
         </div>
 
         {/* Mode-based Tabs */}
@@ -1505,6 +1504,9 @@ export function WalletDashboard({
 
       {/* Footer Spacer - to prevent content from being hidden behind fixed footer */}
       <div className={`${isPopupMode ? 'h-12' : 'h-10'}`} />
+
+      {/* Mode Indicator - Corner Badge */}
+      <ModeIndicator mode={operationMode} />
 
       {/* GitHub Link - Only in expanded mode */}
       {!isPopupMode && (

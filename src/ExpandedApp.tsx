@@ -29,6 +29,23 @@ function ExpandedApp() {
       try {
         await ExtensionStorageManager.init();
         
+        // CRITICAL: Sync password hash from localStorage to ExtensionStorage if missing
+        // This handles the case where password was set but not synced to extension storage
+        const extPasswordHash = await ExtensionStorageManager.get('walletPasswordHash');
+        const localPasswordHash = localStorage.getItem('walletPasswordHash');
+        
+        if (!extPasswordHash && localPasswordHash) {
+          console.log('🔄 ExpandedApp: Syncing password hash from localStorage to ExtensionStorage');
+          const localSalt = localStorage.getItem('walletPasswordSalt');
+          const localEncryptedWallets = localStorage.getItem('encryptedWallets');
+          const localIsLocked = localStorage.getItem('isWalletLocked');
+          
+          await ExtensionStorageManager.set('walletPasswordHash', localPasswordHash);
+          if (localSalt) await ExtensionStorageManager.set('walletPasswordSalt', localSalt);
+          if (localEncryptedWallets) await ExtensionStorageManager.set('encryptedWallets', localEncryptedWallets);
+          if (localIsLocked) await ExtensionStorageManager.set('isWalletLocked', localIsLocked);
+        }
+        
         // Use WalletManager to check if should show unlock screen
         const shouldShowUnlock = await WalletManager.shouldShowUnlockScreen();
 

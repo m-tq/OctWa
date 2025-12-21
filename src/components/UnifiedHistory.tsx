@@ -1,15 +1,15 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { 
-  History, 
-  RefreshCw, 
-  ExternalLink, 
-  ArrowUpRight, 
+import {
+  History,
+  RefreshCw,
+  ExternalLink,
+  ArrowUpRight,
   ArrowDownLeft,
   Wallet as WalletIcon,
   Eye,
@@ -21,7 +21,9 @@ import {
   Code,
   Zap,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react';
 import { Wallet } from '../types/wallet';
 import { getTransactionHistory, fetchTransactionDetails, fetchPendingTransactionByHash } from '../utils/api';
@@ -54,6 +56,9 @@ export function UnifiedHistory({ wallet, transactions, onTransactionsUpdate, isL
   const [activeFilter, setActiveFilter] = useState<HistoryFilter>('all');
   const [currentPage, setCurrentPage] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
+  const [showScrollIndicator, setShowScrollIndicator] = useState(false);
+  const [showScrollUpIndicator, setShowScrollUpIndicator] = useState(false);
+  const historyListRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
 
   // Load contract history when wallet changes
@@ -180,6 +185,40 @@ export function UnifiedHistory({ wallet, transactions, onTransactionsUpdate, isL
   const unifiedHistory = getUnifiedHistory(transactions, contractHistory, activeFilter);
   const pendingCount = transactions.filter(tx => tx.status === 'pending').length;
 
+  // Check if content is scrollable (for popup mode scroll indicator)
+  useEffect(() => {
+    if (!isPopupMode) return;
+
+    const scrollContainer = document.querySelector('.popup-container');
+    if (!scrollContainer) return;
+
+    const checkScrollPosition = () => {
+      const { scrollTop, scrollHeight, clientHeight } = scrollContainer;
+      const isAtTop = scrollTop < 50;
+      const isAtBottom = scrollTop + clientHeight >= scrollHeight - 50;
+      const hasScrollableContent = scrollHeight > clientHeight;
+
+      // Show down arrow if not at bottom and has scrollable content
+      setShowScrollIndicator(hasScrollableContent && !isAtBottom);
+      // Show up arrow if scrolled down (not at top)
+      setShowScrollUpIndicator(hasScrollableContent && !isAtTop);
+    };
+
+    // Check on mount and when data changes
+    const timer = setTimeout(checkScrollPosition, 100);
+
+    // Listen to scroll events
+    scrollContainer.addEventListener('scroll', checkScrollPosition);
+
+    // Also check on window resize
+    window.addEventListener('resize', checkScrollPosition);
+    return () => {
+      clearTimeout(timer);
+      scrollContainer.removeEventListener('scroll', checkScrollPosition);
+      window.removeEventListener('resize', checkScrollPosition);
+    };
+  }, [isPopupMode, unifiedHistory.length, transactions.length]);
+
   return (
     <Card>
       <CardHeader className={`flex flex-row items-center justify-between space-y-0 ${isPopupMode ? 'pb-2 px-3 pt-3' : 'pb-4'}`}>
@@ -245,7 +284,7 @@ export function UnifiedHistory({ wallet, transactions, onTransactionsUpdate, isL
             <AlertDescription>No history found for this filter.</AlertDescription>
           </Alert>
         ) : (
-          <div className={`${isPopupMode ? 'space-y-2' : 'space-y-3'}`}>
+          <div ref={historyListRef} className={`${isPopupMode ? 'space-y-2' : 'space-y-3'}`}>
             {unifiedHistory.map((item) => (
               <div key={item.id} className={`border rounded-lg ${isPopupMode ? 'p-2' : 'p-3'} space-y-2`}>
                 {item.type === 'transfer' && item.transaction && (
@@ -270,6 +309,41 @@ export function UnifiedHistory({ wallet, transactions, onTransactionsUpdate, isL
                 )}
               </div>
             ))}
+          </div>
+        )}
+
+        {/* Scroll Up Indicator - Fixed at top for Popup Mode */}
+        {isPopupMode && showScrollUpIndicator && (
+          <div
+            className="fixed top-[120px] left-1/2 -translate-x-1/2 z-30 animate-bounce cursor-pointer"
+            onClick={() => {
+              const scrollContainer = document.querySelector('.popup-container');
+              if (scrollContainer) {
+                scrollContainer.scrollBy({ top: -200, behavior: 'smooth' });
+              }
+            }}
+          >
+            <div className="flex flex-col items-center text-muted-foreground bg-background/80 backdrop-blur-sm px-3 py-1 rounded-full border border-border/50 shadow-sm">
+              <ChevronUp className="h-4 w-4" />
+            </div>
+          </div>
+        )}
+
+        {/* Scroll Down Indicator - Fixed above footer for Popup Mode */}
+        {isPopupMode && showScrollIndicator && (
+          <div
+            className="fixed bottom-[40px] left-1/2 -translate-x-1/2 z-30 animate-bounce cursor-pointer"
+            onClick={() => {
+              // popup-container is the actual scrollable element in extension popup
+              const scrollContainer = document.querySelector('.popup-container');
+              if (scrollContainer) {
+                scrollContainer.scrollBy({ top: 200, behavior: 'smooth' });
+              }
+            }}
+          >
+            <div className="flex flex-col items-center text-muted-foreground bg-background/80 backdrop-blur-sm px-3 py-1 rounded-full border border-border/50 shadow-sm">
+              <ChevronDown className="h-4 w-4" />
+            </div>
           </div>
         )}
 
@@ -504,19 +578,15 @@ function TransferItem({
             </Button>
           )}
         </div>
-        {/* Type Badge - Bottom Right for popup */}
-        <div className="absolute -bottom-1 right-0">
-          {isPrivate ? (
+        {/* Type Badge - Bottom Right for popup - Only show Private badge */}
+        {isPrivate && (
+          <div className="absolute -bottom-1 right-0">
             <Badge className="bg-[#0000db] text-white text-[8px] px-1 py-0">
               <Shield className="h-2 w-2 mr-0.5" />
               Private
             </Badge>
-          ) : (
-            <Badge variant="outline" className="text-[8px] px-1 py-0">
-              Account
-            </Badge>
-          )}
-        </div>
+          </div>
+        )}
       </div>
     );
   }
