@@ -91,12 +91,14 @@ function PopupApp() {
           return;
         }
         
-        // IMPORTANT: If wallet appears unlocked but no session password exists,
-        // it means browser/extension was closed. Lock the wallet for security.
+        // IMPORTANT: Check if session is still valid across instances
+        // This allows opening popup while expanded is open (or vice versa)
         const hasPassword = await ExtensionStorageManager.get('walletPasswordHash');
         const isWalletLocked = await ExtensionStorageManager.get('isWalletLocked');
-        if (hasPassword && isWalletLocked === 'false' && !WalletManager.isSessionActive()) {
-          console.log('🔒 PopupApp: No session password found, locking wallet for security');
+        const sessionValid = WalletManager.isSessionActive() || WalletManager.isSessionValidAcrossInstances();
+        
+        if (hasPassword && isWalletLocked === 'false' && !sessionValid) {
+          console.log('🔒 PopupApp: Session expired, locking wallet for security');
           await WalletManager.lockWallets();
           setIsLocked(true);
           setIsLoading(false);
@@ -334,8 +336,9 @@ function PopupApp() {
   }, [isPopupMode]);
 
   // Enhanced unlock handler to properly restore wallet state and handle pending DApp requests
-  const handleUnlock = (unlockedWallets: Wallet[]) => {
+  const handleUnlock = async (unlockedWallets: Wallet[]) => {
     console.log('🔓 PopupApp: handleUnlock called with', unlockedWallets.length, 'wallets');
+    console.log('🔓 PopupApp: Wallet addresses:', unlockedWallets.map((w, i) => `[${i}] ${w.address}`));
     
     // Re-setup auto-lock callback after unlock (session password was just set)
     WalletManager.setAutoLockCallback(() => {
@@ -345,31 +348,46 @@ function PopupApp() {
       setIsLocked(true);
     });
     
-    // CRITICAL FIX: Use synchronous state updates to prevent race conditions
     if (unlockedWallets.length > 0) {
+      // Get active wallet FIRST before setting any state
+      let activeWalletId = await ExtensionStorageManager.get('activeWalletId');
+      console.log('🔓 PopupApp: activeWalletId from ExtensionStorage:', activeWalletId);
+      
+      // Fallback to localStorage if not in ExtensionStorage
+      if (!activeWalletId) {
+        activeWalletId = localStorage.getItem('activeWalletId');
+        console.log('🔓 PopupApp: activeWalletId from localStorage (fallback):', activeWalletId);
+      }
+      
+      console.log('🔓 PopupApp: Final activeWalletId:', activeWalletId);
+      
+      let activeWallet = unlockedWallets[0]; // Default to first wallet
+      
+      if (activeWalletId) {
+        const foundWallet = unlockedWallets.find(w => w.address === activeWalletId);
+        if (foundWallet) {
+          activeWallet = foundWallet;
+          console.log('🔓 PopupApp: Found active wallet:', activeWallet.address);
+        } else {
+          console.log('🔓 PopupApp: Active wallet not found in list, using first wallet');
+          await ExtensionStorageManager.set('activeWalletId', activeWallet.address);
+          localStorage.setItem('activeWalletId', activeWallet.address);
+        }
+      } else {
+        console.log('🔓 PopupApp: No activeWalletId stored, using first wallet');
+        await ExtensionStorageManager.set('activeWalletId', activeWallet.address);
+        localStorage.setItem('activeWalletId', activeWallet.address);
+      }
+      
+      // Now set all states together
+      console.log('🔓 PopupApp: Setting wallet state to:', activeWallet.address);
       setIsLocked(false);
       setWallets(unlockedWallets);
-      setWallet(unlockedWallets[0]);
+      setWallet(activeWallet);
       
-      // Handle active wallet selection and pending requests asynchronously
+      // Handle pending requests asynchronously (non-blocking)
       setTimeout(async () => {
         try {
-          // Set active wallet - prioritize stored activeWalletId, fallback to first wallet
-          const activeWalletId = await ExtensionStorageManager.get('activeWalletId');
-          let activeWallet = unlockedWallets[0]; // Default to first wallet
-          
-          if (activeWalletId) {
-            const foundWallet = unlockedWallets.find(w => w.address === activeWalletId);
-            if (foundWallet) {
-              activeWallet = foundWallet;
-              setWallet(activeWallet);
-            } else {
-              await ExtensionStorageManager.set('activeWalletId', activeWallet.address);
-            }
-          } else {
-            await ExtensionStorageManager.set('activeWalletId', activeWallet.address);
-          }
-          
           // Check for pending connection request
           const pendingRequest = await ExtensionStorageManager.get('pendingConnectionRequest');
           if (pendingRequest) {
@@ -398,9 +416,9 @@ function PopupApp() {
             }
           }
         } catch (error) {
-          console.error('Error in async unlock handler:', error);
+          console.error('Error checking pending requests:', error);
         }
-      }, 0);
+      }, 100);
       
     } else {
       setIsLocked(false);
@@ -466,11 +484,18 @@ function PopupApp() {
   };
 
   const switchWallet = async (selectedWallet: Wallet) => {
+    console.log('🔄 PopupApp: switchWallet called, switching to:', selectedWallet.address);
     setWallet(selectedWallet);
     
     try {
       await ExtensionStorageManager.set('activeWalletId', selectedWallet.address);
       localStorage.setItem('activeWalletId', selectedWallet.address);
+      console.log('✅ PopupApp: activeWalletId saved to both storages:', selectedWallet.address);
+      
+      // Verify it was saved
+      const verifyExt = await ExtensionStorageManager.get('activeWalletId');
+      const verifyLocal = localStorage.getItem('activeWalletId');
+      console.log('🔍 PopupApp: Verify - ExtensionStorage:', verifyExt, ', localStorage:', verifyLocal);
     } catch (error) {
       console.error('Failed to switch wallet:', error);
     }

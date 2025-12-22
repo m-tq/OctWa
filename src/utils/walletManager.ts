@@ -11,6 +11,9 @@ export class WalletManager {
   private static onAutoLockCallback: (() => void) | null = null;
   private static isAutoLockEnabled: boolean = true;
   private static timerStartTime: number = 0;
+  
+  // Storage key for session timestamp (shared across instances)
+  private static SESSION_TIMESTAMP_KEY = 'walletSessionTimestamp';
 
   // Set callback for auto-lock (to trigger UI update)
   static setAutoLockCallback(callback: () => void): void {
@@ -39,6 +42,10 @@ export class WalletManager {
     }
     
     this.timerStartTime = Date.now();
+    
+    // Save session timestamp to storage for cross-instance sharing
+    localStorage.setItem(this.SESSION_TIMESTAMP_KEY, this.timerStartTime.toString());
+    
     console.log(`⏱️ WalletManager: Starting auto-lock timer (${this.SESSION_TIMEOUT_MS / 1000}s) at ${new Date().toLocaleTimeString()}`);
     
     // Set auto-lock timeout for security
@@ -115,6 +122,9 @@ export class WalletManager {
       clearTimeout(this.sessionTimeout);
       this.sessionTimeout = null;
     }
+    
+    // Clear session timestamp from storage
+    localStorage.removeItem(this.SESSION_TIMESTAMP_KEY);
   }
 
   static getSessionPassword(): string | null {
@@ -133,9 +143,29 @@ export class WalletManager {
     }
   }
   
-  // Check if session is active
+  // Check if session is active (in this instance)
   static isSessionActive(): boolean {
     return this.sessionPassword !== null;
+  }
+  
+  // Check if session is valid across instances (using stored timestamp)
+  static isSessionValidAcrossInstances(): boolean {
+    const timestampStr = localStorage.getItem(this.SESSION_TIMESTAMP_KEY);
+    if (!timestampStr) {
+      return false;
+    }
+    
+    const timestamp = parseInt(timestampStr, 10);
+    if (isNaN(timestamp)) {
+      return false;
+    }
+    
+    const elapsed = Date.now() - timestamp;
+    const isValid = elapsed < this.SESSION_TIMEOUT_MS;
+    
+    console.log(`🔍 WalletManager: Session timestamp check - elapsed: ${Math.round(elapsed / 1000)}s, valid: ${isValid}`);
+    
+    return isValid;
   }
   
   // Check rate limit status
@@ -149,6 +179,11 @@ export class WalletManager {
 
   static async unlockWallets(password: string): Promise<Wallet[]> {
     console.log('🔓 WalletManager: unlockWallets called');
+    
+    // Check if activeWalletId is preserved from before lock
+    const preservedActiveWalletId = await ExtensionStorageManager.get('activeWalletId');
+    console.log('🔓 WalletManager: Preserved activeWalletId:', preservedActiveWalletId);
+    
     try {
       // Get password hash and salt
       const hashedPassword = await ExtensionStorageManager.get('walletPasswordHash');
@@ -349,6 +384,12 @@ export class WalletManager {
 
   static async lockWallets(): Promise<void> {
     try {
+      console.log('🔒 WalletManager: lockWallets called');
+      
+      // Check activeWalletId BEFORE locking (should be preserved)
+      const activeWalletIdBefore = await ExtensionStorageManager.get('activeWalletId');
+      console.log('🔒 WalletManager: activeWalletId BEFORE lock:', activeWalletIdBefore);
+      
       // Clear session password
       this.clearSessionPassword();
 
@@ -400,7 +441,7 @@ export class WalletManager {
         }
       }
       
-      // Clear wallet data
+      // Clear wallet data (but NOT activeWalletId - we want to preserve it!)
       await Promise.all([
         ExtensionStorageManager.remove('wallets'),
         ExtensionStorageManager.set('isWalletLocked', 'true')
@@ -408,6 +449,10 @@ export class WalletManager {
       
       localStorage.removeItem('wallets');
       localStorage.setItem('isWalletLocked', 'true');
+      
+      // Verify activeWalletId is still preserved
+      const activeWalletIdAfter = await ExtensionStorageManager.get('activeWalletId');
+      console.log('🔒 WalletManager: activeWalletId AFTER lock:', activeWalletIdAfter);
     } catch (error) {
       console.error('WalletManager lock error:', error);
       throw error;

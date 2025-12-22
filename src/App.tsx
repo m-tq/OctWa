@@ -145,10 +145,14 @@ function App() {
           return;
         }
         
-        // IMPORTANT: If wallet appears unlocked but no session password exists,
-        // it means browser/extension was closed. Lock the wallet for security.
-        if (hasPassword && walletLocked === 'false' && !WalletManager.isSessionActive()) {
-          console.log('🔒 App: No session password found, locking wallet for security');
+        // Check if session is still valid (either in this instance or across instances)
+        // This allows opening new tabs/popups without re-locking
+        const sessionValid = WalletManager.isSessionActive() || WalletManager.isSessionValidAcrossInstances();
+        
+        // If wallet appears unlocked but session is not valid,
+        // it means the session has expired. Lock the wallet for security.
+        if (hasPassword && walletLocked === 'false' && !sessionValid) {
+          console.log('🔒 App: Session expired, locking wallet for security');
           await WalletManager.lockWallets();
           setIsLocked(true);
           return;
@@ -206,7 +210,7 @@ function App() {
     checkWalletStatus();
   }, []);
 
-  const handleUnlock = (unlockedWallets: Wallet[]) => {
+  const handleUnlock = async (unlockedWallets: Wallet[]) => {
     console.log('🔓 App.tsx: handleUnlock called with', unlockedWallets.length, 'wallets');
     
     // Re-setup auto-lock callback after unlock (session password was just set)
@@ -221,8 +225,8 @@ function App() {
       setWallets(unlockedWallets);
       setIsLocked(false);
       
-      // Set active wallet - prioritize stored activeWalletId, fallback to first wallet
-      const activeWalletId = localStorage.getItem('activeWalletId');
+      // Set active wallet - prioritize stored activeWalletId from ExtensionStorage, fallback to first wallet
+      const activeWalletId = await ExtensionStorageManager.get('activeWalletId') || localStorage.getItem('activeWalletId');
       let activeWallet = unlockedWallets[0];
       
       if (activeWalletId) {
@@ -231,9 +235,11 @@ function App() {
           activeWallet = foundWallet;
         } else {
           localStorage.setItem('activeWalletId', activeWallet.address);
+          await ExtensionStorageManager.set('activeWalletId', activeWallet.address);
         }
       } else {
         localStorage.setItem('activeWalletId', activeWallet.address);
+        await ExtensionStorageManager.set('activeWalletId', activeWallet.address);
       }
       
       setWallet(activeWallet);
@@ -343,9 +349,11 @@ function App() {
     }
   };
 
-  const switchWallet = (selectedWallet: Wallet) => {
+  const switchWallet = async (selectedWallet: Wallet) => {
     setWallet(selectedWallet);
+    // Save to both localStorage and ExtensionStorage for persistence
     localStorage.setItem('activeWalletId', selectedWallet.address);
+    await ExtensionStorageManager.set('activeWalletId', selectedWallet.address);
   };
 
   const removeWallet = async (walletToRemove: Wallet) => {

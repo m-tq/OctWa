@@ -60,11 +60,12 @@ OctWa implements industry-standard security practices to protect your assets:
 </p>
 
 <p align="center">
+  <img src="public/screenshot/popup/multiwallet.png" alt="Multi Wallet" width="180">
   <img src="public/screenshot/popup/privatedashboard.png" alt="Private Dashboard" width="180">
   <img src="public/screenshot/popup/privatesend.png" alt="Private Send" width="180">
 </p>
 <p align="center">
-  <em>Private Mode in Popup</em>
+  <em>Multi Wallet & Private Mode in Popup</em>
 </p>
 
 ## Features

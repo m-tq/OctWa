@@ -32,8 +32,9 @@ async function lockWallet() {
     // Set wallet as locked in storage
     await setStorageData('isWalletLocked', 'true');
     
-    // Clear session-related data but keep encrypted wallets
-    await chrome.storage.local.remove(['wallets', 'activeWalletId']);
+    // Clear session-related data but keep encrypted wallets AND activeWalletId
+    // activeWalletId should be preserved so user returns to their last active wallet
+    await chrome.storage.local.remove(['wallets']);
     
     console.log('[Background] Wallet locked successfully');
   } catch (error) {

@@ -63,12 +63,14 @@ function ExpandedApp() {
           return;
         }
         
-        // IMPORTANT: If wallet appears unlocked but no session password exists,
-        // it means browser/extension was closed. Lock the wallet for security.
+        // IMPORTANT: Check if session is still valid across instances
+        // This allows opening expanded view while popup is open (or vice versa)
         const hasPassword = await ExtensionStorageManager.get('walletPasswordHash');
         const isWalletLocked = await ExtensionStorageManager.get('isWalletLocked');
-        if (hasPassword && isWalletLocked === 'false' && !WalletManager.isSessionActive()) {
-          console.log('🔒 ExpandedApp: No session password found, locking wallet for security');
+        const sessionValid = WalletManager.isSessionActive() || WalletManager.isSessionValidAcrossInstances();
+        
+        if (hasPassword && isWalletLocked === 'false' && !sessionValid) {
+          console.log('🔒 ExpandedApp: Session expired, locking wallet for security');
           await WalletManager.lockWallets();
           setIsLocked(true);
           setIsLoading(false);
@@ -261,7 +263,7 @@ function ExpandedApp() {
   }, [isLocked, wallets, wallet]);
 
   // Simple unlock handler
-  const handleUnlock = (unlockedWallets: Wallet[]) => {
+  const handleUnlock = async (unlockedWallets: Wallet[]) => {
     console.log('🔓 ExpandedApp: handleUnlock called with', unlockedWallets.length, 'wallets');
     
     // Re-setup auto-lock callback after unlock (session password was just set)
@@ -276,8 +278,8 @@ function ExpandedApp() {
       setWallets(unlockedWallets);
       setIsLocked(false);
       
-      // Set active wallet - prioritize stored activeWalletId, fallback to first wallet
-      const activeWalletId = localStorage.getItem('activeWalletId');
+      // Set active wallet - prioritize stored activeWalletId from ExtensionStorage, fallback to first wallet
+      const activeWalletId = await ExtensionStorageManager.get('activeWalletId') || localStorage.getItem('activeWalletId');
       let activeWallet = unlockedWallets[0];
       
       if (activeWalletId) {
@@ -286,9 +288,11 @@ function ExpandedApp() {
           activeWallet = foundWallet;
         } else {
           localStorage.setItem('activeWalletId', activeWallet.address);
+          await ExtensionStorageManager.set('activeWalletId', activeWallet.address);
         }
       } else {
         localStorage.setItem('activeWalletId', activeWallet.address);
+        await ExtensionStorageManager.set('activeWalletId', activeWallet.address);
       }
       
       setWallet(activeWallet);
