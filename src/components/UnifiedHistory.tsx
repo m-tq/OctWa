@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import {
   History,
   RefreshCw,
@@ -395,6 +395,9 @@ export function UnifiedHistory({ wallet, transactions, onTransactionsUpdate, isL
                 <Eye className="h-4 w-4" />
                 Transaction Details
               </DialogTitle>
+              <DialogDescription className="sr-only">
+                View detailed information about this transaction
+              </DialogDescription>
             </DialogHeader>
             <div className="flex-1 overflow-y-auto pr-1">
               {loadingDetails ? (

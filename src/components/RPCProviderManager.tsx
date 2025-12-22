@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription } from '@/components/ui/dialog';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Wifi, Plus, MoreVertical, Trash2, Star, Settings } from 'lucide-react';
 import { RPCProvider } from '../types/wallet';
@@ -239,6 +239,9 @@ export function RPCProviderManager({ onClose, onRPCChange }: RPCProviderManagerP
                 <DialogTitle>
                   {editingProvider ? 'Edit RPC Provider' : 'Add RPC Provider'}
                 </DialogTitle>
+                <DialogDescription className="sr-only">
+                  Configure RPC provider connection settings
+                </DialogDescription>
               </DialogHeader>
               <div className="space-y-4">
                 <div className="space-y-2">

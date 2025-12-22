@@ -9,7 +9,8 @@ import { Badge } from '@/components/ui/badge';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Dialog, DialogContent } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@/components/ui/dialog';
+import { VisuallyHidden } from '@/components/ui/visually-hidden';
 import { Upload, FileText, AlertTriangle, Wallet as WalletIcon, CheckCircle, Zap, Trash2, Settings2, Loader2, XCircle } from 'lucide-react';
 import { Wallet } from '../types/wallet';
 import { fetchBalance, sendTransaction, createTransaction } from '../utils/api';
@@ -673,6 +674,10 @@ export function FileMultiSend({ wallet, balance, onBalanceUpdate, onNonceUpdate,
         {/* Transaction Modal */}
         <Dialog open={showTxModal} onOpenChange={txModalStatus === 'sending' ? undefined : setShowTxModal}>
           <DialogContent className="sm:max-w-md" onPointerDownOutside={(e) => txModalStatus === 'sending' && e.preventDefault()}>
+            <VisuallyHidden>
+              <DialogTitle>File Multi Send Transaction</DialogTitle>
+              <DialogDescription>Transaction status for file multi-send operation</DialogDescription>
+            </VisuallyHidden>
             <div className="flex flex-col items-center justify-center py-6 space-y-4">
               {/* Sending State */}
               {txModalStatus === 'sending' && (

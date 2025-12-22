@@ -1,85 +1,304 @@
 import { Buffer } from 'buffer';
 
-export async function hashPassword(password: string, salt?: string): Promise<{ hashedPassword: string; salt: string }> {
+// Security constants
+const PBKDF2_ITERATIONS = 310000; // OWASP recommendation for SHA-256
+const SALT_LENGTH = 32; // 256 bits
+const KEY_LENGTH = 32; // 256 bits for AES-256
+const IV_LENGTH = 12; // 96 bits for AES-GCM
+
+// Rate limiting for password attempts
+const MAX_ATTEMPTS = 5;
+const LOCKOUT_DURATION_MS = 5 * 60 * 1000; // 5 minutes
+
+interface RateLimitState {
+  attempts: number;
+  lastAttempt: number;
+  lockedUntil: number | null;
+}
+
+let rateLimitState: RateLimitState = {
+  attempts: 0,
+  lastAttempt: 0,
+  lockedUntil: null
+};
+
+// Check if rate limited
+export function isRateLimited(): { limited: boolean; remainingMs?: number } {
+  const now = Date.now();
+  
+  // Check if currently locked out
+  if (rateLimitState.lockedUntil && now < rateLimitState.lockedUntil) {
+    return { 
+      limited: true, 
+      remainingMs: rateLimitState.lockedUntil - now 
+    };
+  }
+  
+  // Reset if lockout expired
+  if (rateLimitState.lockedUntil && now >= rateLimitState.lockedUntil) {
+    rateLimitState = { attempts: 0, lastAttempt: 0, lockedUntil: null };
+  }
+  
+  return { limited: false };
+}
+
+// Record a failed attempt
+export function recordFailedAttempt(): void {
+  const now = Date.now();
+  
+  // Reset attempts if last attempt was more than lockout duration ago
+  if (now - rateLimitState.lastAttempt > LOCKOUT_DURATION_MS) {
+    rateLimitState.attempts = 0;
+  }
+  
+  rateLimitState.attempts++;
+  rateLimitState.lastAttempt = now;
+  
+  // Lock out if max attempts exceeded
+  if (rateLimitState.attempts >= MAX_ATTEMPTS) {
+    rateLimitState.lockedUntil = now + LOCKOUT_DURATION_MS;
+    console.warn(`🔒 Too many failed attempts. Locked for ${LOCKOUT_DURATION_MS / 1000} seconds`);
+  }
+}
+
+// Reset rate limit on successful login
+export function resetRateLimit(): void {
+  rateLimitState = { attempts: 0, lastAttempt: 0, lockedUntil: null };
+}
+
+// Get remaining attempts
+export function getRemainingAttempts(): number {
+  return Math.max(0, MAX_ATTEMPTS - rateLimitState.attempts);
+}
+
+// Derive key using PBKDF2 with proper parameters
+async function deriveKey(
+  password: string, 
+  salt: Uint8Array, 
+  usage: KeyUsage[]
+): Promise<CryptoKey> {
   const encoder = new TextEncoder();
-  const saltBytes = salt ? Buffer.from(salt, 'hex') : crypto.getRandomValues(new Uint8Array(16));
+  const passwordKey = await crypto.subtle.importKey(
+    'raw',
+    encoder.encode(password),
+    'PBKDF2',
+    false,
+    ['deriveBits', 'deriveKey']
+  );
   
-  const passwordBytes = encoder.encode(password);
-  const combined = new Uint8Array(passwordBytes.length + saltBytes.length);
-  combined.set(passwordBytes);
-  combined.set(saltBytes, passwordBytes.length);
+  // Create a new ArrayBuffer copy to satisfy TypeScript
+  const saltCopy = new Uint8Array(salt).buffer as ArrayBuffer;
   
-  const hashBuffer = await crypto.subtle.digest('SHA-256', combined);
-  const hashedPassword = Buffer.from(hashBuffer).toString('hex');
+  return crypto.subtle.deriveKey(
+    {
+      name: 'PBKDF2',
+      salt: saltCopy,
+      iterations: PBKDF2_ITERATIONS,
+      hash: 'SHA-256'
+    },
+    passwordKey,
+    { name: 'AES-GCM', length: 256 },
+    false,
+    usage
+  );
+}
+
+// Hash password using PBKDF2
+export async function hashPassword(
+  password: string, 
+  salt?: string
+): Promise<{ hashedPassword: string; salt: string }> {
+  const saltBytes = salt 
+    ? Buffer.from(salt, 'hex') 
+    : crypto.getRandomValues(new Uint8Array(SALT_LENGTH));
+  
+  const encoder = new TextEncoder();
+  const passwordKey = await crypto.subtle.importKey(
+    'raw',
+    encoder.encode(password),
+    'PBKDF2',
+    false,
+    ['deriveBits']
+  );
+  
+  const hashBuffer = await crypto.subtle.deriveBits(
+    {
+      name: 'PBKDF2',
+      salt: saltBytes,
+      iterations: PBKDF2_ITERATIONS,
+      hash: 'SHA-256'
+    },
+    passwordKey,
+    KEY_LENGTH * 8 // bits
+  );
   
   return {
-    hashedPassword,
+    hashedPassword: Buffer.from(hashBuffer).toString('hex'),
     salt: Buffer.from(saltBytes).toString('hex')
   };
 }
 
-export async function verifyPassword(password: string, hashedPassword: string, salt: string): Promise<boolean> {
+// Verify password with timing-safe comparison
+export async function verifyPassword(
+  password: string, 
+  hashedPassword: string, 
+  salt: string
+): Promise<boolean> {
+  // Check rate limit first
+  const rateLimit = isRateLimited();
+  if (rateLimit.limited) {
+    throw new Error(`Too many attempts. Try again in ${Math.ceil((rateLimit.remainingMs || 0) / 1000)} seconds`);
+  }
+  
   const { hashedPassword: newHash } = await hashPassword(password, salt);
-  return newHash === hashedPassword;
+  
+  // Timing-safe comparison to prevent timing attacks
+  const isValid = timingSafeEqual(newHash, hashedPassword);
+  
+  if (!isValid) {
+    recordFailedAttempt();
+  } else {
+    resetRateLimit();
+  }
+  
+  return isValid;
 }
 
-export function encryptWalletData(data: string, password: string): Promise<string> {
-  return new Promise(async (resolve, reject) => {
-    try {
-      const encoder = new TextEncoder();
-      const key = await crypto.subtle.importKey(
-        'raw',
-        await crypto.subtle.digest('SHA-256', encoder.encode(password)),
-        { name: 'AES-GCM' },
-        false,
-        ['encrypt']
-      );
-      
-      const iv = crypto.getRandomValues(new Uint8Array(12));
-      const encrypted = await crypto.subtle.encrypt(
-        { name: 'AES-GCM', iv },
-        key,
-        encoder.encode(data)
-      );
-      
-      const combined = new Uint8Array(iv.length + encrypted.byteLength);
-      combined.set(iv);
-      combined.set(new Uint8Array(encrypted), iv.length);
-      
-      resolve(Buffer.from(combined).toString('base64'));
-    } catch (error) {
-      reject(error);
-    }
-  });
+// Timing-safe string comparison
+function timingSafeEqual(a: string, b: string): boolean {
+  if (a.length !== b.length) {
+    return false;
+  }
+  
+  let result = 0;
+  for (let i = 0; i < a.length; i++) {
+    result |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  }
+  
+  return result === 0;
 }
 
-export function decryptWalletData(encryptedData: string, password: string): Promise<string> {
-  return new Promise(async (resolve, reject) => {
-    try {
-      const encoder = new TextEncoder();
-      const decoder = new TextDecoder();
-      
-      const key = await crypto.subtle.importKey(
-        'raw',
-        await crypto.subtle.digest('SHA-256', encoder.encode(password)),
-        { name: 'AES-GCM' },
-        false,
-        ['decrypt']
-      );
-      
-      const combined = Buffer.from(encryptedData, 'base64');
-      const iv = combined.slice(0, 12);
-      const encrypted = combined.slice(12);
-      
-      const decrypted = await crypto.subtle.decrypt(
-        { name: 'AES-GCM', iv },
-        key,
-        encrypted
-      );
-      
-      resolve(decoder.decode(decrypted));
-    } catch (error) {
-      reject(error);
+// Encrypt wallet data using AES-GCM
+export async function encryptWalletData(data: string, password: string): Promise<string> {
+  const salt = crypto.getRandomValues(new Uint8Array(SALT_LENGTH));
+  const iv = crypto.getRandomValues(new Uint8Array(IV_LENGTH));
+  
+  const key = await deriveKey(password, salt, ['encrypt']);
+  
+  const encoder = new TextEncoder();
+  const encrypted = await crypto.subtle.encrypt(
+    { name: 'AES-GCM', iv },
+    key,
+    encoder.encode(data)
+  );
+  
+  // Format: salt (32) + iv (12) + ciphertext
+  const combined = new Uint8Array(salt.length + iv.length + encrypted.byteLength);
+  combined.set(salt, 0);
+  combined.set(iv, salt.length);
+  combined.set(new Uint8Array(encrypted), salt.length + iv.length);
+  
+  return Buffer.from(combined).toString('base64');
+}
+
+// Decrypt wallet data using AES-GCM
+export async function decryptWalletData(encryptedData: string, password: string): Promise<string> {
+  const combined = Buffer.from(encryptedData, 'base64');
+  
+  // Check minimum length (salt + iv + at least some ciphertext)
+  if (combined.length < SALT_LENGTH + IV_LENGTH + 16) {
+    throw new Error('Invalid encrypted data format');
+  }
+  
+  const salt = combined.slice(0, SALT_LENGTH);
+  const iv = combined.slice(SALT_LENGTH, SALT_LENGTH + IV_LENGTH);
+  const ciphertext = combined.slice(SALT_LENGTH + IV_LENGTH);
+  
+  const key = await deriveKey(password, salt, ['decrypt']);
+  
+  try {
+    const decrypted = await crypto.subtle.decrypt(
+      { name: 'AES-GCM', iv },
+      key,
+      ciphertext
+    );
+    
+    const decoder = new TextDecoder();
+    return decoder.decode(decrypted);
+  } catch {
+    throw new Error('Decryption failed - invalid password or corrupted data');
+  }
+}
+
+// Secure memory clearing utility
+export function secureWipe(data: string | Uint8Array | ArrayBuffer): void {
+  if (typeof data === 'string') {
+    // Strings are immutable in JS, but we can try to help GC
+    // by dereferencing
+    return;
+  }
+  
+  if (data instanceof ArrayBuffer) {
+    const view = new Uint8Array(data);
+    crypto.getRandomValues(view); // Overwrite with random data
+    view.fill(0); // Then zero out
+  } else if (data instanceof Uint8Array) {
+    crypto.getRandomValues(data);
+    data.fill(0);
+  }
+}
+
+// Create a secure password validator
+export function validatePasswordStrength(password: string): {
+  valid: boolean;
+  score: number;
+  feedback: string[];
+} {
+  const feedback: string[] = [];
+  let score = 0;
+  
+  // Minimum length
+  if (password.length < 8) {
+    feedback.push('Password must be at least 8 characters');
+  } else {
+    score += 1;
+    if (password.length >= 12) score += 1;
+    if (password.length >= 16) score += 1;
+  }
+  
+  // Character variety
+  if (/[a-z]/.test(password)) score += 1;
+  else feedback.push('Add lowercase letters');
+  
+  if (/[A-Z]/.test(password)) score += 1;
+  else feedback.push('Add uppercase letters');
+  
+  if (/[0-9]/.test(password)) score += 1;
+  else feedback.push('Add numbers');
+  
+  if (/[^a-zA-Z0-9]/.test(password)) score += 1;
+  else feedback.push('Add special characters');
+  
+  // Common patterns to avoid
+  const commonPatterns = [
+    /^123456/,
+    /^password/i,
+    /^qwerty/i,
+    /^abc123/i,
+    /(.)\1{3,}/ // Repeated characters
+  ];
+  
+  for (const pattern of commonPatterns) {
+    if (pattern.test(password)) {
+      score = Math.max(0, score - 2);
+      feedback.push('Avoid common patterns');
+      break;
     }
-  });
+  }
+  
+  return {
+    valid: password.length >= 8 && score >= 4,
+    score: Math.min(score, 7), // Max score of 7
+    feedback
+  };
 }

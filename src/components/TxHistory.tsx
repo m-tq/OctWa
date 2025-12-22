@@ -6,7 +6,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Separator } from '@/components/ui/separator';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription } from '@/components/ui/dialog';
 import { 
   History, 
   RefreshCw, 
@@ -327,6 +327,9 @@ export function TxHistory({ wallet, transactions, onTransactionsUpdate, isLoadin
                             <DialogContent className="max-w-2xl">
                               <DialogHeader>
                                 <DialogTitle>Transaction Details</DialogTitle>
+                                <DialogDescription className="sr-only">
+                                  View detailed information about this transaction
+                                </DialogDescription>
                               </DialogHeader>
                               {loadingDetails ? (
                                 <div className="space-y-4">

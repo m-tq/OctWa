@@ -1,13 +1,13 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Shield, Eye, EyeOff, AlertTriangle } from 'lucide-react';
+import { Shield, Eye, EyeOff, AlertTriangle, CheckCircle } from 'lucide-react';
 import { Wallet } from '../types/wallet';
-import { hashPassword, encryptWalletData } from '../utils/password';
+import { hashPassword, encryptWalletData, validatePasswordStrength } from '../utils/password';
 import { useToast } from '@/hooks/use-toast';
 import { ExtensionStorageManager } from '../utils/extensionStorage';
 import { WalletManager } from '../utils/walletManager';
@@ -29,6 +29,26 @@ export function PasswordSetup({ wallet, onPasswordSet, onBack }: PasswordSetupPr
   const [passwordTouched, setPasswordTouched] = useState(false);
   const [confirmTouched, setConfirmTouched] = useState(false);
   const { toast } = useToast();
+
+  // Password strength validation
+  const passwordStrength = useMemo(() => {
+    if (!password) return null;
+    return validatePasswordStrength(password);
+  }, [password]);
+
+  const getStrengthColor = (score: number) => {
+    if (score <= 2) return 'bg-red-500';
+    if (score <= 4) return 'bg-yellow-500';
+    if (score <= 5) return 'bg-blue-500';
+    return 'bg-green-500';
+  };
+
+  const getStrengthLabel = (score: number) => {
+    if (score <= 2) return 'Weak';
+    if (score <= 4) return 'Fair';
+    if (score <= 5) return 'Good';
+    return 'Strong';
+  };
 
   const validatePassword = () => {
     if (password.length < 8) {
@@ -224,6 +244,55 @@ export function PasswordSetup({ wallet, onPasswordSet, onBack }: PasswordSetupPr
                 )}
               </Button>
             </div>
+            
+            {/* Password Strength Indicator */}
+            {password && passwordStrength && (
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <div className="flex-1 h-1.5 bg-muted rounded-full overflow-hidden">
+                    <div 
+                      className={`h-full transition-all duration-300 ${getStrengthColor(passwordStrength.score)}`}
+                      style={{ width: `${(passwordStrength.score / 7) * 100}%` }}
+                    />
+                  </div>
+                  <span className={`text-xs font-medium ${
+                    passwordStrength.score <= 2 ? 'text-red-500' :
+                    passwordStrength.score <= 4 ? 'text-yellow-500' :
+                    passwordStrength.score <= 5 ? 'text-blue-500' : 'text-green-500'
+                  }`}>
+                    {getStrengthLabel(passwordStrength.score)}
+                  </span>
+                </div>
+                
+                {/* Password Requirements */}
+                <div className="grid grid-cols-2 gap-1 text-xs">
+                  <div className={`flex items-center gap-1 ${password.length >= 8 ? 'text-green-600' : 'text-muted-foreground'}`}>
+                    <CheckCircle className={`h-3 w-3 ${password.length >= 8 ? 'opacity-100' : 'opacity-30'}`} />
+                    8+ characters
+                  </div>
+                  <div className={`flex items-center gap-1 ${/[A-Z]/.test(password) ? 'text-green-600' : 'text-muted-foreground'}`}>
+                    <CheckCircle className={`h-3 w-3 ${/[A-Z]/.test(password) ? 'opacity-100' : 'opacity-30'}`} />
+                    Uppercase
+                  </div>
+                  <div className={`flex items-center gap-1 ${/[a-z]/.test(password) ? 'text-green-600' : 'text-muted-foreground'}`}>
+                    <CheckCircle className={`h-3 w-3 ${/[a-z]/.test(password) ? 'opacity-100' : 'opacity-30'}`} />
+                    Lowercase
+                  </div>
+                  <div className={`flex items-center gap-1 ${/[0-9]/.test(password) ? 'text-green-600' : 'text-muted-foreground'}`}>
+                    <CheckCircle className={`h-3 w-3 ${/[0-9]/.test(password) ? 'opacity-100' : 'opacity-30'}`} />
+                    Number
+                  </div>
+                  <div className={`flex items-center gap-1 ${/[^a-zA-Z0-9]/.test(password) ? 'text-green-600' : 'text-muted-foreground'}`}>
+                    <CheckCircle className={`h-3 w-3 ${/[^a-zA-Z0-9]/.test(password) ? 'opacity-100' : 'opacity-30'}`} />
+                    Special char
+                  </div>
+                  <div className={`flex items-center gap-1 ${password.length >= 12 ? 'text-green-600' : 'text-muted-foreground'}`}>
+                    <CheckCircle className={`h-3 w-3 ${password.length >= 12 ? 'opacity-100' : 'opacity-30'}`} />
+                    12+ chars (bonus)
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Confirm Password Field */}

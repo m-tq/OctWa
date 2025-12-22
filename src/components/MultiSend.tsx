@@ -8,7 +8,8 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Dialog, DialogContent } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@/components/ui/dialog';
+import { VisuallyHidden } from '@/components/ui/visually-hidden';
 import { Users, Plus, Trash2, AlertTriangle, Wallet as WalletIcon, CheckCircle, MessageSquare, Loader2, Settings2, XCircle } from 'lucide-react';
 import { Wallet } from '../types/wallet';
 import { fetchBalance, sendTransaction, createTransaction } from '../utils/api';
@@ -483,6 +484,10 @@ export function MultiSend({ wallet, balance, nonce, onBalanceUpdate, onNonceUpda
         {/* Transaction Modal */}
         <Dialog open={showTxModal} onOpenChange={txModalStatus === 'sending' ? undefined : setShowTxModal}>
           <DialogContent className="sm:max-w-md" onPointerDownOutside={(e) => txModalStatus === 'sending' && e.preventDefault()}>
+            <VisuallyHidden>
+              <DialogTitle>Multi Send Transaction</DialogTitle>
+              <DialogDescription>Transaction status for multi-send operation</DialogDescription>
+            </VisuallyHidden>
             <div className="flex flex-col items-center justify-center py-6 space-y-4">
               {/* Sending State */}
               {txModalStatus === 'sending' && (

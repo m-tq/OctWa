@@ -1,15 +1,22 @@
 import { ExtensionStorageManager } from './extensionStorage';
-import { verifyPassword, decryptWalletData, encryptWalletData } from './password';
+import { verifyPassword, decryptWalletData, encryptWalletData, secureWipe, isRateLimited, getRemainingAttempts } from './password';
 import { Wallet } from '../types/wallet';
 
 export class WalletManager {
   // Store password temporarily in memory for encrypting new wallets
   private static sessionPassword: string | null = null;
   private static sessionTimeout: ReturnType<typeof setTimeout> | null = null;
-  private static SESSION_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes auto-clear
+  private static SESSION_TIMEOUT_MS = 15 * 60 * 1000; // 15 minutes auto-clear
+  private static lastActivity: number = Date.now();
 
   static setSessionPassword(password: string): void {
+    // Clear old password first
+    if (this.sessionPassword) {
+      this.clearSessionPassword();
+    }
+    
     this.sessionPassword = password;
+    this.lastActivity = Date.now();
     
     // Clear any existing timeout
     if (this.sessionTimeout) {
@@ -24,7 +31,15 @@ export class WalletManager {
   }
 
   static clearSessionPassword(): void {
-    this.sessionPassword = null;
+    // Attempt to clear password from memory
+    if (this.sessionPassword) {
+      // Create a temporary reference and overwrite
+      const len = this.sessionPassword.length;
+      // Note: JS strings are immutable, but we dereference to help GC
+      this.sessionPassword = null;
+      console.log(`🔒 Session password cleared (was ${len} chars)`);
+    }
+    
     if (this.sessionTimeout) {
       clearTimeout(this.sessionTimeout);
       this.sessionTimeout = null;
@@ -37,9 +52,29 @@ export class WalletManager {
   
   // Refresh session timeout (call on user activity)
   static refreshSessionTimeout(): void {
-    if (this.sessionPassword) {
-      this.setSessionPassword(this.sessionPassword);
+    const now = Date.now();
+    // Only refresh if there's been activity in the last minute
+    if (this.sessionPassword && (now - this.lastActivity) < 60000) {
+      this.lastActivity = now;
+      
+      if (this.sessionTimeout) {
+        clearTimeout(this.sessionTimeout);
+      }
+      
+      this.sessionTimeout = setTimeout(() => {
+        console.log('🔒 Session password auto-cleared after timeout');
+        this.clearSessionPassword();
+      }, this.SESSION_TIMEOUT_MS);
     }
+  }
+  
+  // Check rate limit status
+  static checkRateLimit(): { limited: boolean; remainingMs?: number; remainingAttempts: number } {
+    const rateLimit = isRateLimited();
+    return {
+      ...rateLimit,
+      remainingAttempts: getRemainingAttempts()
+    };
   }
 
   static async unlockWallets(password: string): Promise<Wallet[]> {

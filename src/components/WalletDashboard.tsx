@@ -1461,11 +1461,10 @@ export function WalletDashboard({
         </div>
       </header>
 
-      {/* Main Content */}
-      <main className={`octra-container ${isPopupMode ? 'py-2 px-3 pb-28 mt-2' : 'py-2 px-2 pb-16 sm:py-8 sm:px-4 sm:pb-20'}`}>
-        {/* Mode Toggle - Only show at top for expanded mode */}
-        {!isPopupMode && (
-          <div className="mb-4">
+      {/* Sticky Mode Toggle - Only for expanded mode */}
+      {!isPopupMode && (
+        <div className="sticky top-14 sm:top-[84px] z-40 bg-background/95 backdrop-blur-sm border-b border-border/50 py-3">
+          <div className="octra-container px-2 sm:px-4">
             <ModeToggle
               currentMode={operationMode}
               onModeChange={handleModeChange}
@@ -1474,8 +1473,11 @@ export function WalletDashboard({
               isCompact={false}
             />
           </div>
-        )}
+        </div>
+      )}
 
+      {/* Main Content */}
+      <main className={`octra-container ${isPopupMode ? 'py-2 px-3 pb-28 mt-2' : 'pt-3 pb-16 px-2 sm:pt-4 sm:px-4 sm:pb-20'}`}>
         {/* Mode-based Tabs */}
         <Tabs value={activeTab} onValueChange={(tab) => {
           setActiveTab(tab);
@@ -1483,50 +1485,71 @@ export function WalletDashboard({
           if (tab === 'balance' || tab === 'history') {
             refreshWalletData();
           }
-        }} className={isPopupMode ? 'space-y-2' : 'space-y-3'}>
+        }} className={isPopupMode ? 'space-y-2' : ''}>
           {/* TabsList - Only show inline for expanded mode */}
           {!isPopupMode && (
             operationMode === 'public' ? (
-              // Public Mode Tabs
-              <TabsList className="grid w-full grid-cols-3 h-auto p-1.5 rounded-lg bg-muted">
-                <TabsTrigger value="balance" className="flex items-center justify-center gap-1 text-xs sm:text-sm py-2.5 rounded-md">
+              // Public Mode Tabs - Embedded/Trimmed style
+              <TabsList className="grid w-full grid-cols-3 h-12 p-0 rounded-t-xl rounded-b-none bg-muted/80 border border-b-0 border-border/50">
+                <TabsTrigger 
+                  value="balance" 
+                  className="flex items-center justify-center gap-2 text-sm py-3 rounded-none rounded-tl-xl border-r border-border/30 data-[state=active]:bg-background data-[state=active]:shadow-none data-[state=inactive]:hover:bg-muted"
+                >
                   <PieChart className="h-4 w-4" />
-                  <span>Balance</span>
+                  <span className="font-medium">Balance</span>
                 </TabsTrigger>
-                <TabsTrigger value="send" className="flex items-center justify-center gap-1 text-xs sm:text-sm py-2.5 rounded-md">
+                <TabsTrigger 
+                  value="send" 
+                  className="flex items-center justify-center gap-2 text-sm py-3 rounded-none border-r border-border/30 data-[state=active]:bg-background data-[state=active]:shadow-none data-[state=inactive]:hover:bg-muted"
+                >
                   <Send className="h-4 w-4" />
-                  <span>Send</span>
+                  <span className="font-medium">Send</span>
                 </TabsTrigger>
-                <TabsTrigger value="history" className="flex items-center justify-center gap-1 text-xs sm:text-sm py-2.5 rounded-md">
+                <TabsTrigger 
+                  value="history" 
+                  className="flex items-center justify-center gap-2 text-sm py-3 rounded-none rounded-tr-xl data-[state=active]:bg-background data-[state=active]:shadow-none data-[state=inactive]:hover:bg-muted"
+                >
                   <History className="h-4 w-4" />
-                  <span>History</span>
+                  <span className="font-medium">History</span>
                 </TabsTrigger>
               </TabsList>
             ) : (
-              // Private Mode Tabs
-              <TabsList className="grid w-full grid-cols-4 h-auto p-1.5 rounded-lg bg-[#0000db]/10">
-                <TabsTrigger value="balance" className="flex items-center justify-center gap-1 text-xs sm:text-sm py-2.5 rounded-md data-[state=active]:bg-[#0000db] data-[state=active]:text-white">
+              // Private Mode Tabs - Embedded/Trimmed style with brand color
+              <TabsList className="grid w-full grid-cols-4 h-12 p-0 rounded-t-xl rounded-b-none bg-[#0000db]/10 border border-b-0 border-[#0000db]/20">
+                <TabsTrigger 
+                  value="balance" 
+                  className="flex items-center justify-center gap-2 text-sm py-3 rounded-none rounded-tl-xl border-r border-[#0000db]/20 data-[state=active]:bg-[#0000db] data-[state=active]:text-white data-[state=inactive]:hover:bg-[#0000db]/20"
+                >
                   <Shield className="h-4 w-4" />
-                  <span>Balance</span>
+                  <span className="font-medium">Balance</span>
                 </TabsTrigger>
-                <TabsTrigger value="transfer" className="flex items-center justify-center gap-1 text-xs sm:text-sm py-2.5 rounded-md data-[state=active]:bg-[#0000db] data-[state=active]:text-white">
+                <TabsTrigger 
+                  value="transfer" 
+                  className="flex items-center justify-center gap-2 text-sm py-3 rounded-none border-r border-[#0000db]/20 data-[state=active]:bg-[#0000db] data-[state=active]:text-white data-[state=inactive]:hover:bg-[#0000db]/20"
+                >
                   <Send className="h-4 w-4" />
-                  <span>Send</span>
+                  <span className="font-medium">Send</span>
                 </TabsTrigger>
-                <TabsTrigger value="claim" className="flex items-center justify-center gap-1 text-xs sm:text-sm py-2.5 rounded-md data-[state=active]:bg-[#0000db] data-[state=active]:text-white">
+                <TabsTrigger 
+                  value="claim" 
+                  className="flex items-center justify-center gap-2 text-sm py-3 rounded-none border-r border-[#0000db]/20 data-[state=active]:bg-[#0000db] data-[state=active]:text-white data-[state=inactive]:hover:bg-[#0000db]/20"
+                >
                   <Gift className="h-4 w-4" />
-                  <span>Claim</span>
+                  <span className="font-medium">Claim</span>
                 </TabsTrigger>
-                <TabsTrigger value="history" className="flex items-center justify-center gap-1 text-xs sm:text-sm py-2.5 rounded-md data-[state=active]:bg-[#0000db] data-[state=active]:text-white">
+                <TabsTrigger 
+                  value="history" 
+                  className="flex items-center justify-center gap-2 text-sm py-3 rounded-none rounded-tr-xl data-[state=active]:bg-[#0000db] data-[state=active]:text-white data-[state=inactive]:hover:bg-[#0000db]/20"
+                >
                   <History className="h-4 w-4" />
-                  <span>History</span>
+                  <span className="font-medium">History</span>
                 </TabsTrigger>
               </TabsList>
             )
           )}
 
-          {/* Balance Tab Content */}
-          <TabsContent value="balance" className="mt-4">
+          {/* Balance Tab Content - Connected to tabs */}
+          <TabsContent value="balance" className={isPopupMode ? 'mt-2' : `mt-0 rounded-t-none border border-t-0 ${operationMode === 'private' ? 'border-[#0000db]/20' : 'border-border/50'} rounded-b-xl bg-background p-4`}>
             {operationMode === 'public' ? (
               <PublicBalance 
                 wallet={wallet} 
@@ -1550,7 +1573,7 @@ export function WalletDashboard({
 
           {/* Send Tab (Public Mode) */}
           {operationMode === 'public' && (
-            <TabsContent value="send" className={isPopupMode ? 'mt-2' : 'mt-4'}>
+            <TabsContent value="send" className={isPopupMode ? 'mt-2' : 'mt-0 rounded-t-none border border-t-0 border-border/50 rounded-b-xl bg-background px-4 pb-4'}>
               {isPopupMode ? (
                 // Popup mode: Single send only, no sub-tabs
                 <SendTransaction
@@ -1563,15 +1586,30 @@ export function WalletDashboard({
                   isCompact={true}
                 />
               ) : (
-                // Expanded mode: Full tabs with Single, Multi, File
-                <Tabs defaultValue="single" className="w-full">
-                  <TabsList className="grid w-full grid-cols-3 h-auto p-1">
-                    <TabsTrigger value="single" className="text-xs sm:text-sm py-2">Single</TabsTrigger>
-                    <TabsTrigger value="multi" className="text-xs sm:text-sm py-2">Multi</TabsTrigger>
-                    <TabsTrigger value="file" className="text-xs sm:text-sm py-2">File</TabsTrigger>
+                // Expanded mode: Full tabs with Single, Multi, File - Embedded style
+                <Tabs defaultValue="single" className="w-full pt-3">
+                  <TabsList className="grid w-full grid-cols-3 h-9 p-0 rounded-lg bg-muted/60 border border-border/30">
+                    <TabsTrigger 
+                      value="single" 
+                      className="text-sm py-1.5 rounded-l-lg rounded-r-none border-r border-border/30 data-[state=active]:bg-background data-[state=active]:shadow-sm font-medium"
+                    >
+                      Single
+                    </TabsTrigger>
+                    <TabsTrigger 
+                      value="multi" 
+                      className="text-sm py-1.5 rounded-none border-r border-border/30 data-[state=active]:bg-background data-[state=active]:shadow-sm font-medium"
+                    >
+                      Multi
+                    </TabsTrigger>
+                    <TabsTrigger 
+                      value="file" 
+                      className="text-sm py-1.5 rounded-r-lg rounded-l-none data-[state=active]:bg-background data-[state=active]:shadow-sm font-medium"
+                    >
+                      File
+                    </TabsTrigger>
                   </TabsList>
 
-                  <TabsContent value="single" className="mt-4">
+                  <TabsContent value="single" className="mt-3">
                     <SendTransaction
                       wallet={wallet}
                       balance={balance}
@@ -1582,7 +1620,7 @@ export function WalletDashboard({
                     />
                   </TabsContent>
 
-                  <TabsContent value="multi" className="mt-4">
+                  <TabsContent value="multi" className="mt-3">
                     <MultiSend
                       wallet={wallet}
                       balance={balance}
@@ -1593,7 +1631,7 @@ export function WalletDashboard({
                     />
                   </TabsContent>
 
-                  <TabsContent value="file" className="mt-4">
+                  <TabsContent value="file" className="mt-3">
                     <FileMultiSend
                       wallet={wallet}
                       balance={balance}
@@ -1610,7 +1648,7 @@ export function WalletDashboard({
 
           {/* Transfer Tab (Private Mode) */}
           {operationMode === 'private' && (
-            <TabsContent value="transfer" className={isPopupMode ? 'mt-2' : 'mt-4'}>
+            <TabsContent value="transfer" className={isPopupMode ? 'mt-2' : 'mt-0 rounded-t-none border border-t-0 border-[#0000db]/20 rounded-b-xl bg-background p-4'}>
               <PrivateTransfer
                 wallet={wallet}
                 balance={balance}
@@ -1626,7 +1664,7 @@ export function WalletDashboard({
 
           {/* Claim Tab (Private Mode) */}
           {operationMode === 'private' && (
-            <TabsContent value="claim" className="mt-4">
+            <TabsContent value="claim" className={isPopupMode ? 'mt-2' : 'mt-0 rounded-t-none border border-t-0 border-[#0000db]/20 rounded-b-xl bg-background p-4'}>
               <ClaimTransfers
                 wallet={wallet}
                 onTransactionSuccess={handleTransactionSuccess}
@@ -1636,7 +1674,7 @@ export function WalletDashboard({
           )}
 
           {/* History Tab (Both Modes) */}
-          <TabsContent value="history" className="mt-4">
+          <TabsContent value="history" className={isPopupMode ? 'mt-2' : `mt-0 rounded-t-none border border-t-0 ${operationMode === 'private' ? 'border-[#0000db]/20' : 'border-border/50'} rounded-b-xl bg-background p-4`}>
             <UnifiedHistory 
               wallet={wallet} 
               transactions={transactions}

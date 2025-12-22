@@ -1,8 +1,8 @@
-import { Dialog, DialogContent } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@/components/ui/dialog';
+import { VisuallyHidden } from '@/components/ui/visually-hidden';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { CheckCircle, XCircle, Loader2, Copy, ExternalLink } from 'lucide-react';
-import { useState } from 'react';
 import { useToast } from '@/hooks/use-toast';
 
 export type TransactionStatus = 'idle' | 'sending' | 'success' | 'error';
@@ -84,6 +84,10 @@ export function TransactionModal({
   return (
     <Dialog open={open} onOpenChange={status === 'sending' ? undefined : onOpenChange}>
       <DialogContent className="sm:max-w-md" onPointerDownOutside={(e) => status === 'sending' && e.preventDefault()}>
+        <VisuallyHidden>
+          <DialogTitle>{getTitle()}</DialogTitle>
+          <DialogDescription>Transaction status dialog</DialogDescription>
+        </VisuallyHidden>
         <div className="flex flex-col items-center justify-center py-6 space-y-4">
           {/* Loading State */}
           {status === 'sending' && (
