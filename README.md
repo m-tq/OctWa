@@ -2,6 +2,19 @@
 
 A secure browser-based wallet for the Octra blockchain network. Available as both a web application and Chrome/Edge browser extension.
 
+## Security Features
+
+OctWa implements industry-standard security practices to protect your assets:
+
+- **PBKDF2 Key Derivation** - 310,000 iterations (OWASP 2023 recommendation) with 32-byte salt
+- **AES-GCM Encryption** - All wallet data encrypted with your master password
+- **Auto-Lock Protection** - Automatic wallet locking after 15 minutes of inactivity
+- **Session Security** - Wallet automatically locks when browser/extension is closed
+- **Rate Limiting** - 5 failed password attempts triggers 5-minute lockout
+- **Password Strength Validation** - Real-time password strength indicator during setup
+- **Memory Protection** - Session passwords cleared from memory on lock/timeout
+- **No Plain Text Storage** - Private keys never stored unencrypted
+
 ## Screenshots
 
 <p align="center">
@@ -23,9 +36,35 @@ A secure browser-based wallet for the Octra blockchain network. Available as bot
 </p>
 
 <p align="center">
+  <img src="public/screenshot/multiwallet.png" alt="Multi Wallet" width="400">
+  <br>
+  <em>Multi Wallet - Manage multiple wallets</em>
+</p>
+
+<p align="center">
   <img src="public/screenshot/private.png" alt="Private Mode" width="400">
   <br>
   <em>Private Mode - Confidential transactions</em>
+</p>
+
+### Popup Mode (Browser Extension)
+
+<p align="center">
+  <img src="public/screenshot/popup/locked.png" alt="Locked" width="180">
+  <img src="public/screenshot/popup/dashboard.png" alt="Dashboard" width="180">
+  <img src="public/screenshot/popup/publicsend.png" alt="Public Send" width="180">
+  <img src="public/screenshot/popup/history.png" alt="History" width="180">
+</p>
+<p align="center">
+  <em>Popup Mode: Locked → Dashboard → Send → History</em>
+</p>
+
+<p align="center">
+  <img src="public/screenshot/popup/privatedashboard.png" alt="Private Dashboard" width="180">
+  <img src="public/screenshot/popup/privatesend.png" alt="Private Send" width="180">
+</p>
+<p align="center">
+  <em>Private Mode in Popup</em>
 </p>
 
 ## Features
@@ -35,8 +74,14 @@ A secure browser-based wallet for the Octra blockchain network. Available as bot
 - **Import Wallet** - Restore wallet using private key or mnemonic phrase
 - **Multiple Wallets** - Manage multiple wallets in a single interface
 - **Export Private Keys** - Securely export your private keys with password protection
-- **Password Protection** - Encrypt your wallets with a master password
-- **Auto-Lock** - Automatic wallet locking after inactivity for security
+- **Backup & Restore** - Export encrypted wallet backup for safekeeping
+
+### Security
+- **Master Password Protection** - All wallets encrypted with AES-GCM using PBKDF2 derived key
+- **Auto-Lock (15 min idle)** - Wallet automatically locks after inactivity
+- **Lock on Close** - Wallet locks when browser or extension is closed
+- **Brute-Force Protection** - Rate limiting with lockout after failed attempts
+- **Password Strength Meter** - Visual indicator helps create strong passwords
 
 ### Transactions
 - **Send Transaction** - Send OCT tokens to any address

@@ -29,6 +29,14 @@ function PopupApp() {
 
         await ExtensionStorageManager.init();
         
+        // Setup auto-lock callback
+        WalletManager.setAutoLockCallback(() => {
+          console.log('🔒 Auto-lock triggered, updating UI');
+          setWallet(null);
+          setWallets([]);
+          setIsLocked(true);
+        });
+        
         // CRITICAL: Sync password hash from localStorage to ExtensionStorage if missing
         // This handles the case where password was set in expanded mode but not synced to extension storage
         const extPasswordHash = await ExtensionStorageManager.get('walletPasswordHash');
@@ -78,6 +86,18 @@ function PopupApp() {
         const shouldShowUnlock = await WalletManager.shouldShowUnlockScreen();
         
         if (shouldShowUnlock) {
+          setIsLocked(true);
+          setIsLoading(false);
+          return;
+        }
+        
+        // IMPORTANT: If wallet appears unlocked but no session password exists,
+        // it means browser/extension was closed. Lock the wallet for security.
+        const hasPassword = await ExtensionStorageManager.get('walletPasswordHash');
+        const isWalletLocked = await ExtensionStorageManager.get('isWalletLocked');
+        if (hasPassword && isWalletLocked === 'false' && !WalletManager.isSessionActive()) {
+          console.log('🔒 PopupApp: No session password found, locking wallet for security');
+          await WalletManager.lockWallets();
           setIsLocked(true);
           setIsLoading(false);
           return;
@@ -315,6 +335,16 @@ function PopupApp() {
 
   // Enhanced unlock handler to properly restore wallet state and handle pending DApp requests
   const handleUnlock = (unlockedWallets: Wallet[]) => {
+    console.log('🔓 PopupApp: handleUnlock called with', unlockedWallets.length, 'wallets');
+    
+    // Re-setup auto-lock callback after unlock (session password was just set)
+    WalletManager.setAutoLockCallback(() => {
+      console.log('🔒 PopupApp: Auto-lock callback triggered!');
+      setWallet(null);
+      setWallets([]);
+      setIsLocked(true);
+    });
+    
     // CRITICAL FIX: Use synchronous state updates to prevent race conditions
     if (unlockedWallets.length > 0) {
       setIsLocked(false);

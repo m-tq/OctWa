@@ -6,10 +6,86 @@ export class WalletManager {
   // Store password temporarily in memory for encrypting new wallets
   private static sessionPassword: string | null = null;
   private static sessionTimeout: ReturnType<typeof setTimeout> | null = null;
-  private static SESSION_TIMEOUT_MS = 15 * 60 * 1000; // 15 minutes auto-clear
+  private static SESSION_TIMEOUT_MS = 15 * 60 * 1000; // 15 minutes auto-lock (industry standard)
   private static lastActivity: number = Date.now();
+  private static onAutoLockCallback: (() => void) | null = null;
+  private static isAutoLockEnabled: boolean = true;
+  private static timerStartTime: number = 0;
+
+  // Set callback for auto-lock (to trigger UI update)
+  static setAutoLockCallback(callback: () => void): void {
+    console.log('🔧 WalletManager: Auto-lock callback registered, sessionPassword exists:', !!this.sessionPassword);
+    this.onAutoLockCallback = callback;
+    
+    // If session is already active, restart the timer with the callback
+    if (this.sessionPassword && this.isAutoLockEnabled) {
+      console.log('🔧 WalletManager: Session active, restarting auto-lock timer');
+      this.startAutoLockTimer();
+    }
+  }
+
+  // Start or restart the auto-lock timer
+  private static startAutoLockTimer(): void {
+    // Clear any existing timeout
+    if (this.sessionTimeout) {
+      console.log('⏱️ WalletManager: Clearing existing timer');
+      clearTimeout(this.sessionTimeout);
+      this.sessionTimeout = null;
+    }
+    
+    if (!this.isAutoLockEnabled) {
+      console.log('🔧 WalletManager: Auto-lock is disabled');
+      return;
+    }
+    
+    this.timerStartTime = Date.now();
+    console.log(`⏱️ WalletManager: Starting auto-lock timer (${this.SESSION_TIMEOUT_MS / 1000}s) at ${new Date().toLocaleTimeString()}`);
+    
+    // Set auto-lock timeout for security
+    this.sessionTimeout = setTimeout(() => {
+      const elapsed = Date.now() - this.timerStartTime;
+      console.log(`🔒 WalletManager: Auto-lock timer triggered after ${elapsed}ms!`);
+      this.executeAutoLock();
+    }, this.SESSION_TIMEOUT_MS);
+    
+    console.log('⏱️ WalletManager: Timer ID:', this.sessionTimeout);
+  }
+
+  // Execute auto-lock
+  private static async executeAutoLock(): Promise<void> {
+    console.log('🔒 WalletManager: Executing auto-lock...');
+    
+    try {
+      // Lock wallets first
+      await this.lockWallets();
+      console.log('🔒 WalletManager: Wallets locked successfully');
+      
+      // Trigger callback to update UI
+      if (this.onAutoLockCallback) {
+        console.log('🔒 WalletManager: Triggering UI callback');
+        this.onAutoLockCallback();
+      } else {
+        console.warn('⚠️ WalletManager: No auto-lock callback registered!');
+      }
+      
+      // Dispatch storage event for cross-tab sync
+      if (typeof window !== 'undefined') {
+        console.log('🔒 WalletManager: Dispatching storage event');
+        window.dispatchEvent(new StorageEvent('storage', {
+          key: 'isWalletLocked',
+          oldValue: 'false',
+          newValue: 'true',
+          storageArea: localStorage
+        }));
+      }
+    } catch (error) {
+      console.error('❌ WalletManager: Auto-lock failed:', error);
+    }
+  }
 
   static setSessionPassword(password: string): void {
+    console.log('🔑 WalletManager: Setting session password, callback exists:', !!this.onAutoLockCallback);
+    
     // Clear old password first
     if (this.sessionPassword) {
       this.clearSessionPassword();
@@ -18,29 +94,24 @@ export class WalletManager {
     this.sessionPassword = password;
     this.lastActivity = Date.now();
     
-    // Clear any existing timeout
-    if (this.sessionTimeout) {
-      clearTimeout(this.sessionTimeout);
-    }
-    
-    // Set auto-clear timeout for security
-    this.sessionTimeout = setTimeout(() => {
-      console.log('🔒 Session password auto-cleared after timeout');
-      this.clearSessionPassword();
-    }, this.SESSION_TIMEOUT_MS);
+    // Start auto-lock timer
+    this.startAutoLockTimer();
   }
 
   static clearSessionPassword(): void {
+    console.log('🔒 WalletManager: clearSessionPassword called, current password exists:', !!this.sessionPassword);
+    
     // Attempt to clear password from memory
     if (this.sessionPassword) {
       // Create a temporary reference and overwrite
       const len = this.sessionPassword.length;
       // Note: JS strings are immutable, but we dereference to help GC
       this.sessionPassword = null;
-      console.log(`🔒 Session password cleared (was ${len} chars)`);
+      console.log(`🔒 WalletManager: Session password cleared (was ${len} chars)`);
     }
     
     if (this.sessionTimeout) {
+      console.log('⏱️ WalletManager: Clearing auto-lock timer');
       clearTimeout(this.sessionTimeout);
       this.sessionTimeout = null;
     }
@@ -53,19 +124,18 @@ export class WalletManager {
   // Refresh session timeout (call on user activity)
   static refreshSessionTimeout(): void {
     const now = Date.now();
-    // Only refresh if there's been activity in the last minute
-    if (this.sessionPassword && (now - this.lastActivity) < 60000) {
-      this.lastActivity = now;
-      
-      if (this.sessionTimeout) {
-        clearTimeout(this.sessionTimeout);
-      }
-      
-      this.sessionTimeout = setTimeout(() => {
-        console.log('🔒 Session password auto-cleared after timeout');
-        this.clearSessionPassword();
-      }, this.SESSION_TIMEOUT_MS);
+    this.lastActivity = now;
+    
+    // Only refresh if session is active
+    if (this.sessionPassword) {
+      console.log('⏱️ WalletManager: Refreshing auto-lock timer due to activity');
+      this.startAutoLockTimer();
     }
+  }
+  
+  // Check if session is active
+  static isSessionActive(): boolean {
+    return this.sessionPassword !== null;
   }
   
   // Check rate limit status
@@ -78,6 +148,7 @@ export class WalletManager {
   }
 
   static async unlockWallets(password: string): Promise<Wallet[]> {
+    console.log('🔓 WalletManager: unlockWallets called');
     try {
       // Get password hash and salt
       const hashedPassword = await ExtensionStorageManager.get('walletPasswordHash');
@@ -94,6 +165,7 @@ export class WalletManager {
         throw new Error('Invalid password');
       }
 
+      console.log('🔓 WalletManager: Password verified, setting session password');
       // Store password in session for encrypting new wallets
       this.setSessionPassword(password);
 

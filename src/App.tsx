@@ -127,12 +127,29 @@ function App() {
           });
         }
         
+        // Setup auto-lock callback
+        WalletManager.setAutoLockCallback(() => {
+          console.log('🔒 Auto-lock triggered, updating UI');
+          setWallet(null);
+          setWallets([]);
+          setIsLocked(true);
+        });
+        
         // Check if wallet is locked
         const walletLocked = localStorage.getItem('isWalletLocked');
         const hasPassword = localStorage.getItem('walletPasswordHash');
         
         // Show unlock screen if password exists and wallet is not explicitly unlocked
         if (hasPassword && walletLocked !== 'false') {
+          setIsLocked(true);
+          return;
+        }
+        
+        // IMPORTANT: If wallet appears unlocked but no session password exists,
+        // it means browser/extension was closed. Lock the wallet for security.
+        if (hasPassword && walletLocked === 'false' && !WalletManager.isSessionActive()) {
+          console.log('🔒 App: No session password found, locking wallet for security');
+          await WalletManager.lockWallets();
           setIsLocked(true);
           return;
         }
@@ -190,6 +207,16 @@ function App() {
   }, []);
 
   const handleUnlock = (unlockedWallets: Wallet[]) => {
+    console.log('🔓 App.tsx: handleUnlock called with', unlockedWallets.length, 'wallets');
+    
+    // Re-setup auto-lock callback after unlock (session password was just set)
+    WalletManager.setAutoLockCallback(() => {
+      console.log('🔒 App.tsx: Auto-lock callback triggered!');
+      setWallet(null);
+      setWallets([]);
+      setIsLocked(true);
+    });
+    
     if (unlockedWallets.length > 0) {
       setWallets(unlockedWallets);
       setIsLocked(false);

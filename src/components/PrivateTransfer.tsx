@@ -305,7 +305,23 @@ export function PrivateTransfer({
 
         {/* Amount */}
         <div className="space-y-1.5">
-          <Label htmlFor="amount" className="text-sm">Amount (OCT)</Label>
+          <div className="flex items-center justify-between">
+            <Label htmlFor="amount" className="text-sm">Amount (OCT)</Label>
+            <button
+              type="button"
+              onClick={() => {
+                // Calculate max amount: encrypted balance - small reserve for safety
+                const maxReserve = 0.001; // Reserve small amount for safety
+                const maxAmount = Math.max(0, encryptedBalance.encrypted - maxReserve);
+                if (maxAmount > 0) {
+                  setAmount(maxAmount.toFixed(8));
+                }
+              }}
+              className="text-xs text-[#0000db] hover:text-[#0000db]/80 font-medium hover:underline"
+            >
+              Max
+            </button>
+          </div>
           <Input
             id="amount"
             type="number"
