@@ -15,6 +15,7 @@ import {
   Eye,
   Copy,
   Clock,
+  CircleCheckBig,
   CheckCircle,
   XCircle,
   Shield,
@@ -156,7 +157,7 @@ export function UnifiedHistory({ wallet, transactions, onTransactionsUpdate, isL
 
   const getStatusIcon = (status: string) => {
     switch (status) {
-      case 'confirmed': return <CheckCircle className="h-4 w-4" style={{ color: '#0000db' }} />;
+      case 'confirmed': return <CircleCheckBig className="h-4 w-4 text-[#0000db] fill-[#0000db]/20" />;
       case 'pending': return <Clock className="h-4 w-4 text-yellow-500" />;
       case 'failed': return <XCircle className="h-4 w-4 text-red-500" />;
       default: return <Clock className="h-4 w-4 text-gray-500" />;

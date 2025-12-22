@@ -917,7 +917,7 @@ export function WalletDashboard({
                 <div className="flex items-center space-x-2">
                   <Badge variant="secondary" className="hidden sm:inline-flex relative pl-4">
                     <span className={`absolute left-1 top-1/2 -translate-y-1/2 w-2 h-2 rounded-full ${
-                      rpcStatus === 'connected' ? 'bg-green-500' : 
+                      rpcStatus === 'connected' ? 'bg-[#0000db]' : 
                       rpcStatus === 'disconnected' ? 'bg-red-500' : 
                       'bg-yellow-500 animate-pulse'
                     }`}></span>
@@ -958,12 +958,12 @@ export function WalletDashboard({
                           <div className="flex items-center justify-between mb-3">
                             <div className="flex items-center gap-2">
                               <div className={`w-2.5 h-2.5 rounded-full ${
-                                rpcStatus === 'connected' ? 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.5)]' : 
+                                rpcStatus === 'connected' ? 'bg-[#0000db] shadow-[0_0_8px_rgba(0,0,219,0.5)]' : 
                                 rpcStatus === 'disconnected' ? 'bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.5)]' : 
                                 'bg-yellow-500 animate-pulse'
                               }`}></div>
                               <span className={`text-sm font-medium ${
-                                rpcStatus === 'connected' ? 'text-green-600' : 
+                                rpcStatus === 'connected' ? 'text-[#0000db]' : 
                                 rpcStatus === 'disconnected' ? 'text-red-500' : 
                                 'text-yellow-600'
                               }`}>
@@ -973,7 +973,7 @@ export function WalletDashboard({
                               </span>
                             </div>
                             <Wifi className={`h-4 w-4 ${
-                              rpcStatus === 'connected' ? 'text-green-500' : 
+                              rpcStatus === 'connected' ? 'text-[#0000db]' : 
                               rpcStatus === 'disconnected' ? 'text-red-500' : 
                               'text-yellow-500'
                             }`} />

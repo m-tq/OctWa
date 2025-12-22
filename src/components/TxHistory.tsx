@@ -17,6 +17,7 @@ import {
   Eye,
   Copy,
   Clock,
+  CircleCheckBig,
   CheckCircle,
   XCircle,
   Shield,
@@ -185,7 +186,7 @@ export function TxHistory({ wallet, transactions, onTransactionsUpdate, isLoadin
   const getStatusIcon = (status: string) => {
     switch (status) {
       case 'confirmed':
-        return <CheckCircle className="h-4 w-4" style={{ color: '#0000db' }} />;
+        return <CircleCheckBig className="h-4 w-4 text-[#0000db] fill-[#0000db]/20" />;
       case 'pending':
         return <Clock className="h-4 w-4 text-yellow-500" />;
       case 'failed':
