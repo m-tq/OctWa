@@ -6,9 +6,12 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Separator } from '@/components/ui/separator';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { ExternalLink, Shield, Eye, Send, X, Check } from 'lucide-react';
+import { Checkbox } from '@/components/ui/checkbox';
+import { ExternalLink, Shield, Eye, Send, X, Check, Lock, RefreshCw, AlertTriangle } from 'lucide-react';
 import { Wallet, DAppConnectionRequest } from '../types/wallet';
 import { useToast } from '@/hooks/use-toast';
+import { WalletCapability, CAPABILITY_DESCRIPTIONS, GrantedCapabilities } from '../permissions/types';
+import { getPermissionManager } from '../permissions/permissionManager';
 
 interface DAppConnectionProps {
   connectionRequest: DAppConnectionRequest;
@@ -105,7 +108,14 @@ export function DAppConnection({
       case 'view_balance':
         return <Eye className="h-4 w-4" />;
       case 'call_methods':
+      case 'runtime_execute':
         return <Send className="h-4 w-4" />;
+      case 'tx_sign':
+        return <Check className="h-4 w-4" />;
+      case 'decrypt_result':
+        return <Lock className="h-4 w-4" />;
+      case 'reencrypt_for_third_party':
+        return <RefreshCw className="h-4 w-4" />;
       default:
         console.warn(`Unknown permission: ${permission}`);
         return <Shield className="h-4 w-4" />;
@@ -113,6 +123,10 @@ export function DAppConnection({
   };
 
   const getPermissionDescription = (permission: string) => {
+    // Use capability descriptions if available
+    if (permission in CAPABILITY_DESCRIPTIONS) {
+      return CAPABILITY_DESCRIPTIONS[permission as WalletCapability];
+    }
     switch (permission) {
       case 'view_address':
         return 'View the address of your permitted account';
@@ -124,6 +138,12 @@ export function DAppConnection({
         return permission;
     }
   };
+
+  const isHighRiskPermission = (permission: string): boolean => {
+    return ['tx_sign', 'reencrypt_for_third_party'].includes(permission);
+  };
+
+  const hasHighRiskPermissions = connectionRequest.permissions.some(isHighRiskPermission);
 
   return (
     <div className="min-h-screen flex items-center justify-center p-4">
@@ -194,15 +214,28 @@ export function DAppConnection({
             {/* Permissions */}
             <div className="space-y-3">
               <h3 className="font-medium">This app will be able to:</h3>
+              {hasHighRiskPermissions && (
+                <div className="flex items-start gap-2 p-3 bg-amber-50 dark:bg-amber-950 rounded-md border border-amber-200 dark:border-amber-800 mb-2">
+                  <AlertTriangle className="h-4 w-4 text-amber-600 mt-0.5 flex-shrink-0" />
+                  <p className="text-sm text-amber-800 dark:text-amber-200">
+                    This app is requesting high-risk permissions. Only approve if you trust this application.
+                  </p>
+                </div>
+              )}
               <div className="space-y-2">
                 {connectionRequest.permissions.map((permission, index) => (
                   <div key={index} className="flex items-start gap-3">
                     <div className="mt-0.5">
                       {getPermissionIcon(permission)}
                     </div>
-                    <span className="text-sm">
-                      {getPermissionDescription(permission)}
-                    </span>
+                    <div className="flex-1">
+                      <span className="text-sm">
+                        {getPermissionDescription(permission)}
+                      </span>
+                      {isHighRiskPermission(permission) && (
+                        <Badge variant="destructive" className="ml-2 text-xs">High Risk</Badge>
+                      )}
+                    </div>
                   </div>
                 ))}
                 
@@ -210,7 +243,7 @@ export function DAppConnection({
                 <div className="flex items-start gap-3 text-muted-foreground">
                   <X className="h-4 w-4 mt-0.5" />
                   <span className="text-sm">
-                    This does not allow the app to transfer tokens
+                    This does not allow the app to transfer tokens without your approval
                   </span>
                 </div>
               </div>

@@ -155,12 +155,13 @@ export function UnifiedHistory({ wallet, transactions, onTransactionsUpdate, isL
   const truncateHash = (hash: string) => `${hash.slice(0, 8)}...${hash.slice(-8)}`;
   const truncateAddress = (address: string) => `${address.slice(0, 6)}...${address.slice(-4)}`;
 
-  const getStatusIcon = (status: string) => {
+  const getStatusIcon = (status: string, small: boolean = false) => {
+    const sizeClass = small ? "h-3 w-3" : "h-4 w-4";
     switch (status) {
-      case 'confirmed': return <CircleCheckBig className="h-4 w-4 text-[#0000db] fill-[#0000db]/20" />;
-      case 'pending': return <Clock className="h-4 w-4 text-yellow-500" />;
-      case 'failed': return <XCircle className="h-4 w-4 text-red-500" />;
-      default: return <Clock className="h-4 w-4 text-gray-500" />;
+      case 'confirmed': return <CircleCheckBig className={`${sizeClass} text-[#0000db] fill-[#0000db]/20`} />;
+      case 'pending': return <Clock className={`${sizeClass} text-yellow-500`} />;
+      case 'failed': return <XCircle className={`${sizeClass} text-red-500`} />;
+      default: return <Clock className={`${sizeClass} text-gray-500`} />;
     }
   };
 
@@ -536,7 +537,7 @@ interface TransferItemProps {
   onViewDetails: (hash: string, isPending: boolean) => void;
   truncateHash: (hash: string) => string;
   truncateAddress: (address: string) => string;
-  getStatusIcon: (status: string) => React.ReactNode;
+  getStatusIcon: (status: string, small?: boolean) => React.ReactNode;
   getStatusColor: (status: string) => string;
   copyToClipboard: (text: string, label: string) => void;
   isPopupMode?: boolean;
@@ -571,7 +572,7 @@ function TransferItem({
               ) : (
                 <span className="font-mono text-xs truncate">{tx.amount?.toFixed(4) || '0'} OCT</span>
               )}
-              {getStatusIcon(tx.status)}
+              {getStatusIcon(tx.status, true)}
             </div>
             <div className="text-[10px] text-muted-foreground truncate">
               {tx.type === 'sent' ? 'To: ' : 'From: '}{truncateAddress(tx.type === 'sent' ? tx.to : tx.from)}

@@ -8,8 +8,18 @@ export interface InitOptions {
 
 /**
  * Permission types that can be requested during connection
+ * Extended to support new capability-based permission model
  */
-export type Permission = 'view_address' | 'view_balance' | 'sign_transaction' | 'sign_message';
+export type Permission = 
+  | 'view_address' 
+  | 'view_balance' 
+  | 'sign_transaction' 
+  | 'sign_message'
+  // New capability-based permissions
+  | 'tx_sign'
+  | 'runtime_execute'
+  | 'decrypt_result'
+  | 'reencrypt_for_third_party';
 
 /**
  * Result returned from successful wallet connection
