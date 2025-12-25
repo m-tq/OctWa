@@ -76,7 +76,6 @@ OctWa implements industry-standard security practices to protect your assets:
 - **Import Wallet** - Restore wallet using private key or mnemonic phrase
 - **Multiple Wallets** - Manage multiple wallets in a single interface
 - **Export Private Keys** - Securely export your private keys with password protection
-- **Backup & Restore** - Export encrypted wallet backup for safekeeping
 
 ### Security
 - **Master Password Protection** - All wallets encrypted with AES-GCM using PBKDF2 derived key
