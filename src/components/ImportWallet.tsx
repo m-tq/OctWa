@@ -1,21 +1,20 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Alert, AlertDescription } from '@/components/ui/alert';
-import { ScrollArea } from '@/components/ui/scroll-area';
-import { Key, FileText, AlertTriangle, Loader2 } from 'lucide-react';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Key, FileText, Loader2 } from 'lucide-react';
 import { Wallet } from '../types/wallet';
 import { importWalletFromPrivateKey, importWalletFromMnemonic } from '../utils/wallet';
 import { useToast } from '@/hooks/use-toast';
 
 interface ImportWalletProps {
   onWalletImported: (wallet: Wallet) => void;
+  defaultTab?: 'private-key' | 'mnemonic';
 }
 
-export function ImportWallet({ onWalletImported }: ImportWalletProps) {
+export function ImportWallet({ onWalletImported, defaultTab = 'private-key' }: ImportWalletProps) {
   const [privateKey, setPrivateKey] = useState('');
   const [mnemonic, setMnemonic] = useState('');
   const [isImporting, setIsImporting] = useState(false);
@@ -23,57 +22,33 @@ export function ImportWallet({ onWalletImported }: ImportWalletProps) {
 
   const handleImportFromPrivateKey = async () => {
     if (!privateKey.trim()) {
-      toast({
-        title: "Error",
-        description: "Private key required",
-        variant: "destructive",
-      });
+      toast({ title: "Error", description: "Private key required", variant: "destructive" });
       return;
     }
 
     setIsImporting(true);
     try {
       const wallet = await importWalletFromPrivateKey(privateKey.trim());
-      
-      // Check if wallet already exists
       const existingWallets = JSON.parse(localStorage.getItem('wallets') || '[]');
-      const walletExists = existingWallets.some((w: Wallet) => w.address === wallet.address);
-      
-      if (walletExists) {
-        toast({
-          title: "Wallet Already Exists",
-          description: "This wallet is already in your collection",
-          variant: "destructive",
-        });
+      if (existingWallets.some((w: Wallet) => w.address === wallet.address)) {
+        toast({ title: "Wallet Already Exists", description: "This wallet is already in your collection", variant: "destructive" });
         return;
       }
-      
       onWalletImported(wallet);
-      toast({
-        title: "Success!",
-        description: "Wallet imported successfully",
-      });
+      toast({ title: "Success!", description: "Wallet imported successfully" });
     } catch (error: unknown) {
       let errorMessage = "Failed to import wallet";
-      
       if (error instanceof Error) {
         const msg = error.message.toLowerCase();
         if (msg.includes('invalid') || msg.includes('decode') || msg.includes('base64')) {
-          errorMessage = "Invalid private key format. Please check your key and try again.";
+          errorMessage = "Invalid private key format";
         } else if (msg.includes('length') || msg.includes('size')) {
-          errorMessage = "Private key has incorrect length. Expected 32 bytes in Base64 format.";
-        } else if (msg.includes('checksum')) {
-          errorMessage = "Private key checksum failed. The key may be corrupted.";
+          errorMessage = "Private key has incorrect length";
         } else {
           errorMessage = error.message || errorMessage;
         }
       }
-      
-      toast({
-        title: "Import Failed",
-        description: errorMessage,
-        variant: "destructive",
-      });
+      toast({ title: "Import Failed", description: errorMessage, variant: "destructive" });
     } finally {
       setIsImporting(false);
     }
@@ -81,121 +56,50 @@ export function ImportWallet({ onWalletImported }: ImportWalletProps) {
 
   const handleImportFromMnemonic = async () => {
     if (!mnemonic.trim()) {
-      toast({
-        title: "Error",
-        description: "Mnemonic required",
-        variant: "destructive",
-      });
+      toast({ title: "Error", description: "Mnemonic required", variant: "destructive" });
       return;
     }
 
     setIsImporting(true);
     try {
       const wallet = await importWalletFromMnemonic(mnemonic.trim());
-      
-      // Check if wallet already exists
       const existingWallets = JSON.parse(localStorage.getItem('wallets') || '[]');
-      const walletExists = existingWallets.some((w: Wallet) => w.address === wallet.address);
-      
-      if (walletExists) {
-        toast({
-          title: "Wallet Already Exists",
-          description: "This wallet is already in your collection",
-          variant: "destructive",
-        });
+      if (existingWallets.some((w: Wallet) => w.address === wallet.address)) {
+        toast({ title: "Wallet Already Exists", description: "This wallet is already in your collection", variant: "destructive" });
         return;
       }
-      
       onWalletImported(wallet);
-      toast({
-        title: "Success!",
-        description: "Wallet imported successfully",
-      });
+      toast({ title: "Success!", description: "Wallet imported successfully" });
     } catch (error: unknown) {
       let errorMessage = "Failed to import wallet";
-      
       if (error instanceof Error) {
         const msg = error.message.toLowerCase();
         if (msg.includes('invalid mnemonic') || msg.includes('invalid word')) {
-          errorMessage = "Invalid mnemonic phrase. Please check for typos or missing words.";
+          errorMessage = "Invalid mnemonic phrase";
         } else if (msg.includes('checksum')) {
-          errorMessage = "Mnemonic checksum failed. One or more words may be incorrect.";
-        } else if (msg.includes('word') && msg.includes('not in wordlist')) {
-          errorMessage = "One or more words are not valid BIP39 words.";
+          errorMessage = "Mnemonic checksum failed";
         } else if (msg.includes('12') || msg.includes('24') || msg.includes('length')) {
-          errorMessage = "Mnemonic must be 12 or 24 words. Please check your phrase.";
+          errorMessage = "Mnemonic must be 12 or 24 words";
         } else {
           errorMessage = error.message || errorMessage;
         }
       }
-      
-      toast({
-        title: "Import Failed",
-        description: errorMessage,
-        variant: "destructive",
-      });
+      toast({ title: "Import Failed", description: errorMessage, variant: "destructive" });
     } finally {
       setIsImporting(false);
     }
   };
 
-  return (
-    <div className="space-y-4">
-      <Alert>
-        <div className="flex items-start space-x-3">
-          <AlertTriangle className="h-4 w-4 mt-0.5 flex-shrink-0" />
-          <AlertDescription>
-            Only import wallets from trusted sources. Never share your private key or mnemonic phrase with anyone.
-          </AlertDescription>
-        </div>
-      </Alert>
-
-      <Tabs defaultValue="private-key" className="w-full">
-        <TabsList className="grid w-full grid-cols-2">
-          <TabsTrigger value="private-key" className="flex items-center gap-2">
-            <Key className="h-4 w-4" />
-            Private Key
-          </TabsTrigger>
-          <TabsTrigger value="mnemonic" className="flex items-center gap-2">
-            <FileText className="h-4 w-4" />
-            Mnemonic
-          </TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="private-key" className="space-y-4 mt-6">
-          <div className="space-y-2">
-            <Label htmlFor="private-key">Private Key</Label>
-            <Input
-              id="private-key"
-              type="password"
-              placeholder="Enter your private key (Base64)"
-              value={privateKey}
-              onChange={(e) => setPrivateKey(e.target.value)}
-                className="font-mono text-sm"
-            />
-            <p className="text-sm text-muted-foreground">
-              Enter your private key in Base64 format
-            </p>
-          </div>
-
-          <Button 
-            onClick={handleImportFromPrivateKey}
-            disabled={isImporting || !privateKey.trim()}
-            className="w-full"
-            size="lg"
-          >
-            {isImporting ? (
-              <>
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                Importing...
-              </>
-            ) : (
-              "Import Wallet"
-            )}
-          </Button>
-        </TabsContent>
-
-        <TabsContent value="mnemonic" className="space-y-4 mt-6">
+  if (defaultTab === 'mnemonic') {
+    return (
+      <Card>
+        <CardHeader className="pb-4">
+          <CardTitle className="flex items-center gap-2 text-lg">
+            <FileText className="h-5 w-5" />
+            Import from Mnemonic
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
           <div className="space-y-2">
             <Label htmlFor="mnemonic">Mnemonic Phrase</Label>
             <Textarea
@@ -203,31 +107,52 @@ export function ImportWallet({ onWalletImported }: ImportWalletProps) {
               placeholder="Enter your 12 or 24 word mnemonic phrase"
               value={mnemonic}
               onChange={(e) => setMnemonic(e.target.value)}
-              rows={4}
-                className="font-mono text-sm"
+              rows={3}
+              className="font-mono text-sm"
             />
-            <p className="text-sm text-muted-foreground">
-              Enter your mnemonic phrase separated by spaces (12 or 24 words)
-            </p>
           </div>
-
           <Button 
             onClick={handleImportFromMnemonic}
             disabled={isImporting || !mnemonic.trim()}
             className="w-full"
             size="lg"
           >
-            {isImporting ? (
-              <>
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                Importing...
-              </>
-            ) : (
-              "Import Wallet"
-            )}
+            {isImporting ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Importing...</> : "Import Wallet"}
           </Button>
-        </TabsContent>
-      </Tabs>
-    </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <Card>
+      <CardHeader className="pb-4">
+        <CardTitle className="flex items-center gap-2 text-lg">
+          <Key className="h-5 w-5" />
+          Import from Private Key
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="space-y-2">
+          <Label htmlFor="private-key">Private Key</Label>
+          <Input
+            id="private-key"
+            type="password"
+            placeholder="Enter your private key (Base64)"
+            value={privateKey}
+            onChange={(e) => setPrivateKey(e.target.value)}
+            className="font-mono text-sm"
+          />
+        </div>
+        <Button 
+          onClick={handleImportFromPrivateKey}
+          disabled={isImporting || !privateKey.trim()}
+          className="w-full"
+          size="lg"
+        >
+          {isImporting ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Importing...</> : "Import Wallet"}
+        </Button>
+      </CardContent>
+    </Card>
   );
 }

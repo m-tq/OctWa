@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { WalletManager } from '../utils/walletManager';
 import { Wallet } from '../types/wallet';
 import { Shield, AlertTriangle, Clock } from 'lucide-react';
+import { ExtensionStorageManager } from '../utils/extensionStorage';
 
 interface UnlockWalletProps {
   onUnlock: (wallets: Wallet[]) => void;
@@ -11,6 +12,8 @@ export function UnlockWallet({ onUnlock }: UnlockWalletProps) {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [showResetConfirm, setShowResetConfirm] = useState(false);
+  const [resetConfirmText, setResetConfirmText] = useState('');
   const [rateLimitInfo, setRateLimitInfo] = useState<{
     limited: boolean;
     remainingMs?: number;
@@ -93,6 +96,84 @@ export function UnlockWallet({ onUnlock }: UnlockWalletProps) {
 
   const isLocked = rateLimitInfo?.limited && countdown > 0;
 
+  const handleForgotPassword = async () => {
+    if (resetConfirmText !== 'RESET') return;
+    
+    // Clear all wallet data
+    localStorage.removeItem('wallets');
+    localStorage.removeItem('encryptedWallets');
+    localStorage.removeItem('walletPasswordHash');
+    localStorage.removeItem('walletPasswordSalt');
+    localStorage.removeItem('isWalletLocked');
+    localStorage.removeItem('activeWalletId');
+    localStorage.removeItem('unlockAttempts');
+    localStorage.removeItem('lockoutUntil');
+    
+    await ExtensionStorageManager.remove('wallets');
+    await ExtensionStorageManager.remove('encryptedWallets');
+    await ExtensionStorageManager.remove('walletPasswordHash');
+    await ExtensionStorageManager.remove('walletPasswordSalt');
+    await ExtensionStorageManager.remove('isWalletLocked');
+    await ExtensionStorageManager.remove('activeWalletId');
+    
+    // Reload to show welcome screen
+    window.location.reload();
+  };
+
+  // Reset Confirmation Dialog
+  if (showResetConfirm) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-background">
+        <div className="w-full max-w-md p-6 space-y-6">
+          <div className="flex justify-center mb-4">
+            <div className="p-3 rounded-full bg-red-500">
+              <AlertTriangle className="h-8 w-8 text-white" />
+            </div>
+          </div>
+          <div className="text-center">
+            <h1 className="text-2xl font-bold text-red-500">Reset Wallet</h1>
+            <p className="text-muted-foreground mt-2">
+              This will permanently delete all wallet data. You can only recover your wallet using your seed phrase or private key.
+            </p>
+          </div>
+
+          <div className="p-4 bg-red-50 dark:bg-red-950/30 rounded-lg border border-red-200 dark:border-red-800">
+            <p className="text-sm text-red-600 dark:text-red-400 text-center">
+              Type <span className="font-bold">RESET</span> to confirm
+            </p>
+          </div>
+
+          <input
+            type="text"
+            value={resetConfirmText}
+            onChange={(e) => setResetConfirmText(e.target.value.toUpperCase())}
+            placeholder="Type RESET"
+            className="w-full px-3 py-2 border border-border rounded-md bg-background text-center font-mono"
+          />
+
+          <div className="flex gap-3">
+            <button
+              onClick={() => {
+                setShowResetConfirm(false);
+                setResetConfirmText('');
+              }}
+              className="flex-1 py-2 px-4 border border-border rounded-md hover:bg-accent"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleForgotPassword}
+              disabled={resetConfirmText !== 'RESET'}
+              className="flex-1 py-2 px-4 bg-red-500 text-white rounded-md hover:bg-red-600 disabled:opacity-50"
+            >
+              Reset Wallet
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex items-center justify-center min-h-screen bg-background">
       <div className="w-full max-w-md p-6 space-y-6">
@@ -167,10 +248,13 @@ export function UnlockWallet({ onUnlock }: UnlockWalletProps) {
           </button>
         </form>
 
-        {/* Security Info */}
-        <p className="text-xs text-center text-muted-foreground">
-          Your wallet is protected with AES-256 encryption
-        </p>
+        {/* Forgot Password */}
+        <button
+          onClick={() => setShowResetConfirm(true)}
+          className="w-full text-sm text-muted-foreground hover:text-foreground transition-colors"
+        >
+          Forgot password?
+        </button>
       </div>
     </div>
   );
