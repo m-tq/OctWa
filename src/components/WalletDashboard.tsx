@@ -3,7 +3,7 @@ import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription } from '@/components/ui/dialog';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger, SheetDescription } from '@/components/ui/sheet';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { Avatar } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
@@ -696,6 +696,7 @@ export function WalletDashboard({
                         <SheetContent side="left" className="w-80 flex flex-col">
                           <SheetHeader>
                             <SheetTitle>Select Wallet ({wallets.length})</SheetTitle>
+                            <SheetDescription className="sr-only">Choose a wallet from your list</SheetDescription>
                           </SheetHeader>
                           <div className="flex-1 mt-4 overflow-hidden">
                             <ScrollArea className="h-full max-h-[calc(100vh-200px)]">
@@ -794,6 +795,7 @@ export function WalletDashboard({
                         <SheetContent side="left" className="w-[400px] sm:w-[480px] flex flex-col">
                           <SheetHeader>
                             <SheetTitle>Select Wallet ({wallets.length})</SheetTitle>
+                            <SheetDescription className="sr-only">Choose a wallet from your list</SheetDescription>
                           </SheetHeader>
                           <div className="flex-1 mt-4 overflow-hidden">
                             <ScrollArea className="h-full max-h-[calc(100vh-200px)]">
@@ -927,6 +929,7 @@ export function WalletDashboard({
                     <SheetContent side="right" className="w-80">
                       <SheetHeader>
                         <SheetTitle>Wallet Menu</SheetTitle>
+                        <SheetDescription className="sr-only">Wallet settings and actions</SheetDescription>
                       </SheetHeader>
                       <div className="mt-6 space-y-4">
                         {/* Wallet Info Card */}
@@ -1138,32 +1141,15 @@ export function WalletDashboard({
                       <Key className="h-4 w-4" />
                       Export Keys
                     </Button>
-                    <AlertDialog open={showLockConfirm} onOpenChange={setShowLockConfirm}>
-                      <AlertDialogTrigger asChild>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="text-orange-600 hover:text-orange-700 dark:text-orange-400 dark:hover:text-orange-300 flex items-center gap-2"
-                        >
-                          <Lock className="h-4 w-4" />
-                          Lock
-                        </Button>
-                      </AlertDialogTrigger>
-                      <AlertDialogContent>
-                        <AlertDialogHeader>
-                          <AlertDialogTitle>Lock Wallet</AlertDialogTitle>
-                          <AlertDialogDescription>
-                            Are you sure you want to lock your wallet? You will need to enter your password to unlock it again.
-                          </AlertDialogDescription>
-                        </AlertDialogHeader>
-                        <AlertDialogFooter>
-                          <AlertDialogCancel>Cancel</AlertDialogCancel>
-                          <AlertDialogAction onClick={handleDisconnect} className="bg-orange-600 hover:bg-orange-700">
-                            Lock Wallet
-                          </AlertDialogAction>
-                        </AlertDialogFooter>
-                      </AlertDialogContent>
-                    </AlertDialog>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="text-orange-600 hover:text-orange-700 dark:text-orange-400 dark:hover:text-orange-300 flex items-center gap-2"
+                      onClick={() => setShowLockConfirm(true)}
+                    >
+                      <Lock className="h-4 w-4" />
+                      Lock
+                    </Button>
                     <Button
                       variant="outline"
                       size="sm"
@@ -1186,6 +1172,7 @@ export function WalletDashboard({
                       <SheetContent side="right" className="w-80">
                         <SheetHeader>
                           <SheetTitle>Additional Menu</SheetTitle>
+                          <SheetDescription className="sr-only">Additional wallet settings and actions</SheetDescription>
                         </SheetHeader>
                         <div className="mt-6 space-y-4">
                           {/* RPC Provider */}

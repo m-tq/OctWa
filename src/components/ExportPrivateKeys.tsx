@@ -5,7 +5,7 @@ import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription } from '@/components/ui/dialog';
 import { Copy, Download, Eye, EyeOff, AlertTriangle, Shield, Key, FileText, Lock } from 'lucide-react';
 import { Wallet } from '../types/wallet';
 import { verifyPassword } from '../utils/password';
@@ -250,6 +250,9 @@ ${wallet.mnemonic}
               <Key className="h-5 w-5" />
               Export Private Keys
             </DialogTitle>
+            <DialogDescription className="sr-only">
+              Enter your password to view and export your private keys
+            </DialogDescription>
           </DialogHeader>
           <ScrollArea className="max-h-[calc(90vh-100px)] pr-2">
             <div className="pr-2">
@@ -528,6 +531,9 @@ ${wallet.mnemonic}
             <Key className="h-5 w-5" />
             Export Private Keys
           </DialogTitle>
+          <DialogDescription className="sr-only">
+            Enter your password to view and export your private keys
+          </DialogDescription>
         </DialogHeader>
         <ScrollArea className="max-h-[calc(90vh-100px)] pr-2">
           <div className="pr-2">

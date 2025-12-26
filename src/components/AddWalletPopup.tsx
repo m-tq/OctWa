@@ -52,11 +52,12 @@ export function AddWalletPopup({
   if (isPopupMode) {
     return (
       <Dialog open={open} onOpenChange={handleOpenChange}>
-        <DialogContent className="w-[360px] max-h-[500px] overflow-hidden p-0">
+        <DialogContent className="w-[360px] max-h-[500px] overflow-hidden p-0" aria-describedby={screen === 'menu' ? undefined : undefined}>
           {screen === 'menu' && (
             <>
               <DialogHeader className="p-3 pb-2">
                 <DialogTitle className="text-sm">Add Wallet</DialogTitle>
+                <DialogDescription className="sr-only">Choose how you want to add a wallet</DialogDescription>
               </DialogHeader>
               <div className="p-3 pt-1 space-y-2">
                 <Button
