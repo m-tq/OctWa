@@ -12,9 +12,10 @@ import { useToast } from '@/hooks/use-toast';
 interface ImportWalletProps {
   onWalletImported: (wallet: Wallet) => void;
   defaultTab?: 'private-key' | 'mnemonic';
+  isCompact?: boolean;
 }
 
-export function ImportWallet({ onWalletImported, defaultTab = 'private-key' }: ImportWalletProps) {
+export function ImportWallet({ onWalletImported, defaultTab = 'private-key', isCompact = false }: ImportWalletProps) {
   const [privateKey, setPrivateKey] = useState('');
   const [mnemonic, setMnemonic] = useState('');
   const [isImporting, setIsImporting] = useState(false);
@@ -91,6 +92,33 @@ export function ImportWallet({ onWalletImported, defaultTab = 'private-key' }: I
   };
 
   if (defaultTab === 'mnemonic') {
+    // Compact mode for popup
+    if (isCompact) {
+      return (
+        <div className="space-y-3">
+          <div>
+            <Label htmlFor="mnemonic" className="text-xs text-muted-foreground">Mnemonic Phrase</Label>
+            <Textarea
+              id="mnemonic"
+              placeholder="Enter 12 or 24 words"
+              value={mnemonic}
+              onChange={(e) => setMnemonic(e.target.value)}
+              rows={3}
+              className="font-mono text-xs mt-1.5"
+            />
+          </div>
+          <Button 
+            onClick={handleImportFromMnemonic}
+            disabled={isImporting || !mnemonic.trim()}
+            className="w-full h-8 text-xs"
+            size="sm"
+          >
+            {isImporting ? <><Loader2 className="h-3 w-3 mr-1.5 animate-spin" />Importing...</> : "Import Wallet"}
+          </Button>
+        </div>
+      );
+    }
+
     return (
       <Card>
         <CardHeader className="pb-4">
@@ -121,6 +149,33 @@ export function ImportWallet({ onWalletImported, defaultTab = 'private-key' }: I
           </Button>
         </CardContent>
       </Card>
+    );
+  }
+
+  // Compact mode for private key
+  if (isCompact) {
+    return (
+      <div className="space-y-3">
+        <div>
+          <Label htmlFor="private-key" className="text-xs text-muted-foreground">Private Key</Label>
+          <Input
+            id="private-key"
+            type="password"
+            placeholder="Enter private key (Base64)"
+            value={privateKey}
+            onChange={(e) => setPrivateKey(e.target.value)}
+            className="font-mono text-xs mt-1.5"
+          />
+        </div>
+        <Button 
+          onClick={handleImportFromPrivateKey}
+          disabled={isImporting || !privateKey.trim()}
+          className="w-full h-8 text-xs"
+          size="sm"
+        >
+          {isImporting ? <><Loader2 className="h-3 w-3 mr-1.5 animate-spin" />Importing...</> : "Import Wallet"}
+        </Button>
+      </div>
     );
   }
 

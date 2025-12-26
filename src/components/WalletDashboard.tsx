@@ -10,6 +10,7 @@ import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { 
   Send, 
   History, 
@@ -27,7 +28,8 @@ import {
   Menu,
   RotateCcw,
   Eye,
-  EyeOff
+  EyeOff,
+  Key
 } from 'lucide-react';
 import { ExtensionStorageManager } from '../utils/extensionStorage';
 import { PublicBalance } from './PublicBalance';
@@ -41,8 +43,7 @@ import { UnifiedHistory } from './UnifiedHistory';
 import { ModeToggle } from './ModeToggle';
 import { ModeIndicator } from './ModeIndicator';
 import { ThemeToggle } from './ThemeToggle';
-import { ImportWallet } from './ImportWallet';
-import { GenerateWallet } from './GenerateWallet';
+import { AddWalletPopup } from './AddWalletPopup';
 import { RPCProviderManager } from './RPCProviderManager';
 import { ConnectedDAppsManager } from './ConnectedDAppsManager';
 import { Wallet } from '../types/wallet';
@@ -91,7 +92,6 @@ export function WalletDashboard({
   const [showAddWalletDialog, setShowAddWalletDialog] = useState(false);
   const [showRPCManager, setShowRPCManager] = useState(false);
   const [showDAppsManager, setShowDAppsManager] = useState(false);
-  const [addWalletTab, setAddWalletTab] = useState('import');
   const [walletToDelete, setWalletToDelete] = useState<Wallet | null>(null);
   const [showLockConfirm, setShowLockConfirm] = useState(false);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
@@ -603,28 +603,6 @@ export function WalletDashboard({
     });
   };
 
-  const handleGenerateSuccess = (newWallet: Wallet) => {
-    // Check if wallet already exists in current wallets state (source of truth)
-    const walletExists = wallets.some((w: Wallet) => w.address === newWallet.address);
-    if (walletExists) {
-      toast({
-        title: "Wallet Exists",
-        description: "This wallet is already in your wallet list",
-        variant: "destructive",
-      });
-      return;
-    }
-    
-    // Add wallet through parent handler (which handles storage properly)
-    onAddWallet(newWallet);
-    setShowAddWalletDialog(false);
-    
-    toast({
-      title: "Wallet Generated",
-      description: "New wallet has been generated and added successfully",
-    });
-  };
-
   const handleBalanceUpdate = async (newBalance: number) => {
     setBalance(newBalance);
     // Also refresh nonce when balance is updated
@@ -685,9 +663,9 @@ export function WalletDashboard({
         ? 'ring-1 ring-[#0000db] ring-inset' 
         : ''
     }`}>
-      {/* Header */}
-      <header className="octra-header sticky top-0 z-50 w-full">
-        <div className="w-full px-4">
+      {/* Header - Fixed position for expanded mode */}
+      <header className={`octra-header w-full ${isPopupMode ? 'sticky top-0' : 'fixed top-0 left-0 right-0'} z-50`}>
+        <div className={`w-full ${isPopupMode ? 'px-4' : 'px-6 sm:px-8 lg:px-12'}`}>
           <div className="flex items-center justify-between py-2 sm:py-4">
             <div className="flex items-center space-x-4">
               <div className="flex items-center space-x-3">
@@ -1050,6 +1028,20 @@ export function WalletDashboard({
                           Add Wallet
                         </Button>
 
+                        {/* Export Private Keys */}
+                        <Button
+                          variant="destructive"
+                          onClick={() => {
+                            handleExportBackup();
+                            setShowMobileMenu(false);
+                          }}
+                          disabled={isExportingBackup}
+                          className="w-full justify-start gap-2"
+                        >
+                          <Key className="h-4 w-4" />
+                          Export Private Keys
+                        </Button>
+
                         {/* Lock Wallet */}
                         <Button
                           variant="outline"
@@ -1085,77 +1077,79 @@ export function WalletDashboard({
                   <ThemeToggle />
                   {/* Desktop Menu Items */}
                   <div className="hidden md:flex items-center space-x-2">
-                    <Button
-                      variant="outline"
+                    {/* Icon only buttons with tooltips: RPC, dApps, Add Wallet */}
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            variant="outline"
+                            size="icon"
+                            onClick={() => setShowRPCManager(true)}
+                            className="h-9 w-9"
+                          >
+                            <Wifi className="h-4 w-4" />
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p>RPC Provider</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            variant="outline"
+                            size="icon"
+                            onClick={() => setShowDAppsManager(true)}
+                            className="h-9 w-9"
+                          >
+                            <Globe className="h-4 w-4" />
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p>Connected dApps</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button 
+                            variant="outline" 
+                            size="icon"
+                            className="h-9 w-9"
+                            onClick={() => setShowAddWalletDialog(true)}
+                          >
+                            <Plus className="h-4 w-4" />
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p>Add Wallet</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                    
+                    {/* Text buttons: Export Private Keys, Lock Wallet, Reset All */}
+                    <Button 
+                      variant="destructive" 
                       size="sm"
-                      onClick={() => setShowRPCManager(true)}
-                      className="flex items-center gap-2 desktop-only"
+                      className="flex items-center gap-2"
+                      onClick={handleExportBackup}
+                      disabled={isExportingBackup}
                     >
-                      <Wifi className="h-4 w-4" />
-                      RPC
+                      <Key className="h-4 w-4" />
+                      Export Keys
                     </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setShowDAppsManager(true)}
-                      className="flex items-center gap-2 desktop-only"
-                    >
-                      <Globe className="h-4 w-4" />
-                      dApps
-                    </Button>
-                    <Dialog open={showAddWalletDialog} onOpenChange={setShowAddWalletDialog}>
-                      <DialogTrigger asChild>
-                        <Button variant="outline" size="sm" className="flex items-center gap-2 desktop-only">
-                          <Plus className="h-4 w-4" />
-                          Add Wallet
-                        </Button>
-                      </DialogTrigger>
-                      <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-hidden">
-                        <DialogHeader>
-                          <DialogTitle>Add New Wallet</DialogTitle>
-                          <DialogDescription>
-                            Import an existing wallet using private key or mnemonic phrase, or generate a new wallet.
-                          </DialogDescription>
-                        </DialogHeader>
-                        <div className="flex flex-col max-h-[calc(90vh-120px)]">
-                          <Tabs value={addWalletTab} onValueChange={setAddWalletTab} className="w-full flex flex-col">
-                            <TabsList className="grid w-full grid-cols-2 flex-shrink-0">
-                              <TabsTrigger value="import" className="flex items-center gap-2">
-                                <Download className="h-4 w-4" />
-                                Import
-                              </TabsTrigger>
-                              <TabsTrigger value="generate" className="flex items-center gap-2">
-                                <Plus className="h-4 w-4" />
-                                Generate
-                              </TabsTrigger>
-                            </TabsList>
-                            
-                            <div className="flex-1 overflow-hidden">
-                              <ScrollArea className="h-full max-h-[calc(90vh-180px)]">
-                                <div className="pr-4">
-                                  <TabsContent value="import" className="mt-4 data-[state=inactive]:hidden">
-                                    <ImportWallet onWalletImported={handleImportSuccess} />
-                                  </TabsContent>
-                                  
-                                  <TabsContent value="generate" className="mt-4 data-[state=inactive]:hidden">
-                                    <GenerateWallet onWalletGenerated={handleGenerateSuccess} />
-                                  </TabsContent>
-                                </div>
-                              </ScrollArea>
-                            </div>
-                          </Tabs>
-                        </div>
-                      </DialogContent>
-                    </Dialog>
                     <AlertDialog open={showLockConfirm} onOpenChange={setShowLockConfirm}>
                       <AlertDialogTrigger asChild>
                         <Button
                           variant="outline"
                           size="sm"
-                          className="text-orange-600 hover:text-orange-700 dark:text-orange-400 dark:hover:text-orange-300 flex items-center gap-2 desktop-only"
+                          className="text-orange-600 hover:text-orange-700 dark:text-orange-400 dark:hover:text-orange-300 flex items-center gap-2"
                         >
                           <Lock className="h-4 w-4" />
-                          Lock Wallet
+                          Lock
                         </Button>
                       </AlertDialogTrigger>
                       <AlertDialogContent>
@@ -1177,10 +1171,10 @@ export function WalletDashboard({
                       variant="outline"
                       size="sm"
                       onClick={() => setShowResetConfirm(true)}
-                      className="text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 flex items-center gap-2 desktop-only"
+                      className="text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 flex items-center gap-2"
                     >
                       <RotateCcw className="h-4 w-4" />
-                      Reset All
+                      Reset
                     </Button>
                   </div>
 
@@ -1234,6 +1228,20 @@ export function WalletDashboard({
                           >
                             <Plus className="h-4 w-4" />
                             Add Wallet
+                          </Button>
+
+                          {/* Export Private Keys */}
+                          <Button
+                            variant="destructive"
+                            onClick={() => {
+                              handleExportBackup();
+                              setShowMobileMenu(false);
+                            }}
+                            disabled={isExportingBackup}
+                            className="w-full justify-start gap-2"
+                          >
+                            <Key className="h-4 w-4" />
+                            Export Private Keys
                           </Button>
 
                           {/* Lock Wallet */}
@@ -1302,44 +1310,13 @@ export function WalletDashboard({
                 </AlertDialogContent>
               </AlertDialog>
               
-              <Dialog open={showAddWalletDialog} onOpenChange={setShowAddWalletDialog}>
-                <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-hidden">
-                  <DialogHeader>
-                    <DialogTitle>Add New Wallet</DialogTitle>
-                    <DialogDescription>
-                      Import an existing wallet using private key or mnemonic phrase, or generate a new wallet.
-                    </DialogDescription>
-                  </DialogHeader>
-                  <div className="flex flex-col max-h-[calc(90vh-120px)]">
-                    <Tabs value={addWalletTab} onValueChange={setAddWalletTab} className="w-full flex flex-col">
-                      <TabsList className="grid w-full grid-cols-2 flex-shrink-0">
-                        <TabsTrigger value="import" className="flex items-center gap-2">
-                          <Download className="h-4 w-4" />
-                          Import
-                        </TabsTrigger>
-                        <TabsTrigger value="generate" className="flex items-center gap-2">
-                          <Plus className="h-4 w-4" />
-                          Generate
-                        </TabsTrigger>
-                      </TabsList>
-                      
-                      <div className="flex-1 overflow-hidden">
-                        <ScrollArea className="h-full max-h-[calc(90vh-180px)]">
-                          <div className="pr-4">
-                            <TabsContent value="import" className="mt-4 data-[state=inactive]:hidden">
-                              <ImportWallet onWalletImported={handleImportSuccess} />
-                            </TabsContent>
-                            
-                            <TabsContent value="generate" className="mt-4 data-[state=inactive]:hidden">
-                              <GenerateWallet onWalletGenerated={handleGenerateSuccess} />
-                            </TabsContent>
-                          </div>
-                        </ScrollArea>
-                      </div>
-                    </Tabs>
-                  </div>
-                </DialogContent>
-              </Dialog>
+              {/* Add Wallet - Use screen-based navigation for both modes */}
+              <AddWalletPopup
+                open={showAddWalletDialog}
+                onOpenChange={setShowAddWalletDialog}
+                onWalletCreated={handleImportSuccess}
+                isPopupMode={isPopupMode}
+              />
               
               <Dialog open={showRPCManager} onOpenChange={setShowRPCManager}>
                 <DialogContent className="sm:max-w-2xl max-h-[80vh] overflow-y-auto">
@@ -1463,7 +1440,7 @@ export function WalletDashboard({
 
       {/* Sticky Mode Toggle - Only for expanded mode */}
       {!isPopupMode && (
-        <div className="sticky top-14 sm:top-[84px] z-40 bg-background/95 backdrop-blur-sm border-b border-border/50 py-3">
+        <div className="fixed top-[70px] sm:top-[83px] left-0 right-0 z-40 bg-background/95 backdrop-blur-sm border-b border-border/50 py-3">
           <div className="octra-container px-2 sm:px-4">
             <ModeToggle
               currentMode={operationMode}
@@ -1476,8 +1453,8 @@ export function WalletDashboard({
         </div>
       )}
 
-      {/* Main Content */}
-      <main className={`octra-container ${isPopupMode ? 'py-2 px-3 pb-28 mt-2' : 'pt-3 pb-16 px-2 sm:pt-4 sm:px-4 sm:pb-20'}`}>
+      {/* Main Content - Add padding-top for fixed header in expanded mode */}
+      <main className={`octra-container ${isPopupMode ? 'py-2 px-3 pb-28 mt-2' : 'pt-[149px] sm:pt-[165px] pb-16 px-6 sm:px-8 lg:px-12 sm:pb-20'}`}>
         {/* Mode-based Tabs */}
         <Tabs value={activeTab} onValueChange={(tab) => {
           setActiveTab(tab);

@@ -1,10 +1,10 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Shield, Eye, EyeOff } from 'lucide-react';
+import { Shield, Eye, EyeOff, AlertTriangle } from 'lucide-react';
 import { Wallet } from '../types/wallet';
 import { hashPassword, encryptWalletData } from '../utils/password';
 import { useToast } from '@/hooks/use-toast';
@@ -24,7 +24,26 @@ export function PasswordSetup({ wallet, onPasswordSet, onBack }: PasswordSetupPr
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [acknowledged, setAcknowledged] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
+  const [capsLockOn, setCapsLockOn] = useState(false);
   const { toast } = useToast();
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.getModifierState('CapsLock')) {
+        setCapsLockOn(true);
+      }
+    };
+    const handleKeyUp = (e: KeyboardEvent) => {
+      setCapsLockOn(e.getModifierState('CapsLock'));
+    };
+    
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('keyup', handleKeyUp);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keyup', handleKeyUp);
+    };
+  }, []);
 
   const passwordStrength = useMemo(() => {
     if (!password) return { score: 0, label: '', color: '' };
@@ -60,39 +79,66 @@ export function PasswordSetup({ wallet, onPasswordSet, onBack }: PasswordSetupPr
     setIsCreating(true);
     try {
       const { hashedPassword, salt } = await hashPassword(password);
-      const existingWallets = JSON.parse(localStorage.getItem('wallets') || '[]');
-      const walletExists = existingWallets.find((w: Wallet) => w.address === wallet.address);
-      const walletsToEncrypt: Wallet[] = walletExists ? existingWallets : [...existingWallets, wallet];
       
-      const encryptedWallets = [];
-      for (const w of walletsToEncrypt) {
-        const walletData = JSON.stringify(w);
+      // Get existing encrypted wallets (if any)
+      const existingEncryptedData = localStorage.getItem('encryptedWallets');
+      let encryptedWallets: any[] = existingEncryptedData ? JSON.parse(existingEncryptedData) : [];
+      
+      // Check if wallet already exists in encrypted storage
+      const walletExists = encryptedWallets.some((w: any) => w.address === wallet.address);
+      
+      if (!walletExists) {
+        // Encrypt and add the new wallet
+        const walletData = JSON.stringify(wallet);
         const encryptedWalletData = await encryptWalletData(walletData, password);
-        encryptedWallets.push({ address: w.address, encryptedData: encryptedWalletData, createdAt: Date.now() });
+        encryptedWallets.push({ 
+          address: wallet.address, 
+          encryptedData: encryptedWalletData, 
+          createdAt: Date.now() 
+        });
       }
 
+      console.log('🔐 PasswordSetup: Saving wallet data...');
+      
+      // Store password hash and salt - localStorage FIRST (synchronous, reliable)
       localStorage.setItem('walletPasswordHash', hashedPassword);
       localStorage.setItem('walletPasswordSalt', salt);
       localStorage.setItem('isWalletLocked', 'false');
+      localStorage.setItem('encryptedWallets', JSON.stringify(encryptedWallets));
+      localStorage.setItem('activeWalletId', wallet.address);
+      
+      console.log('🔐 PasswordSetup: localStorage saved, now saving to ExtensionStorage...');
+      
+      // Then save to ExtensionStorage (async)
       await ExtensionStorageManager.set('walletPasswordHash', hashedPassword);
       await ExtensionStorageManager.set('walletPasswordSalt', salt);
       await ExtensionStorageManager.set('isWalletLocked', 'false');
-      
-      WalletManager.setSessionPassword(password);
-
-      if (encryptedWallets.length > 0) {
-        localStorage.setItem('encryptedWallets', JSON.stringify(encryptedWallets));
-        await ExtensionStorageManager.set('encryptedWallets', JSON.stringify(encryptedWallets));
-      }
-
-      localStorage.setItem('wallets', JSON.stringify(walletsToEncrypt));
-      await ExtensionStorageManager.set('wallets', JSON.stringify(walletsToEncrypt));
-      localStorage.setItem('activeWalletId', wallet.address);
+      await ExtensionStorageManager.set('encryptedWallets', JSON.stringify(encryptedWallets));
       await ExtensionStorageManager.set('activeWalletId', wallet.address);
+      
+      console.log('🔐 PasswordSetup: ExtensionStorage saved');
+      
+      // Set session password for runtime operations
+      WalletManager.setSessionPassword(password);
+      
+      // Store decrypted wallet in session storage for immediate access
+      await ExtensionStorageManager.setSession('sessionWallets', JSON.stringify([wallet]));
+      
+      console.log('🔐 PasswordSetup: Session storage saved');
+      
+      // SECURITY: Remove any unencrypted wallet data that might exist
+      localStorage.removeItem('wallets');
+      await ExtensionStorageManager.remove('wallets');
+      
+      // Verify data was saved
+      const verifyHash = localStorage.getItem('walletPasswordHash');
+      const verifyEncrypted = localStorage.getItem('encryptedWallets');
+      console.log('🔐 PasswordSetup: Verify - hash exists:', !!verifyHash, ', encrypted exists:', !!verifyEncrypted);
 
       toast({ title: "Password Created!", description: "Your wallet is now protected" });
       onPasswordSet(wallet);
     } catch (error) {
+      console.error('🔐 PasswordSetup: Error:', error);
       toast({ title: "Error", description: "Failed to create password", variant: "destructive" });
     } finally {
       setIsCreating(false);
@@ -171,6 +217,13 @@ export function PasswordSetup({ wallet, onPasswordSet, onBack }: PasswordSetupPr
             )}
           </div>
 
+          {capsLockOn && (
+            <div className="flex items-center gap-2 p-2 bg-yellow-500/10 border border-yellow-500/30 rounded text-yellow-600 dark:text-yellow-400">
+              <AlertTriangle className="h-4 w-4 flex-shrink-0" />
+              <span className="text-xs">Caps Lock is ON</span>
+            </div>
+          )}
+
           <div className="flex items-start space-x-2 pt-2">
             <Checkbox
               id="acknowledge"
@@ -188,7 +241,7 @@ export function PasswordSetup({ wallet, onPasswordSet, onBack }: PasswordSetupPr
               Back
             </Button>
             <Button onClick={handleCreatePassword} disabled={isCreating || !isValid} className="flex-1">
-              {isCreating ? "Creating..." : "Continue"}
+              {isCreating ? "Creating..." : "Start OctWa"}
             </Button>
           </div>
         </CardContent>

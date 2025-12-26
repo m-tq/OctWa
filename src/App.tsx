@@ -1,9 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { WelcomeScreen } from './components/WelcomeScreen';
 import { WalletDashboard } from './components/WalletDashboard';
 import { UnlockWallet } from './components/UnlockWallet';
 import { ConnectionApproval } from './components/ConnectionApproval';
 import { ThemeProvider } from './components/ThemeProvider';
+import { SplashScreen } from './components/SplashScreen';
+import { PageTransition } from './components/PageTransition';
 import { WalletManager } from './utils/walletManager';
 import { ExtensionStorageManager } from './utils/extensionStorage';
 import { Wallet } from './types/wallet';
@@ -13,6 +15,10 @@ function App() {
   const [wallet, setWallet] = useState<Wallet | null>(null);
   const [wallets, setWallets] = useState<Wallet[]>([]);
   const [isLocked, setIsLocked] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [showSplash, setShowSplash] = useState(true);
+  const [showSetupSplash, setShowSetupSplash] = useState(false);
+  const [pendingSetupWallet, setPendingSetupWallet] = useState<Wallet | null>(null);
   const [connectionRequest, setConnectionRequest] = useState<any>(null);
 
   // Check for connection request in URL parameters
@@ -30,95 +36,34 @@ function App() {
         setConnectionRequest({
           origin: decodeURIComponent(origin),
           appName: decodeURIComponent(appName || ''),
-          appIcon: decodeURIComponent(appIcon || ''),
+          appIcon: decodeURIComponent(appName || ''),
           permissions: JSON.parse(decodeURIComponent(permissions))
         });
       }
     }
   }, []);
 
-  // Listen for storage changes across tabs
+  // ONLY load data once on mount - THIS MUST RUN FIRST
   useEffect(() => {
-    const handleStorageChange = (e: StorageEvent) => {
-      // Handle wallet lock state changes
-      if (e.key === 'isWalletLocked') {
-        const isLocked = e.newValue === 'true';
-        setIsLocked(isLocked);
-        
-        if (isLocked) {
-          // If wallet is locked, clear current wallet data
-          setWallet(null);
-          setWallets([]);
-        } else {
-          // If wallet is unlocked, reload wallet data with a small delay
-          // to ensure localStorage is fully updated
-          setTimeout(() => {
-            const storedWallets = localStorage.getItem('wallets');
-            const activeWalletId = localStorage.getItem('activeWalletId');
-            
-            if (storedWallets) {
-              const parsedWallets = JSON.parse(storedWallets);
-              setWallets(parsedWallets);
-              
-              if (parsedWallets.length > 0) {
-                let activeWallet = parsedWallets[0];
-                if (activeWalletId) {
-                  const foundWallet = parsedWallets.find((w: Wallet) => w.address === activeWalletId);
-                  if (foundWallet) {
-                    activeWallet = foundWallet;
-                  }
-                }
-                setWallet(activeWallet);
-              }
-            }
-          }, 100);
-        }
-      }
-      
-      // Handle wallet data changes
-      if (e.key === 'wallets' && !isLocked) {
-        // Only update if we don't have wallets or if the data actually changed
-        if (e.newValue) {
-          const newWallets = JSON.parse(e.newValue);
-          setWallets(newWallets);
-          
-          // Update active wallet if needed
-          const activeWalletId = localStorage.getItem('activeWalletId');
-          if (activeWalletId && newWallets.length > 0) {
-            const foundWallet = newWallets.find((w: Wallet) => w.address === activeWalletId);
-            if (foundWallet) {
-              setWallet(foundWallet);
-            }
-          } else if (newWallets.length > 0 && !wallet) {
-            // If no active wallet is set but we have wallets, set the first one
-            setWallet(newWallets[0]);
-          }
-        }
-      }
-      
-      // Handle active wallet changes
-      if (e.key === 'activeWalletId' && !isLocked) {
-        const newActiveWalletId = e.newValue;
-        const currentWallets = wallets.length > 0 ? wallets : JSON.parse(localStorage.getItem('wallets') || '[]');
-        if (newActiveWalletId && currentWallets.length > 0) {
-          const foundWallet = currentWallets.find((w: Wallet) => w.address === newActiveWalletId);
-          if (foundWallet) {
-            setWallet(foundWallet);
-          }
-        }
-      }
-    };
-
-    window.addEventListener('storage', handleStorageChange);
+    console.log('🚀 App.tsx: useEffect for loadInitialData triggered');
     
-    return () => {
-      window.removeEventListener('storage', handleStorageChange);
-    };
-  }, [isLocked, wallets, wallet]);
-
-  useEffect(() => {
-    const checkWalletStatus = async () => {
+    const loadInitialData = async () => {
+      console.log('🚀 App.tsx: loadInitialData function started');
+      
       try {
+        await ExtensionStorageManager.init();
+        console.log('🚀 App.tsx: ExtensionStorageManager.init() completed');
+        
+        // Clear legacy sessionStorage to prevent stale data from persisting
+        // This ensures auto-lock works properly when browser is restarted
+        try {
+          sessionStorage.removeItem('sessionWallets');
+          sessionStorage.removeItem('sessionKey');
+          console.log('🧹 App.tsx: Cleared legacy sessionStorage');
+        } catch (e) {
+          // Ignore
+        }
+        
         // Sync rpcProviders to chrome.storage.local for background script access
         const rpcProviders = localStorage.getItem('rpcProviders');
         if (rpcProviders && typeof chrome !== 'undefined' && chrome.storage?.local) {
@@ -135,85 +80,244 @@ function App() {
           setIsLocked(true);
         });
         
-        // Check if wallet is locked
-        const walletLocked = localStorage.getItem('isWalletLocked');
-        const hasPassword = localStorage.getItem('walletPasswordHash');
+        // Check localStorage FIRST (synchronous, always available)
+        const localPasswordHash = localStorage.getItem('walletPasswordHash');
+        const localEncryptedWallets = localStorage.getItem('encryptedWallets');
         
-        // Show unlock screen if password exists and wallet is not explicitly unlocked
-        if (hasPassword && walletLocked !== 'false') {
-          setIsLocked(true);
-          return;
-        }
+        console.log('🔍 App.tsx: localStorage check:', {
+          hasPasswordHash: !!localPasswordHash,
+          hasEncryptedWallets: !!localEncryptedWallets,
+          passwordHashLength: localPasswordHash?.length,
+          encryptedWalletsLength: localEncryptedWallets?.length
+        });
         
-        // Check if session is still valid (either in this instance or across instances)
-        // This allows opening new tabs/popups without re-locking
-        const sessionValid = WalletManager.isSessionActive() || WalletManager.isSessionValidAcrossInstances();
+        // CRITICAL: Sync password hash from localStorage to ExtensionStorage if missing
+        const extPasswordHash = await ExtensionStorageManager.get('walletPasswordHash');
+        console.log('🔍 App.tsx: ExtensionStorage passwordHash exists:', !!extPasswordHash);
         
-        // If wallet appears unlocked but session is not valid,
-        // it means the session has expired. Lock the wallet for security.
-        if (hasPassword && walletLocked === 'false' && !sessionValid) {
-          console.log('🔒 App: Session expired, locking wallet for security');
-          await WalletManager.lockWallets();
-          setIsLocked(true);
-          return;
-        }
-        
-        // Only load wallets if not locked
-        const storedWallets = localStorage.getItem('wallets');
-        const activeWalletId = localStorage.getItem('activeWalletId');
-        
-        if (storedWallets) {
-          const parsedWallets = JSON.parse(storedWallets);
-          setWallets(parsedWallets);
+        if (!extPasswordHash && localPasswordHash) {
+          console.log('🔄 App.tsx: Syncing password hash from localStorage to ExtensionStorage');
+          const localSalt = localStorage.getItem('walletPasswordSalt');
+          const localIsLocked = localStorage.getItem('isWalletLocked');
           
-          // Set active wallet based on stored ID or default to first wallet
-          if (parsedWallets.length > 0) {
-            let activeWallet = parsedWallets[0];
-            if (activeWalletId) {
-              const foundWallet = parsedWallets.find((w: Wallet) => w.address === activeWalletId);
-              if (foundWallet) {
-                activeWallet = foundWallet;
-              }
-            }
-            setWallet(activeWallet);
-            
-            // CRITICAL: Sync encryptedWallets with loaded wallets to prevent deleted wallets from reappearing
-            try {
-              const encryptedWalletsData = await ExtensionStorageManager.get('encryptedWallets');
-              if (encryptedWalletsData) {
-                const encryptedWallets = typeof encryptedWalletsData === 'string' 
-                  ? JSON.parse(encryptedWalletsData) 
-                  : encryptedWalletsData;
-                if (Array.isArray(encryptedWallets)) {
-                  const validAddresses = new Set(parsedWallets.map((w: Wallet) => w.address));
-                  const syncedEncryptedWallets = encryptedWallets.filter(
-                    (w: any) => validAddresses.has(w.address)
-                  );
-                  
-                  // Only update if there's a difference (deleted wallets were found)
-                  if (syncedEncryptedWallets.length !== encryptedWallets.length) {
-                    await ExtensionStorageManager.set('encryptedWallets', JSON.stringify(syncedEncryptedWallets));
-                    localStorage.setItem('encryptedWallets', JSON.stringify(syncedEncryptedWallets));
-                  }
-                }
-              }
-            } catch (syncError) {
-              console.error('Failed to sync encryptedWallets on startup:', syncError);
-            }
+          await ExtensionStorageManager.set('walletPasswordHash', localPasswordHash);
+          if (localSalt) await ExtensionStorageManager.set('walletPasswordSalt', localSalt);
+          if (localEncryptedWallets) await ExtensionStorageManager.set('encryptedWallets', localEncryptedWallets);
+          if (localIsLocked) await ExtensionStorageManager.set('isWalletLocked', localIsLocked);
+        }
+        
+        // Check if wallet exists (has password and encrypted wallets)
+        const hasPassword = !!localPasswordHash || !!extPasswordHash;
+        let hasEncryptedWallets = false;
+        let encryptedWalletsCount = 0;
+        
+        if (localEncryptedWallets) {
+          try {
+            const parsed = JSON.parse(localEncryptedWallets);
+            hasEncryptedWallets = Array.isArray(parsed) && parsed.length > 0;
+            encryptedWalletsCount = Array.isArray(parsed) ? parsed.length : 0;
+          } catch (e) {
+            console.error('Failed to parse localStorage encryptedWallets:', e);
           }
         }
+        
+        console.log('🔍 App.tsx: Wallet state:', { hasPassword, hasEncryptedWallets, encryptedWalletsCount });
+        
+        // If no wallet setup, show welcome screen
+        if (!hasPassword || !hasEncryptedWallets) {
+          console.log('👋 App.tsx: No wallet setup, showing welcome screen');
+          console.log('👋 App.tsx: Reason - hasPassword:', hasPassword, ', hasEncryptedWallets:', hasEncryptedWallets);
+          setIsLocked(false);
+          setIsLoading(false);
+          return;
+        }
+        
+        // Wallet exists, try to load from session storage
+        const sessionWallets = await ExtensionStorageManager.getSession('sessionWallets');
+        const sessionKey = await ExtensionStorageManager.getSession('sessionKey');
+        const activeWalletId = localStorage.getItem('activeWalletId') || await ExtensionStorageManager.get('activeWalletId');
+        
+        console.log('🔍 App.tsx: Session check:', {
+          hasSessionWallets: !!sessionWallets,
+          hasSessionKey: !!sessionKey,
+          sessionWalletsLength: sessionWallets?.length,
+          activeWalletId
+        });
+        
+        // Only use session wallets if session key (password) is also present
+        // This ensures auto-lock works when browser is closed (session storage is cleared)
+        if (sessionWallets && sessionKey) {
+          try {
+            const parsedWallets = JSON.parse(sessionWallets);
+            if (Array.isArray(parsedWallets) && parsedWallets.length > 0) {
+              console.log('🔓 App.tsx: Loaded wallets from session storage:', parsedWallets.length);
+              
+              let activeWallet = parsedWallets[0];
+              if (activeWalletId) {
+                const foundWallet = parsedWallets.find((w: Wallet) => w.address === activeWalletId);
+                if (foundWallet) {
+                  activeWallet = foundWallet;
+                }
+              }
+              
+              setWallets(parsedWallets);
+              setWallet(activeWallet);
+              setIsLocked(false);
+              setIsLoading(false);
+              console.log('✅ App.tsx: Dashboard ready with', parsedWallets.length, 'wallets');
+              return;
+            }
+          } catch (error) {
+            console.error('Failed to parse session wallets:', error);
+          }
+        }
+        
+        // No session wallets, need to unlock to decrypt
+        console.log('🔐 App.tsx: No session wallets, showing unlock screen');
+        setIsLocked(true);
+        setIsLoading(false);
+        
       } catch (error) {
-        console.error('Failed to check wallet status:', error);
+        console.error('❌ App.tsx: Failed to load wallet data:', error);
+        setIsLoading(false);
       }
     };
 
-    checkWalletStatus();
+    loadInitialData();
   }, []);
+
+  // Listen for storage changes across tabs - AFTER initial load
+  useEffect(() => {
+    const handleStorageChange = (e: StorageEvent) => {
+      // Handle wallet lock state changes
+      if (e.key === 'isWalletLocked') {
+        const locked = e.newValue === 'true';
+        console.log('🔒 App.tsx: Lock state changed via localStorage:', locked);
+        setIsLocked(locked);
+        
+        if (locked) {
+          setWallet(null);
+          setWallets([]);
+          WalletManager.clearSessionPassword();
+        }
+        return;
+      }
+      
+      if (isLocked) return;
+      
+      // Handle active wallet changes - need to reload from session to get latest wallets
+      if (e.key === 'activeWalletId' && e.newValue) {
+        console.log('🔄 App.tsx: activeWalletId changed via localStorage:', e.newValue);
+        // Reload wallets from session storage to ensure we have the latest
+        WalletManager.getSessionWallets().then(sessionWallets => {
+          if (sessionWallets.length > 0) {
+            const foundWallet = sessionWallets.find((w: Wallet) => w.address === e.newValue);
+            if (foundWallet) {
+              setWallets(sessionWallets);
+              setWallet(foundWallet);
+              console.log('✅ App.tsx: Synced active wallet:', foundWallet.address);
+            }
+          }
+        });
+      }
+    };
+
+    window.addEventListener('storage', handleStorageChange);
+    
+    // Listen for chrome.storage changes if available
+    let chromeStorageListener: ((changes: any, areaName: string) => void) | null = null;
+    if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.onChanged) {
+      chromeStorageListener = (changes: any, areaName: string) => {
+        console.log('🔔 App.tsx: chrome.storage.onChanged triggered:', areaName, Object.keys(changes));
+        
+        // Handle lock state change
+        if (changes.isWalletLocked) {
+          const locked = changes.isWalletLocked.newValue === 'true';
+          console.log('🔒 App.tsx: Lock state changed via chrome.storage:', locked);
+          setIsLocked(locked);
+          
+          if (locked) {
+            setWallet(null);
+            setWallets([]);
+            WalletManager.clearSessionPassword();
+          }
+          return;
+        }
+        
+        // Handle session storage changes (wallets added/removed from popup)
+        if (areaName === 'session' && changes.sessionWallets) {
+          console.log('🔄 App.tsx: Session wallets changed, syncing...');
+          try {
+            const newWallets: Wallet[] = JSON.parse(changes.sessionWallets.newValue || '[]');
+            if (Array.isArray(newWallets) && newWallets.length > 0) {
+              console.log('🔄 App.tsx: New wallets count:', newWallets.length);
+              setWallets(newWallets);
+              
+              // Get current active wallet ID
+              const currentActiveId = localStorage.getItem('activeWalletId');
+              
+              // Check if current wallet still exists in new list
+              const currentWalletExists = currentActiveId && newWallets.some(w => w.address === currentActiveId);
+              
+              if (currentWalletExists) {
+                // Keep current wallet but update from new list (in case data changed)
+                const updatedWallet = newWallets.find(w => w.address === currentActiveId);
+                if (updatedWallet) {
+                  setWallet(updatedWallet);
+                }
+              } else {
+                // Current wallet doesn't exist, switch to first
+                setWallet(newWallets[0]);
+                localStorage.setItem('activeWalletId', newWallets[0].address);
+              }
+            } else if (Array.isArray(newWallets) && newWallets.length === 0) {
+              // All wallets removed
+              setWallets([]);
+              setWallet(null);
+            }
+          } catch (error) {
+            console.error('Failed to parse session wallets change:', error);
+          }
+          return;
+        }
+        
+        if (isLocked) return;
+        
+        // Handle activeWalletId change from chrome.storage.local
+        if (areaName === 'local' && changes.activeWalletId && changes.activeWalletId.newValue) {
+          console.log('🔄 App.tsx: activeWalletId changed via chrome.storage:', changes.activeWalletId.newValue);
+          const newActiveId = changes.activeWalletId.newValue;
+          
+          // Reload wallets from session storage to ensure we have the latest
+          WalletManager.getSessionWallets().then(sessionWallets => {
+            if (sessionWallets.length > 0) {
+              const foundWallet = sessionWallets.find((w: Wallet) => w.address === newActiveId);
+              if (foundWallet) {
+                setWallets(sessionWallets);
+                setWallet(foundWallet);
+                localStorage.setItem('activeWalletId', newActiveId);
+                console.log('✅ App.tsx: Synced active wallet from chrome.storage:', foundWallet.address);
+              }
+            }
+          });
+        }
+      };
+      
+      chrome.storage.onChanged.addListener(chromeStorageListener);
+    }
+    
+    return () => {
+      window.removeEventListener('storage', handleStorageChange);
+      if (chromeStorageListener && chrome.storage && chrome.storage.onChanged) {
+        chrome.storage.onChanged.removeListener(chromeStorageListener);
+      }
+    };
+  }, [isLocked]);
 
   const handleUnlock = async (unlockedWallets: Wallet[]) => {
     console.log('🔓 App.tsx: handleUnlock called with', unlockedWallets.length, 'wallets');
     
-    // Re-setup auto-lock callback after unlock (session password was just set)
+    // Re-setup auto-lock callback after unlock
     WalletManager.setAutoLockCallback(() => {
       console.log('🔒 App.tsx: Auto-lock callback triggered!');
       setWallet(null);
@@ -225,8 +329,7 @@ function App() {
       setWallets(unlockedWallets);
       setIsLocked(false);
       
-      // Set active wallet - prioritize stored activeWalletId from ExtensionStorage, fallback to first wallet
-      const activeWalletId = await ExtensionStorageManager.get('activeWalletId') || localStorage.getItem('activeWalletId');
+      const activeWalletId = localStorage.getItem('activeWalletId') || await ExtensionStorageManager.get('activeWalletId');
       let activeWallet = unlockedWallets[0];
       
       if (activeWalletId) {
@@ -253,99 +356,52 @@ function App() {
   const addWallet = async (newWallet: Wallet) => {
     console.log('📥 App.tsx addWallet called with:', newWallet.address);
     try {
-      // Read current wallets from storage to avoid overwriting
-      const currentWalletsData = await ExtensionStorageManager.get('wallets');
-      let currentWallets: Wallet[] = [];
+      // Read current wallets from session storage
+      const currentWallets = await WalletManager.getSessionWallets();
       
-      if (currentWalletsData) {
-        try {
-          currentWallets = JSON.parse(currentWalletsData);
-          console.log('📦 App.tsx: Found', currentWallets.length, 'wallets in storage');
-        } catch (error) {
-          console.error('Failed to parse current wallets:', error);
-          currentWallets = wallets; // fallback to state
-        }
-      } else {
-        currentWallets = wallets; // fallback to state
-      }
+      // Check if wallet already exists
+      const walletExists = currentWallets.some(w => w.address === newWallet.address);
       
-      // Check if wallet already exists in current data
-      const existingWallet = currentWallets.find(w => w.address === newWallet.address);
-      if (existingWallet) {
-        // Wallet exists in storage (e.g., from PasswordSetup)
-        // Update state to reflect storage
-        console.log('✅ App.tsx: Wallet exists in storage, syncing state');
+      if (walletExists) {
+        console.log('✅ App.tsx: Wallet already exists, syncing state');
         setWallets(currentWallets);
-        setWallet(existingWallet);
-        await ExtensionStorageManager.set('activeWalletId', existingWallet.address);
-        localStorage.setItem('activeWalletId', existingWallet.address);
+        setWallet(newWallet);
         return;
       }
       
-      // Add new wallet to current data
       const updatedWallets = [...currentWallets, newWallet];
       console.log('➕ App.tsx: Adding new wallet, total:', updatedWallets.length);
       
-      // Update state immediately for UI responsiveness
+      // Update state FIRST for immediate UI feedback
       setWallets(updatedWallets);
       setWallet(newWallet);
       
-      // Save to storage using ExtensionStorageManager for consistency
-      await ExtensionStorageManager.set('wallets', JSON.stringify(updatedWallets));
+      // Save active wallet ID
       await ExtensionStorageManager.set('activeWalletId', newWallet.address);
-      
-      // Also sync to localStorage
-      localStorage.setItem('wallets', JSON.stringify(updatedWallets));
       localStorage.setItem('activeWalletId', newWallet.address);
       
-      // Sync encryptedWallets to match current wallets
-      // This ensures deleted wallets stay deleted and new wallets are properly tracked
-      try {
-        const encryptedWalletsData = await ExtensionStorageManager.get('encryptedWallets');
-        if (encryptedWalletsData) {
-          const encryptedWallets = typeof encryptedWalletsData === 'string' 
-            ? JSON.parse(encryptedWalletsData) 
-            : encryptedWalletsData;
-          if (Array.isArray(encryptedWallets)) {
-            // Filter encryptedWallets to only include wallets that exist in updatedWallets
-            const validAddresses = new Set(updatedWallets.map(w => w.address));
-            const syncedEncryptedWallets = encryptedWallets.filter(
-              (w: any) => validAddresses.has(w.address)
-            );
-            
-            // Add new wallet to encryptedWallets if not already there
-            const newWalletExists = syncedEncryptedWallets.some((w: any) => w.address === newWallet.address);
-            if (!newWalletExists) {
-              syncedEncryptedWallets.push({
-                address: newWallet.address,
-                encryptedData: JSON.stringify(newWallet),
-                createdAt: Date.now(),
-                needsEncryption: true
-              });
-            }
-            
-            await ExtensionStorageManager.set('encryptedWallets', JSON.stringify(syncedEncryptedWallets));
-            localStorage.setItem('encryptedWallets', JSON.stringify(syncedEncryptedWallets));
-          }
-        } else {
-          // No encryptedWallets yet, create it with the new wallet
-          const hasPassword = await ExtensionStorageManager.get('walletPasswordHash');
-          if (hasPassword) {
-            const newEncryptedWallets = [{
-              address: newWallet.address,
-              encryptedData: JSON.stringify(newWallet),
-              createdAt: Date.now(),
-              needsEncryption: true
-            }];
-            await ExtensionStorageManager.set('encryptedWallets', JSON.stringify(newEncryptedWallets));
-            localStorage.setItem('encryptedWallets', JSON.stringify(newEncryptedWallets));
-          }
+      // IMPORTANT: Update session wallets FIRST (this triggers sync to other contexts)
+      await WalletManager.updateSessionWallets(updatedWallets);
+      
+      // Then encrypt and store the new wallet
+      // SECURITY: Will throw error if session password not available
+      await WalletManager.addEncryptedWallet(newWallet);
+      
+      // Verify the wallet was stored
+      const verifyEncrypted = localStorage.getItem('encryptedWallets');
+      if (verifyEncrypted) {
+        try {
+          const parsed = JSON.parse(verifyEncrypted);
+          const found = parsed.find((w: any) => w.address === newWallet.address);
+          console.log('🔍 App.tsx: Verify wallet stored:', !!found, 'needsEncryption:', found?.needsEncryption);
+        } catch (e) {
+          console.error('Failed to verify wallet storage:', e);
         }
-      } catch (syncError) {
-        console.error('Failed to sync encryptedWallets:', syncError);
       }
+      
+      console.log('🎉 App.tsx: Wallet added successfully, total wallets:', updatedWallets.length);
     } catch (error) {
-      console.error('❌ App: Failed to add wallet:', error);
+      console.error('❌ App.tsx: Failed to add wallet:', error);
     }
   };
 
@@ -358,52 +414,13 @@ function App() {
 
   const removeWallet = async (walletToRemove: Wallet) => {
     try {
-      // Read current wallets from storage to avoid stale state issues
-      const storedWallets = await ExtensionStorageManager.get('wallets');
-      let currentWallets: Wallet[] = [];
+      // Filter out the wallet to remove from current state
+      const updatedWallets = wallets.filter(w => w.address !== walletToRemove.address);
       
-      if (storedWallets) {
-        try {
-          currentWallets = typeof storedWallets === 'string' 
-            ? JSON.parse(storedWallets) 
-            : storedWallets;
-          if (!Array.isArray(currentWallets)) {
-            currentWallets = [];
-          }
-        } catch (e) {
-          currentWallets = [];
-        }
-      }
+      // Remove from encrypted storage
+      await WalletManager.removeEncryptedWallet(walletToRemove.address);
       
-      // Filter out the wallet to remove from storage data
-      const updatedWallets = currentWallets.filter(w => w.address !== walletToRemove.address);
-      
-      // Save to ExtensionStorageManager (chrome.storage) first
-      await ExtensionStorageManager.set('wallets', JSON.stringify(updatedWallets));
-      
-      // Also sync to localStorage to prevent inconsistency
-      localStorage.setItem('wallets', JSON.stringify(updatedWallets));
-      
-      // CRITICAL: Also remove from encryptedWallets storage to prevent resurrection on unlock
-      try {
-        const encryptedWalletsData = await ExtensionStorageManager.get('encryptedWallets');
-        if (encryptedWalletsData) {
-          const encryptedWallets = typeof encryptedWalletsData === 'string' 
-            ? JSON.parse(encryptedWalletsData) 
-            : encryptedWalletsData;
-          if (Array.isArray(encryptedWallets)) {
-            const updatedEncryptedWallets = encryptedWallets.filter(
-              (w: any) => w.address !== walletToRemove.address
-            );
-            await ExtensionStorageManager.set('encryptedWallets', JSON.stringify(updatedEncryptedWallets));
-            localStorage.setItem('encryptedWallets', JSON.stringify(updatedEncryptedWallets));
-          }
-        }
-      } catch (encError) {
-        console.error('Failed to remove from encryptedWallets:', encError);
-      }
-      
-      // Update state after storage is saved
+      // Update state
       setWallets(updatedWallets);
       
       if (wallet?.address === walletToRemove.address) {
@@ -433,27 +450,72 @@ function App() {
     setIsLocked(true);
   };
 
+  // Show splash screen first
+  if (showSplash) {
+    return (
+      <ThemeProvider defaultTheme="dark" storageKey="octra-wallet-theme">
+        <SplashScreen onComplete={() => setShowSplash(false)} />
+      </ThemeProvider>
+    );
+  }
+
+  // Show splash screen after wallet setup
+  if (showSetupSplash && pendingSetupWallet) {
+    return (
+      <ThemeProvider defaultTheme="dark" storageKey="octra-wallet-theme">
+        <SplashScreen 
+          onComplete={() => {
+            console.log('🎨 App.tsx: Setup splash complete, calling addWallet');
+            setShowSetupSplash(false);
+            addWallet(pendingSetupWallet);
+            setPendingSetupWallet(null);
+          }} 
+          duration={1500} 
+        />
+      </ThemeProvider>
+    );
+  }
+
+  // Show loading state
+  if (isLoading) {
+    return (
+      <ThemeProvider defaultTheme="dark" storageKey="octra-wallet-theme">
+        <div className="min-h-screen bg-background flex items-center justify-center overflow-hidden">
+          <div className="flex flex-col items-center space-y-4">
+            <div
+              className="w-10 h-10 rounded-full border-4 border-transparent animate-spin"
+              style={{ borderTopColor: '#0000db', borderRightColor: '#0000db' }}
+            />
+            <p className="text-muted-foreground">Loading...</p>
+          </div>
+        </div>
+      </ThemeProvider>
+    );
+  }
+
   // Show connection approval if there's a connection request
   if (connectionRequest && wallets.length > 0 && !isLocked) {
     return (
       <ThemeProvider defaultTheme="dark" storageKey="octra-wallet-theme">
-        <div className="min-h-screen bg-background">
-          <ConnectionApproval 
-            request={connectionRequest}
-            wallets={wallets}
-            onApprove={(approved: boolean, selectedAddress?: string) => {
-              // Send response to background script
-              chrome.runtime.sendMessage({
-                type: 'CONNECTION_RESULT',
-                origin: connectionRequest.origin,
-                approved,
-                address: selectedAddress
-              });
-              
-              // Close the tab
-              window.close();
+        <div className="min-h-screen bg-background overflow-hidden">
+          <PageTransition variant="scale">
+            <ConnectionApproval 
+              request={connectionRequest}
+              wallets={wallets}
+              onApprove={(approved: boolean, selectedAddress?: string) => {
+                // Send response to background script
+                chrome.runtime.sendMessage({
+                  type: 'CONNECTION_RESULT',
+                  origin: connectionRequest.origin,
+                  approved,
+                  address: selectedAddress
+                });
+                
+                // Close the tab
+                window.close();
             }}
           />
+          </PageTransition>
           <Toaster />
         </div>
       </ThemeProvider>
@@ -464,8 +526,10 @@ function App() {
   if (isLocked) {
     return (
       <ThemeProvider defaultTheme="dark" storageKey="octra-wallet-theme">
-        <div className="min-h-screen bg-background">
-          <UnlockWallet onUnlock={handleUnlock} />
+        <div className="min-h-screen bg-background overflow-hidden">
+          <PageTransition variant="fade-slide">
+            <UnlockWallet onUnlock={handleUnlock} />
+          </PageTransition>
           <Toaster />
         </div>
       </ThemeProvider>
@@ -476,7 +540,13 @@ function App() {
     <ThemeProvider defaultTheme="dark" storageKey="octra-wallet-theme">
       <div className="min-h-screen bg-background">
         {!wallet ? (
-          <WelcomeScreen onWalletCreated={addWallet} />
+          <WelcomeScreen 
+            onWalletCreated={(w) => {
+              console.log('🎨 App.tsx: onWalletCreated - showing setup splash');
+              setPendingSetupWallet(w);
+              setShowSetupSplash(true);
+            }} 
+          />
         ) : (
           <WalletDashboard 
             wallet={wallet} 

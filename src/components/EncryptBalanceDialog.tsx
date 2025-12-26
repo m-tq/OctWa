@@ -29,7 +29,7 @@ export function EncryptBalanceDialog({
   const [isEncrypting, setIsEncrypting] = useState(false);
   const { toast } = useToast();
 
-  const maxEncryptable = Math.max(0, publicBalance - 0.005); // Reserve 0.005 OCT for fees
+  const maxEncryptable = Math.max(0, publicBalance - 0.001); // Reserve 0.001 OCT for fees
 
   const handleEncrypt = async () => {
     const amountNum = parseFloat(amount);
@@ -113,7 +113,7 @@ export function EncryptBalanceDialog({
               {maxEncryptable.toFixed(8)} OCT
             </div>
             <p className="text-xs text-muted-foreground">
-              (0.005 OCT reserved for transaction fees)
+              (0.001 OCT reserved for transaction fees)
             </p>
           </div>
 
@@ -168,7 +168,7 @@ export function EncryptBalanceDialog({
                   <TooltipContent side="top" className="max-w-[250px]">
                     <p className="text-xs">
                       {maxEncryptable <= 0 
-                        ? "Insufficient balance. Need at least 0.005 OCT for fees."
+                        ? "Insufficient balance. Need at least 0.001 OCT for fees."
                         : !amount || parseFloat(amount) <= 0
                           ? "Enter an amount to encrypt"
                           : parseFloat(amount) > maxEncryptable

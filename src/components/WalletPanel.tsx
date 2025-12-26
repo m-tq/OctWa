@@ -5,12 +5,11 @@
  * Requirements: 6.1
  */
 
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Separator } from '@/components/ui/separator';
 import {
   Wallet as WalletIcon,
   Key,
@@ -25,6 +24,8 @@ import { Wallet } from '../types/wallet';
 import { useToast } from '@/hooks/use-toast';
 import { getPermissionManager } from '../permissions/permissionManager';
 import { GrantedCapabilities } from '../permissions/types';
+
+const CLIPBOARD_CLEAR_DELAY = 30000;
 
 interface WalletPanelProps {
   /** Current active wallet */
@@ -49,26 +50,38 @@ export function WalletPanel({
   const [showPrivateKey, setShowPrivateKey] = useState(false);
   const [connectedDApps, setConnectedDApps] = useState<GrantedCapabilities[]>([]);
   const { toast } = useToast();
+  const clipboardTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Load connected dApps on mount
-  React.useEffect(() => {
+  useEffect(() => {
     const pm = getPermissionManager();
     setConnectedDApps(pm.getAllGrantedCapabilities());
   }, []);
 
-  const copyToClipboard = async (text: string, label: string) => {
+  // Cleanup clipboard timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (clipboardTimeoutRef.current) clearTimeout(clipboardTimeoutRef.current);
+    };
+  }, []);
+
+  const copyToClipboard = async (text: string, label: string, isSensitive = false) => {
     try {
       await navigator.clipboard.writeText(text);
-      toast({
-        title: 'Copied!',
-        description: `${label} copied to clipboard`,
-      });
+      if (isSensitive) {
+        if (clipboardTimeoutRef.current) clearTimeout(clipboardTimeoutRef.current);
+        clipboardTimeoutRef.current = setTimeout(async () => {
+          try {
+            await navigator.clipboard.writeText('');
+            toast({ title: "Security", description: "Clipboard cleared" });
+          } catch { /* ignore */ }
+        }, CLIPBOARD_CLEAR_DELAY);
+        toast({ title: 'Copied!', description: `${label} copied (auto-clears in 30s)` });
+      } else {
+        toast({ title: 'Copied!', description: `${label} copied to clipboard` });
+      }
     } catch {
-      toast({
-        title: 'Error',
-        description: 'Copy failed',
-        variant: 'destructive',
-      });
+      toast({ title: 'Error', description: 'Copy failed', variant: 'destructive' });
     }
   };
 
@@ -156,7 +169,7 @@ export function WalletPanel({
                 <Button
                   variant="ghost"
                   size="sm"
-                  onClick={() => copyToClipboard(wallet.privateKey, 'Private Key')}
+                  onClick={() => copyToClipboard(wallet.privateKey, 'Private Key', true)}
                   className="h-8 w-8 p-0"
                 >
                   <Copy className="h-3 w-3" />

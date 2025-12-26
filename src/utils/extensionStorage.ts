@@ -3,6 +3,7 @@ export class ExtensionStorageManager {
   private static isExtension = typeof chrome !== 'undefined' && chrome.storage;
   
   static async init() {
+    console.log('🔧 ExtensionStorageManager: init called, isExtension:', this.isExtension);
     if (!this.isExtension) return;
     
     // Migrate localStorage data to chrome.storage on first run
@@ -125,6 +126,76 @@ export class ExtensionStorageManager {
       }
     } else {
       localStorage.clear();
+    }
+  }
+  
+  // Session storage methods - for temporary data that should be shared across popup/expanded
+  // but cleared when browser closes (more secure for sensitive data)
+  // IMPORTANT: NO fallback to sessionStorage - it can persist on browser restart with tab restore
+  static async getSession(key: string): Promise<string | null> {
+    if (this.isExtension && chrome.storage.session) {
+      try {
+        const result = await chrome.storage.session.get(key);
+        console.log(`🔍 ExtensionStorage.getSession(${key}):`, result[key] ? 'found' : 'not found');
+        return result[key] || null;
+      } catch (error) {
+        console.error('Failed to get from chrome.storage.session:', error);
+        // NO fallback - return null to trigger lock
+        return null;
+      }
+    }
+    // Not in extension context - this shouldn't happen in production
+    console.warn('⚠️ ExtensionStorage.getSession: Not in extension context');
+    return null;
+  }
+  
+  static async setSession(key: string, value: string): Promise<void> {
+    if (this.isExtension && chrome.storage.session) {
+      try {
+        await chrome.storage.session.set({ [key]: value });
+        console.log(`✅ ExtensionStorage.setSession(${key}): saved`);
+      } catch (error) {
+        console.error('Failed to set in chrome.storage.session:', error);
+        throw error; // Propagate error - don't silently fail
+      }
+    } else {
+      console.warn('⚠️ ExtensionStorage.setSession: Not in extension context');
+      throw new Error('Session storage not available outside extension context');
+    }
+  }
+  
+  static async removeSession(key: string): Promise<void> {
+    if (this.isExtension && chrome.storage.session) {
+      try {
+        await chrome.storage.session.remove(key);
+        console.log(`🗑️ ExtensionStorage.removeSession(${key}): removed`);
+      } catch (error) {
+        console.error('Failed to remove from chrome.storage.session:', error);
+      }
+    }
+    // Also clear sessionStorage just in case (cleanup legacy data)
+    try {
+      sessionStorage.removeItem(key);
+    } catch (e) {
+      // Ignore
+    }
+  }
+  
+  // Clear all session data - call this on browser startup to ensure clean state
+  static async clearAllSession(): Promise<void> {
+    if (this.isExtension && chrome.storage.session) {
+      try {
+        await chrome.storage.session.clear();
+        console.log('🧹 ExtensionStorage: Cleared all session storage');
+      } catch (error) {
+        console.error('Failed to clear chrome.storage.session:', error);
+      }
+    }
+    // Also clear browser sessionStorage
+    try {
+      sessionStorage.clear();
+    } catch (e) {
+      // Ignore
     }
   }
 }

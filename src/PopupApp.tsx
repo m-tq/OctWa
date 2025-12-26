@@ -5,6 +5,8 @@ import { UnlockWallet } from './components/UnlockWallet';
 import { DAppConnection } from './components/DAppConnection';
 import { DAppRequestHandler } from './components/DAppRequestHandler';
 import { ThemeProvider } from './components/ThemeProvider';
+import { SplashScreen } from './components/SplashScreen';
+import { PageTransition } from './components/PageTransition';
 import { Wallet, DAppConnectionRequest } from './types/wallet';
 import { Toaster } from '@/components/ui/toaster';
 import { ExtensionStorageManager } from './utils/extensionStorage';
@@ -15,6 +17,7 @@ function PopupApp() {
   const [wallets, setWallets] = useState<Wallet[]>([]);
   const [isLocked, setIsLocked] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [showSplash, setShowSplash] = useState(true);
   const [isPopupMode, setIsPopupMode] = useState(true);
   const [connectionRequest, setConnectionRequest] = useState<DAppConnectionRequest | null>(null);
   const [contractRequest, setContractRequest] = useState<any>(null);
@@ -23,11 +26,23 @@ function PopupApp() {
   useEffect(() => {
     const loadInitialData = async () => {
       try {
+        console.log('🚀 PopupApp: loadInitialData started');
+        
         // Detect if we're in popup mode
         const isPopup = window.location.pathname.includes('popup.html') || window.innerWidth <= 500;
         setIsPopupMode(isPopup);
 
         await ExtensionStorageManager.init();
+        
+        // Clear legacy sessionStorage to prevent stale data from persisting
+        // This ensures auto-lock works properly when browser is restarted
+        try {
+          sessionStorage.removeItem('sessionWallets');
+          sessionStorage.removeItem('sessionKey');
+          console.log('🧹 PopupApp: Cleared legacy sessionStorage');
+        } catch (e) {
+          // Ignore
+        }
         
         // Setup auto-lock callback
         WalletManager.setAutoLockCallback(() => {
@@ -37,15 +52,21 @@ function PopupApp() {
           setIsLocked(true);
         });
         
-        // CRITICAL: Sync password hash from localStorage to ExtensionStorage if missing
-        // This handles the case where password was set in expanded mode but not synced to extension storage
-        const extPasswordHash = await ExtensionStorageManager.get('walletPasswordHash');
+        // Check localStorage FIRST (synchronous, always available)
         const localPasswordHash = localStorage.getItem('walletPasswordHash');
+        const localEncryptedWallets = localStorage.getItem('encryptedWallets');
+        
+        console.log('🔍 PopupApp: localStorage check:', {
+          hasPasswordHash: !!localPasswordHash,
+          hasEncryptedWallets: !!localEncryptedWallets
+        });
+        
+        // CRITICAL: Sync password hash from localStorage to ExtensionStorage if missing
+        const extPasswordHash = await ExtensionStorageManager.get('walletPasswordHash');
         
         if (!extPasswordHash && localPasswordHash) {
           console.log('🔄 PopupApp: Syncing password hash from localStorage to ExtensionStorage');
           const localSalt = localStorage.getItem('walletPasswordSalt');
-          const localEncryptedWallets = localStorage.getItem('encryptedWallets');
           const localIsLocked = localStorage.getItem('isWalletLocked');
           
           await ExtensionStorageManager.set('walletPasswordHash', localPasswordHash);
@@ -82,96 +103,74 @@ function PopupApp() {
           }
         }
         
-        // Use WalletManager to check if should show unlock screen
-        const shouldShowUnlock = await WalletManager.shouldShowUnlockScreen();
+        // Check if wallet exists (has password and encrypted wallets)
+        const hasPassword = !!localPasswordHash || !!extPasswordHash;
+        let hasEncryptedWallets = false;
         
-        if (shouldShowUnlock) {
-          setIsLocked(true);
-          setIsLoading(false);
-          return;
-        }
-        
-        // IMPORTANT: Check if session is still valid across instances
-        // This allows opening popup while expanded is open (or vice versa)
-        const hasPassword = await ExtensionStorageManager.get('walletPasswordHash');
-        const isWalletLocked = await ExtensionStorageManager.get('isWalletLocked');
-        const sessionValid = WalletManager.isSessionActive() || WalletManager.isSessionValidAcrossInstances();
-        
-        if (hasPassword && isWalletLocked === 'false' && !sessionValid) {
-          console.log('🔒 PopupApp: Session expired, locking wallet for security');
-          await WalletManager.lockWallets();
-          setIsLocked(true);
-          setIsLoading(false);
-          return;
-        }
-        
-        // Only load wallets if not locked
-        const [storedWallets, activeWalletId] = await Promise.all([
-          ExtensionStorageManager.get('wallets'),
-          ExtensionStorageManager.get('activeWalletId')
-        ]);
-        
-        let loadedWallets: Wallet[] = [];
-        let activeWallet: Wallet | null = null;
-        
-        if (storedWallets) {
+        if (localEncryptedWallets) {
           try {
-            const parsedWallets = typeof storedWallets === 'string' 
-              ? JSON.parse(storedWallets) 
-              : storedWallets;
-            
-            if (Array.isArray(parsedWallets)) {
-              loadedWallets = parsedWallets;
+            const parsed = JSON.parse(localEncryptedWallets);
+            hasEncryptedWallets = Array.isArray(parsed) && parsed.length > 0;
+          } catch (e) {
+            console.error('Failed to parse localStorage encryptedWallets:', e);
+          }
+        }
+        
+        console.log('🔍 PopupApp: Wallet state:', { hasPassword, hasEncryptedWallets });
+        
+        // If no wallet setup, show welcome screen
+        if (!hasPassword || !hasEncryptedWallets) {
+          console.log('👋 PopupApp: No wallet setup, showing welcome screen');
+          setIsLocked(false);
+          setIsLoading(false);
+          return;
+        }
+        
+        // Wallet exists, try to load from session storage
+        const sessionWallets = await ExtensionStorageManager.getSession('sessionWallets');
+        const sessionKey = await ExtensionStorageManager.getSession('sessionKey');
+        const activeWalletId = localStorage.getItem('activeWalletId') || await ExtensionStorageManager.get('activeWalletId');
+        
+        console.log('🔍 PopupApp: Session check:', {
+          hasSessionWallets: !!sessionWallets,
+          hasSessionKey: !!sessionKey,
+          activeWalletId
+        });
+        
+        // Only use session wallets if session key (password) is also present
+        // This ensures auto-lock works when browser is closed (session storage is cleared)
+        if (sessionWallets && sessionKey) {
+          try {
+            const parsedWallets = JSON.parse(sessionWallets);
+            if (Array.isArray(parsedWallets) && parsedWallets.length > 0) {
+              console.log('🔓 PopupApp: Loaded wallets from session storage:', parsedWallets.length);
               
-              if (loadedWallets.length > 0) {
-                activeWallet = loadedWallets[0];
-                if (activeWalletId) {
-                  const foundWallet = loadedWallets.find((w: Wallet) => w.address === activeWalletId);
-                  if (foundWallet) {
-                    activeWallet = foundWallet;
-                  }
+              let activeWallet = parsedWallets[0];
+              if (activeWalletId) {
+                const foundWallet = parsedWallets.find((w: Wallet) => w.address === activeWalletId);
+                if (foundWallet) {
+                  activeWallet = foundWallet;
                 }
               }
+              
+              setWallets(parsedWallets);
+              setWallet(activeWallet);
+              setIsLocked(false);
+              setIsLoading(false);
+              return;
             }
           } catch (error) {
-            console.error('Failed to parse wallets:', error);
+            console.error('Failed to parse session wallets:', error);
           }
         }
         
-        // CRITICAL: Sync encryptedWallets with loaded wallets to prevent deleted wallets from reappearing
-        if (loadedWallets.length > 0) {
-          try {
-            const encryptedWalletsData = await ExtensionStorageManager.get('encryptedWallets');
-            if (encryptedWalletsData) {
-              const encryptedWallets = typeof encryptedWalletsData === 'string' 
-                ? JSON.parse(encryptedWalletsData) 
-                : encryptedWalletsData;
-              if (Array.isArray(encryptedWallets)) {
-                const validAddresses = new Set(loadedWallets.map(w => w.address));
-                const syncedEncryptedWallets = encryptedWallets.filter(
-                  (w: any) => validAddresses.has(w.address)
-                );
-                
-                // Only update if there's a difference (deleted wallets were found)
-                if (syncedEncryptedWallets.length !== encryptedWallets.length) {
-                  await ExtensionStorageManager.set('encryptedWallets', JSON.stringify(syncedEncryptedWallets));
-                  localStorage.setItem('encryptedWallets', JSON.stringify(syncedEncryptedWallets));
-                }
-              }
-            }
-          } catch (syncError) {
-            console.error('Failed to sync encryptedWallets on startup:', syncError);
-          }
-        }
-        
-        // Set states
-        setWallets(loadedWallets);
-        setWallet(activeWallet);
-        setIsLocked(false);
+        // No session wallets, need to unlock to decrypt
+        console.log('🔐 PopupApp: No session wallets, showing unlock screen');
+        setIsLocked(true);
+        setIsLoading(false);
         
       } catch (error) {
         console.error('Failed to load wallet data:', error);
-      } finally {
         setIsLoading(false);
       }
     };
@@ -182,46 +181,35 @@ function PopupApp() {
   // Listen for storage changes across extension contexts
   useEffect(() => {
     const handleStorageChange = (e: StorageEvent) => {
-      if (isLocked) return; // Don't update if locked
-      
-      // Handle wallet data changes
-      if (e.key === 'wallets' && e.newValue) {
-        try {
-          const newWallets = JSON.parse(e.newValue);
-          setWallets(newWallets);
-          
-          // Update active wallet if needed
-          const activeWalletId = localStorage.getItem('activeWalletId');
-          if (activeWalletId && newWallets.length > 0) {
-            const foundWallet = newWallets.find((w: Wallet) => w.address === activeWalletId);
-            if (foundWallet) {
-              setWallet(foundWallet);
-            }
-          } else if (newWallets.length > 0 && !wallet) {
-            setWallet(newWallets[0]);
-          }
-        } catch (error) {
-          console.error('Failed to parse wallets from storage change:', error);
-        }
-      }
-      
-      // Handle active wallet changes
-      if (e.key === 'activeWalletId' && e.newValue && wallets.length > 0) {
-        const foundWallet = wallets.find((w: Wallet) => w.address === e.newValue);
-        if (foundWallet) {
-          setWallet(foundWallet);
-        }
-      }
-      
-      // Handle wallet lock state changes
+      // Handle wallet lock state changes - ALWAYS respond to this
       if (e.key === 'isWalletLocked') {
-        const isLocked = e.newValue === 'true';
-        setIsLocked(isLocked);
+        const locked = e.newValue === 'true';
+        console.log('🔒 PopupApp: Lock state changed via localStorage:', locked);
+        setIsLocked(locked);
         
-        if (isLocked) {
+        if (locked) {
           setWallet(null);
           setWallets([]);
+          WalletManager.clearSessionPassword();
         }
+        return;
+      }
+      
+      if (isLocked) return;
+      
+      // Handle active wallet changes - reload from session to get latest
+      if (e.key === 'activeWalletId' && e.newValue) {
+        console.log('🔄 PopupApp: activeWalletId changed via localStorage:', e.newValue);
+        WalletManager.getSessionWallets().then(sessionWallets => {
+          if (sessionWallets.length > 0) {
+            const foundWallet = sessionWallets.find((w: Wallet) => w.address === e.newValue);
+            if (foundWallet) {
+              setWallets(sessionWallets);
+              setWallet(foundWallet);
+              console.log('✅ PopupApp: Synced active wallet:', foundWallet.address);
+            }
+          }
+        });
       }
     };
 
@@ -229,53 +217,77 @@ function PopupApp() {
     window.addEventListener('storage', handleStorageChange);
     
     // Listen for chrome.storage changes if available
-    let chromeStorageListener: ((changes: any) => void) | null = null;
+    let chromeStorageListener: ((changes: any, areaName: string) => void) | null = null;
     if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.onChanged) {
-      chromeStorageListener = (changes: any) => {
-        if (isLocked) return;
+      chromeStorageListener = (changes: any, areaName: string) => {
+        console.log('🔔 PopupApp: chrome.storage.onChanged triggered:', areaName, Object.keys(changes));
         
-        // Handle wallets change
-        if (changes.wallets && changes.wallets.newValue) {
-          try {
-            const newWallets = JSON.parse(changes.wallets.newValue);
-            setWallets(newWallets);
-            
-            // Update localStorage for consistency
-            localStorage.setItem('wallets', changes.wallets.newValue);
-            
-            // Update active wallet
-            const activeWalletId = localStorage.getItem('activeWalletId');
-            if (activeWalletId && newWallets.length > 0) {
-              const foundWallet = newWallets.find((w: Wallet) => w.address === activeWalletId);
-              if (foundWallet) {
-                setWallet(foundWallet);
-              }
-            } else if (newWallets.length > 0 && !wallet) {
-              setWallet(newWallets[0]);
-            }
-          } catch (error) {
-            console.error('Failed to parse wallets from chrome storage change:', error);
-          }
-        }
-        
-        // Handle activeWalletId change
-        if (changes.activeWalletId && changes.activeWalletId.newValue && wallets.length > 0) {
-          const foundWallet = wallets.find((w: Wallet) => w.address === changes.activeWalletId.newValue);
-          if (foundWallet) {
-            setWallet(foundWallet);
-            localStorage.setItem('activeWalletId', changes.activeWalletId.newValue);
-          }
-        }
-        
-        // Handle lock state change
+        // Handle lock state change - ALWAYS respond to this
         if (changes.isWalletLocked) {
-          const isLocked = changes.isWalletLocked.newValue === 'true';
-          setIsLocked(isLocked);
+          const locked = changes.isWalletLocked.newValue === 'true';
+          console.log('🔒 PopupApp: Lock state changed via chrome.storage:', locked);
+          setIsLocked(locked);
           
-          if (isLocked) {
+          if (locked) {
             setWallet(null);
             setWallets([]);
+            WalletManager.clearSessionPassword();
           }
+          return;
+        }
+        
+        // Handle session storage changes (wallets added/removed from expanded)
+        if (areaName === 'session' && changes.sessionWallets) {
+          console.log('🔄 PopupApp: Session wallets changed, syncing...');
+          try {
+            const newWallets: Wallet[] = JSON.parse(changes.sessionWallets.newValue || '[]');
+            if (Array.isArray(newWallets) && newWallets.length > 0) {
+              console.log('🔄 PopupApp: New wallets count:', newWallets.length);
+              setWallets(newWallets);
+              
+              // Get current active wallet ID
+              const currentActiveId = localStorage.getItem('activeWalletId');
+              
+              // Check if current wallet still exists in new list
+              const currentWalletExists = currentActiveId && newWallets.some(w => w.address === currentActiveId);
+              
+              if (currentWalletExists) {
+                const updatedWallet = newWallets.find(w => w.address === currentActiveId);
+                if (updatedWallet) {
+                  setWallet(updatedWallet);
+                }
+              } else {
+                setWallet(newWallets[0]);
+                localStorage.setItem('activeWalletId', newWallets[0].address);
+              }
+            } else if (Array.isArray(newWallets) && newWallets.length === 0) {
+              setWallets([]);
+              setWallet(null);
+            }
+          } catch (error) {
+            console.error('Failed to parse session wallets change:', error);
+          }
+          return;
+        }
+        
+        if (isLocked) return;
+        
+        // Handle activeWalletId change from chrome.storage.local
+        if (areaName === 'local' && changes.activeWalletId && changes.activeWalletId.newValue) {
+          console.log('🔄 PopupApp: activeWalletId changed via chrome.storage:', changes.activeWalletId.newValue);
+          const newActiveId = changes.activeWalletId.newValue;
+          
+          WalletManager.getSessionWallets().then(sessionWallets => {
+            if (sessionWallets.length > 0) {
+              const foundWallet = sessionWallets.find((w: Wallet) => w.address === newActiveId);
+              if (foundWallet) {
+                setWallets(sessionWallets);
+                setWallet(foundWallet);
+                localStorage.setItem('activeWalletId', newActiveId);
+                console.log('✅ PopupApp: Synced active wallet from chrome.storage:', foundWallet.address);
+              }
+            }
+          });
         }
       };
       
@@ -288,7 +300,7 @@ function PopupApp() {
         chrome.storage.onChanged.removeListener(chromeStorageListener);
       }
     };
-  }, [isLocked, wallets, wallet]);
+  }, [isLocked]);
 
   // Add keyboard navigation for popup mode
   useEffect(() => {
@@ -428,58 +440,54 @@ function PopupApp() {
   };
 
   const addWallet = async (newWallet: Wallet) => {
+    console.log('📥 PopupApp: addWallet called with:', newWallet.address);
     try {
-      // Read current wallets from storage to avoid stale state issues
-      const storedWallets = await ExtensionStorageManager.get('wallets');
-      let currentWallets: Wallet[] = [];
+      // Read current wallets from session storage
+      const currentWallets = await WalletManager.getSessionWallets();
       
-      if (storedWallets) {
-        try {
-          currentWallets = typeof storedWallets === 'string' 
-            ? JSON.parse(storedWallets) 
-            : storedWallets;
-          if (!Array.isArray(currentWallets)) {
-            currentWallets = [];
-          }
-        } catch (e) {
-          currentWallets = [];
-        }
-      }
+      // Check if wallet already exists
+      const walletExists = currentWallets.some(w => w.address === newWallet.address);
       
-      // Check if wallet already exists in storage
-      const walletExistsInStorage = currentWallets.some(w => w.address === newWallet.address);
-      
-      if (walletExistsInStorage) {
-        // Wallet already in storage (e.g., from PasswordSetup)
-        // Just update state to reflect storage
-        console.log('Wallet already in storage, syncing state with storage');
+      if (walletExists) {
+        console.log('✅ PopupApp: Wallet already exists, syncing state');
         setWallets(currentWallets);
         setWallet(newWallet);
         return;
       }
       
       const updatedWallets = [...currentWallets, newWallet];
+      console.log('➕ PopupApp: Adding new wallet, total:', updatedWallets.length);
       
       // Update state FIRST for immediate UI feedback
       setWallets(updatedWallets);
       setWallet(newWallet);
       
-      // Then save to storage
-      await ExtensionStorageManager.set('wallets', JSON.stringify(updatedWallets));
+      // Save active wallet ID
       await ExtensionStorageManager.set('activeWalletId', newWallet.address);
-      
-      // Also sync to localStorage to prevent inconsistency
-      localStorage.setItem('wallets', JSON.stringify(updatedWallets));
       localStorage.setItem('activeWalletId', newWallet.address);
       
-      // Encrypt and store the new wallet (don't block UI)
-      WalletManager.addEncryptedWallet(newWallet).catch(err => {
-        console.error('Failed to encrypt wallet:', err);
-      });
+      // IMPORTANT: Update session wallets FIRST (this triggers sync to other contexts)
+      await WalletManager.updateSessionWallets(updatedWallets);
       
-      console.log('Wallet added successfully, total wallets:', updatedWallets.length);
+      // Then encrypt and store the new wallet
+      // SECURITY: Will throw error if session password not available
+      await WalletManager.addEncryptedWallet(newWallet);
+      
+      // Verify the wallet was stored
+      const verifyEncrypted = localStorage.getItem('encryptedWallets');
+      if (verifyEncrypted) {
+        try {
+          const parsed = JSON.parse(verifyEncrypted);
+          const found = parsed.find((w: any) => w.address === newWallet.address);
+          console.log('🔍 PopupApp: Verify wallet stored:', !!found, 'needsEncryption:', found?.needsEncryption);
+        } catch (e) {
+          console.error('Failed to verify wallet storage:', e);
+        }
+      }
+      
+      console.log('🎉 PopupApp: Wallet added successfully, total wallets:', updatedWallets.length);
     } catch (error) {
-      console.error('Failed to save wallet:', error);
+      console.error('❌ PopupApp: Failed to save wallet:', error);
     }
   };
 
@@ -503,36 +511,13 @@ function PopupApp() {
 
   const removeWallet = async (walletToRemove: Wallet) => {
     try {
-      // Read current wallets from storage to avoid stale state issues
-      const storedWallets = await ExtensionStorageManager.get('wallets');
-      let currentWallets: Wallet[] = [];
+      // Filter out the wallet to remove from current state
+      const updatedWallets = wallets.filter(w => w.address !== walletToRemove.address);
       
-      if (storedWallets) {
-        try {
-          currentWallets = typeof storedWallets === 'string' 
-            ? JSON.parse(storedWallets) 
-            : storedWallets;
-          if (!Array.isArray(currentWallets)) {
-            currentWallets = [];
-          }
-        } catch (e) {
-          currentWallets = [];
-        }
-      }
-      
-      // Filter out the wallet to remove from storage data
-      const updatedWallets = currentWallets.filter(w => w.address !== walletToRemove.address);
-      
-      // Save to ExtensionStorageManager (chrome.storage) first
-      await ExtensionStorageManager.set('wallets', JSON.stringify(updatedWallets));
-      
-      // Also sync to localStorage to prevent inconsistency
-      localStorage.setItem('wallets', JSON.stringify(updatedWallets));
-      
-      // Remove from encrypted storage
+      // Remove from encrypted storage (this also updates session storage)
       await WalletManager.removeEncryptedWallet(walletToRemove.address);
       
-      // Update state after storage is saved
+      // Update state
       setWallets(updatedWallets);
       
       if (wallet?.address === walletToRemove.address) {
@@ -637,11 +622,28 @@ function PopupApp() {
     window.close();
   };
 
+  // Show splash screen first (shorter duration for popup)
+  if (showSplash) {
+    return (
+      <ThemeProvider defaultTheme="dark" storageKey="octra-wallet-theme">
+        <div className="w-[400px] h-[600px] overflow-hidden">
+          <SplashScreen onComplete={() => setShowSplash(false)} />
+        </div>
+      </ThemeProvider>
+    );
+  }
+
   if (isLoading) {
     return (
       <ThemeProvider defaultTheme="dark" storageKey="octra-wallet-theme">
-        <div className="w-[400px] h-[600px] bg-background flex items-center justify-center">
-          <div>Loading...</div>
+        <div className="w-[400px] h-[600px] bg-background flex items-center justify-center overflow-hidden">
+          <div className="flex flex-col items-center space-y-3">
+            <div
+              className="w-8 h-8 rounded-full border-3 border-transparent animate-spin"
+              style={{ borderTopColor: '#0000db', borderRightColor: '#0000db' }}
+            />
+            <p className="text-sm text-muted-foreground">Loading...</p>
+          </div>
         </div>
       </ThemeProvider>
     );
@@ -651,9 +653,11 @@ function PopupApp() {
   if (isLocked) {
     return (
       <ThemeProvider defaultTheme="dark" storageKey="octra-wallet-theme">
-        <div className="w-[400px] h-[600px] bg-background popup-view">
+        <div className="w-[400px] h-[600px] bg-background popup-view overflow-hidden">
           <div className="popup-container h-full overflow-y-auto">
-            <UnlockWallet onUnlock={handleUnlock} />
+            <PageTransition variant="fade-slide">
+              <UnlockWallet onUnlock={handleUnlock} />
+            </PageTransition>
           </div>
           <Toaster />
         </div>
@@ -665,16 +669,18 @@ function PopupApp() {
   if (connectionRequest) {
     return (
       <ThemeProvider defaultTheme="dark" storageKey="octra-wallet-theme">
-        <div className="w-[400px] h-[600px] bg-background popup-view">
+        <div className="w-[400px] h-[600px] bg-background popup-view overflow-hidden">
           <div className="popup-container h-full overflow-y-auto">
-            <DAppConnection
-              connectionRequest={connectionRequest}
-              wallets={wallets}
-              selectedWallet={wallet}
-              onWalletSelect={setWallet}
-              onApprove={handleConnectionApprove}
-              onReject={handleConnectionReject}
-            />
+            <PageTransition variant="scale">
+              <DAppConnection
+                connectionRequest={connectionRequest}
+                wallets={wallets}
+                selectedWallet={wallet}
+                onWalletSelect={setWallet}
+                onApprove={handleConnectionApprove}
+                onReject={handleConnectionReject}
+              />
+            </PageTransition>
           </div>
           <Toaster />
         </div>
@@ -691,16 +697,18 @@ function PopupApp() {
     
     return (
       <ThemeProvider defaultTheme="dark" storageKey="octra-wallet-theme">
-        <div className="w-[400px] h-[600px] bg-background popup-view">
+        <div className="w-[400px] h-[600px] bg-background popup-view overflow-hidden">
           <div className="popup-container h-full overflow-y-auto">
-            <DAppRequestHandler 
-              wallets={wallets}
-              contractRequest={contractRequest}
-              selectedWallet={connectedWallet || wallet}
-              onWalletSelect={setWallet}
-              onApprove={handleContractApprove}
-              onReject={handleContractReject}
-            />
+            <PageTransition variant="scale">
+              <DAppRequestHandler 
+                wallets={wallets}
+                contractRequest={contractRequest}
+                selectedWallet={connectedWallet || wallet}
+                onWalletSelect={setWallet}
+                onApprove={handleContractApprove}
+                onReject={handleContractReject}
+              />
+            </PageTransition>
           </div>
           <Toaster />
         </div>
@@ -712,9 +720,11 @@ function PopupApp() {
   if (wallets.length === 0) {
     return (
       <ThemeProvider defaultTheme="dark" storageKey="octra-wallet-theme">
-        <div className="w-[400px] h-[600px] bg-background popup-view">
+        <div className="w-[400px] h-[600px] bg-background popup-view overflow-hidden">
           <div className="popup-container h-full overflow-y-auto">
-            <WelcomeScreen onWalletCreated={addWallet} />
+            <PageTransition variant="fade-slide">
+              <WelcomeScreen onWalletCreated={addWallet} />
+            </PageTransition>
           </div>
           <Toaster />
         </div>
@@ -727,11 +737,14 @@ function PopupApp() {
   if (!wallet) {
     return (
       <ThemeProvider defaultTheme="dark" storageKey="octra-wallet-theme">
-        <div className="w-[400px] h-[600px] bg-background popup-view">
+        <div className="w-[400px] h-[600px] bg-background popup-view overflow-hidden">
           <div className="popup-container h-full overflow-y-auto flex items-center justify-center">
             <div className="text-center">
-              <div className="text-lg">Loading wallet...</div>
-              <div className="text-sm text-muted-foreground mt-2">Please wait</div>
+              <div
+                className="w-8 h-8 mx-auto rounded-full border-3 border-transparent animate-spin mb-3"
+                style={{ borderTopColor: '#0000db', borderRightColor: '#0000db' }}
+              />
+              <div className="text-sm text-muted-foreground">Loading wallet...</div>
             </div>
           </div>
           <Toaster />
@@ -742,18 +755,20 @@ function PopupApp() {
   
   return (
     <ThemeProvider defaultTheme="dark" storageKey="octra-wallet-theme">
-      <div className="w-[400px] h-[600px] bg-background popup-view relative flex flex-col">
+      <div className="w-[400px] h-[600px] bg-background popup-view relative flex flex-col overflow-hidden">
         <div className="popup-container flex-1 overflow-y-auto">
-          <WalletDashboard
-            wallet={wallet}
-            wallets={wallets}
-            onDisconnect={disconnectWallet}
-            onSwitchWallet={switchWallet}
-            onAddWallet={addWallet}
-            onRemoveWallet={removeWallet}
-            onExpandedView={openExpandedView}
-            isPopupMode={isPopupMode}
-          />
+          <PageTransition variant="fade">
+            <WalletDashboard
+              wallet={wallet}
+              wallets={wallets}
+              onDisconnect={disconnectWallet}
+              onSwitchWallet={switchWallet}
+              onAddWallet={addWallet}
+              onRemoveWallet={removeWallet}
+              onExpandedView={openExpandedView}
+              isPopupMode={isPopupMode}
+            />
+          </PageTransition>
         </div>
         <Toaster />
       </div>

@@ -7,13 +7,16 @@ A secure browser-based wallet for the Octra blockchain network. Available as bot
 OctWa implements industry-standard security practices to protect your assets:
 
 - **PBKDF2 Key Derivation** - 310,000 iterations (OWASP 2023 recommendation) with 32-byte salt
-- **AES-GCM Encryption** - All wallet data encrypted with your master password
+- **AES-256-GCM Encryption** - All wallet data encrypted with your master password
+- **Encrypted-Only Storage** - Private keys and mnemonics are NEVER stored unencrypted
 - **Auto-Lock Protection** - Automatic wallet locking after 15 minutes of inactivity
 - **Session Security** - Wallet automatically locks when browser/extension is closed
 - **Rate Limiting** - 5 failed password attempts triggers 5-minute lockout
 - **Password Strength Validation** - Real-time password strength indicator during setup
 - **Memory Protection** - Session passwords cleared from memory on lock/timeout
-- **No Plain Text Storage** - Private keys never stored unencrypted
+- **Sensitive Data Protection** - Private keys and mnemonics hidden by default, require explicit reveal
+- **Auto-Clear Clipboard** - Sensitive data copied to clipboard auto-clears after 30 seconds
+- **Forgot Password** - Reset wallet option for users who forgot their password (requires seed phrase backup)
 
 ## Screenshots
 

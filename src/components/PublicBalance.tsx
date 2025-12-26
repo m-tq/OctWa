@@ -10,7 +10,6 @@ import { Wallet as WalletType } from '../types/wallet';
 import { fetchBalance, fetchEncryptedBalance } from '../utils/api';
 import { useToast } from '@/hooks/use-toast';
 import { EncryptBalanceDialog } from './EncryptBalanceDialog';
-import { ExportPrivateKeys } from './ExportPrivateKeys';
 
 interface PublicBalanceProps {
   wallet: WalletType | null;
@@ -165,7 +164,7 @@ export function PublicBalance({
                       variant="outline"
                       size="sm"
                       onClick={() => setShowEncryptDialog(true)}
-                      disabled={!balance || balance <= 0.005}
+                      disabled={!balance || balance <= 0.001}
                       className="flex items-center gap-1.5"
                     >
                       <Lock className="h-3.5 w-3.5" />
@@ -173,10 +172,10 @@ export function PublicBalance({
                     </Button>
                   </span>
                 </TooltipTrigger>
-                {(!balance || balance <= 0.005) && (
+                {(!balance || balance <= 0.001) && (
                   <TooltipContent side="top" className="max-w-[200px]">
                     <p className="text-xs">
-                      Insufficient balance. Need more than 0.005 OCT to encrypt.
+                      Insufficient balance. Need more than 0.001 OCT to encrypt.
                     </p>
                   </TooltipContent>
                 )}
@@ -185,8 +184,6 @@ export function PublicBalance({
           </div>
         </CardContent>
       </Card>
-
-      <ExportPrivateKeys wallet={wallet} />
 
       <EncryptBalanceDialog
         open={showEncryptDialog}

@@ -20,15 +20,23 @@ chrome.windows.onRemoved.addListener(async (windowId) => {
   }
 });
 
-// Also lock on browser startup to ensure clean state
+// CRITICAL: Lock on browser startup to ensure clean state
+// This is the main mechanism for auto-lock on browser close
 chrome.runtime.onStartup.addListener(async () => {
   console.log('[Background] Browser started, ensuring wallet is locked...');
   await lockWallet();
 });
 
-// Function to lock wallet
+// Function to lock wallet - MUST clear session storage
 async function lockWallet() {
   try {
+    // CRITICAL: Clear chrome.storage.session first
+    // This is what actually locks the wallet by removing decrypted data
+    if (chrome.storage.session) {
+      await chrome.storage.session.clear();
+      console.log('[Background] Cleared chrome.storage.session');
+    }
+    
     // Set wallet as locked in storage
     await setStorageData('isWalletLocked', 'true');
     

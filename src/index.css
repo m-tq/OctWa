@@ -64,10 +64,21 @@
   * {
     @apply border-border;
   }
+  
+  html, body {
+    height: auto;
+    overflow-x: hidden;
+  }
+  
   body {
     @apply bg-background text-foreground font-sans antialiased;
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
     line-height: 1.6;
+  }
+  
+  #root {
+    min-height: 100vh;
+    overflow-x: hidden;
   }
   
   /* Clean typography inspired by docs.octra.org */
@@ -250,6 +261,14 @@
 /* Extension specific styles */
 .expanded-view {
   min-height: 100vh;
+  position: relative;
+}
+
+/* Ensure sticky works in expanded view */
+.expanded-view .octra-header {
+  position: sticky;
+  top: 0;
+  z-index: 50;
 }
 
 /* Documentation-style content styling */
@@ -517,4 +536,185 @@ body.to-private .bg-\[\#0000db\] {
 
 .animate-fade-in-up {
   animation: fadeInUp 0.5s ease-out forwards;
+}
+
+
+/* ============================================
+   SPLASH SCREEN & PAGE TRANSITION ANIMATIONS
+   ============================================ */
+
+/* Ripple animation for splash screen */
+@keyframes ripple {
+  0% {
+    transform: scale(1);
+    opacity: 0.6;
+    border-width: 3px;
+  }
+  100% {
+    transform: scale(2.5);
+    opacity: 0;
+    border-width: 1px;
+  }
+}
+
+.animate-ripple {
+  position: absolute;
+  border-style: solid;
+  border-radius: 50%;
+  animation: ripple 2s ease-out infinite;
+}
+
+.animate-ripple-delayed {
+  position: absolute;
+  border-style: solid;
+  border-radius: 50%;
+  animation: ripple 2s ease-out infinite;
+  animation-delay: 0.5s;
+}
+
+/* Subtle bounce for logo */
+@keyframes bounce-subtle {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-5px);
+  }
+}
+
+.animate-bounce-subtle {
+  animation: bounce-subtle 2s ease-in-out infinite;
+}
+
+/* Page transition animations */
+@keyframes page-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes page-slide-up {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes page-slide-left {
+  from {
+    opacity: 0;
+    transform: translateX(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes page-slide-right {
+  from {
+    opacity: 0;
+    transform: translateX(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes page-scale-in {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* Animation utility classes */
+.animate-page-fade-in {
+  animation: page-fade-in 0.3s ease-out forwards;
+}
+
+.animate-page-slide-up {
+  animation: page-slide-up 0.3s ease-out forwards;
+}
+
+.animate-page-slide-left {
+  animation: page-slide-left 0.3s ease-out forwards;
+}
+
+.animate-page-slide-right {
+  animation: page-slide-right 0.3s ease-out forwards;
+}
+
+.animate-page-scale-in {
+  animation: page-scale-in 0.3s ease-out forwards;
+}
+
+/* Stagger animation delays */
+.stagger-1 { animation-delay: 50ms; }
+.stagger-2 { animation-delay: 100ms; }
+.stagger-3 { animation-delay: 150ms; }
+.stagger-4 { animation-delay: 200ms; }
+.stagger-5 { animation-delay: 250ms; }
+
+/* Card entrance animation */
+@keyframes card-enter {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.animate-card-enter {
+  animation: card-enter 0.4s ease-out forwards;
+}
+
+/* Button press animation */
+@keyframes button-press {
+  0% { transform: scale(1); }
+  50% { transform: scale(0.97); }
+  100% { transform: scale(1); }
+}
+
+.animate-button-press {
+  animation: button-press 0.15s ease-out;
+}
+
+/* Loading spinner */
+@keyframes spin-slow {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.animate-spin-slow {
+  animation: spin-slow 1.5s linear infinite;
+}
+
+/* Pulse glow for primary color */
+@keyframes pulse-glow {
+  0%, 100% {
+    box-shadow: 0 0 5px rgba(0, 0, 219, 0.3);
+  }
+  50% {
+    box-shadow: 0 0 20px rgba(0, 0, 219, 0.6);
+  }
+}
+
+.animate-pulse-glow {
+  animation: pulse-glow 2s ease-in-out infinite;
 }

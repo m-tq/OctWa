@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -10,6 +10,8 @@ import { Copy, Download, Eye, EyeOff, AlertTriangle, Shield, Key, FileText, Lock
 import { Wallet } from '../types/wallet';
 import { verifyPassword } from '../utils/password';
 import { useToast } from '@/hooks/use-toast';
+
+const CLIPBOARD_CLEAR_DELAY = 30000;
 
 interface ExportPrivateKeysProps {
   wallet: Wallet | null;
@@ -24,6 +26,14 @@ export function ExportPrivateKeys({ wallet }: ExportPrivateKeysProps) {
   const [showPrivateKey, setShowPrivateKey] = useState(false);
   const [showMnemonic, setShowMnemonic] = useState(false);
   const { toast } = useToast();
+  const clipboardTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Cleanup clipboard timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (clipboardTimeoutRef.current) clearTimeout(clipboardTimeoutRef.current);
+    };
+  }, []);
 
   const handleVerifyPassword = async () => {
     if (!password) {
@@ -77,19 +87,23 @@ export function ExportPrivateKeys({ wallet }: ExportPrivateKeysProps) {
     }
   };
 
-  const copyToClipboard = async (text: string, label: string) => {
+  const copyToClipboard = async (text: string, label: string, isSensitive = false) => {
     try {
       await navigator.clipboard.writeText(text);
-      toast({
-        title: "Copied!",
-        description: `${label} copied to clipboard`,
-      });
-    } catch (error) {
-      toast({
-        title: "Error",
-        description: "Copy failed",
-        variant: "destructive",
-      });
+      if (isSensitive) {
+        if (clipboardTimeoutRef.current) clearTimeout(clipboardTimeoutRef.current);
+        clipboardTimeoutRef.current = setTimeout(async () => {
+          try {
+            await navigator.clipboard.writeText('');
+            toast({ title: "Security", description: "Clipboard cleared" });
+          } catch { /* ignore */ }
+        }, CLIPBOARD_CLEAR_DELAY);
+        toast({ title: "Copied!", description: `${label} copied (auto-clears in 30s)` });
+      } else {
+        toast({ title: "Copied!", description: `${label} copied to clipboard` });
+      }
+    } catch {
+      toast({ title: "Error", description: "Copy failed", variant: "destructive" });
     }
   };
 
@@ -196,6 +210,9 @@ ${wallet.mnemonic}
     setShowPrivateKey(false);
     setShowMnemonic(false);
     setShowPassword(false);
+    // Clear clipboard when closing
+    navigator.clipboard.writeText('').catch(() => {});
+    if (clipboardTimeoutRef.current) clearTimeout(clipboardTimeoutRef.current);
   };
 
   if (!wallet) {
@@ -335,7 +352,7 @@ ${wallet.mnemonic}
                             <Button
                               variant="outline"
                               size="sm"
-                              onClick={() => copyToClipboard(wallet.privateKey, 'Private Key')}
+                              onClick={() => copyToClipboard(wallet.privateKey, 'Private Key', true)}
                             >
                               <Copy className="h-4 w-4" />
                             </Button>
@@ -400,7 +417,7 @@ ${wallet.mnemonic}
                             <Button
                               variant="outline"
                               size="sm"
-                              onClick={() => copyToClipboard(wallet.mnemonic!, 'Mnemonic')}
+                              onClick={() => copyToClipboard(wallet.mnemonic!, 'Mnemonic', true)}
                               className="flex-1"
                             >
                               <Copy className="h-4 w-4 mr-2" />

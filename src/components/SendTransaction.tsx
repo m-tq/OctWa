@@ -305,11 +305,17 @@ export function SendTransaction({ wallet, balance, nonce, onBalanceUpdate, onNon
               <button
                 type="button"
                 onClick={() => {
-                  // Calculate max amount: balance - fee (use higher fee for safety)
-                  const maxFee = 0.003; // Use higher fee for safety
-                  const maxAmount = Math.max(0, currentBalance - maxFee);
+                  // Calculate max amount: balance - fee
+                  const maxFee = 0.001; // Minimum fee for transaction
+                  const maxAmount = currentBalance - maxFee;
                   if (maxAmount > 0) {
                     setAmount(maxAmount.toFixed(8));
+                  } else {
+                    toast({
+                      title: "Insufficient Balance",
+                      description: `Need more than ${maxFee} OCT to send (for fee)`,
+                      variant: "destructive",
+                    });
                   }
                 }}
                 className="text-[#0000db] hover:text-[#0000db]/80 font-medium hover:underline"
@@ -406,243 +412,193 @@ export function SendTransaction({ wallet, balance, nonce, onBalanceUpdate, onNon
     );
   }
 
-  // Full mode (expanded view)
+  // Full mode (expanded view) - Simplified
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Send className="h-5 w-5" />
-          Send Transaction
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-6">
-        <Alert>
-          <div className="flex items-start space-x-3">
-            <AlertTriangle className="h-4 w-4 mt-0.5 flex-shrink-0" />
-            <AlertDescription>
-              Double-check the recipient address before sending. Transactions cannot be reversed.
-            </AlertDescription>
-          </div>
-        </Alert>
-
-        {/* Wallet Info */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div className="space-y-2">
-            <Label>From Address</Label>
-            <div className="p-3 bg-muted rounded-md font-mono text-sm break-all">
-              {wallet.address}
-            </div>
-          </div>
-          <div className="space-y-2">
-            <Label>Current Balance</Label>
-            <div className="p-3 bg-muted rounded-md font-mono text-sm">
-              {currentBalance.toFixed(8)} OCT
-            </div>
-          </div>
-        </div>
-
-        {/* Recipient Address */}
-        <div className="space-y-2">
-          <Label htmlFor="recipient">Recipient Address</Label>
-          <Input
-            id="recipient"
-            placeholder="oct..."
-            value={recipientAddress}
-            onChange={(e) => setRecipientAddress(e.target.value)}
-            className="font-mono"
-          />
-          
-          {/* Address Validation Status */}
-          {recipientAddress.trim() && addressValidation && (
-            <div className="space-y-2">
-              {addressValidation.isValid ? (
-                <div className="flex items-center gap-2">
-                  <CheckCircle className="h-4 w-4 text-green-500" />
-                  <span className="text-sm text-green-600">Valid Octra address</span>
-                </div>
-              ) : (
-                <div className="text-sm text-red-600">{addressValidation.error}</div>
-              )}
-            </div>
-          )}
-        </div>
-
-        {/* Amount */}
-        <div className="space-y-2">
-          <Label htmlFor="amount">Amount ( OCT )</Label>
-          <Input
-            id="amount"
-            type="number"
-            placeholder="0.00000000"
-            value={amount}
-            onChange={(e) => setAmount(e.target.value)}
-            step="0.1"
-            min="0"
-          />
-          {amount && !validateAmount(amount) && (
-            <p className="text-sm text-red-600">Invalid amount</p>
-          )}
-        </div>
-
-        {/* Message Field */}
-        <div className="space-y-2">
-          <Label htmlFor="message" className="flex items-center gap-2">
-            <MessageSquare className="h-4 w-4" />
-            Message ( Optional )
-          </Label>
-          <Textarea
-            id="message"
-            placeholder="Enter an optional message (max 1024 characters)"
-            value={message}
-            onChange={(e) => setMessage(e.target.value)}
-            maxLength={1024}
-            rows={3}
-          />
-          <div className="flex justify-between text-xs text-muted-foreground">
-            <span>This message will be included in the transaction</span>
-            <span>{message.length}/1024</span>
-          </div>
-        </div>
-
-        {/* OU (Gas) Settings */}
-        <div className="space-y-2">
-          <Label className="flex items-center gap-2">
-            <Settings2 className="h-4 w-4" />
-            OU (Gas) Settings
-          </Label>
-          <Select value={ouOption} onValueChange={setOuOption}>
-            <SelectTrigger>
-              <SelectValue placeholder="Select OU option" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="auto">Auto (Default: {amountNum < 1000 ? '10,000' : '30,000'})</SelectItem>
-              <SelectItem value="10000">10,000 OU</SelectItem>
-              <SelectItem value="20000">20,000 OU</SelectItem>
-              <SelectItem value="30000">30,000 OU</SelectItem>
-              <SelectItem value="50000">50,000 OU</SelectItem>
-              <SelectItem value="100000">100,000 OU</SelectItem>
-              <SelectItem value="custom">Custom</SelectItem>
-            </SelectContent>
-          </Select>
-          {ouOption === 'custom' && (
-            <Input
-              type="number"
-              placeholder="Enter custom OU value (e.g., 15000)"
-              value={customOu}
-              onChange={(e) => setCustomOu(e.target.value)}
-              min="1000"
-              step="1000"
-            />
-          )}
-          <p className="text-xs text-muted-foreground">
-            If transaction fails, try increasing the OU value. Higher OU = higher priority.
-          </p>
-        </div>
-
-        {/* Fee Calculation */}
-        {amount && validateAmount(amount) && (
-          <div className="p-3 bg-muted rounded-md space-y-2">
-            <div className="flex items-center gap-2 text-sm font-medium">
-              <Calculator className="h-4 w-4" />
-              Fee Calculation
-            </div>
-            <div className="space-y-1 text-xs sm:text-sm">
-              <div className="flex justify-between items-center">
-                <span>Amount:</span>
-                <span className="font-mono">{amountNum.toFixed(8)} OCT</span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span>Fee ({amountNum < 1000 ? '< 1000' : '≥ 1000'} OCT):</span>
-                <span className="font-mono">{fee.toFixed(8)} OCT</span>
-              </div>
-              <Separator />
-              <div className="flex justify-between items-center font-medium">
-                <span>Total Cost:</span>
-                <span className="font-mono">{totalCost.toFixed(8)} OCT</span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span>Remaining Balance:</span>
-                <span className={`font-mono ${currentBalance - totalCost >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                  {(currentBalance - totalCost).toFixed(8)} OCT
-                </span>
-              </div>
-              <div className="text-xs text-muted-foreground mt-2">
-                Fee structure: 0.001 OCT for amounts &lt; 1000, 0.003 OCT for amounts ≥ 1000
-              </div>
-            </div>
-          </div>
-        )}
-
-        <Button 
-          onClick={handleSendClick}
-          disabled={
-            isSending || 
-            !addressValidation?.isValid ||
-            !validateAmount(amount) || 
-            totalCost > currentBalance ||
-            Boolean(message && message.length > 1024)
-          }
-          className="w-full"
-          size="lg"
-        >
-          {isSending ? "Sending..." : `Send ${amountNum.toFixed(8)} OCT`}
-        </Button>
-
-        {/* Large Transaction Confirmation Dialog */}
-        <AlertDialog open={showConfirmDialog} onOpenChange={setShowConfirmDialog}>
-          <AlertDialogContent>
-            <AlertDialogHeader>
-              <AlertDialogTitle className="flex items-center gap-2 text-orange-500">
-                <AlertTriangle className="h-5 w-5" />
-                Confirm Large Transaction
-              </AlertDialogTitle>
-              <AlertDialogDescription className="space-y-3">
-                <p>You are about to send a large amount:</p>
-                <div className="bg-muted p-3 rounded-md space-y-2 font-mono text-sm">
-                  <div className="flex justify-between">
-                    <span>Amount:</span>
-                    <span className="font-bold text-orange-500">{amountNum.toFixed(8)} OCT</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>Fee:</span>
-                    <span>{fee.toFixed(8)} OCT</span>
-                  </div>
-                  <Separator />
-                  <div className="flex justify-between font-bold">
-                    <span>Total:</span>
-                    <span>{totalCost.toFixed(8)} OCT</span>
-                  </div>
-                </div>
-                <div className="text-xs break-all">
-                  <span className="text-muted-foreground">To: </span>
-                  <span className="font-mono">{recipientAddress}</span>
-                </div>
-                <p className="text-orange-500 font-medium">
-                  Please double-check the recipient address. This transaction cannot be reversed!
-                </p>
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel>Cancel</AlertDialogCancel>
-              <AlertDialogAction 
-                onClick={executeSend}
-                className="bg-orange-500 hover:bg-orange-600"
-              >
-                Confirm & Send
-              </AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
-
-        {/* Transaction Modal */}
-        <TransactionModal
-          open={showTxModal}
-          onOpenChange={setShowTxModal}
-          status={txModalStatus}
-          result={txModalResult}
-          type="send"
+    <div className="space-y-4">
+      {/* Recipient Address */}
+      <div className="space-y-2">
+        <Label htmlFor="recipient">Recipient Address</Label>
+        <Input
+          id="recipient"
+          placeholder="oct..."
+          value={recipientAddress}
+          onChange={(e) => setRecipientAddress(e.target.value)}
+          className="font-mono"
         />
-      </CardContent>
-    </Card>
+        {recipientAddress.trim() && addressValidation && !addressValidation.isValid && (
+          <p className="text-sm text-red-600">{addressValidation.error}</p>
+        )}
+      </div>
+
+      {/* Amount with Max */}
+      <div className="space-y-2">
+        <div className="flex items-center justify-between">
+          <Label htmlFor="amount">Amount (OCT)</Label>
+          <div className="flex items-center gap-2 text-sm">
+            <span className="text-muted-foreground">
+              Balance: <span className="font-mono">{currentBalance.toFixed(6)}</span>
+            </span>
+            <button
+              type="button"
+              onClick={() => {
+                const maxFee = 0.001; // Minimum fee for transaction
+                const maxAmount = currentBalance - maxFee;
+                if (maxAmount > 0) {
+                  setAmount(maxAmount.toFixed(8));
+                } else {
+                  toast({
+                    title: "Insufficient Balance",
+                    description: `Need more than ${maxFee} OCT to send (for fee)`,
+                    variant: "destructive",
+                  });
+                }
+              }}
+              className="text-[#0000db] hover:text-[#0000db]/80 font-medium hover:underline"
+            >
+              Max
+            </button>
+          </div>
+        </div>
+        <Input
+          id="amount"
+          type="number"
+          placeholder="0.00000000"
+          value={amount}
+          onChange={(e) => setAmount(e.target.value)}
+          step="0.1"
+          min="0"
+        />
+      </div>
+
+      {/* Message Field */}
+      <div className="space-y-2">
+        <Label htmlFor="message">Message (Optional)</Label>
+        <Textarea
+          id="message"
+          placeholder="Enter an optional message (max 1024 characters)"
+          value={message}
+          onChange={(e) => setMessage(e.target.value)}
+          maxLength={1024}
+          rows={2}
+        />
+        <div className="text-xs text-muted-foreground text-right">{message.length}/1024</div>
+      </div>
+
+      {/* OU (Gas) Settings */}
+      <div className="space-y-2">
+        <Label>OU (Gas)</Label>
+        <Select value={ouOption} onValueChange={setOuOption}>
+          <SelectTrigger>
+            <SelectValue placeholder="Select OU option" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="auto">Auto</SelectItem>
+            <SelectItem value="10000">10,000 OU</SelectItem>
+            <SelectItem value="30000">30,000 OU</SelectItem>
+            <SelectItem value="50000">50,000 OU</SelectItem>
+            <SelectItem value="100000">100,000 OU</SelectItem>
+            <SelectItem value="custom">Custom</SelectItem>
+          </SelectContent>
+        </Select>
+        {ouOption === 'custom' && (
+          <Input
+            type="number"
+            placeholder="Enter custom OU value"
+            value={customOu}
+            onChange={(e) => setCustomOu(e.target.value)}
+            min="1000"
+            step="1000"
+          />
+        )}
+      </div>
+
+      {/* Fee Summary */}
+      {amount && validateAmount(amount) && (
+        <div className="p-3 bg-muted rounded-md text-sm space-y-1">
+          <div className="flex justify-between">
+            <span>Amount:</span>
+            <span className="font-mono">{amountNum.toFixed(8)} OCT</span>
+          </div>
+          <div className="flex justify-between">
+            <span>Fee:</span>
+            <span className="font-mono">{fee.toFixed(8)} OCT</span>
+          </div>
+          <div className="flex justify-between font-medium border-t pt-1 mt-1">
+            <span>Total:</span>
+            <span className="font-mono">{totalCost.toFixed(8)} OCT</span>
+          </div>
+        </div>
+      )}
+
+      <Button 
+        onClick={handleSendClick}
+        disabled={
+          isSending || 
+          !addressValidation?.isValid ||
+          !validateAmount(amount) || 
+          totalCost > currentBalance ||
+          Boolean(message && message.length > 1024)
+        }
+        className="w-full"
+        size="lg"
+      >
+        {isSending ? "Sending..." : `Send ${amountNum.toFixed(8)} OCT`}
+      </Button>
+
+      {/* Large Transaction Confirmation Dialog */}
+      <AlertDialog open={showConfirmDialog} onOpenChange={setShowConfirmDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2 text-orange-500">
+              <AlertTriangle className="h-5 w-5" />
+              Confirm Large Transaction
+            </AlertDialogTitle>
+            <AlertDialogDescription className="space-y-3">
+              <p>You are about to send a large amount:</p>
+              <div className="bg-muted p-3 rounded-md space-y-2 font-mono text-sm">
+                <div className="flex justify-between">
+                  <span>Amount:</span>
+                  <span className="font-bold text-orange-500">{amountNum.toFixed(8)} OCT</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Fee:</span>
+                  <span>{fee.toFixed(8)} OCT</span>
+                </div>
+                <Separator />
+                <div className="flex justify-between font-bold">
+                  <span>Total:</span>
+                  <span>{totalCost.toFixed(8)} OCT</span>
+                </div>
+              </div>
+              <div className="text-xs break-all">
+                <span className="text-muted-foreground">To: </span>
+                <span className="font-mono">{recipientAddress}</span>
+              </div>
+              <p className="text-orange-500 font-medium">
+                Please double-check the recipient address. This transaction cannot be reversed!
+              </p>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={executeSend}
+              className="bg-orange-500 hover:bg-orange-600"
+            >
+              Confirm & Send
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Transaction Modal */}
+      <TransactionModal
+        open={showTxModal}
+        onOpenChange={setShowTxModal}
+        status={txModalStatus}
+        result={txModalResult}
+        type="send"
+      />
+    </div>
   );
 }

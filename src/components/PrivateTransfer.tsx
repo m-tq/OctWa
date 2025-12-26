@@ -310,11 +310,16 @@ export function PrivateTransfer({
             <button
               type="button"
               onClick={() => {
-                // Calculate max amount: encrypted balance - small reserve for safety
-                const maxReserve = 0.001; // Reserve small amount for safety
-                const maxAmount = Math.max(0, encryptedBalance.encrypted - maxReserve);
+                // Private transfer: use full encrypted balance (no fee needed)
+                const maxAmount = encryptedBalance.encrypted;
                 if (maxAmount > 0) {
                   setAmount(maxAmount.toFixed(8));
+                } else {
+                  toast({
+                    title: "No Balance",
+                    description: "No encrypted balance available",
+                    variant: "destructive",
+                  });
                 }
               }}
               className="text-xs text-[#0000db] hover:text-[#0000db]/80 font-medium hover:underline"
@@ -365,141 +370,115 @@ export function PrivateTransfer({
     );
   }
 
-  // Full mode
+  // Full mode - Simplified
   return (
-    <Card className="border-[#0000db]/20">
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2 text-[#0000db]">
-          <Shield className="h-5 w-5" />
-          Private Transfer
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-6">
-        <Alert className="border-[#0000db]/20 bg-[#0000db]/5">
-          <div className="flex items-start space-x-3">
-            <Shield className="h-4 w-4 mt-0.5 flex-shrink-0 text-[#0000db]" />
-            <AlertDescription>
-              Private transfers use your encrypted balance and are completely anonymous. The recipient can claim the transfer in the next epoch.
-            </AlertDescription>
-          </div>
-        </Alert>
-
-        {/* Encrypted Balance Display */}
-        <div className="p-3 bg-[#0000db]/5 border border-[#0000db]/20 rounded-md">
-          <div className="flex justify-between items-center">
-            <span className="text-sm font-medium">Available Private Balance</span>
-            <span className="font-mono text-lg font-bold text-[#0000db]">
-              {encryptedBalance.encrypted.toFixed(8)} OCT
-            </span>
-          </div>
+    <div className="space-y-4">
+      {/* Encrypted Balance Display */}
+      <div className="p-3 bg-[#0000db]/5 border border-[#0000db]/20 rounded-md">
+        <div className="flex justify-between items-center">
+          <span className="text-sm font-medium">Private Balance</span>
+          <span className="font-mono text-lg font-bold text-[#0000db]">
+            {encryptedBalance.encrypted.toFixed(8)} OCT
+          </span>
         </div>
+      </div>
 
-        {/* Recipient Address */}
-        <div className="space-y-2">
-          <Label htmlFor="recipient">Recipient Address</Label>
-          <Input
-            id="recipient"
-            placeholder="oct..."
-            value={recipientAddress}
-            onChange={(e) => setRecipientAddress(e.target.value)}
-            className="font-mono"
-          />
-          
-          {/* Recipient Status */}
-          {isCheckingRecipient && (
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <Loader2 className="h-4 w-4 animate-spin" />
-              Checking recipient...
-            </div>
-          )}
-          
-          {/* Address Validation Status */}
-          {recipientAddress.trim() && addressValidation && !isCheckingRecipient && (
-            <div className="space-y-2">
-              {addressValidation.isValid ? (
-                <div className="flex items-center gap-2">
-                  <CheckCircle className="h-4 w-4 text-green-500" />
-                  <span className="text-sm text-green-600">Valid Octra address</span>
-                </div>
-              ) : (
-                <div className="text-sm text-red-600">{addressValidation.error}</div>
-              )}
-              
-              {recipientInfo && !recipientInfo.error && (
-                <div className="space-y-1">
-                  <div className="text-xs text-muted-foreground">
-                    Balance: {recipientInfo.balance || '0'} OCT
-                  </div>
-                  {!recipientInfo.has_public_key && (
-                    <div className="text-sm text-red-600">
-                      ⚠️ Recipient has no public key. They need to make a transaction first.
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          )}
-          
-          {recipientInfo && !isCheckingRecipient && recipientInfo.error && (
-            <div className="text-sm text-red-600">{recipientInfo.error}</div>
-          )}
-        </div>
-
-        {/* Amount */}
-        <div className="space-y-2">
-          <Label htmlFor="amount">Amount (OCT)</Label>
-          <Input
-            id="amount"
-            type="number"
-            placeholder="0.00000000"
-            value={amount}
-            onChange={(e) => setAmount(e.target.value)}
-            step="0.1"
-            min="0"
-            max={encryptedBalance.encrypted}
-          />
-          {amount && validateAmount(amount) && parseFloat(amount) > encryptedBalance.encrypted && (
-            <p className="text-sm text-red-600">Amount exceeds available encrypted balance</p>
-          )}
-        </div>
-
-        <Button 
-          onClick={handleSend}
-          disabled={
-            isSending || 
-            !addressValidation?.isValid ||
-            isCheckingRecipient ||
-            !validateAmount(amount) || 
-            !recipientInfo ||
-            recipientInfo.error ||
-            !recipientInfo.has_public_key ||
-            parseFloat(amount) > encryptedBalance.encrypted
-          }
-          className="w-full bg-[#0000db] hover:bg-[#0000db]/90"
-          size="lg"
-        >
-          {isSending ? (
-            <>
-              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-              Sending Private Transfer...
-            </>
-          ) : (
-            <>
-              <Shield className="h-4 w-4 mr-2" />
-              Send Private Transfer
-            </>
-          )}
-        </Button>
-
-        {/* Transaction Modal */}
-        <TransactionModal
-          open={showTxModal}
-          onOpenChange={setShowTxModal}
-          status={txModalStatus}
-          result={txModalResult}
-          type="transfer"
+      {/* Recipient Address */}
+      <div className="space-y-2">
+        <Label htmlFor="recipient">Recipient Address</Label>
+        <Input
+          id="recipient"
+          placeholder="oct..."
+          value={recipientAddress}
+          onChange={(e) => setRecipientAddress(e.target.value)}
+          className="font-mono"
         />
-      </CardContent>
-    </Card>
+        {recipientAddress.trim() && addressValidation && !addressValidation.isValid && (
+          <p className="text-sm text-red-600">{addressValidation.error}</p>
+        )}
+        {isCheckingRecipient && (
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            Checking recipient...
+          </div>
+        )}
+        {recipientInfo && !isCheckingRecipient && !recipientInfo.has_public_key && (
+          <p className="text-sm text-red-600">⚠️ Recipient needs a public key first</p>
+        )}
+      </div>
+
+      {/* Amount with Max */}
+      <div className="space-y-2">
+        <div className="flex items-center justify-between">
+          <Label htmlFor="amount">Amount (OCT)</Label>
+          <button
+            type="button"
+            onClick={() => {
+              // Private transfer: use full encrypted balance (no fee needed)
+              const maxAmount = encryptedBalance.encrypted;
+              if (maxAmount > 0) {
+                setAmount(maxAmount.toFixed(8));
+              } else {
+                toast({
+                  title: "No Balance",
+                  description: "No encrypted balance available",
+                  variant: "destructive",
+                });
+              }
+            }}
+            className="text-sm text-[#0000db] hover:text-[#0000db]/80 font-medium hover:underline"
+          >
+            Max
+          </button>
+        </div>
+        <Input
+          id="amount"
+          type="number"
+          placeholder="0.00000000"
+          value={amount}
+          onChange={(e) => setAmount(e.target.value)}
+          step="0.1"
+          min="0"
+          max={encryptedBalance.encrypted}
+        />
+        {amount && validateAmount(amount) && parseFloat(amount) > encryptedBalance.encrypted && (
+          <p className="text-sm text-red-600">Amount exceeds available encrypted balance</p>
+        )}
+      </div>
+
+      <Button 
+        onClick={handleSend}
+        disabled={
+          isSending || 
+          !addressValidation?.isValid ||
+          isCheckingRecipient ||
+          !validateAmount(amount) || 
+          !recipientInfo ||
+          recipientInfo.error ||
+          !recipientInfo.has_public_key ||
+          parseFloat(amount) > encryptedBalance.encrypted
+        }
+        className="w-full bg-[#0000db] hover:bg-[#0000db]/90"
+        size="lg"
+      >
+        {isSending ? (
+          <>
+            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            Sending...
+          </>
+        ) : (
+          `Send ${parseFloat(amount || '0').toFixed(8)} OCT`
+        )}
+      </Button>
+
+      {/* Transaction Modal */}
+      <TransactionModal
+        open={showTxModal}
+        onOpenChange={setShowTxModal}
+        status={txModalStatus}
+        result={txModalResult}
+        type="transfer"
+      />
+    </div>
   );
 }
