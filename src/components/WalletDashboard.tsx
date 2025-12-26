@@ -189,17 +189,55 @@ export function WalletDashboard({
     const fetchInitialData = async () => {
       if (!wallet) return;
 
+      // Reset encrypted balance and mode to public when wallet changes
+      // This ensures new/switched wallets start in public mode
+      setEncryptedBalance(null);
+      setOperationMode('public');
+
       try {
         // Fetch balance and nonce
         setIsLoadingBalance(true);
         const balanceData = await fetchBalance(wallet.address);
         setBalance(balanceData.balance);
         setNonce(balanceData.nonce);
+        
+        // Fetch encrypted balance for the new wallet
+        try {
+          const encData = await fetchEncryptedBalance(wallet.address, wallet.privateKey);
+          if (encData) {
+            setEncryptedBalance(encData);
+          } else {
+            // Set default encrypted balance for new wallet
+            setEncryptedBalance({
+              public: balanceData.balance,
+              public_raw: Math.floor(balanceData.balance * 1_000_000),
+              encrypted: 0,
+              encrypted_raw: 0,
+              total: balanceData.balance
+            });
+          }
+        } catch (encError) {
+          console.error('Failed to fetch encrypted balance:', encError);
+          setEncryptedBalance({
+            public: balanceData.balance,
+            public_raw: Math.floor(balanceData.balance * 1_000_000),
+            encrypted: 0,
+            encrypted_raw: 0,
+            total: balanceData.balance
+          });
+        }
       } catch (error) {
         console.error('Failed to fetch balance:', error);
         // Don't show error for new addresses, just set balance to 0
         setBalance(0);
         setNonce(0);
+        setEncryptedBalance({
+          public: 0,
+          public_raw: 0,
+          encrypted: 0,
+          encrypted_raw: 0,
+          total: 0
+        });
       } finally {
         setIsLoadingBalance(false);
       }
