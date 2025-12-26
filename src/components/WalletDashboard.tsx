@@ -46,6 +46,7 @@ import { ThemeToggle } from './ThemeToggle';
 import { AddWalletPopup } from './AddWalletPopup';
 import { RPCProviderManager } from './RPCProviderManager';
 import { ConnectedDAppsManager } from './ConnectedDAppsManager';
+import { ExportPrivateKeys } from './ExportPrivateKeys';
 import { Wallet } from '../types/wallet';
 import { WalletManager } from '../utils/walletManager';
 import { fetchBalance, getTransactionHistory, fetchEncryptedBalance } from '../utils/api';
@@ -104,7 +105,7 @@ export function WalletDashboard({
   const [resetPassword, setResetPassword] = useState('');
   const [showResetPassword, setShowResetPassword] = useState(false);
   const [isVerifyingReset, setIsVerifyingReset] = useState(false);
-  const [isExportingBackup, setIsExportingBackup] = useState(false);
+  const [showExportKeys, setShowExportKeys] = useState(false);
   const { toast } = useToast();
 
   // Determine if private mode is available
@@ -385,46 +386,6 @@ export function WalletDashboard({
         description: "Failed to lock wallets properly",
         variant: "destructive",
       });
-    }
-  };
-
-  const handleExportBackup = async () => {
-    setIsExportingBackup(true);
-    try {
-      const result = await WalletManager.exportBackup();
-      
-      if (result.success && result.data) {
-        // Create and download file
-        const blob = new Blob([result.data], { type: 'text/plain' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `octra-wallet-backup-${new Date().toISOString().split('T')[0]}.octbak`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-        
-        toast({
-          title: "Backup Exported",
-          description: "Your encrypted wallet backup has been downloaded. Keep it safe!",
-        });
-      } else {
-        toast({
-          title: "Export Failed",
-          description: result.error || "Failed to export backup",
-          variant: "destructive",
-        });
-      }
-    } catch (error) {
-      console.error('Failed to export backup:', error);
-      toast({
-        title: "Export Failed",
-        description: "An error occurred while exporting backup",
-        variant: "destructive",
-      });
-    } finally {
-      setIsExportingBackup(false);
     }
   };
 
@@ -1070,10 +1031,9 @@ export function WalletDashboard({
                         <Button
                           variant="destructive"
                           onClick={() => {
-                            handleExportBackup();
+                            setShowExportKeys(true);
                             setShowMobileMenu(false);
                           }}
-                          disabled={isExportingBackup}
                           className="w-full justify-start gap-2"
                         >
                           <Key className="h-4 w-4" />
@@ -1173,8 +1133,7 @@ export function WalletDashboard({
                       variant="destructive" 
                       size="sm"
                       className="flex items-center gap-2"
-                      onClick={handleExportBackup}
-                      disabled={isExportingBackup}
+                      onClick={() => setShowExportKeys(true)}
                     >
                       <Key className="h-4 w-4" />
                       Export Keys
@@ -1272,10 +1231,9 @@ export function WalletDashboard({
                           <Button
                             variant="destructive"
                             onClick={() => {
-                              handleExportBackup();
+                              setShowExportKeys(true);
                               setShowMobileMenu(false);
                             }}
-                            disabled={isExportingBackup}
                             className="w-full justify-start gap-2"
                           >
                             <Key className="h-4 w-4" />
@@ -1385,6 +1343,13 @@ export function WalletDashboard({
                   />
                 </DialogContent>
               </Dialog>
+
+              {/* Export Private Keys Dialog */}
+              <ExportPrivateKeys 
+                wallet={wallet} 
+                open={showExportKeys} 
+                onOpenChange={setShowExportKeys} 
+              />
               
               <AlertDialog open={showLockConfirm} onOpenChange={setShowLockConfirm}>
                 <AlertDialogContent>
