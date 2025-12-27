@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { WalletManager } from '../utils/walletManager';
 import { Wallet } from '../types/wallet';
-import { Shield, AlertTriangle, Clock, Eye, EyeOff } from 'lucide-react';
+import { AlertTriangle, Clock, Eye, EyeOff } from 'lucide-react';
 import { ExtensionStorageManager } from '../utils/extensionStorage';
 
 interface UnlockWalletProps {
@@ -199,13 +199,17 @@ export function UnlockWallet({ onUnlock }: UnlockWalletProps) {
     <div className="flex items-center justify-center min-h-screen bg-background">
       <div className="w-full max-w-md p-6 space-y-6">
         <div className="flex justify-center mb-4">
-          <div className={`p-3 rounded-full ${isLocked ? 'bg-red-500' : 'bg-primary'}`}>
-            {isLocked ? (
+          {isLocked ? (
+            <div className="p-3 rounded-full bg-red-500">
               <Clock className="h-8 w-8 text-white" />
-            ) : (
-              <Shield className="h-8 w-8 text-primary-foreground" />
-            )}
-          </div>
+            </div>
+          ) : (
+            <img 
+              src="/icons/octwa128x128.png" 
+              alt="OctWa Logo" 
+              className="h-16 w-16 object-contain"
+            />
+          )}
         </div>
         <div className="text-center">
           <h1 className="text-2xl font-bold">

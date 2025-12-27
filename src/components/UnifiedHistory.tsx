@@ -19,6 +19,7 @@ import {
   CheckCircle,
   XCircle,
   Shield,
+  Globe,
   Code,
   Zap,
   ChevronLeft,
@@ -37,6 +38,7 @@ import {
   getUnifiedHistory,
   isPrivateTransfer
 } from '../utils/historyMerge';
+import { OperationMode } from '../utils/modeStorage';
 
 const PAGE_SIZE = 20;
 
@@ -47,9 +49,10 @@ interface UnifiedHistoryProps {
   isLoading?: boolean;
   isPopupMode?: boolean;
   hideBorder?: boolean;
+  operationMode?: OperationMode;
 }
 
-export function UnifiedHistory({ wallet, transactions, onTransactionsUpdate, isLoading = false, isPopupMode = false, hideBorder = false }: UnifiedHistoryProps) {
+export function UnifiedHistory({ wallet, transactions, onTransactionsUpdate, isLoading = false, isPopupMode = false, hideBorder = false, operationMode = 'public' }: UnifiedHistoryProps) {
   const [refreshing, setRefreshing] = useState(false);
   const [selectedTx, setSelectedTx] = useState<TransactionDetails | PendingTransaction | null>(null);
   const [loadingDetails, setLoadingDetails] = useState(false);
@@ -58,10 +61,17 @@ export function UnifiedHistory({ wallet, transactions, onTransactionsUpdate, isL
   const [activeFilter, setActiveFilter] = useState<HistoryFilter>('all');
   const [currentPage, setCurrentPage] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
-  const [showScrollIndicator, setShowScrollIndicator] = useState(false);
-  const [showScrollUpIndicator, setShowScrollUpIndicator] = useState(false);
   const historyListRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
+
+  // Filter transactions based on operationMode
+  const filteredTransactions = transactions.filter(tx => {
+    if (operationMode === 'private') {
+      return isPrivateTransfer(tx);
+    } else {
+      return !isPrivateTransfer(tx);
+    }
+  });
 
   // Load contract history when wallet changes
   useEffect(() => {
@@ -184,44 +194,10 @@ export function UnifiedHistory({ wallet, transactions, onTransactionsUpdate, isL
     );
   }
 
-  // Get unified history
-  const unifiedHistory = getUnifiedHistory(transactions, contractHistory, activeFilter);
-  const pendingCount = transactions.filter(tx => tx.status === 'pending').length;
-
-  // Check if content is scrollable (for popup mode scroll indicator)
-  useEffect(() => {
-    if (!isPopupMode) return;
-
-    const scrollContainer = document.querySelector('.popup-container');
-    if (!scrollContainer) return;
-
-    const checkScrollPosition = () => {
-      const { scrollTop, scrollHeight, clientHeight } = scrollContainer;
-      const isAtTop = scrollTop < 50;
-      // Only hide scroll down when truly at bottom (within 20px)
-      const isAtBottom = scrollTop + clientHeight >= scrollHeight - 20;
-      const hasScrollableContent = scrollHeight > clientHeight;
-
-      // Show down arrow if not at bottom and has scrollable content
-      setShowScrollIndicator(hasScrollableContent && !isAtBottom);
-      // Show up arrow if scrolled down (not at top)
-      setShowScrollUpIndicator(hasScrollableContent && !isAtTop);
-    };
-
-    // Check on mount and when data changes
-    const timer = setTimeout(checkScrollPosition, 100);
-
-    // Listen to scroll events
-    scrollContainer.addEventListener('scroll', checkScrollPosition);
-
-    // Also check on window resize
-    window.addEventListener('resize', checkScrollPosition);
-    return () => {
-      clearTimeout(timer);
-      scrollContainer.removeEventListener('scroll', checkScrollPosition);
-      window.removeEventListener('resize', checkScrollPosition);
-    };
-  }, [isPopupMode, unifiedHistory.length, transactions.length]);
+  // Get unified history using filtered transactions (based on operationMode)
+  // Don't include contract history in the unified view
+  const unifiedHistory = getUnifiedHistory(filteredTransactions, [], activeFilter);
+  const pendingCount = filteredTransactions.filter(tx => tx.status === 'pending').length;
 
   return (
     <Card className={hideBorder ? 'border-0 shadow-none' : ''}>
@@ -229,13 +205,16 @@ export function UnifiedHistory({ wallet, transactions, onTransactionsUpdate, isL
         <div className="flex flex-col gap-0.5">
           <CardTitle className={`flex items-center gap-2 ${isPopupMode ? 'text-sm' : ''}`}>
             <History className={isPopupMode ? 'h-4 w-4' : 'h-5 w-5'} />
-            History
+            {operationMode === 'private' ? 'Private History' : 'Public History'}
             {pendingCount > 0 && (
               <Badge variant="secondary" className={isPopupMode ? 'ml-1 text-[10px]' : 'ml-2'}>{pendingCount}</Badge>
             )}
           </CardTitle>
           <span className={`text-muted-foreground ${isPopupMode ? 'text-[10px]' : 'text-xs'}`}>
-            {isPopupMode ? `Last ${PAGE_SIZE} tx` : `Last ${PAGE_SIZE} transactions`}
+            {isPopupMode 
+              ? `${filteredTransactions.length} ${operationMode} tx` 
+              : `${filteredTransactions.length} ${operationMode} transactions`
+            }
           </span>
         </div>
         <div className="flex items-center gap-1">
@@ -254,9 +233,9 @@ export function UnifiedHistory({ wallet, transactions, onTransactionsUpdate, isL
       <CardContent className={isPopupMode ? 'px-3 pb-3 pt-0' : ''}>
         {/* Filter Buttons */}
         <div className={`flex flex-wrap ${isPopupMode ? 'gap-1 mb-2' : 'gap-2 mb-4'}`}>
-          {(['all', 'sent', 'received', 'contract'] as HistoryFilter[]).map((filter) => {
-            const sentCount = transactions.filter(tx => tx.type === 'sent').length;
-            const receivedCount = transactions.filter(tx => tx.type === 'received').length;
+          {(['all', 'sent', 'received'] as HistoryFilter[]).map((filter) => {
+            const sentCount = filteredTransactions.filter(tx => tx.type === 'sent').length;
+            const receivedCount = filteredTransactions.filter(tx => tx.type === 'received').length;
             
             return (
               <Button
@@ -264,7 +243,9 @@ export function UnifiedHistory({ wallet, transactions, onTransactionsUpdate, isL
                 variant={activeFilter === filter ? 'default' : 'outline'}
                 size="sm"
                 onClick={() => setActiveFilter(filter)}
-                className={`capitalize ${isPopupMode ? 'h-6 px-2 text-[10px]' : ''}`}
+                className={`capitalize ${isPopupMode ? 'h-6 px-2 text-[10px]' : ''} ${
+                  activeFilter === filter && operationMode === 'private' ? 'bg-[#0000db] hover:bg-[#0000db]/90' : ''
+                }`}
               >
                 {filter}
                 {filter === 'sent' && sentCount > 0 && (
@@ -272,9 +253,6 @@ export function UnifiedHistory({ wallet, transactions, onTransactionsUpdate, isL
                 )}
                 {filter === 'received' && receivedCount > 0 && (
                   <Badge variant="secondary" className={isPopupMode ? 'ml-1 text-[9px] px-1' : 'ml-1.5 text-xs'}>{receivedCount}</Badge>
-                )}
-                {filter === 'contract' && contractHistory.length > 0 && (
-                  <Badge variant="secondary" className={isPopupMode ? 'ml-1 text-[9px] px-1' : 'ml-1.5 text-xs'}>{contractHistory.length}</Badge>
                 )}
               </Button>
             );
@@ -321,40 +299,6 @@ export function UnifiedHistory({ wallet, transactions, onTransactionsUpdate, isL
                 )}
               </div>
             ))}
-          </div>
-        )}
-
-        {/* Scroll Up Indicator - Fixed below header for Popup Mode */}
-        {isPopupMode && showScrollUpIndicator && (
-          <div
-            className="fixed top-[100px] left-1/2 -translate-x-1/2 z-40 animate-bounce cursor-pointer"
-            onClick={() => {
-              const scrollContainer = document.querySelector('.popup-container');
-              if (scrollContainer) {
-                scrollContainer.scrollBy({ top: -250, behavior: 'smooth' });
-              }
-            }}
-          >
-            <div className="flex flex-col items-center text-muted-foreground bg-background/90 backdrop-blur-sm px-3 py-1.5 rounded-full border border-border shadow-md">
-              <ChevronUp className="h-4 w-4" />
-            </div>
-          </div>
-        )}
-
-        {/* Scroll Down Indicator - Fixed above footer for Popup Mode */}
-        {isPopupMode && showScrollIndicator && (
-          <div
-            className="fixed bottom-[110px] left-1/2 -translate-x-1/2 z-40 animate-bounce cursor-pointer"
-            onClick={() => {
-              const scrollContainer = document.querySelector('.popup-container');
-              if (scrollContainer) {
-                scrollContainer.scrollBy({ top: 200, behavior: 'smooth' });
-              }
-            }}
-          >
-            <div className="flex flex-col items-center text-muted-foreground bg-background/90 backdrop-blur-sm px-3 py-1.5 rounded-full border border-border shadow-md">
-              <ChevronDown className="h-4 w-4" />
-            </div>
           </div>
         )}
 
@@ -592,22 +536,13 @@ function TransferItem({
             </Button>
           )}
         </div>
-        {/* Type Badge - Bottom Right for popup - Only show Private badge */}
-        {isPrivate && (
-          <div className="absolute -bottom-1 right-0">
-            <Badge className="bg-[#0000db] text-white text-[8px] px-1 py-0">
-              <Shield className="h-2 w-2 mr-0.5" />
-              Private
-            </Badge>
-          </div>
-        )}
       </div>
     );
   }
   
   // Expanded mode: full view
   return (
-    <div className="relative">
+    <div>
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           {tx.type === 'sent' ? (
@@ -652,19 +587,6 @@ function TransferItem({
           <span className="text-muted-foreground">Time: </span>
           <span>{new Date(tx.timestamp * 1000).toLocaleString()}</span>
         </div>
-      </div>
-      {/* Type Badge - Bottom Right */}
-      <div className="absolute bottom-0 right-0">
-        {isPrivate ? (
-          <Badge className="bg-[#0000db] text-white text-[10px] px-1.5 py-0.5">
-            <Shield className="h-2.5 w-2.5 mr-0.5" />
-            Private
-          </Badge>
-        ) : (
-          <Badge variant="outline" className="text-[10px] px-1.5 py-0.5">
-            Account
-          </Badge>
-        )}
       </div>
     </div>
   );

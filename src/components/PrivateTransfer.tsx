@@ -365,6 +365,7 @@ export function PrivateTransfer({
           status={txModalStatus}
           result={txModalResult}
           type="transfer"
+          isPopupMode={isCompact}
         />
       </div>
     );

@@ -343,6 +343,7 @@ export function ClaimTransfers({ wallet, onTransactionSuccess, isPopupMode = fal
           status={txModalStatus}
           result={txModalResult}
           type="claim"
+          isPopupMode={isPopupMode}
         />
       </CardContent>
     </Card>

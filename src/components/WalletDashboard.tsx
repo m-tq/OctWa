@@ -21,6 +21,7 @@ import {
   Gift,
   Globe,
   ChevronDown,
+  ChevronUp,
   Plus,
   Trash2,
   Wifi,
@@ -106,6 +107,8 @@ export function WalletDashboard({
   const [showResetPassword, setShowResetPassword] = useState(false);
   const [isVerifyingReset, setIsVerifyingReset] = useState(false);
   const [showExportKeys, setShowExportKeys] = useState(false);
+  const [showScrollIndicator, setShowScrollIndicator] = useState(false);
+  const [showScrollUpIndicator, setShowScrollUpIndicator] = useState(false);
   const { toast } = useToast();
 
   // Determine if private mode is available
@@ -126,6 +129,38 @@ export function WalletDashboard({
     const savedMode = loadOperationMode(encBalance);
     setOperationMode(savedMode);
   }, [encryptedBalance]);
+
+  // Check if content is scrollable (for popup mode scroll indicator in history tab)
+  useEffect(() => {
+    if (!isPopupMode || activeTab !== 'history') {
+      setShowScrollIndicator(false);
+      setShowScrollUpIndicator(false);
+      return;
+    }
+
+    const scrollContainer = document.querySelector('.popup-container');
+    if (!scrollContainer) return;
+
+    const checkScrollPosition = () => {
+      const { scrollTop, scrollHeight, clientHeight } = scrollContainer;
+      const isAtTop = scrollTop < 50;
+      const isAtBottom = scrollTop + clientHeight >= scrollHeight - 20;
+      const hasScrollableContent = scrollHeight > clientHeight;
+
+      setShowScrollIndicator(hasScrollableContent && !isAtBottom);
+      setShowScrollUpIndicator(hasScrollableContent && !isAtTop);
+    };
+
+    const timer = setTimeout(checkScrollPosition, 100);
+    scrollContainer.addEventListener('scroll', checkScrollPosition);
+    window.addEventListener('resize', checkScrollPosition);
+
+    return () => {
+      clearTimeout(timer);
+      scrollContainer.removeEventListener('scroll', checkScrollPosition);
+      window.removeEventListener('resize', checkScrollPosition);
+    };
+  }, [isPopupMode, activeTab, transactions.length]);
 
   // Check RPC status every 1 minute using active RPC provider
   useEffect(() => {
@@ -922,7 +957,7 @@ export function WalletDashboard({
               {isPopupMode ? (
                 // Popup mode - Compact layout
                 <>
-                  <ThemeToggle />
+                  <ThemeToggle isPopupMode={true} />
                   {/* Mobile Hamburger Menu with expanded functionality */}
                   <Sheet open={showMobileMenu} onOpenChange={setShowMobileMenu}>
                     <SheetTrigger asChild>
@@ -1054,7 +1089,7 @@ export function WalletDashboard({
                             setShowLockConfirm(true);
                             setShowMobileMenu(false);
                           }}
-                          className="w-full justify-start gap-2 text-orange-600 hover:text-orange-700 dark:text-orange-400 dark:hover:text-orange-300"
+                          className="w-full justify-start gap-2 text-orange-600 hover:text-orange-700 dark:text-orange-400 dark:hover:text-orange-300 border-orange-600 hover:border-orange-700 dark:border-orange-400 dark:hover:border-orange-300"
                         >
                           <Lock className="h-4 w-4" />
                           Lock Wallet
@@ -1067,7 +1102,7 @@ export function WalletDashboard({
                             setShowResetConfirm(true);
                             setShowMobileMenu(false);
                           }}
-                          className="w-full justify-start gap-2 text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300"
+                          className="w-full justify-start gap-2 text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 border-red-500 hover:border-red-700 dark:border-red-400 dark:hover:border-red-300"
                         >
                           <RotateCcw className="h-4 w-4" />
                           Reset All
@@ -1079,61 +1114,37 @@ export function WalletDashboard({
               ) : (
                 // Expanded mode - Full layout
                 <>
-                  <ThemeToggle />
+                  <ThemeToggle isPopupMode={false} />
                   {/* Desktop Menu Items */}
                   <div className="hidden md:flex items-center space-x-2">
-                    {/* Icon only buttons with tooltips: RPC, dApps, Add Wallet */}
-                    <TooltipProvider>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Button
-                            variant="outline"
-                            size="icon"
-                            onClick={() => setShowRPCManager(true)}
-                            className="h-9 w-9"
-                          >
-                            <Wifi className="h-4 w-4" />
-                          </Button>
-                        </TooltipTrigger>
-                        <TooltipContent>
-                          <p>RPC Provider</p>
-                        </TooltipContent>
-                      </Tooltip>
-                    </TooltipProvider>
-                    <TooltipProvider>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Button
-                            variant="outline"
-                            size="icon"
-                            onClick={() => setShowDAppsManager(true)}
-                            className="h-9 w-9"
-                          >
-                            <Globe className="h-4 w-4" />
-                          </Button>
-                        </TooltipTrigger>
-                        <TooltipContent>
-                          <p>Connected dApps</p>
-                        </TooltipContent>
-                      </Tooltip>
-                    </TooltipProvider>
-                    <TooltipProvider>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Button 
-                            variant="outline" 
-                            size="icon"
-                            className="h-9 w-9"
-                            onClick={() => setShowAddWalletDialog(true)}
-                          >
-                            <Plus className="h-4 w-4" />
-                          </Button>
-                        </TooltipTrigger>
-                        <TooltipContent>
-                          <p>Add Wallet</p>
-                        </TooltipContent>
-                      </Tooltip>
-                    </TooltipProvider>
+                    {/* Buttons with caption: RPC, dApps, Add Wallet */}
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setShowRPCManager(true)}
+                      className="flex items-center gap-2"
+                    >
+                      <Wifi className="h-4 w-4" />
+                      RPC
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setShowDAppsManager(true)}
+                      className="flex items-center gap-2"
+                    >
+                      <Globe className="h-4 w-4" />
+                      dApps
+                    </Button>
+                    <Button 
+                      variant="outline" 
+                      size="sm"
+                      className="flex items-center gap-2"
+                      onClick={() => setShowAddWalletDialog(true)}
+                    >
+                      <Plus className="h-4 w-4" />
+                      Add Wallet
+                    </Button>
                     
                     {/* Text buttons: Export Private Keys, Lock Wallet, Reset All */}
                     <Button 
@@ -1148,7 +1159,7 @@ export function WalletDashboard({
                     <Button
                       variant="outline"
                       size="sm"
-                      className="text-orange-600 hover:text-orange-700 dark:text-orange-400 dark:hover:text-orange-300 flex items-center gap-2"
+                      className="text-orange-600 hover:text-orange-700 dark:text-orange-400 dark:hover:text-orange-300 border-orange-600 hover:border-orange-700 dark:border-orange-400 dark:hover:border-orange-300 flex items-center gap-2"
                       onClick={() => setShowLockConfirm(true)}
                     >
                       <Lock className="h-4 w-4" />
@@ -1158,7 +1169,7 @@ export function WalletDashboard({
                       variant="outline"
                       size="sm"
                       onClick={() => setShowResetConfirm(true)}
-                      className="text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 flex items-center gap-2"
+                      className="text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 border-red-500 hover:border-red-700 dark:border-red-400 dark:hover:border-red-300 flex items-center gap-2"
                     >
                       <RotateCcw className="h-4 w-4" />
                       Reset
@@ -1525,7 +1536,7 @@ export function WalletDashboard({
           )}
 
           {/* Balance Tab Content - Connected to tabs */}
-          <TabsContent value="balance" className={isPopupMode ? 'mt-2' : `mt-0 border ${operationMode === 'private' ? 'border-[#0000db]/40' : 'border-foreground/20'} rounded-b-lg rounded-t-none bg-background p-4`}>
+          <TabsContent value="balance" className={`tab-animated ${isPopupMode ? 'mt-2' : `mt-0 border ${operationMode === 'private' ? 'border-[#0000db]/40' : 'border-foreground/20'} rounded-b-lg rounded-t-none bg-background p-4`}`}>
             {operationMode === 'public' ? (
               <PublicBalance 
                 wallet={wallet} 
@@ -1553,7 +1564,7 @@ export function WalletDashboard({
 
           {/* Send Tab (Public Mode) */}
           {operationMode === 'public' && (
-            <TabsContent value="send" className={isPopupMode ? 'mt-2' : 'mt-0 border border-foreground/20 rounded-b-lg rounded-t-none bg-background px-4 pb-4'}>
+            <TabsContent value="send" className={`tab-animated ${isPopupMode ? 'mt-2' : 'mt-0 border border-foreground/20 rounded-b-lg rounded-t-none bg-background px-4 pb-4'}`}>
               {isPopupMode ? (
                 // Popup mode: Single send only, no sub-tabs
                 <SendTransaction
@@ -1589,7 +1600,7 @@ export function WalletDashboard({
                     </TabsTrigger>
                   </TabsList>
 
-                  <TabsContent value="single" className="mt-3">
+                  <TabsContent value="single" className="mt-3 subtab-animated">
                     <SendTransaction
                       wallet={wallet}
                       balance={balance}
@@ -1600,7 +1611,7 @@ export function WalletDashboard({
                     />
                   </TabsContent>
 
-                  <TabsContent value="multi" className="mt-3">
+                  <TabsContent value="multi" className="mt-3 subtab-animated">
                     <MultiSend
                       wallet={wallet}
                       balance={balance}
@@ -1612,7 +1623,7 @@ export function WalletDashboard({
                     />
                   </TabsContent>
 
-                  <TabsContent value="file" className="mt-3">
+                  <TabsContent value="file" className="mt-3 subtab-animated">
                     <FileMultiSend
                       wallet={wallet}
                       balance={balance}
@@ -1630,7 +1641,7 @@ export function WalletDashboard({
 
           {/* Transfer Tab (Private Mode) */}
           {operationMode === 'private' && (
-            <TabsContent value="transfer" className={isPopupMode ? 'mt-2' : 'mt-0 border border-[#0000db]/40 rounded-b-lg rounded-t-none bg-background p-4'}>
+            <TabsContent value="transfer" className={`tab-animated ${isPopupMode ? 'mt-2' : 'mt-0 border border-[#0000db]/40 rounded-b-lg rounded-t-none bg-background p-4'}`}>
               <PrivateTransfer
                 wallet={wallet}
                 balance={balance}
@@ -1646,7 +1657,7 @@ export function WalletDashboard({
 
           {/* Claim Tab (Private Mode) */}
           {operationMode === 'private' && (
-            <TabsContent value="claim" className={isPopupMode ? 'mt-2' : 'mt-0 border border-[#0000db]/40 rounded-b-lg rounded-t-none bg-background p-4'}>
+            <TabsContent value="claim" className={`tab-animated ${isPopupMode ? 'mt-2' : 'mt-0 border border-[#0000db]/40 rounded-b-lg rounded-t-none bg-background p-4'}`}>
               <ClaimTransfers
                 wallet={wallet}
                 onTransactionSuccess={handleTransactionSuccess}
@@ -1657,7 +1668,7 @@ export function WalletDashboard({
           )}
 
           {/* History Tab (Both Modes) */}
-          <TabsContent value="history" className={isPopupMode ? 'mt-2' : `mt-0 border ${operationMode === 'private' ? 'border-[#0000db]/40' : 'border-foreground/20'} rounded-b-lg rounded-t-none bg-background p-4`}>
+          <TabsContent value="history" className={`tab-animated ${isPopupMode ? 'mt-2' : `mt-0 border ${operationMode === 'private' ? 'border-[#0000db]/40' : 'border-foreground/20'} rounded-b-lg rounded-t-none bg-background p-4`}`}>
             <UnifiedHistory 
               wallet={wallet} 
               transactions={transactions}
@@ -1665,10 +1676,44 @@ export function WalletDashboard({
               isLoading={isLoadingTransactions}
               isPopupMode={isPopupMode}
               hideBorder={!isPopupMode}
+              operationMode={operationMode}
             />
           </TabsContent>
         </Tabs>
       </main>
+
+      {/* Scroll Indicators - Popup Mode History (positioned outside main for proper fixed positioning) */}
+      {isPopupMode && activeTab === 'history' && showScrollUpIndicator && (
+        <div
+          className="absolute top-[103px] left-1/2 -translate-x-1/2 z-[60] animate-bounce cursor-pointer"
+          onClick={() => {
+            const scrollContainer = document.querySelector('.popup-container');
+            if (scrollContainer) {
+              scrollContainer.scrollBy({ top: -250, behavior: 'smooth' });
+            }
+          }}
+        >
+          <div className="flex flex-col items-center text-muted-foreground bg-background/90 backdrop-blur-sm px-3 py-1.5 rounded-full border border-border shadow-md">
+            <ChevronUp className="h-4 w-4" />
+          </div>
+        </div>
+      )}
+
+      {isPopupMode && activeTab === 'history' && showScrollIndicator && (
+        <div
+          className="absolute bottom-[108px] left-1/2 -translate-x-1/2 z-[60] animate-bounce cursor-pointer"
+          onClick={() => {
+            const scrollContainer = document.querySelector('.popup-container');
+            if (scrollContainer) {
+              scrollContainer.scrollBy({ top: 200, behavior: 'smooth' });
+            }
+          }}
+        >
+          <div className="flex flex-col items-center text-muted-foreground bg-background/90 backdrop-blur-sm px-3 py-1.5 rounded-full border border-border shadow-md">
+            <ChevronDown className="h-4 w-4" />
+          </div>
+        </div>
+      )}
 
       {/* Fixed Bottom Navigation - Popup Mode Only */}
       {isPopupMode && (

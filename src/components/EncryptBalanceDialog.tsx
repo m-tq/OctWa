@@ -16,6 +16,7 @@ interface EncryptBalanceDialogProps {
   wallet: Wallet;
   publicBalance: number;
   onSuccess: () => void;
+  isPopupMode?: boolean;
 }
 
 export function EncryptBalanceDialog({ 
@@ -23,7 +24,8 @@ export function EncryptBalanceDialog({
   onOpenChange, 
   wallet, 
   publicBalance, 
-  onSuccess 
+  onSuccess,
+  isPopupMode = false
 }: EncryptBalanceDialogProps) {
   const [amount, setAmount] = useState('');
   const [isEncrypting, setIsEncrypting] = useState(false);
@@ -84,41 +86,41 @@ export function EncryptBalanceDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <Lock className="h-5 w-5" />
+      <DialogContent className={isPopupMode ? "w-[320px] p-3" : "sm:max-w-md"}>
+        <DialogHeader className={isPopupMode ? "pb-2" : ""}>
+          <DialogTitle className={`flex items-center gap-2 ${isPopupMode ? 'text-sm' : ''}`}>
+            <Lock className={isPopupMode ? "h-4 w-4" : "h-5 w-5"} />
             Encrypt Balance
           </DialogTitle>
         </DialogHeader>
         
-        <div className="space-y-4">
-          <Alert>
-            <AlertTriangle className="h-4 w-4" />
-            <AlertDescription>
-              Encrypting balance converts public OCT to private OCT.
+        <div className={isPopupMode ? "space-y-3" : "space-y-4"}>
+          <Alert className={isPopupMode ? "py-2" : ""}>
+            <AlertTriangle className={isPopupMode ? "h-3 w-3" : "h-4 w-4"} />
+            <AlertDescription className={isPopupMode ? "text-[11px] leading-tight" : ""}>
+              {isPopupMode ? "Convert public OCT to private OCT." : "Encrypting balance converts public OCT to private OCT."}
             </AlertDescription>
           </Alert>
 
-          <div className="space-y-2">
-            <Label>Current Public Balance</Label>
-            <div className="p-3 bg-muted rounded-md font-mono">
+          <div className={isPopupMode ? "space-y-1" : "space-y-2"}>
+            <Label className={isPopupMode ? "text-xs" : ""}>Current Public Balance</Label>
+            <div className={`bg-muted rounded-md font-mono ${isPopupMode ? 'p-2 text-xs' : 'p-3'}`}>
               {publicBalance.toFixed(8)} OCT
             </div>
           </div>
 
-          <div className="space-y-2">
-            <Label>Maximum Encryptable</Label>
-            <div className="p-3 bg-muted rounded-md font-mono">
+          <div className={isPopupMode ? "space-y-1" : "space-y-2"}>
+            <Label className={isPopupMode ? "text-xs" : ""}>Maximum Encryptable</Label>
+            <div className={`bg-muted rounded-md font-mono ${isPopupMode ? 'p-2 text-xs' : 'p-3'}`}>
               {maxEncryptable.toFixed(8)} OCT
             </div>
-            <p className="text-xs text-muted-foreground">
-              (0.001 OCT reserved for transaction fees)
+            <p className={`text-muted-foreground ${isPopupMode ? 'text-[10px]' : 'text-xs'}`}>
+              (0.001 OCT reserved for fees)
             </p>
           </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="encrypt-amount">Amount to Encrypt</Label>
+          <div className={isPopupMode ? "space-y-1" : "space-y-2"}>
+            <Label htmlFor="encrypt-amount" className={isPopupMode ? "text-xs" : ""}>Amount to Encrypt</Label>
             <Input
               id="encrypt-amount"
               type="number"
@@ -129,6 +131,7 @@ export function EncryptBalanceDialog({
               min="0"
               max={maxEncryptable}
               disabled={isEncrypting}
+              className={isPopupMode ? "h-8 text-xs" : ""}
             />
           </div>
 
@@ -137,7 +140,7 @@ export function EncryptBalanceDialog({
               variant="outline"
               onClick={() => onOpenChange(false)}
               disabled={isEncrypting}
-              className="flex-1"
+              className={`flex-1 ${isPopupMode ? 'h-8 text-xs' : ''}`}
             >
               Cancel
             </Button>
@@ -148,16 +151,16 @@ export function EncryptBalanceDialog({
                     <Button
                       onClick={handleEncrypt}
                       disabled={isEncrypting || !amount || parseFloat(amount) <= 0 || parseFloat(amount) > maxEncryptable || maxEncryptable <= 0}
-                      className="w-full"
+                      className={`w-full ${isPopupMode ? 'h-8 text-xs' : ''}`}
                     >
                       {isEncrypting ? (
                         <>
-                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                          Encrypting...
+                          <Loader2 className={`${isPopupMode ? 'h-3 w-3 mr-1' : 'h-4 w-4 mr-2'} animate-spin`} />
+                          {isPopupMode ? '...' : 'Encrypting...'}
                         </>
                       ) : (
                         <>
-                          <Lock className="h-4 w-4 mr-2" />
+                          <Lock className={`${isPopupMode ? 'h-3 w-3 mr-1' : 'h-4 w-4 mr-2'}`} />
                           Encrypt
                         </>
                       )}

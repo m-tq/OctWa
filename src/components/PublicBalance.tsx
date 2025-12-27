@@ -195,6 +195,7 @@ export function PublicBalance({
         wallet={wallet}
         publicBalance={balance || 0}
         onSuccess={handleEncryptSuccess}
+        isPopupMode={isPopupMode}
       />
     </div>
   );

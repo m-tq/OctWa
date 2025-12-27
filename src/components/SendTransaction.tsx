@@ -407,6 +407,7 @@ export function SendTransaction({ wallet, balance, nonce, onBalanceUpdate, onNon
           status={txModalStatus}
           result={txModalResult}
           type="send"
+          isPopupMode={isCompact}
         />
       </div>
     );

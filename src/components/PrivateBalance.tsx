@@ -197,6 +197,7 @@ export function PrivateBalance({
         wallet={wallet}
         encryptedBalance={encryptedBalance?.encrypted || 0}
         onSuccess={handleDecryptSuccess}
+        isPopupMode={isPopupMode}
       />
     </div>
   );

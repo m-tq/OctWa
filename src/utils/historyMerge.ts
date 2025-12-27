@@ -43,7 +43,7 @@ export interface UnifiedHistoryItem {
 }
 
 // Filter type for history
-export type HistoryFilter = 'all' | 'account' | 'sent' | 'received' | 'contract';
+export type HistoryFilter = 'all' | 'public' | 'private' | 'sent' | 'received' | 'contract';
 
 /**
  * Merges transactions and contract interactions into a unified history list.
@@ -96,7 +96,7 @@ export function sortHistoryByTimestamp(items: UnifiedHistoryItem[]): UnifiedHist
  * Filters history items by type.
  * 
  * @param items - Array of unified history items
- * @param filter - Filter to apply ('all', 'account', 'sent', 'received', or 'contract')
+ * @param filter - Filter to apply ('all', 'public', 'private', 'sent', 'received', or 'contract')
  * @returns Filtered array
  */
 export function filterHistory(
@@ -107,8 +107,12 @@ export function filterHistory(
     return items;
   }
 
-  if (filter === 'account') {
-    return items.filter(item => item.type === 'transfer');
+  if (filter === 'public') {
+    return items.filter(item => item.type === 'transfer' && item.transaction && !isPrivateTransfer(item.transaction));
+  }
+
+  if (filter === 'private') {
+    return items.filter(item => item.type === 'transfer' && item.transaction && isPrivateTransfer(item.transaction));
   }
 
   if (filter === 'sent') {

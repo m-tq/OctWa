@@ -15,6 +15,7 @@ interface DecryptBalanceDialogProps {
   wallet: Wallet;
   encryptedBalance: number;
   onSuccess: () => void;
+  isPopupMode?: boolean;
 }
 
 export function DecryptBalanceDialog({ 
@@ -22,7 +23,8 @@ export function DecryptBalanceDialog({
   onOpenChange, 
   wallet, 
   encryptedBalance, 
-  onSuccess 
+  onSuccess,
+  isPopupMode = false
 }: DecryptBalanceDialogProps) {
   const [amount, setAmount] = useState('');
   const [isDecrypting, setIsDecrypting] = useState(false);
@@ -81,31 +83,31 @@ export function DecryptBalanceDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <Unlock className="h-5 w-5" />
+      <DialogContent className={isPopupMode ? "w-[320px] p-3" : "sm:max-w-md"}>
+        <DialogHeader className={isPopupMode ? "pb-2" : ""}>
+          <DialogTitle className={`flex items-center gap-2 ${isPopupMode ? 'text-sm' : ''}`}>
+            <Unlock className={isPopupMode ? "h-4 w-4" : "h-5 w-5"} />
             Decrypt Balance
           </DialogTitle>
         </DialogHeader>
         
-        <div className="space-y-4">
-          <Alert>
-            <AlertTriangle className="h-4 w-4" />
-            <AlertDescription>
-              Decrypting balance converts private OCT back to public OCT.
+        <div className={isPopupMode ? "space-y-3" : "space-y-4"}>
+          <Alert className={isPopupMode ? "py-2" : ""}>
+            <AlertTriangle className={isPopupMode ? "h-3 w-3" : "h-4 w-4"} />
+            <AlertDescription className={isPopupMode ? "text-[11px] leading-tight" : ""}>
+              {isPopupMode ? "Convert private OCT back to public OCT." : "Decrypting balance converts private OCT back to public OCT."}
             </AlertDescription>
           </Alert>
 
-          <div className="space-y-2">
-            <Label>Current Private Balance</Label>
-            <div className="p-3 bg-[#0000db]/5 border border-[#0000db]/20 rounded-md font-mono text-[#0000db]">
+          <div className={isPopupMode ? "space-y-1" : "space-y-2"}>
+            <Label className={isPopupMode ? "text-xs" : ""}>Current Private Balance</Label>
+            <div className={`bg-[#0000db]/5 border border-[#0000db]/20 rounded-md font-mono text-[#0000db] ${isPopupMode ? 'p-2 text-xs' : 'p-3'}`}>
               {encryptedBalance.toFixed(8)} OCT
             </div>
           </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="decrypt-amount">Amount to Decrypt</Label>
+          <div className={isPopupMode ? "space-y-1" : "space-y-2"}>
+            <Label htmlFor="decrypt-amount" className={isPopupMode ? "text-xs" : ""}>Amount to Decrypt</Label>
             <Input
               id="decrypt-amount"
               type="number"
@@ -116,6 +118,7 @@ export function DecryptBalanceDialog({
               min="0"
               max={encryptedBalance}
               disabled={isDecrypting}
+              className={isPopupMode ? "h-8 text-xs" : ""}
             />
           </div>
 
@@ -124,23 +127,23 @@ export function DecryptBalanceDialog({
               variant="outline"
               onClick={() => onOpenChange(false)}
               disabled={isDecrypting}
-              className="flex-1"
+              className={`flex-1 ${isPopupMode ? 'h-8 text-xs' : ''}`}
             >
               Cancel
             </Button>
             <Button
               onClick={handleDecrypt}
               disabled={isDecrypting || !amount || parseFloat(amount) <= 0 || parseFloat(amount) > encryptedBalance}
-              className="flex-1"
+              className={`flex-1 ${isPopupMode ? 'h-8 text-xs' : ''}`}
             >
               {isDecrypting ? (
                 <>
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Decrypting...
+                  <Loader2 className={`${isPopupMode ? 'h-3 w-3 mr-1' : 'h-4 w-4 mr-2'} animate-spin`} />
+                  {isPopupMode ? '...' : 'Decrypting...'}
                 </>
               ) : (
                 <>
-                  <Unlock className="h-4 w-4 mr-2" />
+                  <Unlock className={`${isPopupMode ? 'h-3 w-3 mr-1' : 'h-4 w-4 mr-2'}`} />
                   Decrypt
                 </>
               )}
