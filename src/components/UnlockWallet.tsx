@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { WalletManager } from '../utils/walletManager';
 import { Wallet } from '../types/wallet';
-import { Shield, AlertTriangle, Clock } from 'lucide-react';
+import { Shield, AlertTriangle, Clock, Eye, EyeOff } from 'lucide-react';
 import { ExtensionStorageManager } from '../utils/extensionStorage';
 
 interface UnlockWalletProps {
@@ -10,6 +10,8 @@ interface UnlockWalletProps {
 
 export function UnlockWallet({ onUnlock }: UnlockWalletProps) {
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [capsLockOn, setCapsLockOn] = useState(false);
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
@@ -20,6 +22,25 @@ export function UnlockWallet({ onUnlock }: UnlockWalletProps) {
     remainingAttempts: number;
   } | null>(null);
   const [countdown, setCountdown] = useState(0);
+
+  // Caps Lock detection
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.getModifierState('CapsLock')) {
+        setCapsLockOn(true);
+      }
+    };
+    const handleKeyUp = (e: KeyboardEvent) => {
+      setCapsLockOn(e.getModifierState('CapsLock'));
+    };
+    
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('keyup', handleKeyUp);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keyup', handleKeyUp);
+    };
+  }, []);
 
   // Check rate limit on mount and after each attempt
   const checkRateLimit = () => {
@@ -214,16 +235,32 @@ export function UnlockWallet({ onUnlock }: UnlockWalletProps) {
         )}
 
         <form onSubmit={handleUnlock} className="space-y-4">
-          <div>
+          <div className="relative">
             <input
-              type="password"
+              type={showPassword ? "text" : "password"}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="Enter password"
-              className="w-full px-3 py-2 border border-border rounded-md bg-background disabled:opacity-50"
+              className="w-full px-3 py-2 pr-10 border border-border rounded-md bg-background disabled:opacity-50"
               disabled={isLoading || isLocked}
             />
+            <button
+              type="button"
+              onClick={() => setShowPassword(!showPassword)}
+              className="absolute right-0 top-0 h-full px-3 text-muted-foreground hover:text-foreground disabled:opacity-50"
+              disabled={isLoading || isLocked}
+            >
+              {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+            </button>
           </div>
+
+          {/* Caps Lock Warning */}
+          {capsLockOn && !isLocked && (
+            <div className="flex items-center gap-2 p-2 bg-yellow-500/10 border border-yellow-500/30 rounded text-yellow-600 dark:text-yellow-400">
+              <AlertTriangle className="h-4 w-4 flex-shrink-0" />
+              <span className="text-xs">Caps Lock is ON</span>
+            </div>
+          )}
 
           {/* Remaining Attempts Warning */}
           {!isLocked && rateLimitInfo && rateLimitInfo.remainingAttempts < 5 && rateLimitInfo.remainingAttempts > 0 && (
