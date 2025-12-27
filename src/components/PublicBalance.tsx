@@ -121,7 +121,7 @@ export function PublicBalance({
         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
           <CardTitle className="flex items-center gap-2 text-base">
             <Globe className="h-4 w-4" />
-            Balance
+            Overview
           </CardTitle>
           <Button variant="outline" size="sm" onClick={fetchWalletBalance} disabled={refreshing}>
             <RefreshCw className={`h-4 w-4 mr-1.5 ${refreshing ? 'animate-spin' : ''}`} />
