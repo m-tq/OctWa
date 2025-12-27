@@ -136,7 +136,7 @@ export function AddWalletPopup({
   // Expanded mode: larger dialog with centered text
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="sm:max-w-md max-h-[85vh] overflow-hidden p-0">
+      <DialogContent className="sm:max-w-lg max-h-[85vh] overflow-hidden p-0">
         {screen === 'menu' && (
           <>
             <DialogHeader className="p-6 pb-4">
