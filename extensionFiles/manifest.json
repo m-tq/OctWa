@@ -32,6 +32,7 @@
       "128": "icons/octwa128x128.png"
     }
   },
+  "omnibox": { "keyword": "octwa" },
   "icons": {
     "16": "icons/octwa16x16.png",
     "32": "icons/octwa32x32.png",
