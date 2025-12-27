@@ -700,64 +700,66 @@ export function WalletDashboard({
                           </SheetHeader>
                           <div className="flex-1 mt-4 overflow-hidden">
                             <ScrollArea className="h-full max-h-[calc(100vh-200px)]">
-                              <div className="space-y-2 pr-2">
+                              <div className="space-y-1 pr-2">
                                 {wallets.map((w, i) => {
                                   const isActive = w.address === wallet.address;
                                   return (
-                                    <div
-                                      key={w.address}
-                                      className={`flex items-center justify-between p-3 rounded-lg cursor-pointer group gap-2 ${
-                                        isActive 
-                                          ? 'bg-[#0000db]/10 border border-[#0000db]/30 text-[#0000db]' 
-                                          : 'hover:bg-accent hover:text-accent-foreground border border-transparent'
-                                      }`}
-                                      onClick={() => {
-                                        onSwitchWallet(w);
-                                        setShowWalletSelector(false);
-                                      }}
-                                    >
-                                      <div className="flex-1 min-w-0">
-                                        <div className="flex items-center space-x-2">
-                                          <span className={`font-mono text-sm truncate ${isActive ? 'font-semibold' : ''}`}>
-                                            #{i + 1} {truncateAddress(w.address)}
-                                          </span>
-                                        </div>
-                                        {w.type && (
-                                          <div className={`text-xs mt-1 ${isActive ? 'text-[#0000db]/70' : 'text-muted-foreground'}`}>
-                                            {w.type === 'generated' && 'Generated'}
-                                            {w.type === 'imported-mnemonic' && 'Imported (mnemonic)'}
-                                            {w.type === 'imported-private-key' && 'Imported (key)'}
+                                    <div key={w.address}>
+                                      {i > 0 && <div className="h-px bg-border my-1" />}
+                                      <div
+                                        className={`flex items-center justify-between p-3 rounded-lg cursor-pointer group gap-2 ${
+                                          isActive 
+                                            ? 'bg-[#0000db]/10 border border-[#0000db]/30 text-[#0000db]' 
+                                            : 'hover:bg-accent hover:text-accent-foreground border border-transparent'
+                                        }`}
+                                        onClick={() => {
+                                          onSwitchWallet(w);
+                                          setShowWalletSelector(false);
+                                        }}
+                                      >
+                                        <div className="flex-1 min-w-0">
+                                          <div className="flex items-center space-x-2">
+                                            <span className={`font-mono text-sm truncate ${isActive ? 'font-semibold' : ''}`}>
+                                              #{i + 1} {truncateAddress(w.address)}
+                                            </span>
                                           </div>
-                                        )}
-                                      </div>
-                                      <div className="flex items-center space-x-1 flex-shrink-0">
-                                        <Button
-                                          variant="ghost"
-                                          size="sm"
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            copyToClipboard(w.address, 'Address');
-                                          }}
-                                          className="h-7 w-7 p-0 text-muted-foreground hover:text-foreground"
-                                          title="Copy address"
-                                        >
-                                          <Copy className="h-3.5 w-3.5" />
-                                        </Button>
-                                        {wallets.length > 1 && (
+                                          {w.type && (
+                                            <div className={`text-xs mt-1 ${isActive ? 'text-[#0000db]/70' : 'text-muted-foreground'}`}>
+                                              {w.type === 'generated' && 'Generated'}
+                                              {w.type === 'imported-mnemonic' && 'Imported (mnemonic)'}
+                                              {w.type === 'imported-private-key' && 'Imported (key)'}
+                                            </div>
+                                          )}
+                                        </div>
+                                        <div className="flex items-center space-x-1 flex-shrink-0">
                                           <Button
                                             variant="ghost"
                                             size="sm"
                                             onClick={(e) => {
                                               e.stopPropagation();
-                                              setWalletToDelete(w);
-                                              setShowWalletSelector(false);
+                                              copyToClipboard(w.address, 'Address');
                                             }}
-                                            className="h-7 w-7 p-0 text-red-500 hover:text-red-700"
-                                            title="Remove wallet"
+                                            className="h-7 w-7 p-0 text-muted-foreground hover:text-foreground"
+                                            title="Copy address"
                                           >
-                                            <Trash2 className="h-3.5 w-3.5" />
+                                            <Copy className="h-3.5 w-3.5" />
                                           </Button>
-                                        )}
+                                          {wallets.length > 1 && (
+                                            <Button
+                                              variant="ghost"
+                                              size="sm"
+                                              onClick={(e) => {
+                                                e.stopPropagation();
+                                                setWalletToDelete(w);
+                                                setShowWalletSelector(false);
+                                              }}
+                                              className="h-7 w-7 p-0 text-red-500 hover:text-red-700"
+                                              title="Remove wallet"
+                                            >
+                                              <Trash2 className="h-3.5 w-3.5" />
+                                            </Button>
+                                          )}
+                                        </div>
                                       </div>
                                     </div>
                                   );
@@ -799,64 +801,66 @@ export function WalletDashboard({
                           </SheetHeader>
                           <div className="flex-1 mt-4 overflow-hidden">
                             <ScrollArea className="h-full max-h-[calc(100vh-200px)]">
-                              <div className="space-y-2 pr-4">
+                              <div className="space-y-1 pr-4">
                                 {wallets.map((w, i) => {
                                   const isActive = w.address === wallet.address;
                                   return (
-                                    <div
-                                      key={w.address}
-                                      className={`flex items-center justify-between p-3 rounded-lg cursor-pointer group gap-2 ${
-                                        isActive 
-                                          ? 'bg-[#0000db]/10 border border-[#0000db]/30 text-[#0000db]' 
-                                          : 'hover:bg-accent hover:text-accent-foreground border border-transparent'
-                                      }`}
-                                      onClick={() => {
-                                        onSwitchWallet(w);
-                                        setShowWalletSelector(false);
-                                      }}
-                                    >
-                                      <div className="flex-1 min-w-0">
-                                        <div className="flex items-center space-x-2">
-                                          <span className={`font-mono text-sm truncate ${isActive ? 'font-semibold' : ''}`}>
-                                            #{i + 1} {truncateAddress(w.address)}
-                                          </span>
-                                        </div>
-                                        {w.type && (
-                                          <div className={`text-xs mt-1 ${isActive ? 'text-[#0000db]/70' : 'text-muted-foreground'}`}>
-                                            {w.type === 'generated' && 'Generated wallet'}
-                                            {w.type === 'imported-mnemonic' && 'Imported wallet (mnemonic)'}
-                                            {w.type === 'imported-private-key' && 'Imported wallet (private key)'}
+                                    <div key={w.address}>
+                                      {i > 0 && <div className="h-px bg-border my-1" />}
+                                      <div
+                                        className={`flex items-center justify-between p-3 rounded-lg cursor-pointer group gap-2 ${
+                                          isActive 
+                                            ? 'bg-[#0000db]/10 border border-[#0000db]/30 text-[#0000db]' 
+                                            : 'hover:bg-accent hover:text-accent-foreground border border-transparent'
+                                        }`}
+                                        onClick={() => {
+                                          onSwitchWallet(w);
+                                          setShowWalletSelector(false);
+                                        }}
+                                      >
+                                        <div className="flex-1 min-w-0">
+                                          <div className="flex items-center space-x-2">
+                                            <span className={`font-mono text-sm truncate ${isActive ? 'font-semibold' : ''}`}>
+                                              #{i + 1} {truncateAddress(w.address)}
+                                            </span>
                                           </div>
-                                        )}
-                                      </div>
-                                      <div className="flex items-center space-x-1 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
-                                        <Button
-                                          variant="ghost"
-                                          size="sm"
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            copyToClipboard(w.address, 'Address');
-                                          }}
-                                          className="h-7 w-7 p-0 text-muted-foreground hover:text-foreground"
-                                          title="Copy address"
-                                        >
-                                          <Copy className="h-3.5 w-3.5" />
-                                        </Button>
-                                        {wallets.length > 1 && (
+                                          {w.type && (
+                                            <div className={`text-xs mt-1 ${isActive ? 'text-[#0000db]/70' : 'text-muted-foreground'}`}>
+                                              {w.type === 'generated' && 'Generated wallet'}
+                                              {w.type === 'imported-mnemonic' && 'Imported wallet (mnemonic)'}
+                                              {w.type === 'imported-private-key' && 'Imported wallet (private key)'}
+                                            </div>
+                                          )}
+                                        </div>
+                                        <div className="flex items-center space-x-1 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
                                           <Button
                                             variant="ghost"
                                             size="sm"
                                             onClick={(e) => {
                                               e.stopPropagation();
-                                              setWalletToDelete(w);
-                                              setShowWalletSelector(false);
+                                              copyToClipboard(w.address, 'Address');
                                             }}
-                                            className="h-7 w-7 p-0 text-red-500 hover:text-red-700"
-                                            title="Remove wallet"
+                                            className="h-7 w-7 p-0 text-muted-foreground hover:text-foreground"
+                                            title="Copy address"
                                           >
-                                            <Trash2 className="h-3.5 w-3.5" />
+                                            <Copy className="h-3.5 w-3.5" />
                                           </Button>
-                                        )}
+                                          {wallets.length > 1 && (
+                                            <Button
+                                              variant="ghost"
+                                              size="sm"
+                                              onClick={(e) => {
+                                                e.stopPropagation();
+                                                setWalletToDelete(w);
+                                                setShowWalletSelector(false);
+                                              }}
+                                              className="h-7 w-7 p-0 text-red-500 hover:text-red-700"
+                                              title="Remove wallet"
+                                            >
+                                              <Trash2 className="h-3.5 w-3.5" />
+                                            </Button>
+                                          )}
+                                        </div>
                                       </div>
                                     </div>
                                   );
@@ -1431,7 +1435,7 @@ export function WalletDashboard({
       {/* Sticky Mode Toggle - Only for expanded mode */}
       {!isPopupMode && (
         <div className="fixed top-[70px] sm:top-[83px] left-0 right-0 z-40 bg-background/95 backdrop-blur-sm border-b border-border/50 py-3">
-          <div className="octra-container px-2 sm:px-4">
+          <div className="octra-container px-6 sm:px-8 lg:px-12">
             <ModeToggle
               currentMode={operationMode}
               onModeChange={handleModeChange}
@@ -1456,67 +1460,71 @@ export function WalletDashboard({
           {/* TabsList - Only show inline for expanded mode */}
           {!isPopupMode && (
             operationMode === 'public' ? (
-              // Public Mode Tabs - Embedded/Trimmed style
-              <TabsList className="grid w-full grid-cols-3 h-12 p-0 rounded-t-xl rounded-b-none bg-muted/80 border border-b-0 border-border/50">
-                <TabsTrigger 
-                  value="balance" 
-                  className="flex items-center justify-center gap-2 text-sm py-3 rounded-none rounded-tl-xl border-r border-border/30 data-[state=active]:bg-background data-[state=active]:shadow-none data-[state=inactive]:hover:bg-muted"
-                >
-                  <PieChart className="h-4 w-4" />
-                  <span className="font-medium">Balance</span>
-                </TabsTrigger>
-                <TabsTrigger 
-                  value="send" 
-                  className="flex items-center justify-center gap-2 text-sm py-3 rounded-none border-r border-border/30 data-[state=active]:bg-background data-[state=active]:shadow-none data-[state=inactive]:hover:bg-muted"
-                >
-                  <Send className="h-4 w-4" />
-                  <span className="font-medium">Send</span>
-                </TabsTrigger>
-                <TabsTrigger 
-                  value="history" 
-                  className="flex items-center justify-center gap-2 text-sm py-3 rounded-none rounded-tr-xl data-[state=active]:bg-background data-[state=active]:shadow-none data-[state=inactive]:hover:bg-muted"
-                >
-                  <History className="h-4 w-4" />
-                  <span className="font-medium">History</span>
-                </TabsTrigger>
-              </TabsList>
+              // Public Mode Tabs - Classic tab style full width with centered caption
+              <div className="relative">
+                <TabsList className="relative z-10 grid w-full grid-cols-3 h-auto p-0 bg-transparent gap-0">
+                  <TabsTrigger 
+                    value="balance" 
+                    className="flex items-center justify-center gap-2 text-sm px-6 py-3 rounded-t-lg rounded-b-none border border-b-0 border-border bg-muted/50 data-[state=active]:bg-background data-[state=active]:border-foreground/20 data-[state=active]:border-b-background data-[state=active]:-mb-px data-[state=active]:z-10 data-[state=inactive]:hover:bg-muted transition-all -mr-px"
+                  >
+                    <PieChart className="h-4 w-4" />
+                    <span className="font-medium">Balance</span>
+                  </TabsTrigger>
+                  <TabsTrigger 
+                    value="send" 
+                    className="flex items-center justify-center gap-2 text-sm px-6 py-3 rounded-t-lg rounded-b-none border border-b-0 border-border bg-muted/50 data-[state=active]:bg-background data-[state=active]:border-foreground/20 data-[state=active]:border-b-background data-[state=active]:-mb-px data-[state=active]:z-10 data-[state=inactive]:hover:bg-muted transition-all -mr-px"
+                  >
+                    <Send className="h-4 w-4" />
+                    <span className="font-medium">Send</span>
+                  </TabsTrigger>
+                  <TabsTrigger 
+                    value="history" 
+                    className="flex items-center justify-center gap-2 text-sm px-6 py-3 rounded-t-lg rounded-b-none border border-b-0 border-border bg-muted/50 data-[state=active]:bg-background data-[state=active]:border-foreground/20 data-[state=active]:border-b-background data-[state=active]:-mb-px data-[state=active]:z-10 data-[state=inactive]:hover:bg-muted transition-all"
+                  >
+                    <History className="h-4 w-4" />
+                    <span className="font-medium">History</span>
+                  </TabsTrigger>
+                </TabsList>
+              </div>
             ) : (
-              // Private Mode Tabs - Embedded/Trimmed style with brand color
-              <TabsList className="grid w-full grid-cols-4 h-12 p-0 rounded-t-xl rounded-b-none bg-[#0000db]/10 border border-b-0 border-[#0000db]/20">
-                <TabsTrigger 
-                  value="balance" 
-                  className="flex items-center justify-center gap-2 text-sm py-3 rounded-none rounded-tl-xl border-r border-[#0000db]/20 data-[state=active]:bg-[#0000db] data-[state=active]:text-white data-[state=inactive]:hover:bg-[#0000db]/20"
-                >
-                  <Shield className="h-4 w-4" />
-                  <span className="font-medium">Balance</span>
-                </TabsTrigger>
-                <TabsTrigger 
-                  value="transfer" 
-                  className="flex items-center justify-center gap-2 text-sm py-3 rounded-none border-r border-[#0000db]/20 data-[state=active]:bg-[#0000db] data-[state=active]:text-white data-[state=inactive]:hover:bg-[#0000db]/20"
-                >
-                  <Send className="h-4 w-4" />
-                  <span className="font-medium">Send</span>
-                </TabsTrigger>
-                <TabsTrigger 
-                  value="claim" 
-                  className="flex items-center justify-center gap-2 text-sm py-3 rounded-none border-r border-[#0000db]/20 data-[state=active]:bg-[#0000db] data-[state=active]:text-white data-[state=inactive]:hover:bg-[#0000db]/20"
-                >
-                  <Gift className="h-4 w-4" />
-                  <span className="font-medium">Claim</span>
-                </TabsTrigger>
-                <TabsTrigger 
-                  value="history" 
-                  className="flex items-center justify-center gap-2 text-sm py-3 rounded-none rounded-tr-xl data-[state=active]:bg-[#0000db] data-[state=active]:text-white data-[state=inactive]:hover:bg-[#0000db]/20"
-                >
-                  <History className="h-4 w-4" />
-                  <span className="font-medium">History</span>
-                </TabsTrigger>
-              </TabsList>
+              // Private Mode Tabs - Classic tab style full width with centered caption
+              <div className="relative">
+                <TabsList className="relative z-10 grid w-full grid-cols-4 h-auto p-0 bg-transparent gap-0">
+                  <TabsTrigger 
+                    value="balance" 
+                    className="flex items-center justify-center gap-2 text-sm px-6 py-3 rounded-t-lg rounded-b-none border border-b-0 border-[#0000db]/30 bg-[#0000db]/5 data-[state=active]:bg-background data-[state=active]:border-[#0000db]/40 data-[state=active]:border-b-background data-[state=active]:-mb-px data-[state=active]:z-10 data-[state=active]:text-[#0000db] data-[state=inactive]:hover:bg-[#0000db]/10 transition-all -mr-px"
+                  >
+                    <Shield className="h-4 w-4" />
+                    <span className="font-medium">Balance</span>
+                  </TabsTrigger>
+                  <TabsTrigger 
+                    value="transfer" 
+                    className="flex items-center justify-center gap-2 text-sm px-6 py-3 rounded-t-lg rounded-b-none border border-b-0 border-[#0000db]/30 bg-[#0000db]/5 data-[state=active]:bg-background data-[state=active]:border-[#0000db]/40 data-[state=active]:border-b-background data-[state=active]:-mb-px data-[state=active]:z-10 data-[state=active]:text-[#0000db] data-[state=inactive]:hover:bg-[#0000db]/10 transition-all -mr-px"
+                  >
+                    <Send className="h-4 w-4" />
+                    <span className="font-medium">Send</span>
+                  </TabsTrigger>
+                  <TabsTrigger 
+                    value="claim" 
+                    className="flex items-center justify-center gap-2 text-sm px-6 py-3 rounded-t-lg rounded-b-none border border-b-0 border-[#0000db]/30 bg-[#0000db]/5 data-[state=active]:bg-background data-[state=active]:border-[#0000db]/40 data-[state=active]:border-b-background data-[state=active]:-mb-px data-[state=active]:z-10 data-[state=active]:text-[#0000db] data-[state=inactive]:hover:bg-[#0000db]/10 transition-all -mr-px"
+                  >
+                    <Gift className="h-4 w-4" />
+                    <span className="font-medium">Claim</span>
+                  </TabsTrigger>
+                  <TabsTrigger 
+                    value="history" 
+                    className="flex items-center justify-center gap-2 text-sm px-6 py-3 rounded-t-lg rounded-b-none border border-b-0 border-[#0000db]/30 bg-[#0000db]/5 data-[state=active]:bg-background data-[state=active]:border-[#0000db]/40 data-[state=active]:border-b-background data-[state=active]:-mb-px data-[state=active]:z-10 data-[state=active]:text-[#0000db] data-[state=inactive]:hover:bg-[#0000db]/10 transition-all"
+                  >
+                    <History className="h-4 w-4" />
+                    <span className="font-medium">History</span>
+                  </TabsTrigger>
+                </TabsList>
+              </div>
             )
           )}
 
           {/* Balance Tab Content - Connected to tabs */}
-          <TabsContent value="balance" className={isPopupMode ? 'mt-2' : `mt-0 rounded-t-none border border-t-0 ${operationMode === 'private' ? 'border-[#0000db]/20' : 'border-border/50'} rounded-b-xl bg-background p-4`}>
+          <TabsContent value="balance" className={isPopupMode ? 'mt-2' : `mt-0 border ${operationMode === 'private' ? 'border-[#0000db]/40' : 'border-foreground/20'} rounded-b-lg rounded-t-none bg-background p-4`}>
             {operationMode === 'public' ? (
               <PublicBalance 
                 wallet={wallet} 
@@ -1525,6 +1533,7 @@ export function WalletDashboard({
                 onEncryptedBalanceUpdate={setEncryptedBalance}
                 onBalanceUpdate={handleBalanceUpdate}
                 isLoading={isLoadingBalance || isRefreshingData}
+                hideBorder={!isPopupMode}
               />
             ) : (
               <PrivateBalance 
@@ -1534,13 +1543,14 @@ export function WalletDashboard({
                 onEncryptedBalanceUpdate={setEncryptedBalance}
                 onBalanceUpdate={handleBalanceUpdate}
                 isLoading={isLoadingBalance || isRefreshingData}
+                hideBorder={!isPopupMode}
               />
             )}
           </TabsContent>
 
           {/* Send Tab (Public Mode) */}
           {operationMode === 'public' && (
-            <TabsContent value="send" className={isPopupMode ? 'mt-2' : 'mt-0 rounded-t-none border border-t-0 border-border/50 rounded-b-xl bg-background px-4 pb-4'}>
+            <TabsContent value="send" className={isPopupMode ? 'mt-2' : 'mt-0 border border-foreground/20 rounded-b-lg rounded-t-none bg-background px-4 pb-4'}>
               {isPopupMode ? (
                 // Popup mode: Single send only, no sub-tabs
                 <SendTransaction
@@ -1595,6 +1605,7 @@ export function WalletDashboard({
                       onBalanceUpdate={handleBalanceUpdate}
                       onNonceUpdate={handleNonceUpdate}
                       onTransactionSuccess={handleTransactionSuccess}
+                      hideBorder={true}
                     />
                   </TabsContent>
 
@@ -1606,6 +1617,7 @@ export function WalletDashboard({
                       onBalanceUpdate={handleBalanceUpdate}
                       onNonceUpdate={handleNonceUpdate}
                       onTransactionSuccess={handleTransactionSuccess}
+                      hideBorder={true}
                     />
                   </TabsContent>
                 </Tabs>
@@ -1615,7 +1627,7 @@ export function WalletDashboard({
 
           {/* Transfer Tab (Private Mode) */}
           {operationMode === 'private' && (
-            <TabsContent value="transfer" className={isPopupMode ? 'mt-2' : 'mt-0 rounded-t-none border border-t-0 border-[#0000db]/20 rounded-b-xl bg-background p-4'}>
+            <TabsContent value="transfer" className={isPopupMode ? 'mt-2' : 'mt-0 border border-[#0000db]/40 rounded-b-lg rounded-t-none bg-background p-4'}>
               <PrivateTransfer
                 wallet={wallet}
                 balance={balance}
@@ -1631,23 +1643,25 @@ export function WalletDashboard({
 
           {/* Claim Tab (Private Mode) */}
           {operationMode === 'private' && (
-            <TabsContent value="claim" className={isPopupMode ? 'mt-2' : 'mt-0 rounded-t-none border border-t-0 border-[#0000db]/20 rounded-b-xl bg-background p-4'}>
+            <TabsContent value="claim" className={isPopupMode ? 'mt-2' : 'mt-0 border border-[#0000db]/40 rounded-b-lg rounded-t-none bg-background p-4'}>
               <ClaimTransfers
                 wallet={wallet}
                 onTransactionSuccess={handleTransactionSuccess}
                 isPopupMode={isPopupMode}
+                hideBorder={!isPopupMode}
               />
             </TabsContent>
           )}
 
           {/* History Tab (Both Modes) */}
-          <TabsContent value="history" className={isPopupMode ? 'mt-2' : `mt-0 rounded-t-none border border-t-0 ${operationMode === 'private' ? 'border-[#0000db]/20' : 'border-border/50'} rounded-b-xl bg-background p-4`}>
+          <TabsContent value="history" className={isPopupMode ? 'mt-2' : `mt-0 border ${operationMode === 'private' ? 'border-[#0000db]/40' : 'border-foreground/20'} rounded-b-lg rounded-t-none bg-background p-4`}>
             <UnifiedHistory 
               wallet={wallet} 
               transactions={transactions}
               onTransactionsUpdate={handleTransactionsUpdate}
               isLoading={isLoadingTransactions}
               isPopupMode={isPopupMode}
+              hideBorder={!isPopupMode}
             />
           </TabsContent>
         </Tabs>

@@ -46,9 +46,10 @@ interface UnifiedHistoryProps {
   onTransactionsUpdate: (transactions: Transaction[]) => void;
   isLoading?: boolean;
   isPopupMode?: boolean;
+  hideBorder?: boolean;
 }
 
-export function UnifiedHistory({ wallet, transactions, onTransactionsUpdate, isLoading = false, isPopupMode = false }: UnifiedHistoryProps) {
+export function UnifiedHistory({ wallet, transactions, onTransactionsUpdate, isLoading = false, isPopupMode = false, hideBorder = false }: UnifiedHistoryProps) {
   const [refreshing, setRefreshing] = useState(false);
   const [selectedTx, setSelectedTx] = useState<TransactionDetails | PendingTransaction | null>(null);
   const [loadingDetails, setLoadingDetails] = useState(false);
@@ -223,7 +224,7 @@ export function UnifiedHistory({ wallet, transactions, onTransactionsUpdate, isL
   }, [isPopupMode, unifiedHistory.length, transactions.length]);
 
   return (
-    <Card>
+    <Card className={hideBorder ? 'border-0 shadow-none' : ''}>
       <CardHeader className={`flex flex-row items-center justify-between space-y-0 ${isPopupMode ? 'pb-2 px-3 pt-3' : 'pb-4'}`}>
         <div className="flex flex-col gap-0.5">
           <CardTitle className={`flex items-center gap-2 ${isPopupMode ? 'text-sm' : ''}`}>

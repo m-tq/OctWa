@@ -256,11 +256,31 @@ function App() {
           // Use async IIFE since callback is not async
           (async () => {
             try {
-              // Use WalletManager to decrypt session wallets
+              // IMPORTANT: First try to restore session password/encryption key
+              // This handles the case where another context (popup) just unlocked
+              const restoredPassword = await WalletManager.ensureSessionPassword();
+              
+              if (!restoredPassword) {
+                // Cannot decrypt - session is not active
+                // Don't clear wallets here, let the lock state handler do it
+                console.log('🔄 App.tsx: Cannot decrypt session wallets - no session password');
+                return;
+              }
+              
+              // Re-setup auto-lock callback after session restore
+              WalletManager.setAutoLockCallback(() => {
+                console.log('🔒 App.tsx: Auto-lock callback triggered (from sync)!');
+                setWallet(null);
+                setWallets([]);
+                setIsLocked(true);
+              });
+              
+              // Now decrypt session wallets
               const newWallets = await WalletManager.getSessionWallets();
               if (Array.isArray(newWallets) && newWallets.length > 0) {
                 console.log('🔄 App.tsx: New wallets count:', newWallets.length);
                 setWallets(newWallets);
+                setIsLocked(false); // Unlock UI since we have valid session
                 
                 // Get current active wallet ID
                 const currentActiveId = localStorage.getItem('activeWalletId');
@@ -270,22 +290,20 @@ function App() {
                 
                 if (currentWalletExists) {
                   // Keep current wallet but update from new list (in case data changed)
-                const updatedWallet = newWallets.find(w => w.address === currentActiveId);
-                if (updatedWallet) {
-                  setWallet(updatedWallet);
+                  const updatedWallet = newWallets.find(w => w.address === currentActiveId);
+                  if (updatedWallet) {
+                    setWallet(updatedWallet);
+                  }
+                } else {
+                  // Current wallet doesn't exist, switch to first
+                  setWallet(newWallets[0]);
+                  localStorage.setItem('activeWalletId', newWallets[0].address);
                 }
-              } else {
-                // Current wallet doesn't exist, switch to first
-                setWallet(newWallets[0]);
-                localStorage.setItem('activeWalletId', newWallets[0].address);
               }
-            } else if (Array.isArray(newWallets) && newWallets.length === 0) {
-              // All wallets removed
-              setWallets([]);
-              setWallet(null);
-            }
+              // Note: Don't set wallets to [] if newWallets is empty
+              // This could be a decryption failure, not actual empty wallets
             } catch (error) {
-              console.error('Failed to parse session wallets change:', error);
+              console.error('Failed to sync session wallets:', error);
             }
           })();
           return;

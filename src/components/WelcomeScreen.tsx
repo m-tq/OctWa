@@ -56,7 +56,7 @@ export function WelcomeScreen({ onWalletCreated }: WelcomeScreenProps) {
   if (screen === 'create') {
     return (
       <div className="min-h-screen flex items-center justify-center p-4 overflow-hidden">
-        <div className="w-full max-w-md">
+        <div className="w-full max-w-md sm:max-w-lg">
           <PageTransition key={`create-${transitionKey}`} variant="slide-left" duration={250}>
             <Button variant="ghost" size="sm" onClick={handleBack} className="mb-4">
               <ArrowLeft className="h-4 w-4 mr-2" />

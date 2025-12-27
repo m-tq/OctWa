@@ -29,6 +29,7 @@ interface MultiSendProps {
   onBalanceUpdate: (balance: number) => void;
   onNonceUpdate: (nonce: number) => void;
   onTransactionSuccess: () => void;
+  hideBorder?: boolean;
 }
 
 // Simple address validation function
@@ -56,7 +57,7 @@ function validateRecipientInput(input: string): { isValid: boolean; error?: stri
   };
 }
 
-export function MultiSend({ wallet, balance, nonce, onBalanceUpdate, onNonceUpdate, onTransactionSuccess }: MultiSendProps) {
+export function MultiSend({ wallet, balance, nonce, onBalanceUpdate, onNonceUpdate, onTransactionSuccess, hideBorder = false }: MultiSendProps) {
   const [recipients, setRecipients] = useState<Recipient[]>([
     { address: '', amount: '', message: '' }
   ]);
@@ -286,7 +287,7 @@ export function MultiSend({ wallet, balance, nonce, onBalanceUpdate, onNonceUpda
   const currentBalance = balance || 0;
 
   return (
-    <Card>
+    <Card className={hideBorder ? 'border-0 shadow-none' : ''}>
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <Users className="h-5 w-5" />

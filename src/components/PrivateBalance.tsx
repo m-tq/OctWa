@@ -17,6 +17,7 @@ interface PrivateBalanceProps {
   onEncryptedBalanceUpdate?: (encryptedBalance: any) => void;
   onBalanceUpdate: (balance: number) => void;
   isLoading?: boolean;
+  hideBorder?: boolean;
 }
 
 export function PrivateBalance({ 
@@ -25,7 +26,8 @@ export function PrivateBalance({
   encryptedBalance: propEncryptedBalance, 
   onEncryptedBalanceUpdate, 
   onBalanceUpdate, 
-  isLoading = false 
+  isLoading = false,
+  hideBorder = false
 }: PrivateBalanceProps) {
   const [refreshing, setRefreshing] = useState(false);
   const [localEncryptedBalance, setLocalEncryptedBalance] = useState<any>(null);
@@ -121,7 +123,7 @@ export function PrivateBalance({
 
   return (
     <div className="space-y-4">
-      <Card className="border-[#0000db]/20">
+      <Card className={hideBorder ? 'border-0 shadow-none' : 'border-[#0000db]/20'}>
         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
           <CardTitle className="flex items-center gap-2 text-[#0000db] text-base">
             <Shield className="h-4 w-4" />
@@ -143,7 +145,7 @@ export function PrivateBalance({
           <div className="text-center py-3 bg-[#0000db]/5 rounded-lg">
             <div className="flex items-center justify-center gap-1.5 mb-1">
               <Shield className="h-4 w-4 text-[#0000db]" />
-              <span className="text-xs font-medium text-[#0000db]">Encrypted Balance</span>
+              <span className="text-xs font-medium text-[#0000db]">Available</span>
             </div>
             {isLoading ? (
               <Skeleton className="h-10 w-40 mx-auto" />

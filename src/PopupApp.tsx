@@ -127,40 +127,55 @@ function PopupApp() {
         }
         
         // Wallet exists, try to load from session storage
-        const sessionWallets = await ExtensionStorageManager.getSession('sessionWallets');
+        // Session wallets are now ENCRYPTED, need session key to decrypt
         const sessionKey = await ExtensionStorageManager.getSession('sessionKey');
         const activeWalletId = localStorage.getItem('activeWalletId') || await ExtensionStorageManager.get('activeWalletId');
         
         console.log('🔍 PopupApp: Session check:', {
-          hasSessionWallets: !!sessionWallets,
           hasSessionKey: !!sessionKey,
           activeWalletId
         });
         
-        // Only use session wallets if session key (password) is also present
-        // This ensures auto-lock works when browser is closed (session storage is cleared)
-        if (sessionWallets && sessionKey) {
+        // Only try to load session wallets if session key exists
+        // Session wallets are encrypted and require the session encryption key in memory
+        if (sessionKey) {
           try {
-            const parsedWallets = JSON.parse(sessionWallets);
-            if (Array.isArray(parsedWallets) && parsedWallets.length > 0) {
-              console.log('🔓 PopupApp: Loaded wallets from session storage:', parsedWallets.length);
+            // Restore session password first (this also restores encryption key)
+            const restoredPassword = await WalletManager.ensureSessionPassword();
+            
+            if (restoredPassword) {
+              // Re-setup auto-lock callback after session restore
+              WalletManager.setAutoLockCallback(() => {
+                console.log('🔒 PopupApp: Auto-lock callback triggered (from session restore)!');
+                setWallet(null);
+                setWallets([]);
+                setIsLocked(true);
+              });
               
-              let activeWallet = parsedWallets[0];
-              if (activeWalletId) {
-                const foundWallet = parsedWallets.find((w: Wallet) => w.address === activeWalletId);
-                if (foundWallet) {
-                  activeWallet = foundWallet;
+              // Now we can decrypt session wallets
+              const sessionWallets = await WalletManager.getSessionWallets();
+              
+              if (sessionWallets.length > 0) {
+                console.log('🔓 PopupApp: Loaded wallets from encrypted session storage:', sessionWallets.length);
+                
+                let activeWallet = sessionWallets[0];
+                if (activeWalletId) {
+                  const foundWallet = sessionWallets.find((w: Wallet) => w.address === activeWalletId);
+                  if (foundWallet) {
+                    activeWallet = foundWallet;
+                  }
                 }
+                
+                setWallets(sessionWallets);
+                setWallet(activeWallet);
+                setIsLocked(false);
+                setIsLoading(false);
+                console.log('✅ PopupApp: Dashboard ready with', sessionWallets.length, 'wallets');
+                return;
               }
-              
-              setWallets(parsedWallets);
-              setWallet(activeWallet);
-              setIsLocked(false);
-              setIsLoading(false);
-              return;
             }
           } catch (error) {
-            console.error('Failed to parse session wallets:', error);
+            console.error('Failed to restore session wallets:', error);
           }
         }
         
@@ -237,36 +252,60 @@ function PopupApp() {
         }
         
         // Handle session storage changes (wallets added/removed from expanded)
+        // Session wallets are now ENCRYPTED, use WalletManager to decrypt
         if (areaName === 'session' && changes.sessionWallets) {
           console.log('🔄 PopupApp: Session wallets changed, syncing...');
-          try {
-            const newWallets: Wallet[] = JSON.parse(changes.sessionWallets.newValue || '[]');
-            if (Array.isArray(newWallets) && newWallets.length > 0) {
-              console.log('🔄 PopupApp: New wallets count:', newWallets.length);
-              setWallets(newWallets);
+          // Use async IIFE since callback is not async
+          (async () => {
+            try {
+              // IMPORTANT: First try to restore session password/encryption key
+              // This handles the case where another context (expanded) just unlocked
+              const restoredPassword = await WalletManager.ensureSessionPassword();
               
-              // Get current active wallet ID
-              const currentActiveId = localStorage.getItem('activeWalletId');
-              
-              // Check if current wallet still exists in new list
-              const currentWalletExists = currentActiveId && newWallets.some(w => w.address === currentActiveId);
-              
-              if (currentWalletExists) {
-                const updatedWallet = newWallets.find(w => w.address === currentActiveId);
-                if (updatedWallet) {
-                  setWallet(updatedWallet);
-                }
-              } else {
-                setWallet(newWallets[0]);
-                localStorage.setItem('activeWalletId', newWallets[0].address);
+              if (!restoredPassword) {
+                // Cannot decrypt - session is not active
+                // Don't clear wallets here, let the lock state handler do it
+                console.log('🔄 PopupApp: Cannot decrypt session wallets - no session password');
+                return;
               }
-            } else if (Array.isArray(newWallets) && newWallets.length === 0) {
-              setWallets([]);
-              setWallet(null);
+              
+              // Re-setup auto-lock callback after session restore
+              WalletManager.setAutoLockCallback(() => {
+                console.log('🔒 PopupApp: Auto-lock callback triggered (from sync)!');
+                setWallet(null);
+                setWallets([]);
+                setIsLocked(true);
+              });
+              
+              // Now decrypt session wallets
+              const newWallets = await WalletManager.getSessionWallets();
+              if (Array.isArray(newWallets) && newWallets.length > 0) {
+                console.log('🔄 PopupApp: New wallets count:', newWallets.length);
+                setWallets(newWallets);
+                setIsLocked(false); // Unlock UI since we have valid session
+                
+                // Get current active wallet ID
+                const currentActiveId = localStorage.getItem('activeWalletId');
+                
+                // Check if current wallet still exists in new list
+                const currentWalletExists = currentActiveId && newWallets.some(w => w.address === currentActiveId);
+                
+                if (currentWalletExists) {
+                  const updatedWallet = newWallets.find(w => w.address === currentActiveId);
+                  if (updatedWallet) {
+                    setWallet(updatedWallet);
+                  }
+                } else {
+                  setWallet(newWallets[0]);
+                  localStorage.setItem('activeWalletId', newWallets[0].address);
+                }
+              }
+              // Note: Don't set wallets to [] if newWallets is empty
+              // This could be a decryption failure, not actual empty wallets
+            } catch (error) {
+              console.error('Failed to sync session wallets:', error);
             }
-          } catch (error) {
-            console.error('Failed to parse session wallets change:', error);
-          }
+          })();
           return;
         }
         

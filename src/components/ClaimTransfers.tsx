@@ -21,9 +21,10 @@ interface ClaimTransfersProps {
   wallet: Wallet | null;
   onTransactionSuccess: () => void;
   isPopupMode?: boolean;
+  hideBorder?: boolean;
 }
 
-export function ClaimTransfers({ wallet, onTransactionSuccess, isPopupMode = false }: ClaimTransfersProps) {
+export function ClaimTransfers({ wallet, onTransactionSuccess, isPopupMode = false, hideBorder = false }: ClaimTransfersProps) {
   const [transfers, setTransfers] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [claimingId, setClaimingId] = useState<string | null>(null);
@@ -201,7 +202,7 @@ export function ClaimTransfers({ wallet, onTransactionSuccess, isPopupMode = fal
   }
 
   return (
-    <Card className="border-[#0000db]/20">
+    <Card className={`${hideBorder ? 'border-0 shadow-none' : 'border-[#0000db]/20'}`}>
       <CardHeader className={`flex flex-row items-center justify-between space-y-0 ${isPopupMode ? 'pb-2 px-3 pt-3' : 'pb-4'}`}>
         <CardTitle className={`flex items-center gap-2 text-[#0000db] ${isPopupMode ? 'text-sm' : ''}`}>
           <Gift className={isPopupMode ? 'h-4 w-4' : 'h-5 w-5'} />

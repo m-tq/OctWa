@@ -30,6 +30,7 @@ interface FileMultiSendProps {
   onBalanceUpdate: (balance: number) => void;
   onNonceUpdate: (nonce: number) => void;
   onTransactionSuccess: () => void;
+  hideBorder?: boolean;
 }
 
 // Simple address validation function
@@ -57,7 +58,7 @@ function validateRecipientInput(input: string): { isValid: boolean; error?: stri
   };
 }
 
-export function FileMultiSend({ wallet, balance, onBalanceUpdate, onNonceUpdate, onTransactionSuccess }: FileMultiSendProps) {
+export function FileMultiSend({ wallet, balance, onBalanceUpdate, onNonceUpdate, onTransactionSuccess, hideBorder = false }: FileMultiSendProps) {
   const [recipients, setRecipients] = useState<FileRecipient[]>([]);
   const [amountMode, setAmountMode] = useState<'same' | 'different'>('same');
   const [ouOption, setOuOption] = useState<string>('auto');
@@ -413,7 +414,7 @@ export function FileMultiSend({ wallet, balance, onBalanceUpdate, onNonceUpdate,
   const currentBalance = balance || 0;
 
   return (
-    <Card>
+    <Card className={hideBorder ? 'border-0 shadow-none' : ''}>
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <FileText className="h-5 w-5" />
