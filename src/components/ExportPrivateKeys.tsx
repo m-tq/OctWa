@@ -17,9 +17,10 @@ interface ExportPrivateKeysProps {
   wallet: Wallet | null;
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
+  isPopupMode?: boolean;
 }
 
-export function ExportPrivateKeys({ wallet, open, onOpenChange }: ExportPrivateKeysProps) {
+export function ExportPrivateKeys({ wallet, open, onOpenChange, isPopupMode = false }: ExportPrivateKeysProps) {
   const [internalOpen, setInternalOpen] = useState(false);
   const isControlled = open !== undefined;
   const isOpen = isControlled ? open : internalOpen;
@@ -244,31 +245,34 @@ ${wallet.mnemonic}
   if (isControlled) {
     return (
       <Dialog open={isOpen} onOpenChange={setIsOpen}>
-        <DialogContent className="sm:max-w-2xl max-h-[90vh]" onInteractOutside={(e) => e.preventDefault()}>
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Key className="h-5 w-5" />
+        <DialogContent className={isPopupMode ? "w-[360px] max-h-[500px] p-0" : "sm:max-w-2xl max-h-[90vh]"} onInteractOutside={(e) => e.preventDefault()}>
+          <DialogHeader className={isPopupMode ? "p-3 pb-2" : ""}>
+            <DialogTitle className={`flex items-center gap-2 ${isPopupMode ? 'text-sm' : ''}`}>
+              <Key className={isPopupMode ? "h-4 w-4" : "h-5 w-5"} />
               Export Private Keys
             </DialogTitle>
             <DialogDescription className="sr-only">
               Enter your password to view and export your private keys
             </DialogDescription>
           </DialogHeader>
-          <ScrollArea className="max-h-[calc(90vh-100px)] pr-2">
-            <div className="pr-2">
+          <ScrollArea className={isPopupMode ? "max-h-[calc(500px-60px)] px-3 pb-3" : "max-h-[calc(90vh-100px)] pr-2"}>
+            <div className={isPopupMode ? "" : "pr-2"}>
               {!isUnlocked ? (
-                  <div className="space-y-4">
-                    <Alert>
-                      <div className="flex items-start space-x-3">
-                        <AlertTriangle className="h-4 w-4 mt-0.5 flex-shrink-0" />
-                        <AlertDescription>
-                          Enter your wallet password to access private key information. This is required for security purposes.
+                  <div className={isPopupMode ? "space-y-3" : "space-y-4"}>
+                    <Alert className={isPopupMode ? "py-2" : ""}>
+                      <div className={`flex items-start ${isPopupMode ? 'space-x-2' : 'space-x-3'}`}>
+                        <AlertTriangle className={`${isPopupMode ? 'h-3 w-3' : 'h-4 w-4'} mt-0.5 flex-shrink-0`} />
+                        <AlertDescription className={isPopupMode ? "text-[11px] leading-tight" : ""}>
+                          {isPopupMode 
+                            ? "Enter password to access private keys."
+                            : "Enter your wallet password to access private key information. This is required for security purposes."
+                          }
                         </AlertDescription>
                       </div>
                     </Alert>
 
                     <div className="space-y-2">
-                      <Label htmlFor="password">Wallet Password</Label>
+                      <Label htmlFor="password" className={isPopupMode ? "text-xs" : ""}>Wallet Password</Label>
                       <div className="relative">
                         <Input
                           id="password"
@@ -277,21 +281,21 @@ ${wallet.mnemonic}
                           value={password}
                           onChange={(e) => setPassword(e.target.value)}
                           onKeyPress={(e) => e.key === 'Enter' && handleVerifyPassword()}
-                          className="pr-10"
+                          className={`pr-10 ${isPopupMode ? 'h-8 text-xs' : ''}`}
                           disabled={isVerifying}
                         />
                         <Button
                           type="button"
                           variant="ghost"
                           size="sm"
-                          className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
+                          className={`absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent ${isPopupMode ? 'px-2' : ''}`}
                           onClick={() => setShowPassword(!showPassword)}
                           disabled={isVerifying}
                         >
                           {showPassword ? (
-                            <EyeOff className="h-4 w-4" />
+                            <EyeOff className={isPopupMode ? "h-3 w-3" : "h-4 w-4"} />
                           ) : (
-                            <Eye className="h-4 w-4" />
+                            <Eye className={isPopupMode ? "h-3 w-3" : "h-4 w-4"} />
                           )}
                         </Button>
                       </div>
@@ -302,208 +306,215 @@ ${wallet.mnemonic}
                         variant="outline"
                         onClick={handleClose}
                         disabled={isVerifying}
-                        className="flex-1"
+                        className={`flex-1 ${isPopupMode ? 'h-8 text-xs' : ''}`}
                       >
                         Cancel
                       </Button>
                       <Button
                         onClick={handleVerifyPassword}
                         disabled={isVerifying || !password}
-                        className="flex-1"
+                        className={`flex-1 ${isPopupMode ? 'h-8 text-xs' : ''}`}
                       >
-                        {isVerifying ? "Verifying..." : "Verify Password"}
+                        {isVerifying ? "Verifying..." : "Verify"}
                       </Button>
                     </div>
                   </div>
                 ) : (
-                  <div className="space-y-6">
-                    <Alert className="border-green-200 bg-green-50 dark:bg-green-950/50 dark:border-green-800">
-                      <div className="flex items-start space-x-3">
-                        <Shield className="h-4 w-4 text-green-600 mt-0.5 flex-shrink-0" />
-                        <AlertDescription className="text-green-800 dark:text-green-200">
-                          Password verified. You can now view and export your private keys.
+                  <div className={isPopupMode ? "space-y-3" : "space-y-6"}>
+                    <Alert className={`border-green-200 bg-green-50 dark:bg-green-950/50 dark:border-green-800 ${isPopupMode ? 'py-2' : ''}`}>
+                      <div className={`flex items-start ${isPopupMode ? 'space-x-2' : 'space-x-3'}`}>
+                        <Shield className={`${isPopupMode ? 'h-3 w-3' : 'h-4 w-4'} text-green-600 mt-0.5 flex-shrink-0`} />
+                        <AlertDescription className={`text-green-800 dark:text-green-200 ${isPopupMode ? 'text-[11px] leading-tight' : ''}`}>
+                          {isPopupMode ? "Password verified. View/export keys below." : "Password verified. You can now view and export your private keys."}
                         </AlertDescription>
                       </div>
                     </Alert>
 
                     {/* Wallet Address */}
-                    <div className="space-y-2">
-                      <Label className="text-sm font-medium">Wallet Address</Label>
-                      <div className="flex flex-col sm:flex-row sm:items-center space-y-2 sm:space-y-0 sm:space-x-2">
-                        <div className="flex-1 p-3 bg-muted rounded-md font-mono text-xs sm:text-sm break-all">
+                    <div className="space-y-1">
+                      <Label className={isPopupMode ? "text-xs" : "text-sm font-medium"}>Address</Label>
+                      <div className={`flex items-center ${isPopupMode ? 'gap-1' : 'flex-col sm:flex-row sm:items-center space-y-2 sm:space-y-0 sm:space-x-2'}`}>
+                        <div className={`flex-1 bg-muted rounded-md font-mono break-all ${isPopupMode ? 'p-2 text-[10px]' : 'p-3 text-xs sm:text-sm'}`}>
                           {wallet.address}
                         </div>
                         <Button
                           variant="outline"
                           size="sm"
                           onClick={() => copyToClipboard(wallet.address, 'Address')}
-                          className="self-start sm:self-auto"
+                          className={isPopupMode ? "h-7 w-7 p-0 flex-shrink-0" : "self-start sm:self-auto"}
                         >
-                          <Copy className="h-4 w-4" />
+                          <Copy className={isPopupMode ? "h-3 w-3" : "h-4 w-4"} />
                         </Button>
                       </div>
                     </div>
 
                     {/* Private Key */}
-                    <div className="space-y-2">
-                      <Label className="text-sm font-medium">Private Key (Base64)</Label>
-                      <div className="flex flex-col sm:flex-row sm:items-center space-y-2 sm:space-y-0 sm:space-x-2">
-                        <div className="flex-1 p-3 bg-muted rounded-md font-mono text-xs sm:text-sm break-all">
-                          {showPrivateKey ? wallet.privateKey : '•'.repeat(44)}
+                    <div className="space-y-1">
+                      <Label className={isPopupMode ? "text-xs" : "text-sm font-medium"}>Private Key</Label>
+                      <div className={`flex items-center ${isPopupMode ? 'gap-1' : 'flex-col sm:flex-row sm:items-center space-y-2 sm:space-y-0 sm:space-x-2'}`}>
+                        <div className={`flex-1 bg-muted rounded-md font-mono break-all ${isPopupMode ? 'p-2 text-[10px]' : 'p-3 text-xs sm:text-sm'}`}>
+                          {showPrivateKey ? wallet.privateKey : '•'.repeat(isPopupMode ? 24 : 44)}
                         </div>
-                        <div className="flex space-x-2 self-start sm:self-auto">
+                        <div className={`flex ${isPopupMode ? 'gap-0.5 flex-shrink-0' : 'space-x-2 self-start sm:self-auto'}`}>
                           <Button
                             variant="outline"
                             size="sm"
                             onClick={() => setShowPrivateKey(!showPrivateKey)}
+                            className={isPopupMode ? "h-7 w-7 p-0" : ""}
                           >
-                            {showPrivateKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                            {showPrivateKey ? <EyeOff className={isPopupMode ? "h-3 w-3" : "h-4 w-4"} /> : <Eye className={isPopupMode ? "h-3 w-3" : "h-4 w-4"} />}
                           </Button>
                           {showPrivateKey && (
                             <Button
                               variant="outline"
                               size="sm"
                               onClick={() => copyToClipboard(wallet.privateKey, 'Private Key', true)}
+                              className={isPopupMode ? "h-7 w-7 p-0" : ""}
                             >
-                              <Copy className="h-4 w-4" />
+                              <Copy className={isPopupMode ? "h-3 w-3" : "h-4 w-4"} />
                             </Button>
                           )}
                         </div>
                       </div>
                     </div>
 
-                    {/* Public Key */}
-                    {wallet.publicKey && (
-                      <div className="space-y-2">
-                        <Label className="text-sm font-medium">Public Key (Hex)</Label>
-                        <div className="flex flex-col sm:flex-row sm:items-center space-y-2 sm:space-y-0 sm:space-x-2">
-                          <div className="flex-1 p-3 bg-muted rounded-md font-mono text-xs sm:text-sm break-all">
-                            {wallet.publicKey}
-                          </div>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => copyToClipboard(wallet.publicKey!, 'Public Key')}
-                            className="self-start sm:self-auto"
-                          >
-                            <Copy className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Mnemonic */}
+                    {/* Mnemonic - Compact for popup */}
                     {wallet.mnemonic && (
-                      <div className="space-y-2">
-                        <Label className="text-sm font-medium">Mnemonic Phrase</Label>
-                        <div className="p-3 bg-muted rounded-md">
+                      <div className="space-y-1">
+                        <Label className={isPopupMode ? "text-xs" : "text-sm font-medium"}>Mnemonic</Label>
+                        <div className={`bg-muted rounded-md ${isPopupMode ? 'p-2' : 'p-3'}`}>
                           {showMnemonic ? (
-                            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                            <div className={`grid ${isPopupMode ? 'grid-cols-4 gap-1' : 'grid-cols-2 sm:grid-cols-3 gap-2'}`}>
                               {wallet.mnemonic.split(' ').map((word, index) => (
-                                <div key={index} className="flex items-center space-x-2">
-                                  <span className="text-xs text-muted-foreground w-6">
+                                <div key={index} className="flex items-center space-x-1">
+                                  <span className={`text-muted-foreground ${isPopupMode ? 'text-[8px] w-3' : 'text-xs w-6'}`}>
                                     {index + 1}.
                                   </span>
-                                  <span className="font-mono text-xs sm:text-sm">{word}</span>
+                                  <span className={`font-mono ${isPopupMode ? 'text-[9px]' : 'text-xs sm:text-sm'}`}>{word}</span>
                                 </div>
                               ))}
                             </div>
                           ) : (
-                            <div className="text-center py-4">
-                              <span className="text-muted-foreground">•••••••••••••••••••••••••••••••••••••••••••••••••••</span>
+                            <div className={`text-center ${isPopupMode ? 'py-1' : 'py-4'}`}>
+                              <span className={`text-muted-foreground ${isPopupMode ? 'text-[10px]' : ''}`}>
+                                {isPopupMode ? 'Click eye to show' : '•••••••••••••••••••••••••••••••••••••••••••••••••••'}
+                              </span>
                             </div>
                           )}
                         </div>
-                        <div className="flex space-x-2">
+                        <div className={`flex ${isPopupMode ? 'gap-1' : 'space-x-2'}`}>
                           <Button
                             variant="outline"
                             size="sm"
                             onClick={() => setShowMnemonic(!showMnemonic)}
-                            className="flex-1"
+                            className={`flex-1 ${isPopupMode ? 'h-7 text-[10px]' : ''}`}
                           >
-                            {showMnemonic ? <EyeOff className="h-4 w-4 mr-2" /> : <Eye className="h-4 w-4 mr-2" />}
-                            {showMnemonic ? 'Hide' : 'Show'} Mnemonic
+                            {showMnemonic ? <EyeOff className={`${isPopupMode ? 'h-3 w-3 mr-1' : 'h-4 w-4 mr-2'}`} /> : <Eye className={`${isPopupMode ? 'h-3 w-3 mr-1' : 'h-4 w-4 mr-2'}`} />}
+                            {showMnemonic ? 'Hide' : 'Show'}
                           </Button>
                           {showMnemonic && (
                             <Button
                               variant="outline"
                               size="sm"
                               onClick={() => copyToClipboard(wallet.mnemonic!, 'Mnemonic', true)}
-                              className="flex-1"
+                              className={`flex-1 ${isPopupMode ? 'h-7 text-[10px]' : ''}`}
                             >
-                              <Copy className="h-4 w-4 mr-2" />
-                              Copy Mnemonic
+                              <Copy className={`${isPopupMode ? 'h-3 w-3 mr-1' : 'h-4 w-4 mr-2'}`} />
+                              Copy
                             </Button>
                           )}
                         </div>
                       </div>
                     )}
 
-                    <Separator />
+                    {!isPopupMode && <Separator />}
 
-                    {/* Export Options */}
-                    <div className="space-y-4">
-                      <Label className="text-base font-medium">Export Options</Label>
+                    {/* Export Options - Simplified for popup */}
+                    <div className={isPopupMode ? "space-y-2" : "space-y-4"}>
+                      {!isPopupMode && <Label className="text-base font-medium">Export Options</Label>}
                       
-                      <Alert>
-                        <div className="flex items-start space-x-3">
-                          <AlertTriangle className="h-4 w-4 mt-0.5 flex-shrink-0" />
-                          <AlertDescription>
-                            <strong>Security Warning:</strong> Exported files contain sensitive information. 
-                            Store them securely and delete after backing up safely.
-                          </AlertDescription>
-                        </div>
-                      </Alert>
+                      {!isPopupMode && (
+                        <Alert>
+                          <div className="flex items-start space-x-3">
+                            <AlertTriangle className="h-4 w-4 mt-0.5 flex-shrink-0" />
+                            <AlertDescription>
+                              <strong>Security Warning:</strong> Exported files contain sensitive information. 
+                              Store them securely and delete after backing up safely.
+                            </AlertDescription>
+                          </div>
+                        </Alert>
+                      )}
 
-                      <div className="flex flex-col sm:flex-row gap-3">
+                      <div className={`flex ${isPopupMode ? 'gap-1' : 'flex-col sm:flex-row gap-3'}`}>
                         <Button
                           variant="outline"
                           onClick={exportPrivateKey}
-                          className="flex-1 h-auto p-4"
+                          className={isPopupMode ? "flex-1 h-8 text-[10px] px-2" : "flex-1 h-auto p-4"}
                         >
-                          <div className="flex flex-col items-center gap-2">
-                            <Key className="h-5 w-5" />
-                            <div className="text-center">
-                              <div className="font-medium">Private Key</div>
-                              <div className="text-xs text-muted-foreground">Export private key only</div>
+                          {isPopupMode ? (
+                            <>
+                              <Key className="h-3 w-3 mr-1" />
+                              Key
+                            </>
+                          ) : (
+                            <div className="flex flex-col items-center gap-2">
+                              <Key className="h-5 w-5" />
+                              <div className="text-center">
+                                <div className="font-medium">Private Key</div>
+                                <div className="text-xs text-muted-foreground">Export private key only</div>
+                              </div>
                             </div>
-                          </div>
+                          )}
                         </Button>
 
                         {wallet.mnemonic && (
                           <Button
                             variant="outline"
                             onClick={exportMnemonic}
-                            className="flex-1 h-auto p-4"
+                            className={isPopupMode ? "flex-1 h-8 text-[10px] px-2" : "flex-1 h-auto p-4"}
                           >
-                            <div className="flex flex-col items-center gap-2">
-                              <FileText className="h-5 w-5" />
-                              <div className="text-center">
-                                <div className="font-medium">Mnemonic</div>
-                                <div className="text-xs text-muted-foreground">Export mnemonic phrase</div>
+                            {isPopupMode ? (
+                              <>
+                                <FileText className="h-3 w-3 mr-1" />
+                                Mnemonic
+                              </>
+                            ) : (
+                              <div className="flex flex-col items-center gap-2">
+                                <FileText className="h-5 w-5" />
+                                <div className="text-center">
+                                  <div className="font-medium">Mnemonic</div>
+                                  <div className="text-xs text-muted-foreground">Export mnemonic phrase</div>
+                                </div>
                               </div>
-                            </div>
+                            )}
                           </Button>
                         )}
 
                         <Button
                           variant="outline"
                           onClick={exportWalletInfo}
-                          className="flex-1 h-auto p-4"
+                          className={isPopupMode ? "flex-1 h-8 text-[10px] px-2" : "flex-1 h-auto p-4"}
                         >
-                          <div className="flex flex-col items-center gap-2">
-                            <Download className="h-5 w-5" />
-                            <div className="text-center">
-                              <div className="font-medium">Complete Wallet Info</div>
-                              <div className="text-xs text-muted-foreground">Export all wallet information</div>
+                          {isPopupMode ? (
+                            <>
+                              <Download className="h-3 w-3 mr-1" />
+                              All
+                            </>
+                          ) : (
+                            <div className="flex flex-col items-center gap-2">
+                              <Download className="h-5 w-5" />
+                              <div className="text-center">
+                                <div className="font-medium">Complete Wallet Info</div>
+                                <div className="text-xs text-muted-foreground">Export all wallet information</div>
+                              </div>
                             </div>
-                          </div>
+                          )}
                         </Button>
                       </div>
                     </div>
 
-                    <div className="flex justify-end">
-                      <Button variant="outline" onClick={handleClose}>
+                    <div className={`flex justify-end ${isPopupMode ? 'pt-1' : ''}`}>
+                      <Button variant="outline" onClick={handleClose} className={isPopupMode ? "h-7 text-xs" : ""}>
                         Close
                       </Button>
                     </div>

@@ -1339,7 +1339,8 @@ export function WalletDashboard({
               <ExportPrivateKeys 
                 wallet={wallet} 
                 open={showExportKeys} 
-                onOpenChange={setShowExportKeys} 
+                onOpenChange={setShowExportKeys}
+                isPopupMode={isPopupMode}
               />
               
               <AlertDialog open={showLockConfirm} onOpenChange={setShowLockConfirm}>
