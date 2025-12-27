@@ -133,46 +133,51 @@ function App() {
         }
         
         // Wallet exists, try to load from session storage
-        const sessionWallets = await ExtensionStorageManager.getSession('sessionWallets');
+        // Session wallets are now ENCRYPTED, need session key to decrypt
         const sessionKey = await ExtensionStorageManager.getSession('sessionKey');
         const activeWalletId = localStorage.getItem('activeWalletId') || await ExtensionStorageManager.get('activeWalletId');
         
         console.log('🔍 App.tsx: Session check:', {
-          hasSessionWallets: !!sessionWallets,
           hasSessionKey: !!sessionKey,
-          sessionWalletsLength: sessionWallets?.length,
           activeWalletId
         });
         
-        // Only use session wallets if session key (password) is also present
-        // This ensures auto-lock works when browser is closed (session storage is cleared)
-        if (sessionWallets && sessionKey) {
+        // Only try to load session wallets if session key exists
+        // Session wallets are encrypted and require the session encryption key in memory
+        if (sessionKey) {
           try {
-            const parsedWallets = JSON.parse(sessionWallets);
-            if (Array.isArray(parsedWallets) && parsedWallets.length > 0) {
-              console.log('🔓 App.tsx: Loaded wallets from session storage:', parsedWallets.length);
+            // Restore session password first (this also restores encryption key)
+            const restoredPassword = await WalletManager.ensureSessionPassword();
+            
+            if (restoredPassword) {
+              // Now we can decrypt session wallets
+              const sessionWallets = await WalletManager.getSessionWallets();
               
-              let activeWallet = parsedWallets[0];
-              if (activeWalletId) {
-                const foundWallet = parsedWallets.find((w: Wallet) => w.address === activeWalletId);
-                if (foundWallet) {
-                  activeWallet = foundWallet;
+              if (sessionWallets.length > 0) {
+                console.log('🔓 App.tsx: Loaded wallets from encrypted session storage:', sessionWallets.length);
+                
+                let activeWallet = sessionWallets[0];
+                if (activeWalletId) {
+                  const foundWallet = sessionWallets.find((w: Wallet) => w.address === activeWalletId);
+                  if (foundWallet) {
+                    activeWallet = foundWallet;
+                  }
                 }
+                
+                setWallets(sessionWallets);
+                setWallet(activeWallet);
+                setIsLocked(false);
+                setIsLoading(false);
+                console.log('✅ App.tsx: Dashboard ready with', sessionWallets.length, 'wallets');
+                return;
               }
-              
-              setWallets(parsedWallets);
-              setWallet(activeWallet);
-              setIsLocked(false);
-              setIsLoading(false);
-              console.log('✅ App.tsx: Dashboard ready with', parsedWallets.length, 'wallets');
-              return;
             }
           } catch (error) {
-            console.error('Failed to parse session wallets:', error);
+            console.error('Failed to restore session wallets:', error);
           }
         }
         
-        // No session wallets, need to unlock to decrypt
+        // No session wallets or failed to decrypt, need to unlock
         console.log('🔐 App.tsx: No session wallets, showing unlock screen');
         setIsLocked(true);
         setIsLoading(false);
@@ -245,22 +250,26 @@ function App() {
         }
         
         // Handle session storage changes (wallets added/removed from popup)
+        // Session wallets are now ENCRYPTED, use WalletManager to decrypt
         if (areaName === 'session' && changes.sessionWallets) {
           console.log('🔄 App.tsx: Session wallets changed, syncing...');
-          try {
-            const newWallets: Wallet[] = JSON.parse(changes.sessionWallets.newValue || '[]');
-            if (Array.isArray(newWallets) && newWallets.length > 0) {
-              console.log('🔄 App.tsx: New wallets count:', newWallets.length);
-              setWallets(newWallets);
-              
-              // Get current active wallet ID
-              const currentActiveId = localStorage.getItem('activeWalletId');
-              
-              // Check if current wallet still exists in new list
-              const currentWalletExists = currentActiveId && newWallets.some(w => w.address === currentActiveId);
-              
-              if (currentWalletExists) {
-                // Keep current wallet but update from new list (in case data changed)
+          // Use async IIFE since callback is not async
+          (async () => {
+            try {
+              // Use WalletManager to decrypt session wallets
+              const newWallets = await WalletManager.getSessionWallets();
+              if (Array.isArray(newWallets) && newWallets.length > 0) {
+                console.log('🔄 App.tsx: New wallets count:', newWallets.length);
+                setWallets(newWallets);
+                
+                // Get current active wallet ID
+                const currentActiveId = localStorage.getItem('activeWalletId');
+                
+                // Check if current wallet still exists in new list
+                const currentWalletExists = currentActiveId && newWallets.some(w => w.address === currentActiveId);
+                
+                if (currentWalletExists) {
+                  // Keep current wallet but update from new list (in case data changed)
                 const updatedWallet = newWallets.find(w => w.address === currentActiveId);
                 if (updatedWallet) {
                   setWallet(updatedWallet);
@@ -275,9 +284,10 @@ function App() {
               setWallets([]);
               setWallet(null);
             }
-          } catch (error) {
-            console.error('Failed to parse session wallets change:', error);
-          }
+            } catch (error) {
+              console.error('Failed to parse session wallets change:', error);
+            }
+          })();
           return;
         }
         

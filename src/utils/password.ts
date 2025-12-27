@@ -5,6 +5,7 @@ const PBKDF2_ITERATIONS = 310000; // OWASP recommendation for SHA-256
 const SALT_LENGTH = 32; // 256 bits
 const KEY_LENGTH = 32; // 256 bits for AES-256
 const IV_LENGTH = 12; // 96 bits for AES-GCM
+const SESSION_KEY_LENGTH = 32; // 256 bits for session encryption
 
 // Rate limiting for password attempts
 const MAX_ATTEMPTS = 5;
@@ -301,4 +302,81 @@ export function validatePasswordStrength(password: string): {
     score: Math.min(score, 7), // Max score of 7
     feedback
   };
+}
+
+
+// ============================================
+// SESSION ENCRYPTION UTILITIES
+// ============================================
+
+// Generate a random session key (stored in memory only)
+export function generateSessionKey(): string {
+  const keyBytes = crypto.getRandomValues(new Uint8Array(SESSION_KEY_LENGTH));
+  return Buffer.from(keyBytes).toString('base64');
+}
+
+// Encrypt data with session key (fast, for session storage)
+export async function encryptSessionData(data: string, sessionKey: string): Promise<string> {
+  const keyBytes = Buffer.from(sessionKey, 'base64');
+  const iv = crypto.getRandomValues(new Uint8Array(IV_LENGTH));
+  
+  // Import key for AES-GCM
+  const cryptoKey = await crypto.subtle.importKey(
+    'raw',
+    keyBytes,
+    { name: 'AES-GCM', length: 256 },
+    false,
+    ['encrypt']
+  );
+  
+  const encoder = new TextEncoder();
+  const encrypted = await crypto.subtle.encrypt(
+    { name: 'AES-GCM', iv },
+    cryptoKey,
+    encoder.encode(data)
+  );
+  
+  // Format: iv (12) + ciphertext
+  const combined = new Uint8Array(iv.length + encrypted.byteLength);
+  combined.set(iv, 0);
+  combined.set(new Uint8Array(encrypted), iv.length);
+  
+  return Buffer.from(combined).toString('base64');
+}
+
+// Decrypt data with session key
+export async function decryptSessionData(encryptedData: string, sessionKey: string): Promise<string> {
+  const combined = Buffer.from(encryptedData, 'base64');
+  
+  // Check minimum length (iv + at least some ciphertext)
+  if (combined.length < IV_LENGTH + 16) {
+    throw new Error('Invalid encrypted session data format');
+  }
+  
+  const iv = combined.slice(0, IV_LENGTH);
+  const ciphertext = combined.slice(IV_LENGTH);
+  
+  const keyBytes = Buffer.from(sessionKey, 'base64');
+  
+  // Import key for AES-GCM
+  const cryptoKey = await crypto.subtle.importKey(
+    'raw',
+    keyBytes,
+    { name: 'AES-GCM', length: 256 },
+    false,
+    ['decrypt']
+  );
+  
+  try {
+    const decrypted = await crypto.subtle.decrypt(
+      { name: 'AES-GCM', iv },
+      cryptoKey,
+      ciphertext
+    );
+    
+    const decoder = new TextDecoder();
+    return decoder.decode(decrypted);
+  } catch {
+    throw new Error('Session decryption failed - invalid key or corrupted data');
+  }
 }

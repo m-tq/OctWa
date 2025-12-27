@@ -556,7 +556,7 @@ export function TxHistory({ wallet, transactions, onTransactionsUpdate, isLoadin
                           {tx.status === 'confirmed' && (
                             <Button variant="ghost" size="sm" asChild>
                               <a
-                                href={`https://octrascan.io/tx/${tx.hash}`}
+                                href={`https://octrascan.io/transactions/${tx.hash}`}
                                 target="_blank"
                                 rel="noopener noreferrer"
                               >
@@ -666,7 +666,7 @@ export function TxHistory({ wallet, transactions, onTransactionsUpdate, isLoadin
                           {interaction.txHash && (
                             <Button variant="ghost" size="sm" asChild>
                               <a
-                                href={`https://octrascan.io/tx/${interaction.txHash}`}
+                                href={`https://octrascan.io/transactions/${interaction.txHash}`}
                                 target="_blank"
                                 rel="noopener noreferrer"
                               >

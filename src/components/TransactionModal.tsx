@@ -140,7 +140,7 @@ export function TransactionModal({
                       <Copy className="h-4 w-4" />
                     </Button>
                     <Button variant="ghost" size="sm" className="h-8 w-8 p-0" asChild>
-                      <a href={`https://octrascan.io/tx/${result.hash}`} target="_blank" rel="noopener noreferrer">
+                      <a href={`https://octrascan.io/transactions/${result.hash}`} target="_blank" rel="noopener noreferrer">
                         <ExternalLink className="h-4 w-4" />
                       </a>
                     </Button>

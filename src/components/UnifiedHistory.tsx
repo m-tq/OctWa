@@ -585,7 +585,7 @@ function TransferItem({
           </Button>
           {tx.status === 'confirmed' && (
             <Button variant="ghost" size="sm" className="h-7 w-7 p-0" asChild>
-              <a href={`https://octrascan.io/tx/${tx.hash}`} target="_blank" rel="noopener noreferrer">
+              <a href={`https://octrascan.io/transactions/${tx.hash}`} target="_blank" rel="noopener noreferrer">
                 <ExternalLink className="h-3.5 w-3.5" />
               </a>
             </Button>
@@ -623,7 +623,7 @@ function TransferItem({
           </Button>
           {tx.status === 'confirmed' && (
             <Button variant="ghost" size="sm" asChild>
-              <a href={`https://octrascan.io/tx/${tx.hash}`} target="_blank" rel="noopener noreferrer">
+              <a href={`https://octrascan.io/transactions/${tx.hash}`} target="_blank" rel="noopener noreferrer">
                 <ExternalLink className="h-4 w-4" />
               </a>
             </Button>
@@ -700,7 +700,7 @@ function ContractItem({ contract, truncateAddress, copyToClipboard, isPopupMode 
         </div>
         {contract.txHash && (
           <Button variant="ghost" size="sm" className="h-7 w-7 p-0 flex-shrink-0" asChild>
-            <a href={`https://octrascan.io/tx/${contract.txHash}`} target="_blank" rel="noopener noreferrer">
+            <a href={`https://octrascan.io/transactions/${contract.txHash}`} target="_blank" rel="noopener noreferrer">
               <ExternalLink className="h-3.5 w-3.5" />
             </a>
           </Button>
@@ -727,7 +727,7 @@ function ContractItem({ contract, truncateAddress, copyToClipboard, isPopupMode 
         </div>
         {contract.txHash && (
           <Button variant="ghost" size="sm" asChild>
-            <a href={`https://octrascan.io/tx/${contract.txHash}`} target="_blank" rel="noopener noreferrer">
+            <a href={`https://octrascan.io/transactions/${contract.txHash}`} target="_blank" rel="noopener noreferrer">
               <ExternalLink className="h-4 w-4" />
             </a>
           </Button>

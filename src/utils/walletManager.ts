@@ -1,10 +1,12 @@
 import { ExtensionStorageManager } from './extensionStorage';
-import { verifyPassword, decryptWalletData, encryptWalletData, secureWipe, isRateLimited, getRemainingAttempts } from './password';
+import { verifyPassword, decryptWalletData, encryptWalletData, secureWipe, isRateLimited, getRemainingAttempts, generateSessionKey, encryptSessionData, decryptSessionData } from './password';
 import { Wallet } from '../types/wallet';
 
 export class WalletManager {
   // Store password temporarily in memory for encrypting new wallets
   private static sessionPassword: string | null = null;
+  // Session encryption key (random, stored in memory only)
+  private static sessionEncryptionKey: string | null = null;
   private static sessionTimeout: ReturnType<typeof setTimeout> | null = null;
   private static SESSION_TIMEOUT_MS = 15 * 60 * 1000; // 15 minutes auto-lock (industry standard)
   private static lastActivity: number = Date.now();
@@ -241,9 +243,14 @@ export class WalletManager {
     this.sessionPassword = password;
     this.lastActivity = Date.now();
     
-    // Store password in chrome.storage.session for cross-instance access
+    // Generate new session encryption key for encrypting session storage
+    this.sessionEncryptionKey = generateSessionKey();
+    console.log('🔐 WalletManager: Generated new session encryption key');
+    
+    // Store password and encryption key in chrome.storage.session for cross-instance access
     // This is secure because session storage is cleared when browser closes
     this.storeSessionPasswordToStorage(password);
+    this.storeSessionEncryptionKeyToStorage(this.sessionEncryptionKey);
     
     // Start auto-lock timer
     this.startAutoLockTimer();
@@ -265,6 +272,16 @@ export class WalletManager {
     }
   }
   
+  // Store session encryption key to chrome.storage.session
+  private static async storeSessionEncryptionKeyToStorage(key: string): Promise<void> {
+    try {
+      await ExtensionStorageManager.setSession('sessionEncKey', key);
+      console.log('🔐 WalletManager: Session encryption key stored in session storage');
+    } catch (error) {
+      console.error('❌ Failed to store session encryption key:', error);
+    }
+  }
+  
   // Retrieve session password from chrome.storage.session
   private static async retrieveSessionPasswordFromStorage(): Promise<string | null> {
     try {
@@ -280,18 +297,32 @@ export class WalletManager {
     }
   }
   
+  // Retrieve session encryption key from chrome.storage.session
+  private static async retrieveSessionEncryptionKeyFromStorage(): Promise<string | null> {
+    try {
+      const key = await ExtensionStorageManager.getSession('sessionEncKey');
+      return key || null;
+    } catch (error) {
+      console.error('❌ Failed to retrieve session encryption key:', error);
+      return null;
+    }
+  }
+  
   // Ensure session password is available (load from storage if needed)
   static async ensureSessionPassword(): Promise<string | null> {
-    // If we have it in memory, return it
-    if (this.sessionPassword) {
+    // If we have both in memory, return password
+    if (this.sessionPassword && this.sessionEncryptionKey) {
       return this.sessionPassword;
     }
     
     // Try to load from session storage (for cross-instance access)
     const storedPassword = await this.retrieveSessionPasswordFromStorage();
-    if (storedPassword) {
-      console.log('🔑 WalletManager: Restored session password from session storage');
+    const storedEncKey = await this.retrieveSessionEncryptionKeyFromStorage();
+    
+    if (storedPassword && storedEncKey) {
+      console.log('🔑 WalletManager: Restored session password and encryption key from session storage');
       this.sessionPassword = storedPassword;
+      this.sessionEncryptionKey = storedEncKey;
       this.lastActivity = Date.now();
       this.startAutoLockTimer();
       return storedPassword;
@@ -312,6 +343,12 @@ export class WalletManager {
       console.log(`🔒 WalletManager: Session password cleared (was ${len} chars)`);
     }
     
+    // Clear session encryption key
+    if (this.sessionEncryptionKey) {
+      this.sessionEncryptionKey = null;
+      console.log('🔒 WalletManager: Session encryption key cleared');
+    }
+    
     if (this.sessionTimeout) {
       console.log('⏱️ WalletManager: Clearing auto-lock timer');
       clearTimeout(this.sessionTimeout);
@@ -321,17 +358,19 @@ export class WalletManager {
     // Clear session timestamp from storage
     localStorage.removeItem(this.SESSION_TIMESTAMP_KEY);
     
-    // Clear session password from session storage
-    this.clearSessionPasswordFromStorage();
+    // Clear session password and encryption key from session storage
+    this.clearSessionDataFromStorage();
   }
   
-  // Clear session password from chrome.storage.session
-  private static async clearSessionPasswordFromStorage(): Promise<void> {
+  // Clear all session data from chrome.storage.session
+  private static async clearSessionDataFromStorage(): Promise<void> {
     try {
       await ExtensionStorageManager.removeSession('sessionKey');
-      console.log('🔒 WalletManager: Session password cleared from session storage');
+      await ExtensionStorageManager.removeSession('sessionEncKey');
+      await ExtensionStorageManager.removeSession('sessionWallets');
+      console.log('🔒 WalletManager: All session data cleared from session storage');
     } catch (error) {
-      console.error('❌ Failed to clear session password from storage:', error);
+      console.error('❌ Failed to clear session data from storage:', error);
     }
   }
 
@@ -554,14 +593,10 @@ export class WalletManager {
           localStorage.setItem('activeWalletId', decryptedWallets[0].address);
         }
         
-        // Store decrypted wallets in session storage for cross-instance access
-        // This is secure because session storage is cleared when browser closes
-        await ExtensionStorageManager.setSession('sessionWallets', JSON.stringify(decryptedWallets));
-        console.log('🔓 WalletManager: Stored', decryptedWallets.length, 'decrypted wallets in session storage');
-        
-        // Verify session storage
-        const verifySession = await ExtensionStorageManager.getSession('sessionWallets');
-        console.log('🔓 WalletManager: Verify session storage length:', verifySession?.length);
+        // Store decrypted wallets in session storage (ENCRYPTED)
+        // Session encryption key is generated in setSessionPassword
+        await this.updateSessionWallets(decryptedWallets);
+        console.log('🔓 WalletManager: Stored', decryptedWallets.length, 'wallets in encrypted session storage');
       }
       
       // SECURITY: Clean up any legacy unencrypted data and run audit
@@ -575,26 +610,50 @@ export class WalletManager {
     }
   }
 
-  // Update session wallets (for cross-instance sync)
+  // Update session wallets (for cross-instance sync) - ENCRYPTED
   static async updateSessionWallets(wallets: Wallet[]): Promise<void> {
     try {
-      await ExtensionStorageManager.setSession('sessionWallets', JSON.stringify(wallets));
-      console.log('🔄 WalletManager: Updated session wallets, count:', wallets.length);
+      if (!this.sessionEncryptionKey) {
+        console.warn('⚠️ WalletManager: No session encryption key, cannot store wallets securely');
+        return;
+      }
+      
+      const walletsJson = JSON.stringify(wallets);
+      const encryptedWallets = await encryptSessionData(walletsJson, this.sessionEncryptionKey);
+      
+      await ExtensionStorageManager.setSession('sessionWallets', encryptedWallets);
+      console.log('🔐 WalletManager: Updated session wallets (encrypted), count:', wallets.length);
     } catch (error) {
       console.error('❌ Failed to update session wallets:', error);
     }
   }
 
-  // Get session wallets
+  // Get session wallets - DECRYPTED
   static async getSessionWallets(): Promise<Wallet[]> {
     try {
-      const sessionWallets = await ExtensionStorageManager.getSession('sessionWallets');
-      if (sessionWallets) {
-        const parsed = JSON.parse(sessionWallets);
+      const encryptedSessionWallets = await ExtensionStorageManager.getSession('sessionWallets');
+      if (!encryptedSessionWallets) {
+        return [];
+      }
+      
+      // Check if we have the encryption key
+      if (!this.sessionEncryptionKey) {
+        console.warn('⚠️ WalletManager: No session encryption key, cannot decrypt wallets');
+        return [];
+      }
+      
+      try {
+        const decryptedJson = await decryptSessionData(encryptedSessionWallets, this.sessionEncryptionKey);
+        const parsed = JSON.parse(decryptedJson);
         if (Array.isArray(parsed)) {
           return parsed;
         }
+      } catch (decryptError) {
+        console.error('❌ Failed to decrypt session wallets:', decryptError);
+        // Clear corrupted session data
+        await ExtensionStorageManager.removeSession('sessionWallets');
       }
+      
       return [];
     } catch (error) {
       console.error('❌ Failed to get session wallets:', error);
