@@ -1535,6 +1535,7 @@ export function WalletDashboard({
                 onBalanceUpdate={handleBalanceUpdate}
                 isLoading={isLoadingBalance || isRefreshingData}
                 hideBorder={!isPopupMode}
+                isPopupMode={isPopupMode}
               />
             ) : (
               <PrivateBalance 
@@ -1545,6 +1546,7 @@ export function WalletDashboard({
                 onBalanceUpdate={handleBalanceUpdate}
                 isLoading={isLoadingBalance || isRefreshingData}
                 hideBorder={!isPopupMode}
+                isPopupMode={isPopupMode}
               />
             )}
           </TabsContent>

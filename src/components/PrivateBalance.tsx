@@ -18,6 +18,7 @@ interface PrivateBalanceProps {
   onBalanceUpdate: (balance: number) => void;
   isLoading?: boolean;
   hideBorder?: boolean;
+  isPopupMode?: boolean;
 }
 
 export function PrivateBalance({ 
@@ -27,7 +28,8 @@ export function PrivateBalance({
   onEncryptedBalanceUpdate, 
   onBalanceUpdate, 
   isLoading = false,
-  hideBorder = false
+  hideBorder = false,
+  isPopupMode = false
 }: PrivateBalanceProps) {
   const [refreshing, setRefreshing] = useState(false);
   const [localEncryptedBalance, setLocalEncryptedBalance] = useState<any>(null);
@@ -134,10 +136,10 @@ export function PrivateBalance({
             size="sm"
             onClick={fetchWalletBalance}
             disabled={refreshing}
-            className="border-[#0000db]/30 hover:bg-[#0000db]/5"
+            className={`border-[#0000db]/30 hover:bg-[#0000db]/5 ${isPopupMode ? 'h-7 px-2' : ''}`}
           >
-            <RefreshCw className={`h-4 w-4 mr-1.5 ${refreshing ? 'animate-spin' : ''}`} />
-            Refresh
+            <RefreshCw className={`h-4 w-4 ${isPopupMode ? '' : 'mr-1.5'} ${refreshing ? 'animate-spin' : ''}`} />
+            {!isPopupMode && 'Refresh'}
           </Button>
         </CardHeader>
         <CardContent className="pt-2 pb-4">

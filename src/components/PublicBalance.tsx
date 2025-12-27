@@ -19,6 +19,7 @@ interface PublicBalanceProps {
   onBalanceUpdate: (balance: number) => void;
   isLoading?: boolean;
   hideBorder?: boolean;
+  isPopupMode?: boolean;
 }
 
 export function PublicBalance({ 
@@ -28,7 +29,8 @@ export function PublicBalance({
   onEncryptedBalanceUpdate, 
   onBalanceUpdate, 
   isLoading = false,
-  hideBorder = false
+  hideBorder = false,
+  isPopupMode = false
 }: PublicBalanceProps) {
   const [refreshing, setRefreshing] = useState(false);
   const [localEncryptedBalance, setLocalEncryptedBalance] = useState<any>(null);
@@ -123,9 +125,9 @@ export function PublicBalance({
             <Globe className="h-4 w-4" />
             Overview
           </CardTitle>
-          <Button variant="outline" size="sm" onClick={fetchWalletBalance} disabled={refreshing}>
-            <RefreshCw className={`h-4 w-4 mr-1.5 ${refreshing ? 'animate-spin' : ''}`} />
-            Refresh
+          <Button variant="outline" size="sm" onClick={fetchWalletBalance} disabled={refreshing} className={isPopupMode ? 'h-7 px-2' : ''}>
+            <RefreshCw className={`h-4 w-4 ${isPopupMode ? '' : 'mr-1.5'} ${refreshing ? 'animate-spin' : ''}`} />
+            {!isPopupMode && 'Refresh'}
           </Button>
         </CardHeader>
         <CardContent className="pt-2 pb-4">
