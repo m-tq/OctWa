@@ -795,7 +795,7 @@ function PopupApp() {
   return (
     <ThemeProvider defaultTheme="dark" storageKey="octra-wallet-theme">
       <div className="w-[400px] h-[600px] bg-background popup-view relative flex flex-col overflow-hidden">
-        <div className="popup-container flex-1 overflow-y-auto">
+        <div className="popup-container flex-1 overflow-hidden">
           <PageTransition variant="fade">
             <WalletDashboard
               wallet={wallet}

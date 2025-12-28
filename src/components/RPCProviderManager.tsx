@@ -13,9 +13,10 @@ import { useToast } from '@/hooks/use-toast';
 interface RPCProviderManagerProps {
   onClose?: () => void;
   onRPCChange?: () => void;
+  isPopupMode?: boolean;
 }
 
-export function RPCProviderManager({ onClose, onRPCChange }: RPCProviderManagerProps) {
+export function RPCProviderManager({ onClose, onRPCChange, isPopupMode = false }: RPCProviderManagerProps) {
   const [providers, setProviders] = useState<RPCProvider[]>([]);
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [editingProvider, setEditingProvider] = useState<RPCProvider | null>(null);
@@ -220,180 +221,175 @@ export function RPCProviderManager({ onClose, onRPCChange }: RPCProviderManagerP
   };
 
   return (
-    <div className="space-y-6">
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
-          <CardTitle className="flex items-center gap-2">
-            <Wifi className="h-5 w-5" />
+    <div className={isPopupMode ? "space-y-3" : "space-y-6"}>
+      <Card className={isPopupMode ? "border-0 shadow-none" : ""}>
+        <CardHeader className={`flex flex-row items-center justify-between space-y-0 ${isPopupMode ? "p-0 pb-3" : "pb-4"}`}>
+          <CardTitle className={`flex items-center gap-2 ${isPopupMode ? "text-sm" : ""}`}>
+            <Wifi className={isPopupMode ? "h-4 w-4" : "h-5 w-5"} />
             RPC Providers
           </CardTitle>
           <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>
             <DialogTrigger asChild>
-              <Button size="sm" onClick={resetForm}>
-                <Plus className="h-4 w-4 mr-2" />
-                Add Provider
+              <Button size="sm" onClick={resetForm} className={isPopupMode ? "h-7 text-xs px-2" : ""}>
+                <Plus className={isPopupMode ? "h-3 w-3 mr-1" : "h-4 w-4 mr-2"} />
+                Add
               </Button>
             </DialogTrigger>
-            <DialogContent className="sm:max-w-md">
-              <DialogHeader>
-                <DialogTitle>
+            <DialogContent className={isPopupMode ? "w-[320px] p-3" : "sm:max-w-md"}>
+              <DialogHeader className={isPopupMode ? "pb-2" : ""}>
+                <DialogTitle className={isPopupMode ? "text-sm" : ""}>
                   {editingProvider ? 'Edit RPC Provider' : 'Add RPC Provider'}
                 </DialogTitle>
                 <DialogDescription className="sr-only">
                   Configure RPC provider connection settings
                 </DialogDescription>
               </DialogHeader>
-              <div className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="provider-name">Connection Name</Label>
+              <div className={isPopupMode ? "space-y-3" : "space-y-4"}>
+                <div className={isPopupMode ? "space-y-1" : "space-y-2"}>
+                  <Label htmlFor="provider-name" className={isPopupMode ? "text-xs" : ""}>Connection Name</Label>
                   <Input
                     id="provider-name"
                     placeholder="e.g., Octra Mainnet"
                     value={formData.name}
                     onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                    className={isPopupMode ? "h-8 text-xs" : ""}
                   />
                 </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="provider-url">URL</Label>
+                <div className={isPopupMode ? "space-y-1" : "space-y-2"}>
+                  <Label htmlFor="provider-url" className={isPopupMode ? "text-xs" : ""}>URL</Label>
                   <Input
                     id="provider-url"
                     placeholder="https://octra.network"
                     value={formData.url}
                     onChange={(e) => setFormData({ ...formData, url: e.target.value })}
+                    className={isPopupMode ? "h-8 text-xs" : ""}
                   />
-                  <p className="text-xs text-muted-foreground">
-                    RPC URL will be tried directly first. If CORS fails, it will fallback to nginx proxy automatically.
-                  </p>
                 </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="provider-priority">Priority (lower = higher priority)</Label>
+                <div className={isPopupMode ? "space-y-1" : "space-y-2"}>
+                  <Label htmlFor="provider-priority" className={isPopupMode ? "text-xs" : ""}>Priority</Label>
                   <Input
                     id="provider-priority"
                     type="number"
                     min="1"
                     value={formData.priority}
                     onChange={(e) => setFormData({ ...formData, priority: parseInt(e.target.value) || 1 })}
+                    className={isPopupMode ? "h-8 text-xs" : ""}
                   />
                 </div>
 
-                <div className="space-y-2">
-                  <Label>Headers</Label>
+                {!isPopupMode && (
                   <div className="space-y-2">
-                    {Object.entries(formData.headers).map(([key, value]) => (
-                      <div key={key} className="flex items-center gap-2">
-                        <div className="flex-1 text-sm font-mono bg-muted p-2 rounded">
-                          {key}: {value}
+                    <Label>Headers</Label>
+                    <div className="space-y-2">
+                      {Object.entries(formData.headers).map(([key, value]) => (
+                        <div key={key} className="flex items-center gap-2">
+                          <div className="flex-1 text-sm font-mono bg-muted p-2 rounded">
+                            {key}: {value}
+                          </div>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleRemoveHeader(key)}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
                         </div>
+                      ))}
+                      <div className="flex gap-2">
+                        <Input
+                          placeholder="Header key"
+                          value={newHeaderKey}
+                          onChange={(e) => setNewHeaderKey(e.target.value)}
+                          className="flex-1"
+                        />
+                        <Input
+                          placeholder="Header value"
+                          value={newHeaderValue}
+                          onChange={(e) => setNewHeaderValue(e.target.value)}
+                          className="flex-1"
+                        />
                         <Button
-                          variant="ghost"
+                          variant="outline"
                           size="sm"
-                          onClick={() => handleRemoveHeader(key)}
+                          onClick={handleAddHeader}
+                          disabled={!newHeaderKey || !newHeaderValue}
                         >
-                          <Trash2 className="h-4 w-4" />
+                          Add
                         </Button>
                       </div>
-                    ))}
-                    <div className="flex gap-2">
-                      <Input
-                        placeholder="Header key"
-                        value={newHeaderKey}
-                        onChange={(e) => setNewHeaderKey(e.target.value)}
-                        className="flex-1"
-                      />
-                      <Input
-                        placeholder="Header value"
-                        value={newHeaderValue}
-                        onChange={(e) => setNewHeaderValue(e.target.value)}
-                        className="flex-1"
-                      />
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={handleAddHeader}
-                        disabled={!newHeaderKey || !newHeaderValue}
-                      >
-                        Add
-                      </Button>
                     </div>
                   </div>
-                </div>
+                )}
 
                 <div className="flex gap-2">
                   <Button
                     variant="outline"
                     onClick={() => setShowAddDialog(false)}
-                    className="flex-1"
+                    className={`flex-1 ${isPopupMode ? "h-8 text-xs" : ""}`}
                   >
                     Cancel
                   </Button>
-                  <Button onClick={handleSubmit} className="flex-1">
-                    {editingProvider ? 'Update' : 'Add'} Provider
+                  <Button onClick={handleSubmit} className={`flex-1 ${isPopupMode ? "h-8 text-xs" : ""}`}>
+                    {editingProvider ? 'Update' : 'Add'}
                   </Button>
                 </div>
               </div>
             </DialogContent>
           </Dialog>
         </CardHeader>
-        <CardContent>
-          <div className="space-y-3">
+        <CardContent className={isPopupMode ? "p-0" : ""}>
+          <div className={isPopupMode ? "space-y-2" : "space-y-3"}>
             {providers.map((provider) => (
               <div
                 key={provider.id}
-                className={`flex items-center justify-between p-3 border rounded-lg ${
+                className={`flex items-center justify-between ${isPopupMode ? "p-2" : "p-3"} border rounded-lg ${
                   provider.isActive ? 'border-primary bg-primary/5' : ''
                 }`}
               >
-                <div className="flex-1">
-                  <div className="flex items-center gap-2">
-                    <span className="font-medium">{provider.name}</span>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className={`font-medium truncate ${isPopupMode ? "text-xs" : ""}`}>{provider.name}</span>
                     {provider.isActive && (
-                      <Badge variant="default" className="text-xs">
+                      <Badge variant="default" className={isPopupMode ? "text-[10px] px-1 py-0" : "text-xs"}>
                         Primary
                       </Badge>
                     )}
-                    <Badge variant="outline" className="text-xs">
-                      P.{provider.priority}
-                    </Badge>
                   </div>
-                  <div className="text-sm text-muted-foreground font-mono">
+                  <div className={`text-muted-foreground font-mono truncate ${isPopupMode ? "text-[10px]" : "text-sm"}`}>
                     {provider.url}
                   </div>
-                  {Object.keys(provider.headers).length > 0 && (
-                    <div className="text-xs text-muted-foreground mt-1">
-                      {Object.keys(provider.headers).length} custom header(s)
-                    </div>
-                  )}
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1 flex-shrink-0">
                   {!provider.isActive && (
                     <Button
                       variant="ghost"
                       size="sm"
                       onClick={() => handleSetPrimary(provider.id)}
                       title="Set as primary"
+                      className={isPopupMode ? "h-6 w-6 p-0" : ""}
                     >
-                      <Star className="h-4 w-4" />
+                      <Star className={isPopupMode ? "h-3 w-3" : "h-4 w-4"} />
                     </Button>
                   )}
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
-                      <Button variant="ghost" size="sm">
-                        <MoreVertical className="h-4 w-4" />
+                      <Button variant="ghost" size="sm" className={isPopupMode ? "h-6 w-6 p-0" : ""}>
+                        <MoreVertical className={isPopupMode ? "h-3 w-3" : "h-4 w-4"} />
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
-                      <DropdownMenuItem onClick={() => handleEdit(provider)}>
-                        <Settings className="h-4 w-4 mr-2" />
+                      <DropdownMenuItem onClick={() => handleEdit(provider)} className={isPopupMode ? "text-xs" : ""}>
+                        <Settings className={`${isPopupMode ? "h-3 w-3" : "h-4 w-4"} mr-2`} />
                         Edit
                       </DropdownMenuItem>
                       {provider.id !== 'default' && (
                         <DropdownMenuItem 
                           onClick={() => handleDelete(provider.id)}
-                          className="text-red-600"
+                          className={`text-red-600 ${isPopupMode ? "text-xs" : ""}`}
                         >
-                          <Trash2 className="h-4 w-4 mr-2" />
+                          <Trash2 className={`${isPopupMode ? "h-3 w-3" : "h-4 w-4"} mr-2`} />
                           Delete
                         </DropdownMenuItem>
                       )}

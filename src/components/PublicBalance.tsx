@@ -149,14 +149,7 @@ export function PublicBalance({
             )}
           </div>
 
-          {/* Total Balance Info */}
-          {encryptedBalance && encryptedBalance.encrypted > 0 && (
-            <div className="pt-3 mt-3 border-t text-center">
-              <span className="text-xs text-muted-foreground">
-                Total (incl. private): {encryptedBalance.total.toFixed(8)} OCT
-              </span>
-            </div>
-          )}
+          {/* Total Balance Info - REMOVED: Don't show private balance in public mode */}
 
           {/* Encrypt Action */}
           <div className="flex justify-center pt-3 mt-3 border-t">

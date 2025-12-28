@@ -58,7 +58,7 @@ export function ModeToggle({
   return (
     <div className="w-full relative">
       {/* Full-width Tab Container */}
-      <div className={`relative w-full grid grid-cols-2 ${isCompact ? 'h-10' : 'h-12'} bg-muted rounded-xl overflow-hidden border-2 border-border/50`}>
+      <div className={`relative w-full grid grid-cols-2 ${isCompact ? 'h-9' : 'h-12'} bg-muted rounded-xl overflow-hidden border-2 border-border/50`}>
         {/* Animated Background Slider */}
         <div
           className={`absolute top-0 bottom-0 w-1/2 transition-all duration-300 ease-out ${
@@ -76,18 +76,18 @@ export function ModeToggle({
         {/* Public Mode Tab */}
         <button
           onClick={() => handleModeChange('public')}
-          className={`relative z-10 flex items-center justify-center gap-2 transition-all duration-300 ${
+          className={`relative z-10 flex items-center justify-center gap-1.5 transition-all duration-300 ${
             displayMode === 'public'
               ? 'text-foreground font-semibold'
               : 'text-muted-foreground hover:text-foreground'
           }`}
         >
           <Globe
-            className={`${isCompact ? 'h-4 w-4' : 'h-5 w-5'} transition-transform duration-300 ${
+            className={`${isCompact ? 'h-3.5 w-3.5' : 'h-5 w-5'} transition-transform duration-300 ${
               displayMode === 'public' ? 'scale-110' : 'scale-100'
             }`}
           />
-          <span className={`${isCompact ? 'text-xs' : 'text-sm'} font-medium`}>
+          <span className={`${isCompact ? 'text-[11px]' : 'text-sm'} font-medium`}>
             Public
           </span>
         </button>
@@ -99,7 +99,7 @@ export function ModeToggle({
               <button
                 onClick={() => handleModeChange('private')}
                 disabled={!privateEnabled}
-                className={`relative z-10 flex items-center justify-center gap-2 transition-all duration-300 ${
+                className={`relative z-10 flex items-center justify-center gap-1.5 transition-all duration-300 ${
                   displayMode === 'private'
                     ? 'text-white font-semibold'
                     : privateEnabled
@@ -113,16 +113,16 @@ export function ModeToggle({
                   }`}
                 >
                   {privateEnabled ? (
-                    <Shield className={`${isCompact ? 'h-4 w-4' : 'h-5 w-5'}`} />
+                    <Shield className={`${isCompact ? 'h-3.5 w-3.5' : 'h-5 w-5'}`} />
                   ) : (
-                    <Lock className={`${isCompact ? 'h-4 w-4' : 'h-5 w-5'}`} />
+                    <Lock className={`${isCompact ? 'h-3.5 w-3.5' : 'h-5 w-5'}`} />
                   )}
                 </div>
-                <span className={`${isCompact ? 'text-xs' : 'text-sm'} font-medium`}>
+                <span className={`${isCompact ? 'text-[11px]' : 'text-sm'} font-medium`}>
                   Private
                 </span>
                 {!privateEnabled && (
-                  <Lock className={`${isCompact ? 'h-3 w-3' : 'h-3.5 w-3.5'} ml-0.5 opacity-60`} />
+                  <Lock className={`${isCompact ? 'h-2.5 w-2.5' : 'h-3.5 w-3.5'} ml-0.5 opacity-60`} />
                 )}
               </button>
             </TooltipTrigger>

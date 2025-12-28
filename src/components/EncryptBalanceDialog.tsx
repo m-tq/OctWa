@@ -1,14 +1,16 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { Lock, Loader2, AlertTriangle } from 'lucide-react';
+import { Lock, AlertTriangle } from 'lucide-react';
 import { Wallet } from '../types/wallet';
 import { encryptBalance } from '../utils/api';
 import { useToast } from '@/hooks/use-toast';
+import { AnimatedIcon } from './AnimatedIcon';
+import { TransactionModal, TransactionStatus, TransactionResult } from './TransactionModal';
 
 interface EncryptBalanceDialogProps {
   open: boolean;
@@ -17,6 +19,7 @@ interface EncryptBalanceDialogProps {
   publicBalance: number;
   onSuccess: () => void;
   isPopupMode?: boolean;
+  isInline?: boolean;
 }
 
 export function EncryptBalanceDialog({ 
@@ -25,10 +28,14 @@ export function EncryptBalanceDialog({
   wallet, 
   publicBalance, 
   onSuccess,
-  isPopupMode = false
+  isPopupMode = false,
+  isInline = false
 }: EncryptBalanceDialogProps) {
   const [amount, setAmount] = useState('');
   const [isEncrypting, setIsEncrypting] = useState(false);
+  const [showTxModal, setShowTxModal] = useState(false);
+  const [txModalStatus, setTxModalStatus] = useState<TransactionStatus>('idle');
+  const [txModalResult, setTxModalResult] = useState<TransactionResult>({});
   const { toast } = useToast();
 
   const maxEncryptable = Math.max(0, publicBalance - 0.001); // Reserve 0.001 OCT for fees
@@ -56,33 +63,158 @@ export function EncryptBalanceDialog({
 
     setIsEncrypting(true);
     
+    // Show modal with sending state
+    setTxModalStatus('sending');
+    setTxModalResult({});
+    setShowTxModal(true);
+    
     try {
       const result = await encryptBalance(wallet.address, amountNum, wallet.privateKey);
       
       if (result.success) {
-        toast({
-          title: "Encryption Submitted!",
-          description: "Your balance encryption request has been submitted",
-        });
+        // Update modal to success state
+        setTxModalStatus('success');
+        setTxModalResult({ hash: result.tx_hash, amount: amountNum.toFixed(8) });
         setAmount('');
         onSuccess();
       } else {
-        toast({
-          title: "Encryption Failed",
-          description: result.error || "Unknown error occurred",
-          variant: "destructive",
-        });
+        // Update modal to error state
+        setTxModalStatus('error');
+        setTxModalResult({ error: result.error || "Unknown error occurred" });
       }
     } catch (error) {
-      toast({
-        title: "Error",
-        description: "Failed to encrypt balance",
-        variant: "destructive",
-      });
+      // Update modal to error state
+      setTxModalStatus('error');
+      setTxModalResult({ error: "Failed to encrypt balance" });
     } finally {
       setIsEncrypting(false);
     }
   };
+
+  const content = (
+    <div className={isPopupMode ? "space-y-3" : "space-y-4"}>
+      {/* Animated Icon - only in popup inline mode */}
+      {isPopupMode && isInline && (
+        <AnimatedIcon type="encrypt" size="sm" />
+      )}
+
+      {/* Description text - no border in popup mode, centered */}
+      {isPopupMode && isInline ? (
+        <p className="text-xs text-center text-muted-foreground">
+          Convert public OCT to private OCT.
+        </p>
+      ) : (
+        <Alert className={isPopupMode ? "py-2" : ""}>
+          <div className={isPopupMode ? "flex items-center gap-2" : ""}>
+            <AlertTriangle className={`${isPopupMode ? "h-4 w-4 flex-shrink-0" : "h-4 w-4"}`} />
+            <AlertDescription className={isPopupMode ? "text-xs leading-normal" : ""}>
+              {isPopupMode ? "Convert public OCT to private OCT." : "Encrypting balance converts public OCT to private OCT."}
+            </AlertDescription>
+          </div>
+        </Alert>
+      )}
+
+      <div className={isPopupMode ? "space-y-1" : "space-y-2"}>
+        <Label className={isPopupMode ? "text-xs" : ""}>Current Public Balance</Label>
+        <div className={`bg-muted rounded-md font-mono ${isPopupMode ? 'p-2 text-xs' : 'p-3'}`}>
+          {publicBalance.toFixed(8)} OCT
+        </div>
+      </div>
+
+      <div className={isPopupMode ? "space-y-1" : "space-y-2"}>
+        <Label className={isPopupMode ? "text-xs" : ""}>Maximum Encryptable</Label>
+        <div className={`bg-muted rounded-md font-mono ${isPopupMode ? 'p-2 text-xs' : 'p-3'}`}>
+          {maxEncryptable.toFixed(8)} OCT
+        </div>
+        <p className={`text-muted-foreground ${isPopupMode ? 'text-[10px]' : 'text-xs'}`}>
+          (0.001 OCT reserved for fees)
+        </p>
+      </div>
+
+      <div className={isPopupMode ? "space-y-1" : "space-y-2"}>
+        <Label htmlFor="encrypt-amount" className={isPopupMode ? "text-xs" : ""}>Amount to Encrypt</Label>
+        <Input
+          id="encrypt-amount"
+          type="number"
+          placeholder="0.00000000"
+          value={amount}
+          onChange={(e) => setAmount(e.target.value)}
+          step="0.1"
+          min="0"
+          max={maxEncryptable}
+          disabled={isEncrypting}
+          className={isPopupMode ? "h-9 text-sm" : ""}
+        />
+      </div>
+
+      <div className="flex gap-2 pt-2">
+        <Button
+          variant="outline"
+          onClick={() => onOpenChange(false)}
+          disabled={isEncrypting}
+          className={`flex-1 ${isPopupMode ? 'h-10 text-sm' : ''}`}
+        >
+          Cancel
+        </Button>
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <div className="flex-1">
+                <Button
+                  onClick={handleEncrypt}
+                  disabled={isEncrypting || !amount || parseFloat(amount) <= 0 || parseFloat(amount) > maxEncryptable || maxEncryptable <= 0}
+                  className={`w-full ${isPopupMode ? 'h-10 text-sm' : ''}`}
+                >
+                  {isEncrypting ? (
+                    <div className="flex items-center gap-2">
+                      <div className="relative w-4 h-4">
+                        <div className="absolute inset-0 rounded-full border-2 border-white/20" />
+                        <div className="absolute inset-0 rounded-full border-2 border-transparent border-t-white animate-spin" />
+                      </div>
+                      <span>Encrypting...</span>
+                    </div>
+                  ) : (
+                    <>
+                      <Lock className={`${isPopupMode ? 'h-4 w-4 mr-1.5' : 'h-4 w-4 mr-2'}`} />
+                      Encrypt
+                    </>
+                  )}
+                </Button>
+              </div>
+            </TooltipTrigger>
+            {(isEncrypting || !amount || parseFloat(amount) <= 0 || parseFloat(amount) > maxEncryptable || maxEncryptable <= 0) && !isEncrypting && (
+              <TooltipContent side="top" className="max-w-[250px]">
+                <p className="text-xs">
+                  {maxEncryptable <= 0 
+                    ? "Insufficient balance. Need at least 0.001 OCT for fees."
+                    : !amount || parseFloat(amount) <= 0
+                      ? "Enter an amount to encrypt"
+                      : parseFloat(amount) > maxEncryptable
+                        ? `Amount exceeds maximum (${maxEncryptable.toFixed(6)} OCT)`
+                        : ""}
+                </p>
+              </TooltipContent>
+            )}
+          </Tooltip>
+        </TooltipProvider>
+      </div>
+
+      {/* Transaction Modal */}
+      <TransactionModal
+        open={showTxModal}
+        onOpenChange={setShowTxModal}
+        status={txModalStatus}
+        result={txModalResult}
+        type="encrypt"
+        isPopupMode={isPopupMode}
+      />
+    </div>
+  );
+
+  // Inline mode - render content directly without Dialog wrapper
+  if (isInline) {
+    return content;
+  }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -93,97 +225,7 @@ export function EncryptBalanceDialog({
             Encrypt Balance
           </DialogTitle>
         </DialogHeader>
-        
-        <div className={isPopupMode ? "space-y-3" : "space-y-4"}>
-          <Alert className={isPopupMode ? "py-2" : ""}>
-            <AlertTriangle className={isPopupMode ? "h-3 w-3" : "h-4 w-4"} />
-            <AlertDescription className={isPopupMode ? "text-[11px] leading-tight" : ""}>
-              {isPopupMode ? "Convert public OCT to private OCT." : "Encrypting balance converts public OCT to private OCT."}
-            </AlertDescription>
-          </Alert>
-
-          <div className={isPopupMode ? "space-y-1" : "space-y-2"}>
-            <Label className={isPopupMode ? "text-xs" : ""}>Current Public Balance</Label>
-            <div className={`bg-muted rounded-md font-mono ${isPopupMode ? 'p-2 text-xs' : 'p-3'}`}>
-              {publicBalance.toFixed(8)} OCT
-            </div>
-          </div>
-
-          <div className={isPopupMode ? "space-y-1" : "space-y-2"}>
-            <Label className={isPopupMode ? "text-xs" : ""}>Maximum Encryptable</Label>
-            <div className={`bg-muted rounded-md font-mono ${isPopupMode ? 'p-2 text-xs' : 'p-3'}`}>
-              {maxEncryptable.toFixed(8)} OCT
-            </div>
-            <p className={`text-muted-foreground ${isPopupMode ? 'text-[10px]' : 'text-xs'}`}>
-              (0.001 OCT reserved for fees)
-            </p>
-          </div>
-
-          <div className={isPopupMode ? "space-y-1" : "space-y-2"}>
-            <Label htmlFor="encrypt-amount" className={isPopupMode ? "text-xs" : ""}>Amount to Encrypt</Label>
-            <Input
-              id="encrypt-amount"
-              type="number"
-              placeholder="0.00000000"
-              value={amount}
-              onChange={(e) => setAmount(e.target.value)}
-              step="0.1"
-              min="0"
-              max={maxEncryptable}
-              disabled={isEncrypting}
-              className={isPopupMode ? "h-8 text-xs" : ""}
-            />
-          </div>
-
-          <div className="flex gap-2">
-            <Button
-              variant="outline"
-              onClick={() => onOpenChange(false)}
-              disabled={isEncrypting}
-              className={`flex-1 ${isPopupMode ? 'h-8 text-xs' : ''}`}
-            >
-              Cancel
-            </Button>
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <div className="flex-1">
-                    <Button
-                      onClick={handleEncrypt}
-                      disabled={isEncrypting || !amount || parseFloat(amount) <= 0 || parseFloat(amount) > maxEncryptable || maxEncryptable <= 0}
-                      className={`w-full ${isPopupMode ? 'h-8 text-xs' : ''}`}
-                    >
-                      {isEncrypting ? (
-                        <>
-                          <Loader2 className={`${isPopupMode ? 'h-3 w-3 mr-1' : 'h-4 w-4 mr-2'} animate-spin`} />
-                          {isPopupMode ? '...' : 'Encrypting...'}
-                        </>
-                      ) : (
-                        <>
-                          <Lock className={`${isPopupMode ? 'h-3 w-3 mr-1' : 'h-4 w-4 mr-2'}`} />
-                          Encrypt
-                        </>
-                      )}
-                    </Button>
-                  </div>
-                </TooltipTrigger>
-                {(isEncrypting || !amount || parseFloat(amount) <= 0 || parseFloat(amount) > maxEncryptable || maxEncryptable <= 0) && !isEncrypting && (
-                  <TooltipContent side="top" className="max-w-[250px]">
-                    <p className="text-xs">
-                      {maxEncryptable <= 0 
-                        ? "Insufficient balance. Need at least 0.001 OCT for fees."
-                        : !amount || parseFloat(amount) <= 0
-                          ? "Enter an amount to encrypt"
-                          : parseFloat(amount) > maxEncryptable
-                            ? `Amount exceeds maximum (${maxEncryptable.toFixed(6)} OCT)`
-                            : ""}
-                    </p>
-                  </TooltipContent>
-                )}
-              </Tooltip>
-            </TooltipProvider>
-          </div>
-        </div>
+        {content}
       </DialogContent>
     </Dialog>
   );

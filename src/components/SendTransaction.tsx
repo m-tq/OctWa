@@ -13,6 +13,7 @@ import { Wallet } from '../types/wallet';
 import { fetchBalance, sendTransaction, createTransaction } from '../utils/api';
 import { useToast } from '@/hooks/use-toast';
 import { TransactionModal, TransactionStatus, TransactionResult } from './TransactionModal';
+import { AnimatedIcon } from './AnimatedIcon';
 
 // Threshold for confirmation dialog (500 OCT)
 const LARGE_TRANSACTION_THRESHOLD = 500;
@@ -279,6 +280,9 @@ export function SendTransaction({ wallet, balance, nonce, onBalanceUpdate, onNon
   if (isCompact) {
     return (
       <div className="space-y-4">
+        {/* Animated Icon */}
+        <AnimatedIcon type="send-public" size="sm" />
+
         {/* Recipient Address */}
         <div className="space-y-1.5">
           <Label htmlFor="recipient" className="text-sm">Recipient</Label>
@@ -336,7 +340,7 @@ export function SendTransaction({ wallet, balance, nonce, onBalanceUpdate, onNon
           />
         </div>
 
-        {/* OU (Gas) - Simplified */}
+        {/* OU (Gas) */}
         <div className="space-y-1.5">
           <Label className="text-sm">OU (Gas)</Label>
           <Select value={ouOption} onValueChange={setOuOption}>
@@ -345,11 +349,24 @@ export function SendTransaction({ wallet, balance, nonce, onBalanceUpdate, onNon
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="auto" className="text-sm">Auto</SelectItem>
-              <SelectItem value="10000" className="text-sm">10,000</SelectItem>
-              <SelectItem value="30000" className="text-sm">30,000</SelectItem>
-              <SelectItem value="50000" className="text-sm">50,000</SelectItem>
+              <SelectItem value="10000" className="text-sm">10,000 OU</SelectItem>
+              <SelectItem value="30000" className="text-sm">30,000 OU</SelectItem>
+              <SelectItem value="50000" className="text-sm">50,000 OU</SelectItem>
+              <SelectItem value="100000" className="text-sm">100,000 OU</SelectItem>
+              <SelectItem value="custom" className="text-sm">Custom</SelectItem>
             </SelectContent>
           </Select>
+          {ouOption === 'custom' && (
+            <Input
+              type="number"
+              placeholder="Enter custom OU value"
+              value={customOu}
+              onChange={(e) => setCustomOu(e.target.value)}
+              min="1000"
+              step="1000"
+              className="h-9 text-sm"
+            />
+          )}
         </div>
 
         {/* Fee Summary - Compact */}
@@ -378,10 +395,19 @@ export function SendTransaction({ wallet, balance, nonce, onBalanceUpdate, onNon
             !validateAmount(amount) ||
             totalCost > currentBalance
           }
-          className="w-full h-9 text-sm"
-          size="sm"
+          className="w-full h-10 text-sm"
         >
-          {isSending ? 'Sending...' : `Send ${amountNum.toFixed(4)} OCT`}
+          {isSending ? (
+            <div className="flex items-center gap-2">
+              <div className="relative w-4 h-4">
+                <div className="absolute inset-0 rounded-full border-2 border-white/20" />
+                <div className="absolute inset-0 rounded-full border-2 border-transparent border-t-white animate-spin" />
+              </div>
+              <span>Sending...</span>
+            </div>
+          ) : (
+            `Send ${amountNum.toFixed(4)} OCT`
+          )}
         </Button>
 
         {/* Large Transaction Confirmation Dialog */}

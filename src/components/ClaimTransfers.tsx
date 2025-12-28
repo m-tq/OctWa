@@ -203,28 +203,44 @@ export function ClaimTransfers({ wallet, onTransactionSuccess, isPopupMode = fal
 
   return (
     <Card className={`${hideBorder || isPopupMode ? 'border-0 shadow-none' : 'border-[#0000db]/20'}`}>
-      <CardHeader className={`flex flex-row items-center justify-between space-y-0 ${isPopupMode ? 'pb-2 px-3 pt-3' : 'pb-4'}`}>
-        <CardTitle className={`flex items-center gap-2 text-[#0000db] ${isPopupMode ? 'text-sm' : ''}`}>
-          <Gift className={isPopupMode ? 'h-4 w-4' : 'h-5 w-5'} />
-          {isPopupMode ? 'Claim Transfers' : 'Claim Private Transfers'}
-          {transfers.length > 0 && (
-            <Badge variant="secondary" className={isPopupMode ? 'ml-1 text-[10px]' : 'ml-2'}>
-              {transfers.length}
-            </Badge>
-          )}
-        </CardTitle>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={fetchTransfers}
-          disabled={isLoading}
-          className={isPopupMode ? 'h-7 px-2' : ''}
-        >
-          <RefreshCw className={`${isPopupMode ? 'h-3 w-3' : 'h-4 w-4'} ${isPopupMode ? '' : 'mr-2'} ${isLoading ? 'animate-spin' : ''}`} />
-          {!isPopupMode && 'Refresh'}
-        </Button>
-      </CardHeader>
-      <CardContent className={isPopupMode ? 'px-3 pb-3 pt-0' : ''}>
+      {/* Hide header in popup mode since parent already has header */}
+      {!isPopupMode && (
+        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
+          <CardTitle className="flex items-center gap-2 text-[#0000db]">
+            <Gift className="h-5 w-5" />
+            Claim Private Transfers
+            {transfers.length > 0 && (
+              <Badge variant="secondary" className="ml-2">
+                {transfers.length}
+              </Badge>
+            )}
+          </CardTitle>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={fetchTransfers}
+            disabled={isLoading}
+          >
+            <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
+            Refresh
+          </Button>
+        </CardHeader>
+      )}
+      <CardContent className={isPopupMode ? 'px-0 pb-0 pt-0' : ''}>
+        {/* Refresh button for popup mode */}
+        {isPopupMode && (
+          <div className="flex justify-end mb-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={fetchTransfers}
+              disabled={isLoading}
+              className="h-7 px-2"
+            >
+              <RefreshCw className={`h-3 w-3 ${isLoading ? 'animate-spin' : ''}`} />
+            </Button>
+          </div>
+        )}
         {/* Claim All Button - Show only when there are multiple transfers */}
         {transfers.length > 1 && (
           <div className={isPopupMode ? 'mb-2' : 'mb-4'}>
@@ -234,10 +250,13 @@ export function ClaimTransfers({ wallet, onTransactionSuccess, isPopupMode = fal
               className={`w-full bg-[#0000db] hover:bg-[#0000db]/90 ${isPopupMode ? 'h-8 text-xs' : ''}`}
             >
               {claimingAll ? (
-                <>
-                  <Loader2 className={`${isPopupMode ? 'h-3 w-3 mr-1' : 'h-4 w-4 mr-2'} animate-spin`} />
-                  {isPopupMode ? 'Claiming...' : 'Claiming All Transfers...'}
-                </>
+                <div className="flex items-center gap-1.5">
+                  <div className="relative w-3 h-3">
+                    <div className="absolute inset-0 rounded-full border-2 border-white/20" />
+                    <div className="absolute inset-0 rounded-full border-2 border-transparent border-t-white animate-spin" />
+                  </div>
+                  <span>{isPopupMode ? 'Claiming...' : 'Claiming All Transfers...'}</span>
+                </div>
               ) : (
                 <>
                   <Package className={isPopupMode ? 'h-3 w-3 mr-1' : 'h-4 w-4 mr-2'} />
@@ -319,10 +338,13 @@ export function ClaimTransfers({ wallet, onTransactionSuccess, isPopupMode = fal
                     className={`flex items-center gap-1.5 bg-[#0000db] hover:bg-[#0000db]/90 ${isPopupMode ? 'h-7 text-xs px-2' : ''}`}
                   >
                     {claimingId === transfer.id || claimingAll ? (
-                      <>
-                        <Loader2 className={`${isPopupMode ? 'h-3 w-3' : 'h-4 w-4'} animate-spin`} />
-                        {isPopupMode ? '...' : (claimingAll ? 'Processing...' : 'Claiming...')}
-                      </>
+                      <div className="flex items-center gap-1">
+                        <div className="relative w-3 h-3">
+                          <div className="absolute inset-0 rounded-full border-2 border-white/20" />
+                          <div className="absolute inset-0 rounded-full border-2 border-transparent border-t-white animate-spin" />
+                        </div>
+                        <span>{isPopupMode ? '...' : (claimingAll ? 'Processing...' : 'Claiming...')}</span>
+                      </div>
                     ) : (
                       <>
                         <Gift className={isPopupMode ? 'h-3 w-3' : 'h-4 w-4'} />

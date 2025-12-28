@@ -9,6 +9,7 @@ import { Wallet } from '../types/wallet';
 import { fetchEncryptedBalance, createPrivateTransfer, getAddressInfo } from '../utils/api';
 import { useToast } from '@/hooks/use-toast';
 import { TransactionModal, TransactionStatus, TransactionResult } from './TransactionModal';
+import { AnimatedIcon } from './AnimatedIcon';
 
 interface PrivateTransferProps {
   wallet: Wallet | null;
@@ -275,6 +276,9 @@ export function PrivateTransfer({
   if (isCompact) {
     return (
       <div className="space-y-4">
+        {/* Animated Icon */}
+        <AnimatedIcon type="send-private" size="sm" />
+
         {/* Private Balance - Compact */}
         <div className="p-2.5 bg-[#0000db]/5 border border-[#0000db]/20 rounded text-sm">
           <div className="flex justify-between items-center">
@@ -352,10 +356,19 @@ export function PrivateTransfer({
             !recipientInfo.has_public_key ||
             parseFloat(amount) > encryptedBalance.encrypted
           }
-          className="w-full h-9 text-sm bg-[#0000db] hover:bg-[#0000db]/90"
-          size="sm"
+          className="w-full h-10 text-sm bg-[#0000db] hover:bg-[#0000db]/90"
         >
-          {isSending ? 'Sending...' : 'Send Private'}
+          {isSending ? (
+            <div className="flex items-center gap-2">
+              <div className="relative w-4 h-4">
+                <div className="absolute inset-0 rounded-full border-2 border-white/20" />
+                <div className="absolute inset-0 rounded-full border-2 border-transparent border-t-white animate-spin" />
+              </div>
+              <span>Sending...</span>
+            </div>
+          ) : (
+            'Send Private'
+          )}
         </Button>
 
         {/* Transaction Modal */}

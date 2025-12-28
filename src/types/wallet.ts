@@ -88,11 +88,13 @@ export interface TransactionDetails {
     ou: string;
     timestamp: number;
     message: string | null;
+    op_type?: string;
   };
   epoch: number;
   tx_hash: string;
   data: string;
   source: string;
+  op_type?: string;
 }
 
 // New interface for pending transactions from staging

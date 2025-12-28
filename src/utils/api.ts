@@ -234,6 +234,11 @@ export async function fetchTransactionHistory(
       try {
         const txDetails = await fetchTransactionDetails(recentTx.hash);
         
+        // Determine op_type from transaction details
+        const opType = txDetails.op_type || txDetails.parsed_tx.op_type || 
+          (txDetails.parsed_tx.message === 'PRIVATE_TRANSFER' || 
+           txDetails.parsed_tx.message === '505249564154455f5452414e53464552' ? 'private' : 'standard');
+        
         // Transform to our expected format
         return {
           hash: txDetails.tx_hash,
@@ -242,7 +247,9 @@ export async function fetchTransactionHistory(
           amount: parseFloat(txDetails.parsed_tx.amount),
           timestamp: txDetails.parsed_tx.timestamp,
           status: 'confirmed' as const,
-          type: txDetails.parsed_tx.from.toLowerCase() === address.toLowerCase() ? 'sent' as const : 'received' as const
+          type: txDetails.parsed_tx.from.toLowerCase() === address.toLowerCase() ? 'sent' as const : 'received' as const,
+          op_type: opType,
+          message: txDetails.parsed_tx.message
         };
       } catch (error) {
         console.error('Failed to fetch transaction details for hash:', recentTx.hash, error);
@@ -254,7 +261,8 @@ export async function fetchTransactionHistory(
           amount: 0,
           timestamp: Date.now() / 1000,
           status: 'confirmed' as const,
-          type: 'received' as const
+          type: 'received' as const,
+          op_type: 'standard'
         };
       }
     });
@@ -262,15 +270,23 @@ export async function fetchTransactionHistory(
     const confirmedTransactions = await Promise.all(confirmedTransactionPromises);
     
     // Transform pending transactions to our expected format
-    const pendingTransactionsFormatted = pendingTransactions.map(tx => ({
-      hash: tx.hash,
-      from: tx.from,
-      to: tx.to,
-      amount: parseFloat(tx.amount),
-      timestamp: tx.timestamp,
-      status: 'pending' as const,
-      type: tx.from.toLowerCase() === address.toLowerCase() ? 'sent' as const : 'received' as const
-    }));
+    const pendingTransactionsFormatted = pendingTransactions.map(tx => {
+      // Determine op_type from message
+      const opType = tx.message === 'PRIVATE_TRANSFER' || 
+        tx.message === '505249564154455f5452414e53464552' ? 'private' : 'standard';
+      
+      return {
+        hash: tx.hash,
+        from: tx.from,
+        to: tx.to,
+        amount: parseFloat(tx.amount),
+        timestamp: tx.timestamp,
+        status: 'pending' as const,
+        type: tx.from.toLowerCase() === address.toLowerCase() ? 'sent' as const : 'received' as const,
+        op_type: opType,
+        message: tx.message
+      };
+    });
     
     // Combine and sort by timestamp (newest first)
     // Only include pending transactions on first page (offset 0)
@@ -349,37 +365,69 @@ export async function fetchPendingTransactions(address: string): Promise<Pending
   }
 }
 
-// New function to fetch specific pending transaction by hash
-export async function fetchPendingTransactionByHash(hash: string): Promise<PendingTransaction | null> {
-  try {
-    const response = await makeAPIRequest(`/staging`);
-    
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Failed to fetch pending transactions:', response.status, errorText);
-      return null;
-    }
-    
-    let data: StagingResponse;
+// New function to fetch specific pending transaction by hash with retry
+export async function fetchPendingTransactionByHash(hash: string, maxRetries: number = 3): Promise<PendingTransaction | null> {
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
-      data = await safeJsonParse(response);
+      const response = await makeAPIRequest(`/staging`);
       
-      if (!data.staged_transactions || !Array.isArray(data.staged_transactions)) {
-        console.warn('Staging response does not contain staged_transactions array:', data);
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`Failed to fetch pending transactions (attempt ${attempt}):`, response.status, errorText);
+        if (attempt < maxRetries) {
+          await new Promise(resolve => setTimeout(resolve, 500 * attempt)); // Exponential backoff
+          continue;
+        }
         return null;
       }
-    } catch (parseError) {
-      console.error('Failed to parse staging JSON:', parseError);
+      
+      let data: StagingResponse;
+      try {
+        data = await safeJsonParse(response);
+        
+        if (!data.staged_transactions || !Array.isArray(data.staged_transactions)) {
+          console.warn('Staging response does not contain staged_transactions array:', data);
+          if (attempt < maxRetries) {
+            await new Promise(resolve => setTimeout(resolve, 500 * attempt));
+            continue;
+          }
+          return null;
+        }
+      } catch (parseError) {
+        console.error('Failed to parse staging JSON:', parseError);
+        if (attempt < maxRetries) {
+          await new Promise(resolve => setTimeout(resolve, 500 * attempt));
+          continue;
+        }
+        return null;
+      }
+      
+      // Find transaction by hash
+      const transaction = data.staged_transactions.find(tx => tx.hash === hash);
+      
+      if (transaction) {
+        return transaction;
+      }
+      
+      // If not found and we have retries left, wait and try again
+      // (transaction might not be propagated yet)
+      if (attempt < maxRetries) {
+        console.log(`Pending transaction not found (attempt ${attempt}), retrying...`);
+        await new Promise(resolve => setTimeout(resolve, 500 * attempt));
+        continue;
+      }
+      
+      return null;
+    } catch (error) {
+      console.error(`Error fetching pending transaction by hash (attempt ${attempt}):`, error);
+      if (attempt < maxRetries) {
+        await new Promise(resolve => setTimeout(resolve, 500 * attempt));
+        continue;
+      }
       return null;
     }
-    
-    // Find transaction by hash
-    const transaction = data.staged_transactions.find(tx => tx.hash === hash);
-    return transaction || null;
-  } catch (error) {
-    console.error('Error fetching pending transaction by hash:', error);
-    return null;
   }
+  return null;
 }
 
 export async function fetchBalance(address: string): Promise<BalanceResponse> {

@@ -14,6 +14,7 @@ export interface Transaction {
   status: 'confirmed' | 'pending' | 'failed';
   type: 'sent' | 'received';
   message?: string;
+  op_type?: string;
 }
 
 // Contract interaction interface (from existing codebase)
@@ -149,12 +150,18 @@ export function getUnifiedHistory(
 }
 
 /**
- * Checks if a transaction is a private transfer based on its message.
+ * Checks if a transaction is a private transfer based on its op_type or message.
  * 
  * @param tx - Transaction to check
  * @returns true if the transaction is a private transfer
  */
 export function isPrivateTransfer(tx: Transaction): boolean {
+  // Check op_type first (most reliable)
+  if (tx.op_type) {
+    return tx.op_type === 'private';
+  }
+  
+  // Fallback to message-based detection for older transactions
   return (
     tx.message === 'PRIVATE_TRANSFER' ||
     tx.message === '505249564154455f5452414e53464552' || // hex encoded

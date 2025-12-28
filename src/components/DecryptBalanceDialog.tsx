@@ -1,13 +1,15 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Unlock, Loader2, AlertTriangle } from 'lucide-react';
+import { Unlock, AlertTriangle } from 'lucide-react';
 import { Wallet } from '../types/wallet';
 import { decryptBalance } from '../utils/api';
 import { useToast } from '@/hooks/use-toast';
+import { AnimatedIcon } from './AnimatedIcon';
+import { TransactionModal, TransactionStatus, TransactionResult } from './TransactionModal';
 
 interface DecryptBalanceDialogProps {
   open: boolean;
@@ -16,6 +18,7 @@ interface DecryptBalanceDialogProps {
   encryptedBalance: number;
   onSuccess: () => void;
   isPopupMode?: boolean;
+  isInline?: boolean;
 }
 
 export function DecryptBalanceDialog({ 
@@ -24,10 +27,14 @@ export function DecryptBalanceDialog({
   wallet, 
   encryptedBalance, 
   onSuccess,
-  isPopupMode = false
+  isPopupMode = false,
+  isInline = false
 }: DecryptBalanceDialogProps) {
   const [amount, setAmount] = useState('');
   const [isDecrypting, setIsDecrypting] = useState(false);
+  const [showTxModal, setShowTxModal] = useState(false);
+  const [txModalStatus, setTxModalStatus] = useState<TransactionStatus>('idle');
+  const [txModalResult, setTxModalResult] = useState<TransactionResult>({});
   const { toast } = useToast();
 
   const handleDecrypt = async () => {
@@ -53,33 +60,127 @@ export function DecryptBalanceDialog({
 
     setIsDecrypting(true);
     
+    // Show modal with sending state
+    setTxModalStatus('sending');
+    setTxModalResult({});
+    setShowTxModal(true);
+    
     try {
       const result = await decryptBalance(wallet.address, amountNum, wallet.privateKey);
       
       if (result.success) {
-        toast({
-          title: "Decryption Submitted!",
-          description: "Your balance decryption request has been submitted",
-        });
+        // Update modal to success state
+        setTxModalStatus('success');
+        setTxModalResult({ hash: result.tx_hash, amount: amountNum.toFixed(8) });
         setAmount('');
         onSuccess();
       } else {
-        toast({
-          title: "Decryption Failed",
-          description: result.error || "Unknown error occurred",
-          variant: "destructive",
-        });
+        // Update modal to error state
+        setTxModalStatus('error');
+        setTxModalResult({ error: result.error || "Unknown error occurred" });
       }
     } catch (error) {
-      toast({
-        title: "Error",
-        description: "Failed to decrypt balance",
-        variant: "destructive",
-      });
+      // Update modal to error state
+      setTxModalStatus('error');
+      setTxModalResult({ error: "Failed to decrypt balance" });
     } finally {
       setIsDecrypting(false);
     }
   };
+
+  const content = (
+    <div className={isPopupMode ? "space-y-3" : "space-y-4"}>
+      {/* Animated Icon - only in popup inline mode */}
+      {isPopupMode && isInline && (
+        <AnimatedIcon type="decrypt" size="sm" />
+      )}
+
+      {/* Description text - no border in popup mode, centered */}
+      {isPopupMode && isInline ? (
+        <p className="text-xs text-center text-[#0000db]">
+          Convert private OCT back to public OCT.
+        </p>
+      ) : (
+        <Alert className={isPopupMode ? "py-2" : ""}>
+          <div className={isPopupMode ? "flex items-center gap-2" : ""}>
+            <AlertTriangle className={`${isPopupMode ? "h-4 w-4 flex-shrink-0" : "h-4 w-4"}`} />
+            <AlertDescription className={isPopupMode ? "text-xs leading-normal" : ""}>
+              {isPopupMode ? "Convert private OCT back to public OCT." : "Decrypting balance converts private OCT back to public OCT."}
+            </AlertDescription>
+          </div>
+        </Alert>
+      )}
+
+      <div className={isPopupMode ? "space-y-1" : "space-y-2"}>
+        <Label className={isPopupMode ? "text-xs" : ""}>Current Private Balance</Label>
+        <div className={`bg-[#0000db]/5 border border-[#0000db]/20 rounded-md font-mono text-[#0000db] ${isPopupMode ? 'p-2 text-xs' : 'p-3'}`}>
+          {encryptedBalance.toFixed(8)} OCT
+        </div>
+      </div>
+
+      <div className={isPopupMode ? "space-y-1" : "space-y-2"}>
+        <Label htmlFor="decrypt-amount" className={isPopupMode ? "text-xs" : ""}>Amount to Decrypt</Label>
+        <Input
+          id="decrypt-amount"
+          type="number"
+          placeholder="0.00000000"
+          value={amount}
+          onChange={(e) => setAmount(e.target.value)}
+          step="0.1"
+          min="0"
+          max={encryptedBalance}
+          disabled={isDecrypting}
+          className={isPopupMode ? "h-9 text-sm" : ""}
+        />
+      </div>
+
+      <div className="flex gap-2 pt-2">
+        <Button
+          variant="outline"
+          onClick={() => onOpenChange(false)}
+          disabled={isDecrypting}
+          className={`flex-1 ${isPopupMode ? 'h-10 text-sm' : ''}`}
+        >
+          Cancel
+        </Button>
+        <Button
+          onClick={handleDecrypt}
+          disabled={isDecrypting || !amount || parseFloat(amount) <= 0 || parseFloat(amount) > encryptedBalance}
+          className={`flex-1 bg-[#0000db] hover:bg-[#0000db]/90 ${isPopupMode ? 'h-10 text-sm' : ''}`}
+        >
+          {isDecrypting ? (
+            <div className="flex items-center gap-2">
+              <div className="relative w-4 h-4">
+                <div className="absolute inset-0 rounded-full border-2 border-white/20" />
+                <div className="absolute inset-0 rounded-full border-2 border-transparent border-t-white animate-spin" />
+              </div>
+              <span>Decrypting...</span>
+            </div>
+          ) : (
+            <>
+              <Unlock className={`${isPopupMode ? 'h-4 w-4 mr-1.5' : 'h-4 w-4 mr-2'}`} />
+              Decrypt
+            </>
+          )}
+        </Button>
+      </div>
+
+      {/* Transaction Modal */}
+      <TransactionModal
+        open={showTxModal}
+        onOpenChange={setShowTxModal}
+        status={txModalStatus}
+        result={txModalResult}
+        type="decrypt"
+        isPopupMode={isPopupMode}
+      />
+    </div>
+  );
+
+  // Inline mode - render content directly without Dialog wrapper
+  if (isInline) {
+    return content;
+  }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -90,66 +191,7 @@ export function DecryptBalanceDialog({
             Decrypt Balance
           </DialogTitle>
         </DialogHeader>
-        
-        <div className={isPopupMode ? "space-y-3" : "space-y-4"}>
-          <Alert className={isPopupMode ? "py-2" : ""}>
-            <AlertTriangle className={isPopupMode ? "h-3 w-3" : "h-4 w-4"} />
-            <AlertDescription className={isPopupMode ? "text-[11px] leading-tight" : ""}>
-              {isPopupMode ? "Convert private OCT back to public OCT." : "Decrypting balance converts private OCT back to public OCT."}
-            </AlertDescription>
-          </Alert>
-
-          <div className={isPopupMode ? "space-y-1" : "space-y-2"}>
-            <Label className={isPopupMode ? "text-xs" : ""}>Current Private Balance</Label>
-            <div className={`bg-[#0000db]/5 border border-[#0000db]/20 rounded-md font-mono text-[#0000db] ${isPopupMode ? 'p-2 text-xs' : 'p-3'}`}>
-              {encryptedBalance.toFixed(8)} OCT
-            </div>
-          </div>
-
-          <div className={isPopupMode ? "space-y-1" : "space-y-2"}>
-            <Label htmlFor="decrypt-amount" className={isPopupMode ? "text-xs" : ""}>Amount to Decrypt</Label>
-            <Input
-              id="decrypt-amount"
-              type="number"
-              placeholder="0.00000000"
-              value={amount}
-              onChange={(e) => setAmount(e.target.value)}
-              step="0.1"
-              min="0"
-              max={encryptedBalance}
-              disabled={isDecrypting}
-              className={isPopupMode ? "h-8 text-xs" : ""}
-            />
-          </div>
-
-          <div className="flex gap-2">
-            <Button
-              variant="outline"
-              onClick={() => onOpenChange(false)}
-              disabled={isDecrypting}
-              className={`flex-1 ${isPopupMode ? 'h-8 text-xs' : ''}`}
-            >
-              Cancel
-            </Button>
-            <Button
-              onClick={handleDecrypt}
-              disabled={isDecrypting || !amount || parseFloat(amount) <= 0 || parseFloat(amount) > encryptedBalance}
-              className={`flex-1 ${isPopupMode ? 'h-8 text-xs' : ''}`}
-            >
-              {isDecrypting ? (
-                <>
-                  <Loader2 className={`${isPopupMode ? 'h-3 w-3 mr-1' : 'h-4 w-4 mr-2'} animate-spin`} />
-                  {isPopupMode ? '...' : 'Decrypting...'}
-                </>
-              ) : (
-                <>
-                  <Unlock className={`${isPopupMode ? 'h-3 w-3 mr-1' : 'h-4 w-4 mr-2'}`} />
-                  Decrypt
-                </>
-              )}
-            </Button>
-          </div>
-        </div>
+        {content}
       </DialogContent>
     </Dialog>
   );
