@@ -1355,11 +1355,11 @@ export function WalletDashboard({
                         <div className="p-4 bg-gradient-to-br from-[#0000db]/5 to-[#0000db]/10 border border-[#0000db]/20 rounded-xl">
                           {/* Stats Grid */}
                           <div className="grid grid-cols-2 gap-3">
-                            <div className="bg-transparent border border-muted rounded-lg p-2.5 text-center">
+                            <div className="bg-transparent border border-[#0000db]/50 rounded-lg p-2.5 text-center">
                               <div className="text-xs text-muted-foreground mb-0.5">Nonce</div>
                               <div className="text-lg font-semibold text-[#0000db]">{nonce}</div>
                             </div>
-                            <div className="bg-transparent border border-muted rounded-lg p-2.5 text-center">
+                            <div className="bg-transparent border border-[#0000db]/50 rounded-lg p-2.5 text-center">
                               <div className="text-xs text-muted-foreground mb-0.5">Wallets</div>
                               <div className="text-lg font-semibold text-[#0000db]">{wallets.length}</div>
                             </div>

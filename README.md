@@ -70,10 +70,9 @@ OctWa implements industry-standard security practices to protect your assets:
   <img src="public/screenshot/popup/locked.png" alt="Locked" width="180">
   <img src="public/screenshot/popup/dashboard.png" alt="Dashboard" width="180">
   <img src="public/screenshot/popup/publicsend.png" alt="Public Send" width="180">
-  <img src="public/screenshot/popup/history.png" alt="History" width="180">
 </p>
 <p align="center">
-  <em>Popup Mode: Locked → Dashboard → Send → History</em>
+  <em>Popup Mode: Locked → Dashboard → Send</em>
 </p>
 
 <p align="center">
