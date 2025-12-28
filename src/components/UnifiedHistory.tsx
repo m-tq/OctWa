@@ -200,7 +200,7 @@ export function UnifiedHistory({ wallet, transactions, onTransactionsUpdate, isL
   const pendingCount = filteredTransactions.filter(tx => tx.status === 'pending').length;
 
   return (
-    <Card className={hideBorder ? 'border-0 shadow-none' : ''}>
+    <Card className={hideBorder || isPopupMode ? 'border-0 shadow-none' : ''}>
       <CardHeader className={`flex flex-row items-center justify-between space-y-0 ${isPopupMode ? 'pb-2 px-3 pt-3' : 'pb-4'}`}>
         <div className="flex flex-col gap-0.5">
           <CardTitle className={`flex items-center gap-2 ${isPopupMode ? 'text-sm' : ''}`}>

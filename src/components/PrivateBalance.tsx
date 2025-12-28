@@ -125,7 +125,7 @@ export function PrivateBalance({
 
   return (
     <div className="space-y-4">
-      <Card className={hideBorder ? 'border-0 shadow-none' : 'border-[#0000db]/20'}>
+      <Card className={hideBorder || isPopupMode ? 'border-0 shadow-none' : 'border-[#0000db]/20'}>
         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
           <CardTitle className="flex items-center gap-2 text-[#0000db] text-base">
             <Shield className="h-4 w-4" />
