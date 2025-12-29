@@ -73,12 +73,6 @@ OctWa implements industry-standard security practices to protect your assets:
 </p>
 
 <p align="center">
-  <img src="public/screenshot/multisend_result.png" alt="Multi Send Result" width="600">
-  <br>
-  <em>Multi Send Result - Real-time transaction logs with status tracking</em>
-</p>
-
-<p align="center">
   <img src="public/screenshot/bulksend.png" alt="Bulk Send" width="600">
   <br>
   <em>Bulk Send - Import recipients from CSV/TXT file for mass transfers</em>
