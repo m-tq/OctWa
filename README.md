@@ -64,6 +64,26 @@ OctWa implements industry-standard security practices to protect your assets:
   <em>Private Mode - Confidential transactions</em>
 </p>
 
+### Multi-Send & Bulk Send (Expanded Mode)
+
+<p align="center">
+  <img src="public/screenshot/multisend.png" alt="Multi Send" width="600">
+  <br>
+  <em>Multi Send - Send to multiple recipients with individual amounts and messages</em>
+</p>
+
+<p align="center">
+  <img src="public/screenshot/multisend_result.png" alt="Multi Send Result" width="600">
+  <br>
+  <em>Multi Send Result - Real-time transaction logs with status tracking</em>
+</p>
+
+<p align="center">
+  <img src="public/screenshot/bulksend.png" alt="Bulk Send" width="600">
+  <br>
+  <em>Bulk Send - Import recipients from CSV/TXT file for mass transfers</em>
+</p>
+
 ### Popup Mode (Browser Extension)
 
 <p align="center">
@@ -101,10 +121,20 @@ OctWa implements industry-standard security practices to protect your assets:
 - **Password Strength Meter** - Visual indicator helps create strong passwords
 
 ### Transactions
-- **Send Transaction** - Send OCT tokens to any address
-- **Multi-Send** - Send tokens to multiple recipients in one transaction
-- **File Multi-Send** - Import recipient list from CSV/TXT file for bulk transfers
+- **Standard Send** - Send OCT tokens to any address with animated UI feedback
+- **Multi-Send** - Send tokens to multiple recipients with individual amounts and optional messages
+  - Add/remove recipients dynamically
+  - Real-time address validation
+  - Per-recipient message support
+  - Live transaction logs panel
+- **Bulk Send (File Import)** - Import recipient list from CSV/TXT file for mass transfers
+  - Same amount for all recipients OR different amounts per recipient
+  - Drag & drop file upload
+  - Recipients preview with validation
+  - Real-time transaction progress tracking
+  - Reset functionality to clear all data
 - **Transaction History** - View complete transaction history with status tracking
+- **OU (Gas) Settings** - Configurable gas settings with auto mode
 
 ### Privacy Features (Confidential Transactions)
 - **Public/Private Mode Toggle** - Switch between public and private operation modes
@@ -129,8 +159,10 @@ OctWa implements industry-standard security practices to protect your assets:
 - **Dark/Light Theme** - Toggle between dark and light themes
 - **Responsive Design** - Works on desktop and mobile browsers
 - **Popup & Expanded View** - Compact popup or full-page expanded interface
+- **Animated Icons** - Visual feedback with animated icons for send operations
 - **RPC Provider Manager** - Configure and switch between RPC endpoints
 - **Connection Status** - Real-time RPC connection status indicator
+- **Dynamic Version Display** - Version automatically synced from manifest.json
 
 ---
 
@@ -141,7 +173,7 @@ This project ships as both a web app and a Chrome/Edge browser extension. The we
 ## Overview
 - Web app: served as static files from `dist` with a small RPC proxy for production.
 - Browser extension: load `dist` as an unpacked extension or zip for store submission.
-- Multi-entry build: Vite builds `main` (web), `popup` (extension popup), and `expanded` (extension full-page) entries (`vite.config.ts:16–20`).
+- Multi-entry build: Vite builds `main` (web), `popup` (extension popup), and `expanded` (extension full-page) entries.
 
 ## Prerequisites
 - Node.js 18+ and npm 9+.
@@ -163,7 +195,7 @@ npm install
 - Opens at `http://localhost:5173/`.
 - API calls during development go through the Vite proxy at `/api` and can target different RPC endpoints via the `X-RPC-URL` header set in code (`src/utils/api.ts`).
 
--### Extension (local)
+### Extension (local)
 - Build extension assets into `dist` (cross‑platform):
   ```bash
   npm run build:extension
@@ -194,6 +226,17 @@ npm install
   - `manifest.json`, `background.js`, `popup.html`, `content.js`, `provider.js`, `octra-sdk.js`, `icons/`.
   - `assets/popup.js`, `assets/expanded.js`, `assets/index.css` from Vite build.
 - Zip `dist/` and submit to Chrome Web Store / Edge Add-ons.
+
+## Version Management
+
+The app version is automatically read from `extensionFiles/manifest.json` during build time. To update the version:
+
+1. Edit `extensionFiles/manifest.json` and update the `version` field
+2. Run `npm run build:extension`
+3. The new version will be displayed in:
+   - Popup mode footer: `Mainnet | OctWa x.x.x`
+   - Expanded mode footer: `Mainnet | OctWa x.x.x`
+   - Wallet menu (popup): `OctWa x.x.x`
 
 ## Nginx (web) configuration
 
@@ -242,7 +285,7 @@ server {
 }
 ```
 
-- Development proxy: Vite dev proxy for `/api` is configured in `vite.config.ts:33–65` and sets the `Host` header based on `X-RPC-URL`.
+- Development proxy: Vite dev proxy for `/api` is configured in `vite.config.ts` and sets the `Host` header based on `X-RPC-URL`.
 - Production proxy: web app sets `X-RPC-Target` and uses `/rpc-proxy` (`src/utils/api.ts`).
 
 ## Configuration
@@ -250,10 +293,10 @@ server {
 - Environment variables: A sample `.env.example` includes `VITE_DEFAULT_RPC_URL`, but current code primarily reads providers from storage and uses the UI to set the active provider.
 
 ## Project Structure Notes
-- Multi-entry build:
-  - `vite.config.ts:16–20` defines inputs for `index.html` (web), `src/popup.tsx` (extension popup), and `src/expanded.tsx` (extension expanded view).
+- Multi-entry build: `vite.config.ts` defines inputs for `index.html` (web), `src/popup.tsx` (extension popup), and `src/expanded.tsx` (extension expanded view).
 - Extension popup HTML: `extensionFiles/popup.html` loads `assets/popup.js` and adds `#root`.
 - Background/content/provider scripts live in `extensionFiles/` and are copied to `dist` during `build:extension`.
+- Version injection: `vite.config.ts` reads version from `extensionFiles/manifest.json` and injects it as `__APP_VERSION__` global constant.
 
 ## Troubleshooting
 - `npm run deploy` references `./deploy.sh`, which is not present; use `npm run build:prod` and your own hosting steps.

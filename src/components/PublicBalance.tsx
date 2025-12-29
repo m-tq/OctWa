@@ -132,19 +132,19 @@ export function PublicBalance({
         </CardHeader>
         <CardContent className="pt-2 pb-4">
           {/* Public Balance Display */}
-          <div className="text-center py-3">
-            <div className="flex items-center justify-center gap-1.5 mb-1">
+          <div className="text-center py-4">
+            <div className="flex items-center justify-center gap-1.5 mb-2">
               <Wallet className="h-4 w-4 text-muted-foreground" />
               <span className="text-xs font-medium text-muted-foreground">Available</span>
             </div>
             {isLoading ? (
-              <Skeleton className="h-10 w-40 mx-auto" />
+              <Skeleton className="h-12 w-48 mx-auto" />
             ) : (
-              <div className="flex items-center justify-center gap-2">
-                <div className="text-3xl font-bold">
+              <div className="flex items-center justify-center gap-3">
+                <div className="text-4xl font-bold">
                   {balance !== null ? balance.toFixed(8) : '0.00000000'}
                 </div>
-                <Badge variant="secondary" className="text-xs font-bold">OCT</Badge>
+                <Badge variant="secondary" className="text-lg font-bold px-3 py-1">OCT</Badge>
               </div>
             )}
           </div>
@@ -152,19 +152,18 @@ export function PublicBalance({
           {/* Total Balance Info - REMOVED: Don't show private balance in public mode */}
 
           {/* Encrypt Action */}
-          <div className="flex justify-center pt-3 mt-3 border-t">
+          <div className="flex justify-center pt-4">
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger asChild>
                   <span className="inline-flex">
                     <Button
                       variant="outline"
-                      size="sm"
                       onClick={() => setShowEncryptDialog(true)}
                       disabled={!balance || balance <= 0.001}
-                      className="flex items-center gap-1.5"
+                      className="flex items-center gap-2 h-11 px-5 text-base"
                     >
-                      <Lock className="h-3.5 w-3.5" />
+                      <Lock className="h-5 w-5" />
                       Encrypt OCT
                     </Button>
                   </span>

@@ -2,10 +2,19 @@ import { useState, useEffect, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Copy, Loader2, Eye, EyeOff } from 'lucide-react';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Copy, Loader2, Eye, EyeOff, AlertCircle, ShieldCheck, Check } from 'lucide-react';
 import { Wallet } from '../types/wallet';
 import { generateWallet } from '../utils/wallet';
 import { useToast } from '@/hooks/use-toast';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 
 interface GenerateWalletProps {
   onWalletGenerated: (wallet: Wallet) => void;
@@ -14,12 +23,29 @@ interface GenerateWalletProps {
 
 const CLIPBOARD_CLEAR_DELAY = 30000;
 
+// Get random unique indices for verification
+function getRandomIndices(total: number, count: number): number[] {
+  const indices: number[] = [];
+  while (indices.length < count) {
+    const rand = Math.floor(Math.random() * total);
+    if (!indices.includes(rand)) {
+      indices.push(rand);
+    }
+  }
+  return indices.sort((a, b) => a - b);
+}
+
 export function GenerateWallet({ onWalletGenerated, isCompact = false }: GenerateWalletProps) {
   const [generatedWallet, setGeneratedWallet] = useState<Wallet | null>(null);
   const [isGenerating, setIsGenerating] = useState(true);
   const [hasBackedUp, setHasBackedUp] = useState(false);
   const [showMnemonic, setShowMnemonic] = useState(false);
   const [showPrivateKey, setShowPrivateKey] = useState(false);
+  const [showVerifyModal, setShowVerifyModal] = useState(false);
+  const [verifyIndices, setVerifyIndices] = useState<number[]>([]);
+  const [verifyInputs, setVerifyInputs] = useState<Record<number, string>>({});
+  const [verifyError, setVerifyError] = useState('');
+  const [copiedField, setCopiedField] = useState<string | null>(null);
   const { toast } = useToast();
   const clipboardTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -44,17 +70,17 @@ export function GenerateWallet({ onWalletGenerated, isCompact = false }: Generat
   }, []);
 
 
-  const copyToClipboard = async (text: string, label: string, isSensitive = false) => {
+  const copyToClipboard = async (text: string, field: string, isSensitive = false) => {
     try {
       await navigator.clipboard.writeText(text);
+      setCopiedField(field);
+      setTimeout(() => setCopiedField(null), 2000);
+      
       if (isSensitive) {
         if (clipboardTimeoutRef.current) clearTimeout(clipboardTimeoutRef.current);
         clipboardTimeoutRef.current = setTimeout(async () => {
           try { await navigator.clipboard.writeText(''); } catch { /* ignore */ }
         }, CLIPBOARD_CLEAR_DELAY);
-        toast({ title: "Copied!", description: `${label} (clears in 30s)` });
-      } else {
-        toast({ title: "Copied!", description: label });
       }
     } catch {
       toast({ title: "Error", description: "Copy failed", variant: "destructive" });
@@ -63,9 +89,54 @@ export function GenerateWallet({ onWalletGenerated, isCompact = false }: Generat
 
   const handleSaveWallet = () => {
     if (!generatedWallet || !hasBackedUp) return;
+    
+    // Show verification modal instead of proceeding directly
+    if (generatedWallet.mnemonic) {
+      const words = generatedWallet.mnemonic.split(' ');
+      const indices = getRandomIndices(words.length, 2);
+      setVerifyIndices(indices);
+      setVerifyInputs({});
+      setVerifyError('');
+      setShowVerifyModal(true);
+    } else {
+      // No mnemonic, proceed directly
+      proceedToPassword();
+    }
+  };
+
+  const proceedToPassword = () => {
+    if (!generatedWallet) return;
     navigator.clipboard.writeText('').catch(() => {});
     if (clipboardTimeoutRef.current) clearTimeout(clipboardTimeoutRef.current);
     onWalletGenerated(generatedWallet);
+  };
+
+  const handleVerifyBackup = () => {
+    if (!generatedWallet?.mnemonic) return;
+    
+    const words = generatedWallet.mnemonic.split(' ');
+    let allCorrect = true;
+    
+    for (const idx of verifyIndices) {
+      const input = (verifyInputs[idx] || '').trim().toLowerCase();
+      if (input !== words[idx].toLowerCase()) {
+        allCorrect = false;
+        break;
+      }
+    }
+    
+    if (allCorrect) {
+      setShowVerifyModal(false);
+      proceedToPassword();
+    } else {
+      setVerifyError('Incorrect words. Please check your backup and try again.');
+    }
+  };
+
+  const handleCancelVerify = () => {
+    setShowVerifyModal(false);
+    setVerifyInputs({});
+    setVerifyError('');
   };
 
   const handleRegenerate = async () => {
@@ -84,6 +155,27 @@ export function GenerateWallet({ onWalletGenerated, isCompact = false }: Generat
   };
 
   const maskText = (text: string) => '•'.repeat(Math.min(text.length, 32));
+
+  const handleVerifyInputChange = (idx: number, value: string) => {
+    setVerifyInputs(prev => ({ ...prev, [idx]: value }));
+    setVerifyError('');
+  };
+
+  // Copy button component with check icon feedback
+  const CopyButton = ({ field, text, isSensitive = false, size = 'sm' }: { field: string; text: string; isSensitive?: boolean; size?: 'sm' | 'default' }) => (
+    <Button 
+      variant={size === 'sm' ? 'ghost' : 'outline'} 
+      size="sm" 
+      onClick={() => copyToClipboard(text, field, isSensitive)} 
+      className={size === 'sm' ? 'h-6 w-6 p-0' : ''}
+    >
+      {copiedField === field ? (
+        <Check className={`${size === 'sm' ? 'h-3 w-3' : 'h-4 w-4'} text-green-500`} />
+      ) : (
+        <Copy className={size === 'sm' ? 'h-3 w-3' : 'h-4 w-4'} />
+      )}
+    </Button>
+  );
 
   if (isGenerating) {
     return (
@@ -107,14 +199,54 @@ export function GenerateWallet({ onWalletGenerated, isCompact = false }: Generat
   // Compact mode for popup
   if (isCompact) {
     return (
-      <div className="space-y-3">
+      <>
+        <Dialog open={showVerifyModal} onOpenChange={setShowVerifyModal}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <ShieldCheck className="h-5 w-5 text-primary" />
+                Are you sure you have a backup?
+              </DialogTitle>
+              <DialogDescription>
+                Please enter the following words from your mnemonic phrase to verify your backup.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 py-4">
+              {verifyIndices.map((idx) => (
+                <div key={idx} className="space-y-2">
+                  <Label htmlFor={`word-compact-${idx}`}>Word {idx + 1}</Label>
+                  <Input
+                    id={`word-compact-${idx}`}
+                    placeholder={`Enter word #${idx + 1}`}
+                    value={verifyInputs[idx] || ''}
+                    onChange={(e) => handleVerifyInputChange(idx, e.target.value)}
+                    className={verifyError ? 'border-destructive' : ''}
+                  />
+                </div>
+              ))}
+              {verifyError && (
+                <p className="text-sm text-destructive flex items-center gap-1">
+                  <AlertCircle className="h-4 w-4" />
+                  {verifyError}
+                </p>
+              )}
+            </div>
+            <div className="flex flex-col-reverse sm:flex-row gap-2">
+              <Button variant="outline" onClick={handleCancelVerify} className="flex-1">
+                Okay, I don't have a backup yet
+              </Button>
+              <Button onClick={handleVerifyBackup} className="flex-1">
+                Verify Backup
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+        <div className="space-y-3">
         {/* Address */}
         <div>
           <div className="flex items-center justify-between mb-1">
             <span className="text-xs text-muted-foreground">Address</span>
-            <Button variant="ghost" size="sm" onClick={() => copyToClipboard(generatedWallet.address, 'Address')} className="h-6 w-6 p-0">
-              <Copy className="h-3 w-3" />
-            </Button>
+            <CopyButton field="address-compact" text={generatedWallet.address} />
           </div>
           <div className="p-2 bg-muted rounded text-xs font-mono break-all">{generatedWallet.address}</div>
         </div>
@@ -126,9 +258,7 @@ export function GenerateWallet({ onWalletGenerated, isCompact = false }: Generat
               <span className="text-xs text-muted-foreground">Mnemonic</span>
               <div className="flex gap-1">
                 {showMnemonic && (
-                  <Button variant="ghost" size="sm" onClick={() => copyToClipboard(generatedWallet.mnemonic!, 'Mnemonic', true)} className="h-6 w-6 p-0">
-                    <Copy className="h-3 w-3" />
-                  </Button>
+                  <CopyButton field="mnemonic-compact" text={generatedWallet.mnemonic} isSensitive />
                 )}
                 <Button variant="ghost" size="sm" onClick={() => setShowMnemonic(!showMnemonic)} className="h-6 w-6 p-0">
                   {showMnemonic ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
@@ -157,9 +287,7 @@ export function GenerateWallet({ onWalletGenerated, isCompact = false }: Generat
             <span className="text-xs text-muted-foreground">Private Key</span>
             <div className="flex gap-1">
               {showPrivateKey && (
-                <Button variant="ghost" size="sm" onClick={() => copyToClipboard(generatedWallet.privateKey, 'Key', true)} className="h-6 w-6 p-0">
-                  <Copy className="h-3 w-3" />
-                </Button>
+                <CopyButton field="privatekey-compact" text={generatedWallet.privateKey} isSensitive />
               )}
               <Button variant="ghost" size="sm" onClick={() => setShowPrivateKey(!showPrivateKey)} className="h-6 w-6 p-0">
                 {showPrivateKey ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
@@ -183,13 +311,56 @@ export function GenerateWallet({ onWalletGenerated, isCompact = false }: Generat
           <Button onClick={handleSaveWallet} disabled={!hasBackedUp} size="sm" className="flex-1 h-8 text-xs">Continue</Button>
         </div>
       </div>
+      </>
     );
   }
 
 
   // Normal mode
   return (
-    <Card>
+    <>
+      <Dialog open={showVerifyModal} onOpenChange={setShowVerifyModal}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <ShieldCheck className="h-5 w-5 text-primary" />
+              Are you sure you have a backup?
+            </DialogTitle>
+            <DialogDescription>
+              Please enter the following words from your mnemonic phrase to verify your backup.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            {verifyIndices.map((idx) => (
+              <div key={idx} className="space-y-2">
+                <Label htmlFor={`word-${idx}`}>Word {idx + 1}</Label>
+                <Input
+                  id={`word-${idx}`}
+                  placeholder={`Enter word #${idx + 1}`}
+                  value={verifyInputs[idx] || ''}
+                  onChange={(e) => handleVerifyInputChange(idx, e.target.value)}
+                  className={verifyError ? 'border-destructive' : ''}
+                />
+              </div>
+            ))}
+            {verifyError && (
+              <p className="text-sm text-destructive flex items-center gap-1">
+                <AlertCircle className="h-4 w-4" />
+                {verifyError}
+              </p>
+            )}
+          </div>
+          <div className="flex flex-col-reverse sm:flex-row gap-2">
+            <Button variant="outline" onClick={handleCancelVerify} className="flex-1">
+              Okay, I don't have a backup yet
+            </Button>
+            <Button onClick={handleVerifyBackup} className="flex-1">
+              Verify Backup
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+      <Card>
       <CardHeader className="pb-4">
         <CardTitle className="text-lg">Backup Your Wallet</CardTitle>
       </CardHeader>
@@ -198,9 +369,7 @@ export function GenerateWallet({ onWalletGenerated, isCompact = false }: Generat
           <label className="text-sm font-medium">Address</label>
           <div className="flex items-center gap-2">
             <div className="flex-1 p-2 bg-muted rounded text-xs font-mono break-all">{generatedWallet.address}</div>
-            <Button variant="outline" size="sm" onClick={() => copyToClipboard(generatedWallet.address, 'Address')}>
-              <Copy className="h-4 w-4" />
-            </Button>
+            <CopyButton field="address" text={generatedWallet.address} size="default" />
           </div>
         </div>
         {generatedWallet.mnemonic && (
@@ -227,8 +396,18 @@ export function GenerateWallet({ onWalletGenerated, isCompact = false }: Generat
               )}
             </div>
             {showMnemonic && (
-              <Button variant="outline" size="sm" onClick={() => copyToClipboard(generatedWallet.mnemonic!, 'Mnemonic', true)} className="w-full">
-                <Copy className="h-4 w-4 mr-2" />Copy Mnemonic
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={() => copyToClipboard(generatedWallet.mnemonic!, 'mnemonic', true)} 
+                className="w-full"
+              >
+                {copiedField === 'mnemonic' ? (
+                  <Check className="h-4 w-4 mr-2 text-green-500" />
+                ) : (
+                  <Copy className="h-4 w-4 mr-2" />
+                )}
+                Copy Mnemonic
               </Button>
             )}
           </div>
@@ -246,9 +425,7 @@ export function GenerateWallet({ onWalletGenerated, isCompact = false }: Generat
               {showPrivateKey ? generatedWallet.privateKey : maskText(generatedWallet.privateKey)}
             </div>
             {showPrivateKey && (
-              <Button variant="outline" size="sm" onClick={() => copyToClipboard(generatedWallet.privateKey, 'Private Key', true)}>
-                <Copy className="h-4 w-4" />
-              </Button>
+              <CopyButton field="privatekey" text={generatedWallet.privateKey} isSensitive size="default" />
             )}
           </div>
         </div>
@@ -262,5 +439,6 @@ export function GenerateWallet({ onWalletGenerated, isCompact = false }: Generat
         </div>
       </CardContent>
     </Card>
+    </>
   );
 }

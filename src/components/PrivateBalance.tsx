@@ -144,19 +144,19 @@ export function PrivateBalance({
         </CardHeader>
         <CardContent className="pt-2 pb-4">
           {/* Private Balance Display */}
-          <div className="text-center py-3 bg-[#0000db]/5 rounded-lg">
-            <div className="flex items-center justify-center gap-1.5 mb-1">
+          <div className="text-center py-4 bg-[#0000db]/5 rounded-lg">
+            <div className="flex items-center justify-center gap-1.5 mb-2">
               <Shield className="h-4 w-4 text-[#0000db]" />
               <span className="text-xs font-medium text-[#0000db]">Available</span>
             </div>
             {isLoading ? (
-              <Skeleton className="h-10 w-40 mx-auto" />
+              <Skeleton className="h-12 w-48 mx-auto" />
             ) : (
-              <div className="flex items-center justify-center gap-2">
-                <div className="text-3xl font-bold text-[#0000db]">
+              <div className="flex items-center justify-center gap-3">
+                <div className="text-4xl font-bold text-[#0000db]">
                   {encryptedBalance ? encryptedBalance.encrypted.toFixed(8) : '0.00000000'}
                 </div>
-                <Badge className="bg-[#0000db] text-white text-xs font-bold">OCT</Badge>
+                <Badge className="bg-[#0000db] text-white text-lg font-bold px-3 py-1">OCT</Badge>
               </div>
             )}
           </div>
@@ -177,14 +177,13 @@ export function PrivateBalance({
           )}
 
           {/* Decrypt Action */}
-          <div className="flex justify-center pt-3 mt-3 border-t">
+          <div className="flex justify-center pt-4">
             <Button
-              size="sm"
               onClick={() => setShowDecryptDialog(true)}
               disabled={!encryptedBalance || encryptedBalance.encrypted <= 0}
-              className="flex items-center gap-1.5 bg-[#0000db] hover:bg-[#0000db]/90"
+              className="flex items-center gap-2 h-11 px-5 text-base bg-[#0000db] hover:bg-[#0000db]/90"
             >
-              <Unlock className="h-3.5 w-3.5" />
+              <Unlock className="h-5 w-5" />
               Decrypt OCT
             </Button>
           </div>

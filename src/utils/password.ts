@@ -10,6 +10,7 @@ const SESSION_KEY_LENGTH = 32; // 256 bits for session encryption
 // Rate limiting for password attempts
 const MAX_ATTEMPTS = 5;
 const LOCKOUT_DURATION_MS = 5 * 60 * 1000; // 5 minutes
+const RATE_LIMIT_STORAGE_KEY = 'walletRateLimitState';
 
 interface RateLimitState {
   attempts: number;
@@ -17,14 +18,39 @@ interface RateLimitState {
   lockedUntil: number | null;
 }
 
-let rateLimitState: RateLimitState = {
-  attempts: 0,
-  lastAttempt: 0,
-  lockedUntil: null
-};
+// Load rate limit state from localStorage
+function loadRateLimitState(): RateLimitState {
+  try {
+    const stored = localStorage.getItem(RATE_LIMIT_STORAGE_KEY);
+    if (stored) {
+      const parsed = JSON.parse(stored);
+      return {
+        attempts: parsed.attempts || 0,
+        lastAttempt: parsed.lastAttempt || 0,
+        lockedUntil: parsed.lockedUntil || null
+      };
+    }
+  } catch (e) {
+    console.error('Failed to load rate limit state:', e);
+  }
+  return { attempts: 0, lastAttempt: 0, lockedUntil: null };
+}
+
+// Save rate limit state to localStorage
+function saveRateLimitState(state: RateLimitState): void {
+  try {
+    localStorage.setItem(RATE_LIMIT_STORAGE_KEY, JSON.stringify(state));
+  } catch (e) {
+    console.error('Failed to save rate limit state:', e);
+  }
+}
+
+let rateLimitState: RateLimitState = loadRateLimitState();
 
 // Check if rate limited
 export function isRateLimited(): { limited: boolean; remainingMs?: number } {
+  // Reload state from storage to ensure we have latest
+  rateLimitState = loadRateLimitState();
   const now = Date.now();
   
   // Check if currently locked out
@@ -38,6 +64,7 @@ export function isRateLimited(): { limited: boolean; remainingMs?: number } {
   // Reset if lockout expired
   if (rateLimitState.lockedUntil && now >= rateLimitState.lockedUntil) {
     rateLimitState = { attempts: 0, lastAttempt: 0, lockedUntil: null };
+    saveRateLimitState(rateLimitState);
   }
   
   return { limited: false };
@@ -45,6 +72,8 @@ export function isRateLimited(): { limited: boolean; remainingMs?: number } {
 
 // Record a failed attempt
 export function recordFailedAttempt(): void {
+  // Reload state from storage first
+  rateLimitState = loadRateLimitState();
   const now = Date.now();
   
   // Reset attempts if last attempt was more than lockout duration ago
@@ -60,15 +89,21 @@ export function recordFailedAttempt(): void {
     rateLimitState.lockedUntil = now + LOCKOUT_DURATION_MS;
     console.warn(`🔒 Too many failed attempts. Locked for ${LOCKOUT_DURATION_MS / 1000} seconds`);
   }
+  
+  // Save state to localStorage
+  saveRateLimitState(rateLimitState);
 }
 
 // Reset rate limit on successful login
 export function resetRateLimit(): void {
   rateLimitState = { attempts: 0, lastAttempt: 0, lockedUntil: null };
+  saveRateLimitState(rateLimitState);
 }
 
 // Get remaining attempts
 export function getRemainingAttempts(): number {
+  // Reload state from storage
+  rateLimitState = loadRateLimitState();
   return Math.max(0, MAX_ATTEMPTS - rateLimitState.attempts);
 }
 

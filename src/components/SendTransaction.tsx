@@ -25,6 +25,7 @@ interface SendTransactionProps {
   onBalanceUpdate: (balance: number) => void;
   onNonceUpdate: (nonce: number) => void;
   onTransactionSuccess: () => void;
+  onModalClose?: () => void; // Called when transaction result modal is closed
   isCompact?: boolean;
 }
 
@@ -53,7 +54,7 @@ function validateRecipientInput(input: string): { isValid: boolean; error?: stri
   };
 }
 
-export function SendTransaction({ wallet, balance, nonce, onBalanceUpdate, onNonceUpdate, onTransactionSuccess, isCompact = false }: SendTransactionProps) {
+export function SendTransaction({ wallet, balance, nonce, onBalanceUpdate, onNonceUpdate, onTransactionSuccess, onModalClose, isCompact = false }: SendTransactionProps) {
   const [recipientAddress, setRecipientAddress] = useState('');
   const [addressValidation, setAddressValidation] = useState<{ isValid: boolean; error?: string } | null>(null);
   const [amount, setAmount] = useState('');
@@ -68,10 +69,14 @@ export function SendTransaction({ wallet, balance, nonce, onBalanceUpdate, onNon
   const { toast } = useToast();
 
   // Get OU value based on selection
-  const getOuValue = (): number | undefined => {
-    if (ouOption === 'auto') return undefined;
-    if (ouOption === 'custom') return parseInt(customOu) || undefined;
-    return parseInt(ouOption);
+  const getOuValue = (): number => {
+    if (ouOption === 'auto') {
+      // Auto: 10000 for < 1000 OCT, 30000 for >= 1000 OCT
+      const amountNum = parseFloat(amount) || 0;
+      return amountNum < 1000 ? 10000 : 30000;
+    }
+    if (ouOption === 'custom') return parseInt(customOu) || 10000;
+    return parseInt(ouOption) || 10000;
   };
 
   // Validate recipient address when input changes
@@ -90,9 +95,11 @@ export function SendTransaction({ wallet, balance, nonce, onBalanceUpdate, onNon
     return !isNaN(num) && num > 0;
   };
 
-  const calculateFee = (amount: number) => {
-    // Fee calculation based on CLI logic: 0.001 for < 1000, 0.003 for >= 1000
-    return amount < 1000 ? 0.001 : 0.003;
+  // Calculate fee based on OU (gas)
+  // Fee formula: OU * 0.0000001 (1 OU = 0.0000001 OCT)
+  const calculateFee = (): number => {
+    const ou = getOuValue();
+    return ou * 0.0000001;
   };
 
   const copyToClipboard = async (text: string, label: string) => {
@@ -142,7 +149,7 @@ export function SendTransaction({ wallet, balance, nonce, onBalanceUpdate, onNon
     }
 
     const amountNum = parseFloat(amount);
-    const fee = calculateFee(amountNum);
+    const fee = calculateFee();
     const totalCost = amountNum + fee;
 
     if (balance !== null && totalCost > balance) {
@@ -272,7 +279,7 @@ export function SendTransaction({ wallet, balance, nonce, onBalanceUpdate, onNon
   }
 
   const amountNum = parseFloat(amount) || 0;
-  const fee = calculateFee(amountNum);
+  const fee = calculateFee();
   const totalCost = amountNum + fee;
   const currentBalance = balance || 0;
 
@@ -309,15 +316,36 @@ export function SendTransaction({ wallet, balance, nonce, onBalanceUpdate, onNon
               <button
                 type="button"
                 onClick={() => {
-                  // Calculate max amount: balance - fee
-                  const maxFee = 0.001; // Minimum fee for transaction
-                  const maxAmount = currentBalance - maxFee;
-                  if (maxAmount > 0) {
+                  // Calculate fee based on OU selection
+                  // Fee formula: OU * 0.0000001
+                  let feeForMax: number;
+                  
+                  if (ouOption === 'auto') {
+                    // Auto mode: determine OU based on potential max amount
+                    // If balance >= 1000 + fee(30000), use 30000 OU
+                    // Otherwise use 10000 OU
+                    const feeFor30k = 30000 * 0.0000001; // 0.003
+                    const feeFor10k = 10000 * 0.0000001; // 0.001
+                    
+                    if (currentBalance >= 1000 + feeFor30k) {
+                      feeForMax = feeFor30k;
+                    } else {
+                      feeForMax = feeFor10k;
+                    }
+                  } else if (ouOption === 'custom') {
+                    const customOuValue = parseInt(customOu) || 10000;
+                    feeForMax = customOuValue * 0.0000001;
+                  } else {
+                    feeForMax = parseInt(ouOption) * 0.0000001;
+                  }
+                  
+                  if (currentBalance > feeForMax) {
+                    const maxAmount = currentBalance - feeForMax;
                     setAmount(maxAmount.toFixed(8));
                   } else {
                     toast({
                       title: "Insufficient Balance",
-                      description: `Need more than ${maxFee} OCT to send (for fee)`,
+                      description: `Need more than ${feeForMax.toFixed(7)} OCT to send (for fee)`,
                       variant: "destructive",
                     });
                   }
@@ -442,6 +470,9 @@ export function SendTransaction({ wallet, balance, nonce, onBalanceUpdate, onNon
   // Full mode (expanded view) - Simplified
   return (
     <div className="space-y-4">
+      {/* Animated Icon */}
+      <AnimatedIcon type="send-public" size="sm" />
+
       {/* Recipient Address */}
       <div className="space-y-2">
         <Label htmlFor="recipient">Recipient Address</Label>
@@ -468,14 +499,36 @@ export function SendTransaction({ wallet, balance, nonce, onBalanceUpdate, onNon
             <button
               type="button"
               onClick={() => {
-                const maxFee = 0.001; // Minimum fee for transaction
-                const maxAmount = currentBalance - maxFee;
-                if (maxAmount > 0) {
+                // Calculate fee based on OU selection
+                // Fee formula: OU * 0.0000001
+                let feeForMax: number;
+                
+                if (ouOption === 'auto') {
+                  // Auto mode: determine OU based on potential max amount
+                  // If balance >= 1000 + fee(30000), use 30000 OU
+                  // Otherwise use 10000 OU
+                  const feeFor30k = 30000 * 0.0000001; // 0.003
+                  const feeFor10k = 10000 * 0.0000001; // 0.001
+                  
+                  if (currentBalance >= 1000 + feeFor30k) {
+                    feeForMax = feeFor30k;
+                  } else {
+                    feeForMax = feeFor10k;
+                  }
+                } else if (ouOption === 'custom') {
+                  const customOuValue = parseInt(customOu) || 10000;
+                  feeForMax = customOuValue * 0.0000001;
+                } else {
+                  feeForMax = parseInt(ouOption) * 0.0000001;
+                }
+                
+                if (currentBalance > feeForMax) {
+                  const maxAmount = currentBalance - feeForMax;
                   setAmount(maxAmount.toFixed(8));
                 } else {
                   toast({
                     title: "Insufficient Balance",
-                    description: `Need more than ${maxFee} OCT to send (for fee)`,
+                    description: `Need more than ${feeForMax.toFixed(7)} OCT to send (for fee)`,
                     variant: "destructive",
                   });
                 }
@@ -625,6 +678,7 @@ export function SendTransaction({ wallet, balance, nonce, onBalanceUpdate, onNon
         status={txModalStatus}
         result={txModalResult}
         type="send"
+        onClose={onModalClose}
       />
     </div>
   );

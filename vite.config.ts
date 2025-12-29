@@ -2,11 +2,20 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { NodeGlobalsPolyfillPlugin } from '@esbuild-plugins/node-globals-polyfill';
 import path from 'path';
+import fs from 'fs';
+
+// Read version from manifest.json
+const manifestPath = path.resolve(__dirname, 'extensionFiles/manifest.json');
+const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf-8'));
+const APP_VERSION = manifest.version;
 
 // https://vitejs.dev/config/
 export default defineConfig({
   plugins: [react()],
   base: './',
+  define: {
+    __APP_VERSION__: JSON.stringify(APP_VERSION),
+  },
   build: {
     outDir: 'dist',
     sourcemap: false,

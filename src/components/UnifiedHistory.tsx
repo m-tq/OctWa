@@ -5,6 +5,7 @@ import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
+import { ScrollArea } from '@/components/ui/scroll-area';
 import {
   History,
   RefreshCw,
@@ -274,32 +275,34 @@ export function UnifiedHistory({ wallet, transactions, onTransactionsUpdate, isL
             <AlertDescription>No history found for this filter.</AlertDescription>
           </Alert>
         ) : (
-          <div ref={historyListRef} className={`${isPopupMode ? 'space-y-2 mb-[110px]' : 'space-y-3'}`}>
-            {unifiedHistory.map((item) => (
-              <div key={item.id} className={`border rounded-lg ${isPopupMode ? 'p-2' : 'p-3'} space-y-2`}>
-                {item.type === 'transfer' && item.transaction && (
-                  <TransferItem 
-                    tx={item.transaction} 
-                    onViewDetails={fetchTxDetails}
-                    truncateHash={truncateHash}
-                    truncateAddress={truncateAddress}
-                    getStatusIcon={getStatusIcon}
-                    getStatusColor={getStatusColor}
-                    copyToClipboard={copyToClipboard}
-                    isPopupMode={isPopupMode}
-                  />
-                )}
-                {item.type === 'contract' && item.contractInteraction && (
-                  <ContractItem 
-                    contract={item.contractInteraction}
-                    truncateAddress={truncateAddress}
-                    copyToClipboard={copyToClipboard}
-                    isPopupMode={isPopupMode}
-                  />
-                )}
-              </div>
-            ))}
-          </div>
+          <ScrollArea className={isPopupMode ? 'h-auto' : 'h-[calc(100vh-450px)] pr-3'}>
+            <div ref={historyListRef} className={`${isPopupMode ? 'space-y-2 mb-[110px]' : 'space-y-3 pr-1'}`}>
+              {unifiedHistory.map((item) => (
+                <div key={item.id} className={`border rounded-lg ${isPopupMode ? 'p-2' : 'p-3'} space-y-2`}>
+                  {item.type === 'transfer' && item.transaction && (
+                    <TransferItem 
+                      tx={item.transaction} 
+                      onViewDetails={fetchTxDetails}
+                      truncateHash={truncateHash}
+                      truncateAddress={truncateAddress}
+                      getStatusIcon={getStatusIcon}
+                      getStatusColor={getStatusColor}
+                      copyToClipboard={copyToClipboard}
+                      isPopupMode={isPopupMode}
+                    />
+                  )}
+                  {item.type === 'contract' && item.contractInteraction && (
+                    <ContractItem 
+                      contract={item.contractInteraction}
+                      truncateAddress={truncateAddress}
+                      copyToClipboard={copyToClipboard}
+                      isPopupMode={isPopupMode}
+                    />
+                  )}
+                </div>
+              ))}
+            </div>
+          </ScrollArea>
         )}
 
         {/* Pagination Controls */}
@@ -348,123 +351,155 @@ export function UnifiedHistory({ wallet, transactions, onTransactionsUpdate, isL
             </DialogHeader>
             <div className="flex-1 overflow-y-auto pr-1">
               {loadingDetails ? (
-                <div className="space-y-4 py-4">
-                  <Skeleton className="h-12 w-full rounded-lg" />
-                  <Skeleton className="h-12 w-full rounded-lg" />
-                  <Skeleton className="h-12 w-full rounded-lg" />
-                  <Skeleton className="h-32 w-full rounded-lg" />
+                <div className="flex items-center justify-center py-12">
+                  <div className="w-6 h-6 rounded-full border-2 border-transparent animate-spin" style={{ borderTopColor: '#0000db' }} />
                 </div>
               ) : selectedTx ? (
-                <div className="space-y-3">
-                  {/* Transaction Info Cards */}
-                  <div className="grid gap-2">
-                    {/* Hash */}
+                <div className="space-y-2">
+                  {/* Status */}
+                  <div className="bg-muted/50 rounded-lg p-3 flex items-center justify-between">
+                    <span className="text-xs text-muted-foreground">Status</span>
+                    {'stage_status' in selectedTx ? (
+                      <Badge variant="secondary" className="text-xs bg-yellow-500/20 text-yellow-600">
+                        {selectedTx.stage_status || 'pending'}
+                      </Badge>
+                    ) : (
+                      <Badge variant="secondary" className="text-xs bg-green-500/20 text-green-600">
+                        confirmed
+                      </Badge>
+                    )}
+                  </div>
+
+                  {/* Epoch - only for confirmed */}
+                  {'epoch' in selectedTx && (
+                    <div className="bg-muted/50 rounded-lg p-3 flex items-center justify-between">
+                      <span className="text-xs text-muted-foreground">Epoch</span>
+                      <span className="font-mono text-sm">{selectedTx.epoch}</span>
+                    </div>
+                  )}
+
+                  {/* Time */}
+                  {('timestamp' in selectedTx || 'parsed_tx' in selectedTx) && (
+                    <div className="bg-muted/50 rounded-lg p-3 flex items-center justify-between">
+                      <span className="text-xs text-muted-foreground">Time (UTC)</span>
+                      <span className="text-sm">
+                        {'timestamp' in selectedTx 
+                          ? new Date(selectedTx.timestamp * 1000).toLocaleString('en-US', { timeZone: 'UTC', hour12: false })
+                          : new Date(selectedTx.parsed_tx.timestamp * 1000).toLocaleString('en-US', { timeZone: 'UTC', hour12: false })
+                        }
+                      </span>
+                    </div>
+                  )}
+
+                  {/* Hash */}
+                  <div className="bg-muted/50 rounded-lg p-3">
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-xs text-muted-foreground">Hash</span>
+                      <Button 
+                        variant="ghost" 
+                        size="sm" 
+                        className="h-6 w-6 p-0" 
+                        onClick={() => copyToClipboard('hash' in selectedTx ? selectedTx.hash : selectedTx.tx_hash, 'Hash')}
+                      >
+                        <Copy className="h-3 w-3" />
+                      </Button>
+                    </div>
+                    <p className="font-mono text-xs break-all">
+                      {'hash' in selectedTx ? selectedTx.hash : selectedTx.tx_hash}
+                    </p>
+                  </div>
+
+                  {/* From - full address */}
+                  {('from' in selectedTx || 'parsed_tx' in selectedTx) && (
                     <div className="bg-muted/50 rounded-lg p-3">
                       <div className="flex items-center justify-between mb-1">
-                        <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Transaction Hash</span>
+                        <span className="text-xs text-muted-foreground">From</span>
                         <Button 
                           variant="ghost" 
                           size="sm" 
-                          className="h-6 w-6 p-0 hover:bg-background" 
-                          onClick={() => copyToClipboard('hash' in selectedTx ? selectedTx.hash : selectedTx.tx_hash, 'Hash')}
+                          className="h-6 w-6 p-0" 
+                          onClick={() => copyToClipboard('from' in selectedTx ? selectedTx.from : selectedTx.parsed_tx.from, 'Address')}
                         >
                           <Copy className="h-3 w-3" />
                         </Button>
                       </div>
-                      <p className="font-mono text-xs break-all leading-relaxed">
-                        {'hash' in selectedTx ? selectedTx.hash : selectedTx.tx_hash}
+                      <p className="font-mono text-sm break-all">
+                        {'from' in selectedTx ? selectedTx.from : selectedTx.parsed_tx.from}
                       </p>
                     </div>
+                  )}
 
-                    {/* From & To */}
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                      {/* From */}
-                      {('from' in selectedTx || 'parsed_tx' in selectedTx) && (
-                        <div className="bg-muted/50 rounded-lg p-3">
-                          <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">From</span>
-                          <p className="font-mono text-xs break-all mt-1 leading-relaxed">
-                            {'from' in selectedTx ? selectedTx.from : selectedTx.parsed_tx.from}
-                          </p>
-                        </div>
-                      )}
-                      {/* To */}
-                      {('to' in selectedTx || 'parsed_tx' in selectedTx) && (
-                        <div className="bg-muted/50 rounded-lg p-3">
-                          <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">To</span>
-                          <p className="font-mono text-xs break-all mt-1 leading-relaxed">
-                            {'to' in selectedTx ? selectedTx.to : selectedTx.parsed_tx.to}
-                          </p>
-                        </div>
-                      )}
+                  {/* To - full address */}
+                  {('to' in selectedTx || 'parsed_tx' in selectedTx) && (
+                    <div className="bg-muted/50 rounded-lg p-3">
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-xs text-muted-foreground">To</span>
+                        <Button 
+                          variant="ghost" 
+                          size="sm" 
+                          className="h-6 w-6 p-0" 
+                          onClick={() => copyToClipboard('to' in selectedTx ? selectedTx.to : selectedTx.parsed_tx.to, 'Address')}
+                        >
+                          <Copy className="h-3 w-3" />
+                        </Button>
+                      </div>
+                      <p className="font-mono text-sm break-all">
+                        {'to' in selectedTx ? selectedTx.to : selectedTx.parsed_tx.to}
+                      </p>
                     </div>
+                  )}
 
-                    {/* Amount, Status, Time */}
-                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                      {/* Amount */}
-                      {('amount' in selectedTx || 'parsed_tx' in selectedTx) && (
+                  {/* Amount, OU (Gas), Nonce */}
+                  <div className="grid grid-cols-3 gap-2">
+                    {('amount' in selectedTx || 'parsed_tx' in selectedTx) && (
+                      <div className="bg-muted/50 rounded-lg p-3">
+                        <span className="text-xs text-muted-foreground">Amount</span>
+                        <p className="font-mono text-sm mt-0.5">
+                          {'amount' in selectedTx ? selectedTx.amount : selectedTx.parsed_tx.amount} OCT
+                        </p>
+                      </div>
+                    )}
+                    {('ou' in selectedTx || 'parsed_tx' in selectedTx) && (() => {
+                      const ouValue = 'ou' in selectedTx ? selectedTx.ou : selectedTx.parsed_tx.ou;
+                      const ouNum = parseInt(ouValue) || 0;
+                      const feeOct = (ouNum * 0.0000001).toFixed(7);
+                      return (
                         <div className="bg-muted/50 rounded-lg p-3">
-                          <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Amount</span>
-                          <p className="font-mono text-sm font-semibold mt-1">
-                            {'amount' in selectedTx ? selectedTx.amount : selectedTx.parsed_tx.amount} OCT
-                          </p>
+                          <span className="text-xs text-muted-foreground">OU (Gas)</span>
+                          <p className="font-mono text-xs mt-0.5">{ouValue}</p>
+                          <p className="text-[10px] text-muted-foreground">≈ {feeOct} OCT</p>
                         </div>
-                      )}
-                      {/* Status */}
-                      {'stage_status' in selectedTx && (
-                        <div className="bg-muted/50 rounded-lg p-3">
-                          <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Status</span>
-                          <div className="mt-1">
-                            <Badge variant="secondary" className="text-xs">{selectedTx.stage_status}</Badge>
-                          </div>
-                        </div>
-                      )}
-                      {/* Epoch */}
-                      {'epoch' in selectedTx && (
-                        <div className="bg-muted/50 rounded-lg p-3">
-                          <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Epoch</span>
-                          <p className="font-mono text-sm mt-1">{selectedTx.epoch}</p>
-                        </div>
-                      )}
-                      {/* Timestamp */}
-                      {('timestamp' in selectedTx || 'parsed_tx' in selectedTx) && (
-                        <div className="bg-muted/50 rounded-lg p-3 col-span-2 sm:col-span-1">
-                          <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Time</span>
-                          <p className="text-xs mt-1">
-                            {'timestamp' in selectedTx 
-                              ? new Date(selectedTx.timestamp * 1000).toLocaleString()
-                              : new Date(selectedTx.parsed_tx.timestamp * 1000).toLocaleString()
-                            }
-                          </p>
-                        </div>
-                      )}
-                    </div>
+                      );
+                    })()}
+                    {('nonce' in selectedTx || 'parsed_tx' in selectedTx) && (
+                      <div className="bg-muted/50 rounded-lg p-3">
+                        <span className="text-xs text-muted-foreground">Nonce</span>
+                        <p className="font-mono text-sm mt-0.5">
+                          {'nonce' in selectedTx ? selectedTx.nonce : selectedTx.parsed_tx.nonce}
+                        </p>
+                      </div>
+                    )}
                   </div>
 
-                  {/* Raw Data Section */}
-                  <div className="border-t pt-3">
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Raw Data</span>
-                      <Button 
-                        variant="outline" 
-                        size="sm" 
-                        className="h-7 px-2 text-xs"
-                        onClick={() => copyToClipboard(JSON.stringify(selectedTx, null, 2), 'Raw data')}
-                      >
-                        <Copy className="h-3 w-3 mr-1" />
-                        Copy JSON
-                      </Button>
-                    </div>
-                    <div className="bg-slate-950 dark:bg-slate-900 rounded-lg overflow-hidden border border-slate-800">
-                      <pre className="text-[11px] sm:text-xs p-3 overflow-auto max-h-[180px] text-slate-300 font-mono leading-relaxed whitespace-pre-wrap break-words">
-{JSON.stringify(selectedTx, null, 2)}
-                      </pre>
-                    </div>
-                  </div>
+                  {/* View on Explorer */}
+                  <Button
+                    variant="outline"
+                    className="w-full h-10"
+                    asChild
+                  >
+                    <a 
+                      href={`https://octrascan.io/transactions/${'hash' in selectedTx ? selectedTx.hash : selectedTx.tx_hash}`} 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                    >
+                      <ExternalLink className="h-4 w-4 mr-2" />
+                      View on Explorer
+                    </a>
+                  </Button>
                 </div>
               ) : (
-                <div className="py-8 text-center">
-                  <XCircle className="h-10 w-10 mx-auto text-muted-foreground/50 mb-2" />
-                  <p className="text-sm text-muted-foreground">No transaction data available</p>
+                <div className="text-center py-12 text-muted-foreground">
+                  <p className="text-sm">No transaction data available</p>
                 </div>
               )}
             </div>
@@ -585,7 +620,7 @@ function TransferItem({
         </div>
         <div>
           <span className="text-muted-foreground">Time: </span>
-          <span>{new Date(tx.timestamp * 1000).toLocaleString()}</span>
+          <span>{new Date(tx.timestamp * 1000).toLocaleString('en-US', { timeZone: 'UTC', hour12: false })} UTC</span>
         </div>
       </div>
     </div>

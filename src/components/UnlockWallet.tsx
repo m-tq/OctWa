@@ -129,6 +129,7 @@ export function UnlockWallet({ onUnlock }: UnlockWalletProps) {
     localStorage.removeItem('activeWalletId');
     localStorage.removeItem('unlockAttempts');
     localStorage.removeItem('lockoutUntil');
+    localStorage.removeItem('walletRateLimitState');
     
     await ExtensionStorageManager.remove('wallets');
     await ExtensionStorageManager.remove('encryptedWallets');

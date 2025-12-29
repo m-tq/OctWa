@@ -4,10 +4,9 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Key, FileText, Loader2 } from 'lucide-react';
+import { Key, FileText, Loader2, AlertCircle } from 'lucide-react';
 import { Wallet } from '../types/wallet';
 import { importWalletFromPrivateKey, importWalletFromMnemonic } from '../utils/wallet';
-import { useToast } from '@/hooks/use-toast';
 
 interface ImportWalletProps {
   onWalletImported: (wallet: Wallet) => void;
@@ -19,11 +18,13 @@ export function ImportWallet({ onWalletImported, defaultTab = 'private-key', isC
   const [privateKey, setPrivateKey] = useState('');
   const [mnemonic, setMnemonic] = useState('');
   const [isImporting, setIsImporting] = useState(false);
-  const { toast } = useToast();
+  const [privateKeyError, setPrivateKeyError] = useState('');
+  const [mnemonicError, setMnemonicError] = useState('');
 
   const handleImportFromPrivateKey = async () => {
+    setPrivateKeyError('');
     if (!privateKey.trim()) {
-      toast({ title: "Error", description: "Private key required", variant: "destructive" });
+      setPrivateKeyError('Private key required');
       return;
     }
 
@@ -32,11 +33,10 @@ export function ImportWallet({ onWalletImported, defaultTab = 'private-key', isC
       const wallet = await importWalletFromPrivateKey(privateKey.trim());
       const existingWallets = JSON.parse(localStorage.getItem('wallets') || '[]');
       if (existingWallets.some((w: Wallet) => w.address === wallet.address)) {
-        toast({ title: "Wallet Already Exists", description: "This wallet is already in your collection", variant: "destructive" });
+        setPrivateKeyError('This wallet is already in your collection');
         return;
       }
       onWalletImported(wallet);
-      toast({ title: "Success!", description: "Wallet imported successfully" });
     } catch (error: unknown) {
       let errorMessage = "Failed to import wallet";
       if (error instanceof Error) {
@@ -49,15 +49,16 @@ export function ImportWallet({ onWalletImported, defaultTab = 'private-key', isC
           errorMessage = error.message || errorMessage;
         }
       }
-      toast({ title: "Import Failed", description: errorMessage, variant: "destructive" });
+      setPrivateKeyError(errorMessage);
     } finally {
       setIsImporting(false);
     }
   };
 
   const handleImportFromMnemonic = async () => {
+    setMnemonicError('');
     if (!mnemonic.trim()) {
-      toast({ title: "Error", description: "Mnemonic required", variant: "destructive" });
+      setMnemonicError('Mnemonic required');
       return;
     }
 
@@ -66,11 +67,10 @@ export function ImportWallet({ onWalletImported, defaultTab = 'private-key', isC
       const wallet = await importWalletFromMnemonic(mnemonic.trim());
       const existingWallets = JSON.parse(localStorage.getItem('wallets') || '[]');
       if (existingWallets.some((w: Wallet) => w.address === wallet.address)) {
-        toast({ title: "Wallet Already Exists", description: "This wallet is already in your collection", variant: "destructive" });
+        setMnemonicError('This wallet is already in your collection');
         return;
       }
       onWalletImported(wallet);
-      toast({ title: "Success!", description: "Wallet imported successfully" });
     } catch (error: unknown) {
       let errorMessage = "Failed to import wallet";
       if (error instanceof Error) {
@@ -85,7 +85,7 @@ export function ImportWallet({ onWalletImported, defaultTab = 'private-key', isC
           errorMessage = error.message || errorMessage;
         }
       }
-      toast({ title: "Import Failed", description: errorMessage, variant: "destructive" });
+      setMnemonicError(errorMessage);
     } finally {
       setIsImporting(false);
     }
@@ -102,10 +102,16 @@ export function ImportWallet({ onWalletImported, defaultTab = 'private-key', isC
               id="mnemonic"
               placeholder="Enter 12 or 24 words"
               value={mnemonic}
-              onChange={(e) => setMnemonic(e.target.value)}
+              onChange={(e) => { setMnemonic(e.target.value); setMnemonicError(''); }}
               rows={3}
-              className="font-mono text-xs mt-1.5"
+              className={`font-mono text-xs mt-1.5 ${mnemonicError ? 'border-destructive' : ''}`}
             />
+            {mnemonicError && (
+              <p className="text-xs text-destructive mt-1.5 flex items-center gap-1">
+                <AlertCircle className="h-3 w-3" />
+                {mnemonicError}
+              </p>
+            )}
           </div>
           <Button 
             onClick={handleImportFromMnemonic}
@@ -134,10 +140,16 @@ export function ImportWallet({ onWalletImported, defaultTab = 'private-key', isC
               id="mnemonic"
               placeholder="Enter your 12 or 24 word mnemonic phrase"
               value={mnemonic}
-              onChange={(e) => setMnemonic(e.target.value)}
+              onChange={(e) => { setMnemonic(e.target.value); setMnemonicError(''); }}
               rows={3}
-              className="font-mono text-sm"
+              className={`font-mono text-sm ${mnemonicError ? 'border-destructive' : ''}`}
             />
+            {mnemonicError && (
+              <p className="text-sm text-destructive mt-1.5 flex items-center gap-1">
+                <AlertCircle className="h-4 w-4" />
+                {mnemonicError}
+              </p>
+            )}
           </div>
           <Button 
             onClick={handleImportFromMnemonic}
@@ -163,9 +175,15 @@ export function ImportWallet({ onWalletImported, defaultTab = 'private-key', isC
             type="password"
             placeholder="Enter private key (Base64)"
             value={privateKey}
-            onChange={(e) => setPrivateKey(e.target.value)}
-            className="font-mono text-xs mt-1.5"
+            onChange={(e) => { setPrivateKey(e.target.value); setPrivateKeyError(''); }}
+            className={`font-mono text-xs mt-1.5 ${privateKeyError ? 'border-destructive' : ''}`}
           />
+          {privateKeyError && (
+            <p className="text-xs text-destructive mt-1.5 flex items-center gap-1">
+              <AlertCircle className="h-3 w-3" />
+              {privateKeyError}
+            </p>
+          )}
         </div>
         <Button 
           onClick={handleImportFromPrivateKey}
@@ -195,9 +213,15 @@ export function ImportWallet({ onWalletImported, defaultTab = 'private-key', isC
             type="password"
             placeholder="Enter your private key (Base64)"
             value={privateKey}
-            onChange={(e) => setPrivateKey(e.target.value)}
-            className="font-mono text-sm"
+            onChange={(e) => { setPrivateKey(e.target.value); setPrivateKeyError(''); }}
+            className={`font-mono text-sm ${privateKeyError ? 'border-destructive' : ''}`}
           />
+          {privateKeyError && (
+            <p className="text-sm text-destructive mt-1.5 flex items-center gap-1">
+              <AlertCircle className="h-4 w-4" />
+              {privateKeyError}
+            </p>
+          )}
         </div>
         <Button 
           onClick={handleImportFromPrivateKey}

@@ -448,9 +448,32 @@ export class WalletManager {
     console.log('🔓 WalletManager: Preserved activeWalletId:', preservedActiveWalletId);
     
     try {
-      // Get password hash and salt
-      const hashedPassword = await ExtensionStorageManager.get('walletPasswordHash');
-      const salt = await ExtensionStorageManager.get('walletPasswordSalt');
+      // Get password hash and salt - prioritize localStorage (synchronous, more reliable)
+      // then fallback to ExtensionStorage
+      let hashedPassword = localStorage.getItem('walletPasswordHash');
+      let salt = localStorage.getItem('walletPasswordSalt');
+      
+      // Fallback to ExtensionStorage if localStorage is empty
+      if (!hashedPassword || !salt) {
+        console.log('🔓 WalletManager: localStorage empty, trying ExtensionStorage');
+        hashedPassword = await ExtensionStorageManager.get('walletPasswordHash');
+        salt = await ExtensionStorageManager.get('walletPasswordSalt');
+        
+        // Sync back to localStorage if found in ExtensionStorage
+        if (hashedPassword && salt) {
+          console.log('🔓 WalletManager: Syncing password hash from ExtensionStorage to localStorage');
+          localStorage.setItem('walletPasswordHash', hashedPassword);
+          localStorage.setItem('walletPasswordSalt', salt);
+        }
+      } else {
+        // Ensure ExtensionStorage is in sync with localStorage
+        const extHash = await ExtensionStorageManager.get('walletPasswordHash');
+        if (!extHash || extHash !== hashedPassword) {
+          console.log('🔓 WalletManager: Syncing password hash from localStorage to ExtensionStorage');
+          await ExtensionStorageManager.set('walletPasswordHash', hashedPassword);
+          await ExtensionStorageManager.set('walletPasswordSalt', salt);
+        }
+      }
       
       if (!hashedPassword || !salt) {
         throw new Error('No password set');
@@ -467,17 +490,25 @@ export class WalletManager {
       // Store password in session for encrypting new wallets
       this.setSessionPassword(password);
 
-      // Get encrypted wallets - check BOTH storages
-      let encryptedWallets = await ExtensionStorageManager.get('encryptedWallets');
+      // Get encrypted wallets - prioritize localStorage, then ExtensionStorage
+      let encryptedWallets = localStorage.getItem('encryptedWallets');
       
-      // Fallback to localStorage if ExtensionStorage is empty
+      // Fallback to ExtensionStorage if localStorage is empty
       if (!encryptedWallets) {
-        const localEncrypted = localStorage.getItem('encryptedWallets');
-        if (localEncrypted) {
-          console.log('🔓 WalletManager: Using encryptedWallets from localStorage fallback');
-          encryptedWallets = localEncrypted;
-          // Sync to ExtensionStorage
-          await ExtensionStorageManager.set('encryptedWallets', localEncrypted);
+        console.log('🔓 WalletManager: localStorage encryptedWallets empty, trying ExtensionStorage');
+        encryptedWallets = await ExtensionStorageManager.get('encryptedWallets');
+        
+        // Sync back to localStorage if found
+        if (encryptedWallets) {
+          console.log('🔓 WalletManager: Syncing encryptedWallets from ExtensionStorage to localStorage');
+          localStorage.setItem('encryptedWallets', typeof encryptedWallets === 'string' ? encryptedWallets : JSON.stringify(encryptedWallets));
+        }
+      } else {
+        // Ensure ExtensionStorage is in sync
+        const extWallets = await ExtensionStorageManager.get('encryptedWallets');
+        if (!extWallets) {
+          console.log('🔓 WalletManager: Syncing encryptedWallets from localStorage to ExtensionStorage');
+          await ExtensionStorageManager.set('encryptedWallets', encryptedWallets);
         }
       }
       
@@ -680,14 +711,14 @@ export class WalletManager {
     }
     
     try {
-      // Get existing encrypted wallets from BOTH storages and merge
-      const extData = await ExtensionStorageManager.get('encryptedWallets');
+      // Get existing encrypted wallets - prioritize localStorage (more reliable)
       const localData = localStorage.getItem('encryptedWallets');
+      const extData = await ExtensionStorageManager.get('encryptedWallets');
       
       let encryptedWallets: any[] = [];
       
-      // Prefer ExtensionStorage, fallback to localStorage
-      const existingData = extData || localData;
+      // Prefer localStorage, fallback to ExtensionStorage
+      const existingData = localData || extData;
       if (existingData) {
         encryptedWallets = typeof existingData === 'string' 
           ? JSON.parse(existingData) 

@@ -1,25 +1,28 @@
-import React, { useState, useEffect } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import React, { useState } from 'react';
+import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { VisuallyHidden } from '@/components/ui/visually-hidden';
-import { Users, Plus, Trash2, AlertTriangle, Wallet as WalletIcon, CheckCircle, MessageSquare, Loader2, Settings2, XCircle } from 'lucide-react';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { Users, Plus, Trash2, AlertTriangle, Wallet as WalletIcon, CheckCircle, MessageSquare, Loader2, Settings2, XCircle, ChevronDown } from 'lucide-react';
 import { Wallet } from '../types/wallet';
 import { fetchBalance, sendTransaction, createTransaction } from '../utils/api';
 import { useToast } from '@/hooks/use-toast';
+import { AnimatedIcon } from './AnimatedIcon';
 
 interface Recipient {
   address: string;
   addressValidation?: { isValid: boolean; error?: string };
   amount: string;
   message: string;
+  showMessage?: boolean;
 }
 
 interface MultiSendProps {
@@ -29,12 +32,12 @@ interface MultiSendProps {
   onBalanceUpdate: (balance: number) => void;
   onNonceUpdate: (nonce: number) => void;
   onTransactionSuccess: () => void;
+  onModalClose?: () => void;
   hideBorder?: boolean;
 }
 
 // Simple address validation function
 function isOctraAddress(input: string): boolean {
-  // Check if it's a valid Octra address: exactly 47 characters starting with "oct"
   const addressRegex = /^oct[123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz]{44}$/;
   return addressRegex.test(input);
 }
@@ -43,54 +46,57 @@ function validateRecipientInput(input: string): { isValid: boolean; error?: stri
   if (!input || input.trim().length === 0) {
     return { isValid: false, error: 'Address is required' };
   }
-
   const trimmedInput = input.trim();
-
-  // Check if it's a valid Octra address
   if (isOctraAddress(trimmedInput)) {
     return { isValid: true };
   }
-
   return { 
     isValid: false, 
-    error: 'Invalid address format. Must be exactly 47 characters starting with "oct"'
+    error: 'Invalid address format'
   };
 }
 
-export function MultiSend({ wallet, balance, nonce, onBalanceUpdate, onNonceUpdate, onTransactionSuccess, hideBorder = false }: MultiSendProps) {
+export function MultiSend({ wallet, balance, nonce, onBalanceUpdate, onNonceUpdate, onTransactionSuccess, onModalClose, hideBorder = false }: MultiSendProps) {
   const [recipients, setRecipients] = useState<Recipient[]>([
-    { address: '', amount: '', message: '' }
+    { address: '', amount: '', message: '', showMessage: false }
   ]);
   const [isSending, setIsSending] = useState(false);
   const [results, setResults] = useState<Array<{ success: boolean; hash?: string; error?: string; recipient: string; amount: string }>>([]);
   const [ouOption, setOuOption] = useState<string>('auto');
   const [customOu, setCustomOu] = useState('');
+  const [showOuSettings, setShowOuSettings] = useState(false);
   const [showTxModal, setShowTxModal] = useState(false);
-  const [txProgress, setTxProgress] = useState({ current: 0, total: 0 });
+  const [txProgress, setTxProgress] = useState({ current: 0, total: 0, currentRecipient: '', currentAmount: '' });
   const [txModalStatus, setTxModalStatus] = useState<'sending' | 'success' | 'error' | 'partial'>('sending');
   const { toast } = useToast();
 
-  // Get OU value based on selection
-  const getOuValue = (amount: number): number | undefined => {
-    if (ouOption === 'auto') return undefined;
-    if (ouOption === 'custom') return parseInt(customOu) || undefined;
-    return parseInt(ouOption);
+  // Get OU value for a specific amount
+  const getOuValue = (amount: number): number => {
+    if (ouOption === 'auto') {
+      // Auto: 10000 for < 1000 OCT, 30000 for >= 1000 OCT
+      return amount < 1000 ? 10000 : 30000;
+    }
+    if (ouOption === 'custom') return parseInt(customOu) || 10000;
+    return parseInt(ouOption) || 10000;
   };
 
-  // Validate address when updating recipient - moved to updateRecipient function
-  const validateAndUpdateRecipient = (index: number, field: keyof Recipient, value: string) => {
+  // Calculate fee based on OU: OU * 0.0000001 (1 OU = 0.0000001 OCT)
+  // Example: 10000 OU = 0.001 OCT, 30000 OU = 0.003 OCT
+  const calculateFee = (amount: number): number => {
+    const ou = getOuValue(amount);
+    return ou * 0.0000001;
+  };
+
+  const validateAndUpdateRecipient = (index: number, field: keyof Recipient, value: string | boolean) => {
     const updated = [...recipients];
     updated[index] = { ...updated[index], [field]: value };
-    
-    // Auto-validate address when address field changes
-    if (field === 'address') {
+    if (field === 'address' && typeof value === 'string') {
       if (!value.trim()) {
         updated[index].addressValidation = undefined;
       } else {
         updated[index].addressValidation = validateRecipientInput(value);
       }
     }
-    
     setRecipients(updated);
   };
 
@@ -99,13 +105,8 @@ export function MultiSend({ wallet, balance, nonce, onBalanceUpdate, onNonceUpda
     return !isNaN(num) && num > 0;
   };
 
-  const calculateFee = (amount: number) => {
-    // Fee calculation based on CLI logic: 0.001 for < 1000, 0.003 for >= 1000
-    return amount < 1000 ? 0.001 : 0.003;
-  };
-
   const addRecipient = () => {
-    setRecipients([...recipients, { address: '', amount: '', message: '' }]);
+    setRecipients([...recipients, { address: '', amount: '', message: '', showMessage: false }]);
   };
 
   const removeRecipient = (index: number) => {
@@ -114,25 +115,18 @@ export function MultiSend({ wallet, balance, nonce, onBalanceUpdate, onNonceUpda
     }
   };
 
-  const updateRecipient = (index: number, field: keyof Recipient, value: string) => {
-    validateAndUpdateRecipient(index, field, value);
-  };
-
   const validateAllRecipients = () => {
     for (const recipient of recipients) {
       if (!recipient.address.trim()) {
         return { valid: false, error: 'All recipient addresses are required' };
       }
-      
       const validation = validateRecipientInput(recipient.address);
       if (!validation.isValid) {
         return { valid: false, error: `Invalid address: ${validation.error}` };
       }
-
       if (!validateAmount(recipient.amount)) {
         return { valid: false, error: 'All amounts must be valid positive numbers' };
       }
-
       if (recipient.message && recipient.message.length > 1024) {
         return { valid: false, error: 'Message too long (max 1024 characters)' };
       }
@@ -148,33 +142,25 @@ export function MultiSend({ wallet, balance, nonce, onBalanceUpdate, onNonceUpda
     }, 0);
   };
 
+  const calculateTotalAmount = () => {
+    return recipients.reduce((sum, r) => sum + (parseFloat(r.amount) || 0), 0);
+  };
+
   const handleSendAll = async () => {
     if (!wallet) {
-      toast({
-        title: "Error",
-        description: "No wallet connected",
-        variant: "destructive",
-      });
+      toast({ title: "Error", description: "No wallet connected", variant: "destructive" });
       return;
     }
 
     const validation = validateAllRecipients();
     if (!validation.valid) {
-      toast({
-        title: "Error",
-        description: validation.error,
-        variant: "destructive",
-      });
+      toast({ title: "Error", description: validation.error, variant: "destructive" });
       return;
     }
 
     const totalCost = calculateTotalCost();
     if (balance !== null && totalCost > balance) {
-      toast({
-        title: "Error",
-        description: `Insufficient balance. Need ${totalCost.toFixed(8)} OCT total`,
-        variant: "destructive",
-      });
+      toast({ title: "Error", description: `Insufficient balance. Need ${totalCost.toFixed(8)} OCT total`, variant: "destructive" });
       return;
     }
 
@@ -182,19 +168,22 @@ export function MultiSend({ wallet, balance, nonce, onBalanceUpdate, onNonceUpda
     setResults([]);
     setShowTxModal(true);
     setTxModalStatus('sending');
-    setTxProgress({ current: 0, total: recipients.length });
+    setTxProgress({ current: 0, total: recipients.length, currentRecipient: '', currentAmount: '' });
 
     try {
-      // Refresh nonce before sending
       const freshBalanceData = await fetchBalance(wallet.address);
       let currentNonce = freshBalanceData.nonce;
-
       const sendResults: Array<{ success: boolean; hash?: string; error?: string; recipient: string; amount: string }> = [];
 
       for (let i = 0; i < recipients.length; i++) {
         const recipient = recipients[i];
         const amount = parseFloat(recipient.amount);
-        setTxProgress({ current: i + 1, total: recipients.length });
+        setTxProgress({ 
+          current: i + 1, 
+          total: recipients.length,
+          currentRecipient: recipient.address,
+          currentAmount: recipient.amount
+        });
         
         try {
           const transaction = createTransaction(
@@ -209,39 +198,27 @@ export function MultiSend({ wallet, balance, nonce, onBalanceUpdate, onNonceUpda
           );
 
           const sendResult = await sendTransaction(transaction);
-          
-          sendResults.push({
-            ...sendResult,
-            recipient: recipient.address,
-            amount: recipient.amount
-          });
-
-          if (sendResult.success) {
-            currentNonce++;
-          }
+          const resultEntry = { ...sendResult, recipient: recipient.address, amount: recipient.amount };
+          sendResults.push(resultEntry);
+          setResults([...sendResults]); // Update results in real-time
+          if (sendResult.success) currentNonce++;
         } catch (error) {
-          sendResults.push({
+          const resultEntry = {
             success: false,
             error: error instanceof Error ? error.message : 'Unknown error',
             recipient: recipient.address,
             amount: recipient.amount
-          });
+          };
+          sendResults.push(resultEntry);
+          setResults([...sendResults]); // Update results in real-time
         }
       }
-
-      setResults(sendResults);
 
       const successCount = sendResults.filter(r => r.success).length;
       const failCount = sendResults.length - successCount;
 
       if (successCount > 0) {
-        if (failCount === 0) {
-          setTxModalStatus('success');
-        } else {
-          setTxModalStatus('partial');
-        }
-
-        // Update nonce and balance
+        setTxModalStatus(failCount === 0 ? 'success' : 'partial');
         onNonceUpdate(currentNonce);
 
         setTimeout(async () => {
@@ -250,13 +227,11 @@ export function MultiSend({ wallet, balance, nonce, onBalanceUpdate, onNonceUpda
             onBalanceUpdate(updatedBalance.balance);
             onNonceUpdate(updatedBalance.nonce);
           } catch (error) {
-            console.error('Failed to refresh balance after transactions:', error);
+            console.error('Failed to refresh balance:', error);
           }
         }, 2000);
 
         if (failCount === 0) {
-          // Reset form if all transactions succeeded
-          setRecipients([{ address: '', amount: '', message: '' }]);
           onTransactionSuccess();
         }
       } else {
@@ -270,356 +245,129 @@ export function MultiSend({ wallet, balance, nonce, onBalanceUpdate, onNonceUpda
     }
   };
 
+  const handleModalClose = () => {
+    setShowTxModal(false);
+    // Reset form only on success
+    if (txModalStatus === 'success') {
+      setRecipients([{ address: '', amount: '', message: '', showMessage: false }]);
+    }
+    setResults([]);
+  };
+
   if (!wallet) {
     return (
       <Alert>
         <div className="flex items-start space-x-3">
           <WalletIcon className="h-4 w-4 mt-0.5 flex-shrink-0" />
-          <AlertDescription>
-            No wallet available. Please generate or import a wallet first.
-          </AlertDescription>
+          <AlertDescription>No wallet available. Please generate or import a wallet first.</AlertDescription>
         </div>
       </Alert>
     );
   }
 
   const totalCost = calculateTotalCost();
+  const totalAmount = calculateTotalAmount();
   const currentBalance = balance || 0;
+  const validRecipientCount = recipients.filter(r => r.address.trim() && r.addressValidation?.isValid && validateAmount(r.amount)).length;
 
   return (
-    <Card className={hideBorder ? 'border-0 shadow-none' : ''}>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Users className="h-5 w-5" />
-          Multi Send
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-6">
-        <Alert>
-          <div className="flex items-start space-x-3">
-            <AlertTriangle className="h-4 w-4 mt-0.5 flex-shrink-0" />
-            <AlertDescription>
-              Send to multiple recipients in separate transactions. Each transaction requires a separate fee.
-            </AlertDescription>
-          </div>
-        </Alert>
+    <div className="flex gap-6 h-full">
+      {/* Left Panel - Wallet Info & Controls */}
+      <div className="w-64 flex-shrink-0 space-y-4 flex flex-col justify-center">
+        {/* Animated Icon */}
+        <AnimatedIcon type="multi-send" size="sm" />
 
-        {/* Wallet Info */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div className="space-y-2">
-            <Label>From Address</Label>
-            <div className="p-3 bg-muted rounded-md font-mono text-sm break-all">
-              {wallet.address}
-            </div>
-          </div>
-          <div className="space-y-2">
-            <Label>Current Balance</Label>
-            <div className="p-3 bg-muted rounded-md font-mono text-sm">
-              {currentBalance.toFixed(8)} OCT
-            </div>
+        {/* Active Address */}
+        <div className="space-y-1.5">
+          <Label className="text-xs text-muted-foreground">Active Address</Label>
+          <div className="p-2.5 bg-muted rounded-md font-mono text-xs break-all">
+            {wallet.address}
           </div>
         </div>
 
-        {/* Recipients */}
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <Label className="text-base font-medium">Recipients ({recipients.length})</Label>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={addRecipient}
-              className="flex items-center gap-2"
-            >
-              <Plus className="h-4 w-4" />
-              Add Recipient
+        {/* Balance */}
+        <div className="space-y-1.5">
+          <Label className="text-xs text-muted-foreground">Balance</Label>
+          <div className="p-2.5 bg-muted rounded-md font-mono text-sm font-medium">
+            {currentBalance.toFixed(8)} OCT
+          </div>
+        </div>
+
+        {/* Recipients Count */}
+        <div className="flex items-center justify-between p-2.5 border rounded-md">
+          <span className="text-sm">Recipients</span>
+          <Badge variant="secondary">{recipients.length}</Badge>
+        </div>
+
+        {/* Add Recipient Button */}
+        <Button
+          type="button"
+          variant="outline"
+          onClick={addRecipient}
+          className="w-full flex items-center justify-center gap-2 text-[#0000db] border-[#0000db] hover:bg-[#0000db]/10"
+        >
+          <Plus className="h-4 w-4" />
+          Add Recipient
+        </Button>
+
+        {/* OU Settings Collapsible */}
+        <Collapsible open={showOuSettings} onOpenChange={setShowOuSettings}>
+          <CollapsibleTrigger asChild>
+            <Button variant="outline" className="w-full flex items-center justify-between">
+              <span className="flex items-center gap-2">
+                <Settings2 className="h-4 w-4" />
+                OU (Gas) Settings
+              </span>
+              <ChevronDown className={`h-4 w-4 transition-transform ${showOuSettings ? 'rotate-180' : ''}`} />
             </Button>
-          </div>
+          </CollapsibleTrigger>
+          <CollapsibleContent className="pt-2 space-y-2">
+            <Select value={ouOption} onValueChange={setOuOption}>
+              <SelectTrigger className="text-sm">
+                <SelectValue placeholder="Auto" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="auto">Auto</SelectItem>
+                <SelectItem value="10000">10,000 OU</SelectItem>
+                <SelectItem value="30000">30,000 OU</SelectItem>
+                <SelectItem value="50000">50,000 OU</SelectItem>
+                <SelectItem value="100000">100,000 OU</SelectItem>
+                <SelectItem value="custom">Custom</SelectItem>
+              </SelectContent>
+            </Select>
+            {ouOption === 'custom' && (
+              <Input
+                type="number"
+                placeholder="Custom OU value"
+                value={customOu}
+                onChange={(e) => setCustomOu(e.target.value)}
+                min="1000"
+                step="1000"
+                className="text-sm"
+              />
+            )}
+          </CollapsibleContent>
+        </Collapsible>
 
-          {recipients.map((recipient, index) => (
-            <Card key={index} className="p-4">
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-medium">Recipient {index + 1}</span>
-                  {recipients.length > 1 && (
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => removeRecipient(index)}
-                      className="text-red-600 hover:text-red-800"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  )}
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {/* Address */}
-                  <div className="space-y-2">
-                    <Label>Address</Label>
-                    <Input
-                      placeholder="oct..."
-                      value={recipient.address}
-                      onChange={(e) => updateRecipient(index, 'address', e.target.value)}
-                      className="font-mono"
-                    />
-                    
-                    {/* Address Validation Status */}
-                    {recipient.address.trim() && recipient.addressValidation && (
-                      <div className="space-y-1">
-                        {recipient.addressValidation.isValid ? (
-                          <div className="flex items-center gap-2">
-                            <CheckCircle className="h-4 w-4 text-green-500" />
-                            <span className="text-sm text-green-600">Valid Octra address</span>
-                          </div>
-                        ) : (
-                          <div className="text-sm text-red-600">{recipient.addressValidation.error}</div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Amount */}
-                  <div className="space-y-2">
-                    <Label>Amount (OCT)</Label>
-                    <Input
-                      type="number"
-                      placeholder="0.00000000"
-                      value={recipient.amount}
-                      onChange={(e) => updateRecipient(index, 'amount', e.target.value)}
-                      step="0.1"
-                      min="0"
-                    />
-                    {recipient.amount && !validateAmount(recipient.amount) && (
-                      <p className="text-sm text-red-600">Invalid amount</p>
-                    )}
-                  </div>
-                </div>
-
-                {/* Message */}
-                <div className="space-y-2">
-                  <Label className="flex items-center gap-2">
-                    <MessageSquare className="h-4 w-4" />
-                    Message (Optional)
-                  </Label>
-                  <Textarea
-                    placeholder="Enter an optional message (max 1024 characters)"
-                    value={recipient.message}
-                    onChange={(e) => updateRecipient(index, 'message', e.target.value)}
-                    maxLength={1024}
-                    rows={2}
-                  />
-                  <div className="flex justify-between text-xs text-muted-foreground">
-                    <span>This message will be included in the transaction</span>
-                    <span>{recipient.message.length}/1024</span>
-                  </div>
-                </div>
-
-                {/* Fee calculation for this recipient */}
-                {recipient.amount && validateAmount(recipient.amount) && (
-                  <div className="p-2 bg-muted/50 rounded text-xs">
-                    <div className="flex justify-between">
-                      <span>Amount:</span>
-                      <span className="font-mono">{parseFloat(recipient.amount).toFixed(8)} OCT</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span>Fee:</span>
-                      <span className="font-mono">{calculateFee(parseFloat(recipient.amount)).toFixed(8)} OCT</span>
-                    </div>
-                    <div className="flex justify-between font-medium">
-                      <span>Total:</span>
-                      <span className="font-mono">{(parseFloat(recipient.amount) + calculateFee(parseFloat(recipient.amount))).toFixed(8)} OCT</span>
-                    </div>
-                  </div>
-                )}
-              </div>
-            </Card>
-          ))}
-        </div>
-
-        {/* Total Summary */}
-        {recipients.some(r => r.amount && validateAmount(r.amount)) && (
-          <div className="p-4 bg-muted rounded-md space-y-2">
-            <div className="flex items-center gap-2 text-sm font-medium">
-              <Users className="h-4 w-4" />
-              Total Summary
+        {/* Fee & Total Summary */}
+        {validRecipientCount > 0 && (
+          <div className="p-3 bg-muted/50 rounded-md space-y-1.5 text-xs">
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Amount</span>
+              <span className="font-mono">{totalAmount.toFixed(8)} OCT</span>
             </div>
-            <div className="space-y-1 text-sm">
-              <div className="flex justify-between">
-                <span>Total Recipients:</span>
-                <span>{recipients.filter(r => r.amount && validateAmount(r.amount)).length}</span>
-              </div>
-              <div className="flex justify-between">
-                <span>Total Amount:</span>
-                <span className="font-mono">
-                  {recipients.reduce((sum, r) => sum + (parseFloat(r.amount) || 0), 0).toFixed(8)} OCT
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span>Total Fees:</span>
-                <span className="font-mono">
-                  {recipients.reduce((sum, r) => {
-                    const amount = parseFloat(r.amount) || 0;
-                    return sum + (amount > 0 ? calculateFee(amount) : 0);
-                  }, 0).toFixed(8)} OCT
-                </span>
-              </div>
-              <Separator />
-              <div className="flex justify-between font-medium">
-                <span>Total Cost:</span>
-                <span className="font-mono">{totalCost.toFixed(8)} OCT</span>
-              </div>
-              <div className="flex justify-between">
-                <span>Remaining Balance:</span>
-                <span className={`font-mono ${currentBalance - totalCost >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                  {(currentBalance - totalCost).toFixed(8)} OCT
-                </span>
-              </div>
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Fee ({validRecipientCount}x)</span>
+              <span className="font-mono">{(totalCost - totalAmount).toFixed(8)} OCT</span>
+            </div>
+            <div className="flex justify-between font-medium border-t pt-1.5 mt-1.5">
+              <span>Total</span>
+              <span className="font-mono">{totalCost.toFixed(8)} OCT</span>
             </div>
           </div>
         )}
 
-        {/* Transaction Results removed - now shown in modal */}
-
-        {/* Transaction Modal */}
-        <Dialog open={showTxModal} onOpenChange={txModalStatus === 'sending' ? undefined : setShowTxModal}>
-          <DialogContent className="sm:max-w-md" onPointerDownOutside={(e) => txModalStatus === 'sending' && e.preventDefault()}>
-            <VisuallyHidden>
-              <DialogTitle>Multi Send Transaction</DialogTitle>
-              <DialogDescription>Transaction status for multi-send operation</DialogDescription>
-            </VisuallyHidden>
-            <div className="flex flex-col items-center justify-center py-6 space-y-4">
-              {/* Sending State */}
-              {txModalStatus === 'sending' && (
-                <>
-                  <div className="relative w-20 h-20">
-                    <div className="absolute inset-0 rounded-full border-4 border-[#0000db]/20" />
-                    <div className="absolute inset-0 rounded-full border-4 border-transparent border-t-[#0000db] animate-spin" />
-                    <div className="absolute inset-0 flex items-center justify-center">
-                      <Loader2 className="w-8 h-8 text-[#0000db] animate-spin" />
-                    </div>
-                  </div>
-                  <div className="text-center space-y-2">
-                    <h3 className="text-lg font-semibold">Multi Send</h3>
-                    <p className="text-sm text-muted-foreground">
-                      Sending transaction {txProgress.current} of {txProgress.total}...
-                    </p>
-                  </div>
-                  <div className="flex gap-1.5">
-                    {[0, 1, 2].map((i) => (
-                      <div
-                        key={i}
-                        className="w-2 h-2 rounded-full bg-[#0000db] animate-bounce"
-                        style={{ animationDelay: `${i * 0.15}s` }}
-                      />
-                    ))}
-                  </div>
-                </>
-              )}
-
-              {/* Success State */}
-              {txModalStatus === 'success' && (
-                <>
-                  <div className="w-20 h-20 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center animate-in zoom-in-50 duration-300">
-                    <CheckCircle className="w-12 h-12 text-green-600 dark:text-green-400" />
-                  </div>
-                  <div className="text-center space-y-2">
-                    <h3 className="text-lg font-semibold text-green-600 dark:text-green-400">All Sent!</h3>
-                    <p className="text-sm text-muted-foreground">
-                      {results.length} transaction(s) sent successfully
-                    </p>
-                  </div>
-                  <Badge variant="secondary" className="text-sm px-3 py-1">
-                    {results.reduce((sum, r) => sum + (parseFloat(r.amount) || 0), 0).toFixed(8)} OCT Total
-                  </Badge>
-                  <Button onClick={() => { setShowTxModal(false); setResults([]); }} className="mt-4 bg-[#0000db] hover:bg-[#0000db]/90">
-                    Close
-                  </Button>
-                </>
-              )}
-
-              {/* Partial Success State */}
-              {txModalStatus === 'partial' && (
-                <>
-                  <div className="w-20 h-20 rounded-full bg-yellow-100 dark:bg-yellow-900/30 flex items-center justify-center animate-in zoom-in-50 duration-300">
-                    <AlertTriangle className="w-12 h-12 text-yellow-600 dark:text-yellow-400" />
-                  </div>
-                  <div className="text-center space-y-2">
-                    <h3 className="text-lg font-semibold text-yellow-600 dark:text-yellow-400">Partial Success</h3>
-                    <p className="text-sm text-muted-foreground">
-                      {results.filter(r => r.success).length} sent, {results.filter(r => !r.success).length} failed
-                    </p>
-                  </div>
-                  <div className="w-full max-h-40 overflow-y-auto space-y-2">
-                    {results.map((result, idx) => (
-                      <div key={idx} className={`flex items-center gap-2 p-2 rounded text-xs ${result.success ? 'bg-green-50 dark:bg-green-950/50' : 'bg-red-50 dark:bg-red-950/50'}`}>
-                        {result.success ? <CheckCircle className="h-3 w-3 text-green-500" /> : <XCircle className="h-3 w-3 text-red-500" />}
-                        <span className="font-mono truncate flex-1">{result.recipient.slice(0, 8)}...{result.recipient.slice(-6)}</span>
-                        <span>{result.amount} OCT</span>
-                      </div>
-                    ))}
-                  </div>
-                  <Button onClick={() => { setShowTxModal(false); setResults([]); }} variant="outline" className="mt-4">
-                    Close
-                  </Button>
-                </>
-              )}
-
-              {/* Error State */}
-              {txModalStatus === 'error' && (
-                <>
-                  <div className="w-20 h-20 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center animate-in zoom-in-50 duration-300">
-                    <XCircle className="w-12 h-12 text-red-600 dark:text-red-400" />
-                  </div>
-                  <div className="text-center space-y-2">
-                    <h3 className="text-lg font-semibold text-red-600 dark:text-red-400">All Failed</h3>
-                    <p className="text-sm text-muted-foreground">No transactions were sent successfully</p>
-                  </div>
-                  <Button onClick={() => { setShowTxModal(false); setResults([]); }} variant="outline" className="mt-4">
-                    Close
-                  </Button>
-                </>
-              )}
-            </div>
-          </DialogContent>
-        </Dialog>
-
-        {/* OU (Gas) Settings */}
-        <div className="space-y-2">
-          <Label className="flex items-center gap-2">
-            <Settings2 className="h-4 w-4" />
-            OU (Gas) Settings
-          </Label>
-          <Select value={ouOption} onValueChange={setOuOption}>
-            <SelectTrigger>
-              <SelectValue placeholder="Select OU option" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="auto">Auto (Default based on amount)</SelectItem>
-              <SelectItem value="10000">10,000 OU</SelectItem>
-              <SelectItem value="20000">20,000 OU</SelectItem>
-              <SelectItem value="30000">30,000 OU</SelectItem>
-              <SelectItem value="50000">50,000 OU</SelectItem>
-              <SelectItem value="100000">100,000 OU</SelectItem>
-              <SelectItem value="custom">Custom</SelectItem>
-            </SelectContent>
-          </Select>
-          {ouOption === 'custom' && (
-            <Input
-              type="number"
-              placeholder="Enter custom OU value (e.g., 15000)"
-              value={customOu}
-              onChange={(e) => setCustomOu(e.target.value)}
-              min="1000"
-              step="1000"
-            />
-          )}
-          <p className="text-xs text-muted-foreground">
-            If transactions fail, try increasing the OU value.
-          </p>
-        </div>
-
+        {/* Send Button */}
         <Button
           onClick={handleSendAll}
           disabled={
@@ -634,13 +382,271 @@ export function MultiSend({ wallet, balance, nonce, onBalanceUpdate, onNonceUpda
           {isSending ? (
             <>
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              Sending {recipients.length} Transaction(s)...
+              Sending...
             </>
           ) : (
-            `Send to ${recipients.length} Recipient(s) - ${totalCost.toFixed(8)} OCT Total`
+            <span className="text-sm">
+              Send to {validRecipientCount} recipient{validRecipientCount !== 1 ? 's' : ''} - {totalAmount.toFixed(4)} OCT
+            </span>
           )}
         </Button>
-      </CardContent>
-    </Card>
+
+        {/* Insufficient balance warning */}
+        {totalCost > currentBalance && (
+          <p className="text-xs text-red-500 text-center">
+            Insufficient balance (need {totalCost.toFixed(4)} OCT)
+          </p>
+        )}
+      </div>
+
+      {/* Right Panel - Recipients Grid with ScrollArea */}
+      <div className="flex-1 border-l pl-6">
+        <ScrollArea className="h-[calc(100vh-140px)] pr-4">
+          <div className="grid grid-cols-3 gap-4">
+            {recipients.map((recipient, index) => (
+              <Card key={index} className="p-3 space-y-3">
+                {/* Header with number and delete */}
+                <div className="flex items-center justify-between">
+                  <Badge variant="outline" className="text-xs">#{index + 1}</Badge>
+                  {recipients.length > 1 && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => removeRecipient(index)}
+                      className="h-6 w-6 p-0 text-red-500 hover:text-red-700 hover:bg-red-50"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
+                  )}
+                </div>
+
+                {/* Address */}
+                <div className="space-y-1">
+                  <Label className="text-xs">Address</Label>
+                  <Input
+                    placeholder="oct..."
+                    value={recipient.address}
+                    onChange={(e) => validateAndUpdateRecipient(index, 'address', e.target.value)}
+                    className={`font-mono text-xs h-8 ${
+                      recipient.address.trim() && recipient.addressValidation
+                        ? recipient.addressValidation.isValid
+                          ? 'border-green-500 focus-visible:ring-green-500'
+                          : 'border-red-500 focus-visible:ring-red-500'
+                        : ''
+                    }`}
+                  />
+                </div>
+
+                {/* Amount */}
+                <div className="space-y-1">
+                  <Label className="text-xs">Amount (OCT)</Label>
+                  <Input
+                    type="number"
+                    placeholder="0.00"
+                    value={recipient.amount}
+                    onChange={(e) => validateAndUpdateRecipient(index, 'amount', e.target.value)}
+                    step="0.1"
+                    min="0"
+                    className="text-xs h-8"
+                  />
+                </div>
+
+                {/* Add Message Toggle */}
+                {!recipient.showMessage ? (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => validateAndUpdateRecipient(index, 'showMessage', true)}
+                    className="w-full h-7 text-xs text-muted-foreground hover:text-foreground"
+                  >
+                    <MessageSquare className="h-3 w-3 mr-1" />
+                    Add Message
+                  </Button>
+                ) : (
+                  <div className="space-y-1">
+                    <div className="flex items-center justify-between">
+                      <Label className="text-xs">Message</Label>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => {
+                          validateAndUpdateRecipient(index, 'message', '');
+                          validateAndUpdateRecipient(index, 'showMessage', false);
+                        }}
+                        className="h-5 w-5 p-0 text-muted-foreground"
+                      >
+                        <XCircle className="h-3 w-3" />
+                      </Button>
+                    </div>
+                    <Textarea
+                      placeholder="Optional message"
+                      value={recipient.message}
+                      onChange={(e) => validateAndUpdateRecipient(index, 'message', e.target.value)}
+                      maxLength={1024}
+                      rows={2}
+                      className="text-xs resize-none"
+                    />
+                  </div>
+                )}
+              </Card>
+            ))}
+          </div>
+        </ScrollArea>
+      </div>
+
+      {/* Transaction Modal */}
+      <Dialog open={showTxModal} onOpenChange={txModalStatus === 'sending' ? undefined : setShowTxModal}>
+        <DialogContent className="sm:max-w-md" onPointerDownOutside={(e) => txModalStatus === 'sending' && e.preventDefault()}>
+          <VisuallyHidden>
+            <DialogTitle>Multi Send Transaction</DialogTitle>
+            <DialogDescription>Transaction status for multi-send operation</DialogDescription>
+          </VisuallyHidden>
+          <div className="flex flex-col items-center justify-center py-6 space-y-4">
+            {/* Sending State */}
+            {txModalStatus === 'sending' && (
+              <>
+                <div className="relative w-16 h-16">
+                  <div className="absolute inset-0 rounded-full border-4 border-[#0000db]/20" />
+                  <div className="absolute inset-0 rounded-full border-4 border-transparent border-t-[#0000db] animate-spin" />
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <Loader2 className="w-6 h-6 text-[#0000db] animate-spin" />
+                  </div>
+                </div>
+                <div className="text-center space-y-1">
+                  <h3 className="text-base font-semibold">Sending ({txProgress.current}/{txProgress.total})</h3>
+                  {txProgress.currentRecipient && (
+                    <p className="text-xs text-muted-foreground font-mono">
+                      oct...{txProgress.currentRecipient.slice(-10)} - {txProgress.currentAmount} OCT
+                    </p>
+                  )}
+                </div>
+                {/* Live results log */}
+                {results.length > 0 && (
+                  <ScrollArea className="w-full max-h-32">
+                    <div className="space-y-1 pr-3">
+                      {results.map((result, idx) => (
+                        <div key={idx} className={`flex items-center gap-2 p-1.5 rounded text-xs ${result.success ? 'bg-green-50 dark:bg-green-950/50' : 'bg-red-50 dark:bg-red-950/50'}`}>
+                          {result.success ? <CheckCircle className="h-3 w-3 text-green-500 flex-shrink-0" /> : <XCircle className="h-3 w-3 text-red-500 flex-shrink-0" />}
+                          <span className="font-mono truncate">oct...{result.recipient.slice(-10)}</span>
+                          <span className="ml-auto">{result.amount} OCT</span>
+                        </div>
+                      ))}
+                    </div>
+                  </ScrollArea>
+                )}
+                <div className="flex gap-1.5">
+                  {[0, 1, 2].map((i) => (
+                    <div
+                      key={i}
+                      className="w-2 h-2 rounded-full bg-[#0000db] animate-bounce"
+                      style={{ animationDelay: `${i * 0.15}s` }}
+                    />
+                  ))}
+                </div>
+              </>
+            )}
+
+            {/* Success State */}
+            {txModalStatus === 'success' && (
+              <>
+                <div className="w-16 h-16 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center animate-in zoom-in-50 duration-300">
+                  <CheckCircle className="w-10 h-10 text-green-600 dark:text-green-400" />
+                </div>
+                <div className="text-center space-y-1">
+                  <h3 className="text-base font-semibold text-green-600 dark:text-green-400">All Sent!</h3>
+                  <p className="text-xs text-muted-foreground">
+                    {results.length} transaction(s) completed
+                  </p>
+                </div>
+                <Badge variant="secondary" className="text-sm px-3 py-1">
+                  {results.reduce((sum, r) => sum + (parseFloat(r.amount) || 0), 0).toFixed(8)} OCT Total
+                </Badge>
+                {/* Results log */}
+                <ScrollArea className="w-full max-h-40">
+                  <div className="space-y-1 pr-3">
+                    {results.map((result, idx) => (
+                      <div key={idx} className="flex items-center gap-2 p-1.5 rounded text-xs bg-green-50 dark:bg-green-950/50">
+                        <CheckCircle className="h-3 w-3 text-green-500 flex-shrink-0" />
+                        <span className="font-mono truncate">oct...{result.recipient.slice(-10)}</span>
+                        <span className="ml-auto">{result.amount} OCT</span>
+                      </div>
+                    ))}
+                  </div>
+                </ScrollArea>
+                <Button onClick={handleModalClose} className="mt-2 bg-[#0000db] hover:bg-[#0000db]/90">
+                  Close
+                </Button>
+              </>
+            )}
+
+            {/* Partial Success State */}
+            {txModalStatus === 'partial' && (
+              <>
+                <div className="w-16 h-16 rounded-full bg-yellow-100 dark:bg-yellow-900/30 flex items-center justify-center animate-in zoom-in-50 duration-300">
+                  <AlertTriangle className="w-10 h-10 text-yellow-600 dark:text-yellow-400" />
+                </div>
+                <div className="text-center space-y-1">
+                  <h3 className="text-base font-semibold text-yellow-600 dark:text-yellow-400">Partial Success</h3>
+                  <p className="text-xs text-muted-foreground">
+                    {results.filter(r => r.success).length} sent, {results.filter(r => !r.success).length} failed
+                  </p>
+                </div>
+                {/* Results log */}
+                <ScrollArea className="w-full max-h-48">
+                  <div className="space-y-1 pr-3">
+                    {results.map((result, idx) => (
+                      <div key={idx} className={`flex items-center gap-2 p-1.5 rounded text-xs ${result.success ? 'bg-green-50 dark:bg-green-950/50' : 'bg-red-50 dark:bg-red-950/50'}`}>
+                        {result.success ? <CheckCircle className="h-3 w-3 text-green-500 flex-shrink-0" /> : <XCircle className="h-3 w-3 text-red-500 flex-shrink-0" />}
+                        <span className="font-mono truncate">oct...{result.recipient.slice(-10)}</span>
+                        <span className="ml-auto">{result.amount} OCT</span>
+                        {!result.success && result.error && (
+                          <span className="text-red-500 truncate max-w-[100px]" title={result.error}>!</span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </ScrollArea>
+                <Button onClick={handleModalClose} variant="outline" className="mt-2">
+                  Close
+                </Button>
+              </>
+            )}
+
+            {/* Error State */}
+            {txModalStatus === 'error' && (
+              <>
+                <div className="w-16 h-16 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center animate-in zoom-in-50 duration-300">
+                  <XCircle className="w-10 h-10 text-red-600 dark:text-red-400" />
+                </div>
+                <div className="text-center space-y-1">
+                  <h3 className="text-base font-semibold text-red-600 dark:text-red-400">All Failed</h3>
+                  <p className="text-xs text-muted-foreground">No transactions were sent successfully</p>
+                </div>
+                {/* Results log */}
+                {results.length > 0 && (
+                  <ScrollArea className="w-full max-h-40">
+                    <div className="space-y-1 pr-3">
+                      {results.map((result, idx) => (
+                        <div key={idx} className="flex items-center gap-2 p-1.5 rounded text-xs bg-red-50 dark:bg-red-950/50">
+                          <XCircle className="h-3 w-3 text-red-500 flex-shrink-0" />
+                          <span className="font-mono truncate">oct...{result.recipient.slice(-10)}</span>
+                          <span className="ml-auto">{result.amount} OCT</span>
+                        </div>
+                      ))}
+                    </div>
+                  </ScrollArea>
+                )}
+                <Button onClick={handleModalClose} variant="outline" className="mt-2">
+                  Close
+                </Button>
+              </>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+    </div>
   );
 }

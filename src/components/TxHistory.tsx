@@ -159,7 +159,7 @@ export function TxHistory({ wallet, transactions, onTransactionsUpdate, isLoadin
   };
 
   const formatDate = (timestamp: number) => {
-    return new Date(timestamp * 1000).toLocaleString();
+    return new Date(timestamp * 1000).toLocaleString('en-US', { timeZone: 'UTC', hour12: false }) + ' UTC';
   };
 
   const truncateHash = (hash: string) => {
@@ -410,7 +410,7 @@ export function TxHistory({ wallet, transactions, onTransactionsUpdate, isLoadin
                                       </div>
                                       <div>
                                         <span className="font-medium">Timestamp:</span>
-                                        <div>{new Date(selectedTx.timestamp * 1000).toLocaleString()}</div>
+                                        <div>{new Date(selectedTx.timestamp * 1000).toLocaleString('en-US', { timeZone: 'UTC', hour12: false })} UTC</div>
                                       </div>
                                       <div>
                                         <span className="font-medium">Has Public Key:</span>
@@ -517,7 +517,7 @@ export function TxHistory({ wallet, transactions, onTransactionsUpdate, isLoadin
                                       </div>
                                       <div>
                                         <span className="font-medium">Timestamp:</span>
-                                        <div>{new Date(selectedTx.parsed_tx.timestamp * 1000).toLocaleString()}</div>
+                                        <div>{new Date(selectedTx.parsed_tx.timestamp * 1000).toLocaleString('en-US', { timeZone: 'UTC', hour12: false })} UTC</div>
                                       </div>
                                       <div>
                                         <span className="font-medium">Source:</span>
