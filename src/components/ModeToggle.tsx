@@ -9,6 +9,7 @@ interface ModeToggleProps {
   onModeChange: (mode: OperationMode) => void;
   privateEnabled: boolean;
   encryptedBalance?: number;
+  pendingTransfersCount?: number;
   isCompact?: boolean;
 }
 
@@ -16,6 +17,7 @@ export function ModeToggle({
   currentMode,
   onModeChange,
   privateEnabled,
+  pendingTransfersCount = 0,
   isCompact = false
 }: ModeToggleProps) {
   const [isTransitioning, setIsTransitioning] = useState(false);
@@ -62,7 +64,7 @@ export function ModeToggle({
   // Tooltip text based on current state
   const getTooltipText = () => {
     if (!privateEnabled && !isPrivate) {
-      return 'Encrypt some OCT to enable Private mode';
+      return 'Encrypt some OCT or have pending transfers to enable Private mode';
     }
     return isPrivate ? 'Switch to Public mode' : 'Switch to Private mode';
   };

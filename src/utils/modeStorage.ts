@@ -23,12 +23,13 @@ export function saveOperationMode(mode: OperationMode): void {
 /**
  * Loads the operation mode from localStorage with fallback logic.
  * - If no mode is stored, defaults to 'public'
- * - If stored mode is 'private' but encryptedBalance is 0, falls back to 'public'
+ * - If stored mode is 'private' but no encrypted balance and no pending transfers, falls back to 'public'
  * 
  * @param encryptedBalance - The current encrypted balance (used for fallback logic)
+ * @param pendingTransfersCount - The number of pending unclaimed transfers (optional)
  * @returns The operation mode to use
  */
-export function loadOperationMode(encryptedBalance: number): OperationMode {
+export function loadOperationMode(encryptedBalance: number, pendingTransfersCount: number = 0): OperationMode {
   try {
     const storedMode = localStorage.getItem(STORAGE_KEY) as OperationMode | null;
     
@@ -42,8 +43,8 @@ export function loadOperationMode(encryptedBalance: number): OperationMode {
       return 'public';
     }
     
-    // Fall back to 'public' if stored mode is 'private' but no encrypted balance
-    if (storedMode === 'private' && encryptedBalance <= 0) {
+    // Fall back to 'public' if stored mode is 'private' but no encrypted balance and no pending transfers
+    if (storedMode === 'private' && encryptedBalance <= 0 && pendingTransfersCount <= 0) {
       return 'public';
     }
     
@@ -66,10 +67,11 @@ export function clearOperationMode(): void {
 }
 
 /**
- * Checks if Private mode should be enabled based on encrypted balance.
+ * Checks if Private mode should be enabled based on encrypted balance or pending transfers.
  * @param encryptedBalance - The current encrypted balance
+ * @param pendingTransfersCount - The number of pending unclaimed transfers (optional)
  * @returns true if Private mode can be enabled
  */
-export function isPrivateModeAvailable(encryptedBalance: number): boolean {
-  return encryptedBalance > 0;
+export function isPrivateModeAvailable(encryptedBalance: number, pendingTransfersCount: number = 0): boolean {
+  return encryptedBalance > 0 || pendingTransfersCount > 0;
 }

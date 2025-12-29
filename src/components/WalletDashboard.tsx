@@ -58,7 +58,7 @@ import { EncryptBalanceDialog } from './EncryptBalanceDialog';
 import { DecryptBalanceDialog } from './DecryptBalanceDialog';
 import { Wallet } from '../types/wallet';
 import { WalletManager } from '../utils/walletManager';
-import { fetchBalance, getTransactionHistory, fetchEncryptedBalance, fetchTransactionDetails, fetchPendingTransactionByHash } from '../utils/api';
+import { fetchBalance, getTransactionHistory, fetchEncryptedBalance, fetchTransactionDetails, fetchPendingTransactionByHash, getPendingPrivateTransfers } from '../utils/api';
 import { useToast } from '@/hooks/use-toast';
 import { OperationMode, saveOperationMode, loadOperationMode, isPrivateModeAvailable } from '../utils/modeStorage';
 import { verifyPassword } from '../utils/password';
@@ -119,6 +119,7 @@ export function WalletDashboard({
   const [encryptedBalance, setEncryptedBalance] = useState<any>(null);
   const [rpcStatus, setRpcStatus] = useState<'connected' | 'disconnected' | 'checking'>('checking');
   const [operationMode, setOperationMode] = useState<OperationMode>('public');
+  const [pendingTransfersCount, setPendingTransfersCount] = useState<number>(0);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [resetPassword, setResetPassword] = useState('');
   const [showResetPassword, setShowResetPassword] = useState(false);
@@ -131,8 +132,8 @@ export function WalletDashboard({
   const [bulkResetTrigger, setBulkResetTrigger] = useState(0);
   const { toast } = useToast();
 
-  // Determine if private mode is available
-  const privateEnabled = isPrivateModeAvailable(encryptedBalance?.encrypted || 0);
+  // Determine if private mode is available (encrypted balance > 0 OR pending transfers > 0)
+  const privateEnabled = isPrivateModeAvailable(encryptedBalance?.encrypted || 0, pendingTransfersCount);
 
   // Handle mode change
   const handleModeChange = (mode: OperationMode) => {
@@ -143,12 +144,27 @@ export function WalletDashboard({
     WalletManager.refreshSessionTimeout();
   };
 
-  // Load operation mode on mount and when encrypted balance changes
+  // Fetch pending transfers count for private mode availability check
+  useEffect(() => {
+    const fetchPendingCount = async () => {
+      if (!wallet?.address || !wallet?.privateKey) return;
+      try {
+        const pending = await getPendingPrivateTransfers(wallet.address, wallet.privateKey);
+        setPendingTransfersCount(pending.length);
+      } catch (error) {
+        console.error('Failed to fetch pending transfers count:', error);
+        setPendingTransfersCount(0);
+      }
+    };
+    fetchPendingCount();
+  }, [wallet?.address, wallet?.privateKey]);
+
+  // Load operation mode on mount and when encrypted balance or pending transfers change
   useEffect(() => {
     const encBalance = encryptedBalance?.encrypted || 0;
-    const savedMode = loadOperationMode(encBalance);
+    const savedMode = loadOperationMode(encBalance, pendingTransfersCount);
     setOperationMode(savedMode);
-  }, [encryptedBalance]);
+  }, [encryptedBalance, pendingTransfersCount]);
 
   // Check if content is scrollable (for popup mode scroll indicator in history tab)
   useEffect(() => {
@@ -1834,6 +1850,7 @@ export function WalletDashboard({
               onModeChange={handleModeChange}
               privateEnabled={privateEnabled}
               encryptedBalance={encryptedBalance?.encrypted || 0}
+              pendingTransfersCount={pendingTransfersCount}
               isCompact={false}
             />
           </div>
@@ -1856,6 +1873,7 @@ export function WalletDashboard({
                   onModeChange={handleModeChange}
                   privateEnabled={privateEnabled}
                   encryptedBalance={encryptedBalance?.encrypted || 0}
+                  pendingTransfersCount={pendingTransfersCount}
                   isCompact={true}
                 />
               </div>
