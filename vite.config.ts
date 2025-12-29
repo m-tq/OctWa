@@ -1,4 +1,4 @@
-import { defineConfig } from 'vite';
+import { defineConfig, Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
 import { NodeGlobalsPolyfillPlugin } from '@esbuild-plugins/node-globals-polyfill';
 import path from 'path';
@@ -9,9 +9,23 @@ const manifestPath = path.resolve(__dirname, 'extensionFiles/manifest.json');
 const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf-8'));
 const APP_VERSION = manifest.version;
 
+// Plugin to exclude screenshot folder from public directory copy
+function excludeScreenshotPlugin(): Plugin {
+  return {
+    name: 'exclude-screenshot',
+    writeBundle() {
+      const screenshotPath = path.resolve(__dirname, 'dist/screenshot');
+      if (fs.existsSync(screenshotPath)) {
+        fs.rmSync(screenshotPath, { recursive: true, force: true });
+        console.log('✓ Removed screenshot folder from dist');
+      }
+    }
+  };
+}
+
 // https://vitejs.dev/config/
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), excludeScreenshotPlugin()],
   base: './',
   define: {
     __APP_VERSION__: JSON.stringify(APP_VERSION),
@@ -21,6 +35,7 @@ export default defineConfig({
     sourcemap: false,
     minify: 'terser',
     chunkSizeWarningLimit: 1000,
+    copyPublicDir: true,
     rollupOptions: {
       input: {
         main: path.resolve(__dirname, 'index.html'),
