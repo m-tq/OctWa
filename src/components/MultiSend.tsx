@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Card, CardContent } from '@/components/ui/card';
+import { useState } from 'react';
+import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -11,7 +11,7 @@ import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@/compone
 import { VisuallyHidden } from '@/components/ui/visually-hidden';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { Users, Plus, Trash2, AlertTriangle, Wallet as WalletIcon, CheckCircle, MessageSquare, Loader2, Settings2, XCircle, ChevronDown } from 'lucide-react';
+import { Plus, Trash2, AlertTriangle, Wallet as WalletIcon, CheckCircle, MessageSquare, Loader2, Settings2, XCircle, ChevronDown, Clock } from 'lucide-react';
 import { Wallet } from '../types/wallet';
 import { fetchBalance, sendTransaction, createTransaction } from '../utils/api';
 import { useToast } from '@/hooks/use-toast';
@@ -56,7 +56,7 @@ function validateRecipientInput(input: string): { isValid: boolean; error?: stri
   };
 }
 
-export function MultiSend({ wallet, balance, nonce, onBalanceUpdate, onNonceUpdate, onTransactionSuccess, onModalClose, hideBorder = false }: MultiSendProps) {
+export function MultiSend({ wallet, balance, onBalanceUpdate, onNonceUpdate, onTransactionSuccess }: MultiSendProps) {
   const [recipients, setRecipients] = useState<Recipient[]>([
     { address: '', amount: '', message: '', showMessage: false }
   ]);
@@ -68,6 +68,7 @@ export function MultiSend({ wallet, balance, nonce, onBalanceUpdate, onNonceUpda
   const [showTxModal, setShowTxModal] = useState(false);
   const [txProgress, setTxProgress] = useState({ current: 0, total: 0, currentRecipient: '', currentAmount: '' });
   const [txModalStatus, setTxModalStatus] = useState<'sending' | 'success' | 'error' | 'partial'>('sending');
+  const [elapsedTime, setElapsedTime] = useState<number>(0);
   const { toast } = useToast();
 
   // Get OU value for a specific amount
@@ -169,6 +170,11 @@ export function MultiSend({ wallet, balance, nonce, onBalanceUpdate, onNonceUpda
     setShowTxModal(true);
     setTxModalStatus('sending');
     setTxProgress({ current: 0, total: recipients.length, currentRecipient: '', currentAmount: '' });
+    setElapsedTime(0);
+
+    const startTime = Date.now();
+    const MAX_RETRIES = 5;
+    const RETRY_DELAY = 5000; // 5 seconds delay between retries
 
     try {
       const freshBalanceData = await fetchBalance(wallet.address);
@@ -185,34 +191,81 @@ export function MultiSend({ wallet, balance, nonce, onBalanceUpdate, onNonceUpda
           currentAmount: recipient.amount
         });
         
-        try {
-          const transaction = createTransaction(
-            wallet.address,
-            recipient.address.trim(),
-            amount,
-            currentNonce + 1,
-            wallet.privateKey,
-            wallet.publicKey || '',
-            recipient.message || undefined,
-            getOuValue(amount)
-          );
+        let txSuccess = false;
+        let lastError = '';
+        let txHash = '';
 
-          const sendResult = await sendTransaction(transaction);
-          const resultEntry = { ...sendResult, recipient: recipient.address, amount: recipient.amount };
-          sendResults.push(resultEntry);
-          setResults([...sendResults]); // Update results in real-time
-          if (sendResult.success) currentNonce++;
-        } catch (error) {
-          const resultEntry = {
-            success: false,
-            error: error instanceof Error ? error.message : 'Unknown error',
-            recipient: recipient.address,
-            amount: recipient.amount
-          };
-          sendResults.push(resultEntry);
-          setResults([...sendResults]); // Update results in real-time
+        // Try up to MAX_RETRIES times
+        for (let retry = 0; retry <= MAX_RETRIES && !txSuccess; retry++) {
+          try {
+            // Re-fetch nonce on retry to get the latest state
+            if (retry > 0) {
+              // Update progress to show retrying
+              setTxProgress(prev => ({ 
+                ...prev, 
+                currentRecipient: `${recipient.address} (Retry ${retry}/${MAX_RETRIES})`
+              }));
+              
+              // Wait before retry
+              await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
+              
+              // Fetch fresh nonce for retry
+              const retryBalanceData = await fetchBalance(wallet.address);
+              currentNonce = retryBalanceData.nonce;
+            }
+
+            const transaction = createTransaction(
+              wallet.address,
+              recipient.address.trim(),
+              amount,
+              currentNonce + 1,
+              wallet.privateKey,
+              wallet.publicKey || '',
+              recipient.message || undefined,
+              getOuValue(amount)
+            );
+
+            const sendResult = await sendTransaction(transaction);
+            
+            if (sendResult.success) {
+              txSuccess = true;
+              txHash = sendResult.hash || '';
+              currentNonce++; // Only increment on success
+            } else {
+              lastError = sendResult.error || 'Transaction failed';
+              // Check if it's a nonce error - if so, retry
+              if (lastError.toLowerCase().includes('nonce') && retry < MAX_RETRIES) {
+                continue; // Will retry
+              }
+              // For non-nonce errors or last retry, break
+              if (retry === MAX_RETRIES) break;
+            }
+          } catch (error) {
+            lastError = error instanceof Error ? error.message : 'Unknown error';
+            // Check if it's a nonce error
+            if (lastError.toLowerCase().includes('nonce') && retry < MAX_RETRIES) {
+              continue; // Will retry
+            }
+            if (retry === MAX_RETRIES) break;
+          }
         }
+
+        // Add final result
+        const resultEntry = {
+          success: txSuccess,
+          hash: txHash || undefined,
+          error: txSuccess ? undefined : lastError,
+          recipient: recipient.address,
+          amount: recipient.amount
+        };
+        sendResults.push(resultEntry);
+        setResults([...sendResults]); // Update results in real-time
       }
+
+      // Calculate elapsed time
+      const endTime = Date.now();
+      const totalElapsed = (endTime - startTime) / 1000; // in seconds
+      setElapsedTime(totalElapsed);
 
       const successCount = sendResults.filter(r => r.success).length;
       const failCount = sendResults.length - successCount;
@@ -564,6 +617,15 @@ export function MultiSend({ wallet, balance, nonce, onBalanceUpdate, onNonceUpda
                 <Badge variant="secondary" className="text-sm px-3 py-1">
                   {results.reduce((sum, r) => sum + (parseFloat(r.amount) || 0), 0).toFixed(8)} OCT Total
                 </Badge>
+                {/* Elapsed Time */}
+                {elapsedTime > 0 && (
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                    <Clock className="h-3.5 w-3.5" />
+                    <span>
+                      Completed in {Math.floor(elapsedTime / 60) > 0 ? `${Math.floor(elapsedTime / 60)}m ` : ''}{(elapsedTime % 60).toFixed(1)}s
+                    </span>
+                  </div>
+                )}
                 {/* Results log */}
                 <ScrollArea className="w-full max-h-40">
                   <div className="space-y-1 pr-3">
@@ -594,6 +656,15 @@ export function MultiSend({ wallet, balance, nonce, onBalanceUpdate, onNonceUpda
                     {results.filter(r => r.success).length} sent, {results.filter(r => !r.success).length} failed
                   </p>
                 </div>
+                {/* Elapsed Time */}
+                {elapsedTime > 0 && (
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                    <Clock className="h-3.5 w-3.5" />
+                    <span>
+                      Completed in {Math.floor(elapsedTime / 60) > 0 ? `${Math.floor(elapsedTime / 60)}m ` : ''}{(elapsedTime % 60).toFixed(1)}s
+                    </span>
+                  </div>
+                )}
                 {/* Results log */}
                 <ScrollArea className="w-full max-h-48">
                   <div className="space-y-1 pr-3">
@@ -625,6 +696,15 @@ export function MultiSend({ wallet, balance, nonce, onBalanceUpdate, onNonceUpda
                   <h3 className="text-base font-semibold text-red-600 dark:text-red-400">All Failed</h3>
                   <p className="text-xs text-muted-foreground">No transactions were sent successfully</p>
                 </div>
+                {/* Elapsed Time */}
+                {elapsedTime > 0 && (
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                    <Clock className="h-3.5 w-3.5" />
+                    <span>
+                      Completed in {Math.floor(elapsedTime / 60) > 0 ? `${Math.floor(elapsedTime / 60)}m ` : ''}{(elapsedTime % 60).toFixed(1)}s
+                    </span>
+                  </div>
+                )}
                 {/* Results log */}
                 {results.length > 0 && (
                   <ScrollArea className="w-full max-h-40">
@@ -636,6 +716,7 @@ export function MultiSend({ wallet, balance, nonce, onBalanceUpdate, onNonceUpda
                           <span className="ml-auto">{result.amount} OCT</span>
                         </div>
                       ))}
+
                     </div>
                   </ScrollArea>
                 )}

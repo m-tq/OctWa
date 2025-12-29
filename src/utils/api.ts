@@ -140,6 +140,21 @@ export async function getAddressInfo(address: string): Promise<any> {
   }
 }
 
+// Fetch current epoch from RPC status
+export async function fetchCurrentEpoch(): Promise<number> {
+  try {
+    const response = await makeAPIRequest('/status');
+    if (response.ok) {
+      const data = await safeJsonParse(response);
+      return data.current_epoch;
+    }
+    throw new Error('Failed to fetch status');
+  } catch (error) {
+    console.error('Error fetching current epoch:', error);
+    throw error;
+  }
+}
+
 export async function getPublicKey(address: string): Promise<string | null> {
   try {
     const response = await makeAPIRequest(`/public_key/${address}`);
