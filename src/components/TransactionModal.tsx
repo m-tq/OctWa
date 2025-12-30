@@ -1,8 +1,9 @@
+import { useState } from 'react';
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { VisuallyHidden } from '@/components/ui/visually-hidden';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { CheckCircle, XCircle, Loader2, Copy, ExternalLink } from 'lucide-react';
+import { CheckCircle, XCircle, Loader2, Copy, ExternalLink, Check } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
 export type TransactionStatus = 'idle' | 'sending' | 'success' | 'error';
@@ -32,6 +33,7 @@ export function TransactionModal({
   onClose,
   isPopupMode = false
 }: TransactionModalProps) {
+  const [copied, setCopied] = useState(false);
   const { toast } = useToast();
 
   const getTitle = () => {
@@ -70,7 +72,8 @@ export function TransactionModal({
   const copyToClipboard = async (text: string) => {
     try {
       await navigator.clipboard.writeText(text);
-      toast({ title: "Copied!", description: "Hash copied to clipboard" });
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
     } catch {
       toast({ title: "Error", description: "Failed to copy", variant: "destructive" });
     }
@@ -140,7 +143,7 @@ export function TransactionModal({
                   <div className={`flex items-center gap-1.5 bg-muted rounded-lg ${isPopupMode ? 'p-2' : 'p-3'}`}>
                     <code className={`flex-1 font-mono break-all ${isPopupMode ? 'text-[10px]' : 'text-xs'}`}>{truncateHash(result.hash)}</code>
                     <Button variant="ghost" size="sm" className={isPopupMode ? "h-6 w-6 p-0" : "h-8 w-8 p-0"} onClick={() => copyToClipboard(result.hash!)}>
-                      <Copy className={isPopupMode ? "h-3 w-3" : "h-4 w-4"} />
+                      {copied ? <Check className={`${isPopupMode ? "h-3 w-3" : "h-4 w-4"} text-green-500`} /> : <Copy className={isPopupMode ? "h-3 w-3" : "h-4 w-4"} />}
                     </Button>
                     <Button variant="ghost" size="sm" className={isPopupMode ? "h-6 w-6 p-0" : "h-8 w-8 p-0"} asChild>
                       <a href={`https://octrascan.io/transactions/${result.hash}`} target="_blank" rel="noopener noreferrer">

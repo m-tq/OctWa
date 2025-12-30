@@ -35,7 +35,8 @@ import {
   QrCode,
   ExternalLink,
   ArrowUpRight,
-  ArrowDownLeft
+  ArrowDownLeft,
+  Check
 } from 'lucide-react';
 import { ExtensionStorageManager } from '../utils/extensionStorage';
 import { PublicBalance } from './PublicBalance';
@@ -131,6 +132,7 @@ export function WalletDashboard({
   const [expandedSendModal, setExpandedSendModal] = useState<'standard' | 'multi' | 'bulk' | null>(null);
   const [bulkResetTrigger, setBulkResetTrigger] = useState(0);
   const [multiResetTrigger, setMultiResetTrigger] = useState(0);
+  const [copiedField, setCopiedField] = useState<string | null>(null);
   const { toast } = useToast();
 
   // Determine if private mode is available (encrypted balance > 0 OR pending transfers > 0)
@@ -417,16 +419,11 @@ export function WalletDashboard({
     refreshWalletData();
   };
 
-  const copyToClipboard = async (text: string, label: string) => {
+  const copyToClipboard = async (text: string, fieldId: string) => {
     try {
       await navigator.clipboard.writeText(text);
-      // Only show toast in expanded mode
-      if (!isPopupMode) {
-        toast({
-          title: "Copied!",
-          description: `${label} copied to clipboard`,
-        });
-      }
+      setCopiedField(fieldId);
+      setTimeout(() => setCopiedField(null), 2000);
     } catch (error) {
       toast({
         title: "Error",
@@ -993,9 +990,9 @@ export function WalletDashboard({
                           variant="ghost" 
                           size="sm" 
                           className="h-5 w-5 p-0" 
-                          onClick={() => copyToClipboard('hash' in selectedTxDetails ? selectedTxDetails.hash : selectedTxDetails.tx_hash, 'Hash')}
+                          onClick={() => copyToClipboard('hash' in selectedTxDetails ? selectedTxDetails.hash : selectedTxDetails.tx_hash, 'txHash')}
                         >
-                          <Copy className="h-3 w-3" />
+                          {copiedField === 'txHash' ? <Check className="h-3 w-3 text-green-500" /> : <Copy className="h-3 w-3" />}
                         </Button>
                       </div>
                       <p className="font-mono text-[10px] break-all">
@@ -1012,9 +1009,9 @@ export function WalletDashboard({
                             variant="ghost" 
                             size="sm" 
                             className="h-5 w-5 p-0" 
-                            onClick={() => copyToClipboard('from' in selectedTxDetails ? selectedTxDetails.from : selectedTxDetails.parsed_tx.from, 'Address')}
+                            onClick={() => copyToClipboard('from' in selectedTxDetails ? selectedTxDetails.from : selectedTxDetails.parsed_tx.from, 'txFrom')}
                           >
-                            <Copy className="h-3 w-3" />
+                            {copiedField === 'txFrom' ? <Check className="h-3 w-3 text-green-500" /> : <Copy className="h-3 w-3" />}
                           </Button>
                         </div>
                         <p className="font-mono text-xs break-all">
@@ -1032,9 +1029,9 @@ export function WalletDashboard({
                             variant="ghost" 
                             size="sm" 
                             className="h-5 w-5 p-0" 
-                            onClick={() => copyToClipboard('to' in selectedTxDetails ? selectedTxDetails.to : selectedTxDetails.parsed_tx.to, 'Address')}
+                            onClick={() => copyToClipboard('to' in selectedTxDetails ? selectedTxDetails.to : selectedTxDetails.parsed_tx.to, 'txTo')}
                           >
-                            <Copy className="h-3 w-3" />
+                            {copiedField === 'txTo' ? <Check className="h-3 w-3 text-green-500" /> : <Copy className="h-3 w-3" />}
                           </Button>
                         </div>
                         <p className="font-mono text-xs break-all">
@@ -1177,12 +1174,12 @@ export function WalletDashboard({
                                             size="sm"
                                             onClick={(e) => {
                                               e.stopPropagation();
-                                              copyToClipboard(w.address, 'Address');
+                                              copyToClipboard(w.address, `walletPopup-${w.address}`);
                                             }}
                                             className="h-6 w-6 p-0 text-muted-foreground hover:text-foreground"
                                             title="Copy address"
                                           >
-                                            <Copy className="h-3 w-3" />
+                                            {copiedField === `walletPopup-${w.address}` ? <Check className="h-3 w-3 text-green-500" /> : <Copy className="h-3 w-3" />}
                                           </Button>
                                           {wallets.length > 1 && (
                                             <Button
@@ -1279,12 +1276,12 @@ export function WalletDashboard({
                                             size="sm"
                                             onClick={(e) => {
                                               e.stopPropagation();
-                                              copyToClipboard(w.address, 'Address');
+                                              copyToClipboard(w.address, `walletExpanded-${w.address}`);
                                             }}
                                             className="h-7 w-7 p-0 text-muted-foreground hover:text-foreground"
                                             title="Copy address"
                                           >
-                                            <Copy className="h-3.5 w-3.5" />
+                                            {copiedField === `walletExpanded-${w.address}` ? <Check className="h-3.5 w-3.5 text-green-500" /> : <Copy className="h-3.5 w-3.5" />}
                                           </Button>
                                           {wallets.length > 1 && (
                                             <Button
@@ -1328,10 +1325,10 @@ export function WalletDashboard({
                     <Button
                       variant="ghost"
                       size="sm"
-                      onClick={() => copyToClipboard(wallet.address, 'Address')}
+                      onClick={() => copyToClipboard(wallet.address, 'headerAddress')}
                       className="h-6 w-6 p-0"
                     >
-                      <Copy className="h-3 w-3" />
+                      {copiedField === 'headerAddress' ? <Check className="h-3 w-3 text-green-500" /> : <Copy className="h-3 w-3" />}
                     </Button>
                   </div>
                 </div>

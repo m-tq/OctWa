@@ -6,7 +6,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription } from '@/components/ui/dialog';
-import { Copy, Download, Eye, EyeOff, AlertTriangle, Shield, Key, FileText, Lock } from 'lucide-react';
+import { Copy, Download, Eye, EyeOff, AlertTriangle, Shield, Key, FileText, Lock, Check } from 'lucide-react';
 import { Wallet } from '../types/wallet';
 import { verifyPassword } from '../utils/password';
 import { useToast } from '@/hooks/use-toast';
@@ -32,6 +32,7 @@ export function ExportPrivateKeys({ wallet, open, onOpenChange, isPopupMode = fa
   const [isUnlocked, setIsUnlocked] = useState(false);
   const [showPrivateKey, setShowPrivateKey] = useState(false);
   const [showMnemonic, setShowMnemonic] = useState(false);
+  const [copiedField, setCopiedField] = useState<string | null>(null);
   const { toast } = useToast();
   const clipboardTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -105,20 +106,19 @@ export function ExportPrivateKeys({ wallet, open, onOpenChange, isPopupMode = fa
     }
   };
 
-  const copyToClipboard = async (text: string, label: string, isSensitive = false) => {
+  const copyToClipboard = async (text: string, fieldId: string, isSensitive = false) => {
     try {
       await navigator.clipboard.writeText(text);
+      setCopiedField(fieldId);
+      setTimeout(() => setCopiedField(null), 2000);
+      
       if (isSensitive) {
         if (clipboardTimeoutRef.current) clearTimeout(clipboardTimeoutRef.current);
         clipboardTimeoutRef.current = setTimeout(async () => {
           try {
             await navigator.clipboard.writeText('');
-            toast({ title: "Security", description: "Clipboard cleared" });
           } catch { /* ignore */ }
         }, CLIPBOARD_CLEAR_DELAY);
-        toast({ title: "Copied!", description: `${label} copied (auto-clears in 30s)` });
-      } else {
-        toast({ title: "Copied!", description: `${label} copied to clipboard` });
       }
     } catch {
       toast({ title: "Error", description: "Copy failed", variant: "destructive" });
@@ -340,10 +340,10 @@ ${wallet.mnemonic}
                         <Button
                           variant="outline"
                           size="sm"
-                          onClick={() => copyToClipboard(wallet.address, 'Address')}
+                          onClick={() => copyToClipboard(wallet.address, 'exportAddress')}
                           className={isPopupMode ? "h-7 w-7 p-0 flex-shrink-0" : "self-start sm:self-auto"}
                         >
-                          <Copy className={isPopupMode ? "h-3 w-3" : "h-4 w-4"} />
+                          {copiedField === 'exportAddress' ? <Check className={`${isPopupMode ? "h-3 w-3" : "h-4 w-4"} text-green-500`} /> : <Copy className={isPopupMode ? "h-3 w-3" : "h-4 w-4"} />}
                         </Button>
                       </div>
                     </div>
@@ -368,10 +368,10 @@ ${wallet.mnemonic}
                             <Button
                               variant="outline"
                               size="sm"
-                              onClick={() => copyToClipboard(wallet.privateKey, 'Private Key', true)}
+                              onClick={() => copyToClipboard(wallet.privateKey, 'exportPrivateKey', true)}
                               className={isPopupMode ? "h-7 w-7 p-0" : ""}
                             >
-                              <Copy className={isPopupMode ? "h-3 w-3" : "h-4 w-4"} />
+                              {copiedField === 'exportPrivateKey' ? <Check className={`${isPopupMode ? "h-3 w-3" : "h-4 w-4"} text-green-500`} /> : <Copy className={isPopupMode ? "h-3 w-3" : "h-4 w-4"} />}
                             </Button>
                           )}
                         </div>
@@ -416,11 +416,11 @@ ${wallet.mnemonic}
                             <Button
                               variant="outline"
                               size="sm"
-                              onClick={() => copyToClipboard(wallet.mnemonic!, 'Mnemonic', true)}
+                              onClick={() => copyToClipboard(wallet.mnemonic!, 'exportMnemonicPopup', true)}
                               className={`flex-1 ${isPopupMode ? 'h-7 text-[10px]' : ''}`}
                             >
-                              <Copy className={`${isPopupMode ? 'h-3 w-3 mr-1' : 'h-4 w-4 mr-2'}`} />
-                              Copy
+                              {copiedField === 'exportMnemonicPopup' ? <Check className={`${isPopupMode ? 'h-3 w-3 mr-1' : 'h-4 w-4 mr-2'} text-green-500`} /> : <Copy className={`${isPopupMode ? 'h-3 w-3 mr-1' : 'h-4 w-4 mr-2'}`} />}
+                              {copiedField === 'exportMnemonicPopup' ? 'Copied' : 'Copy'}
                             </Button>
                           )}
                         </div>
@@ -628,10 +628,10 @@ ${wallet.mnemonic}
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => copyToClipboard(wallet.address, 'Address')}
+                      onClick={() => copyToClipboard(wallet.address, 'exportAddressExpanded')}
                       className="self-start sm:self-auto"
                     >
-                      <Copy className="h-4 w-4" />
+                      {copiedField === 'exportAddressExpanded' ? <Check className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4" />}
                     </Button>
                   </div>
                 </div>
@@ -655,9 +655,9 @@ ${wallet.mnemonic}
                         <Button
                           variant="outline"
                           size="sm"
-                          onClick={() => copyToClipboard(wallet.privateKey, 'Private Key', true)}
+                          onClick={() => copyToClipboard(wallet.privateKey, 'exportPrivateKeyExpanded', true)}
                         >
-                          <Copy className="h-4 w-4" />
+                          {copiedField === 'exportPrivateKeyExpanded' ? <Check className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4" />}
                         </Button>
                       )}
                     </div>
@@ -675,10 +675,10 @@ ${wallet.mnemonic}
                       <Button
                         variant="outline"
                         size="sm"
-                        onClick={() => copyToClipboard(wallet.publicKey!, 'Public Key')}
+                        onClick={() => copyToClipboard(wallet.publicKey!, 'exportPublicKeyExpanded')}
                         className="self-start sm:self-auto"
                       >
-                        <Copy className="h-4 w-4" />
+                        {copiedField === 'exportPublicKeyExpanded' ? <Check className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4" />}
                       </Button>
                     </div>
                   </div>
@@ -720,11 +720,11 @@ ${wallet.mnemonic}
                         <Button
                           variant="outline"
                           size="sm"
-                          onClick={() => copyToClipboard(wallet.mnemonic!, 'Mnemonic', true)}
+                          onClick={() => copyToClipboard(wallet.mnemonic!, 'exportMnemonicExpanded', true)}
                           className="flex-1"
                         >
-                          <Copy className="h-4 w-4 mr-2" />
-                          Copy Mnemonic
+                          {copiedField === 'exportMnemonicExpanded' ? <Check className="h-4 w-4 mr-2 text-green-500" /> : <Copy className="h-4 w-4 mr-2" />}
+                          {copiedField === 'exportMnemonicExpanded' ? 'Copied!' : 'Copy Mnemonic'}
                         </Button>
                       )}
                     </div>
