@@ -105,6 +105,7 @@ export function FileMultiSend({ wallet, balance, onBalanceUpdate, onNonceUpdate,
   const [isProcessing, setIsProcessing] = useState(false);
   const [isSending, setIsSending] = useState(false);
   const [txLogs, setTxLogs] = useState<(TxLogEntry | SummaryLogEntry | BatchLogEntry)[]>([]);
+  const [executionMode, setExecutionMode] = useState<'parallel' | 'sequential'>('parallel');
   const txLogsEndRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
 
@@ -125,6 +126,7 @@ export function FileMultiSend({ wallet, balance, onBalanceUpdate, onNonceUpdate,
       setOuOption('auto');
       setCustomOu('');
       setShowOuSettings(false);
+      setExecutionMode('parallel');
       const fileInput = document.getElementById('bulkFileInput') as HTMLInputElement;
       if (fileInput) fileInput.value = '';
     }
@@ -308,7 +310,7 @@ export function FileMultiSend({ wallet, balance, onBalanceUpdate, onNonceUpdate,
     setIsSending(true);
     setTxLogs([]);
 
-    const startTime = Date.now();
+    let startTime = 0; // Will be set when first transaction is submitted
     const BATCH_SIZE = 50; // Send 50 transactions per batch
     const EPOCH_CHECK_INTERVAL = 5000; // Check epoch every 5 seconds
 
@@ -433,6 +435,11 @@ export function FileMultiSend({ wallet, balance, onBalanceUpdate, onNonceUpdate,
           }
           return log;
         }));
+
+        // Start timer when first batch is about to be sent
+        if (batchNumber === 1) {
+          startTime = Date.now();
+        }
 
         // Send the batch using pre-assigned nonces
         const batchResults = await Promise.all(
@@ -689,6 +696,338 @@ export function FileMultiSend({ wallet, balance, onBalanceUpdate, onNonceUpdate,
     }
   };
 
+  // Sequential send - one transaction at a time
+  const handleSendAllSequential = async () => {
+    if (!wallet) {
+      toast({ title: "Error", description: "No wallet connected", variant: "destructive" });
+      return;
+    }
+
+    const validRecipients = recipients.filter(r => r.isValid);
+    if (validRecipients.length === 0) {
+      toast({ title: "Error", description: "No valid recipients found", variant: "destructive" });
+      return;
+    }
+
+    const totalCost = calculateTotalCost();
+    if (balance !== null && totalCost > balance) {
+      toast({ title: "Error", description: `Insufficient balance. Need ${totalCost.toFixed(8)} OCT`, variant: "destructive" });
+      return;
+    }
+
+    setIsSending(true);
+    setTxLogs([]);
+
+    let startTime = 0; // Will be set when first transaction is submitted
+    const MAX_RETRIES = 5;
+    const RETRY_DELAY = 5000;
+    const EPOCH_CHECK_INTERVAL = 5000;
+
+    // Helper function to fetch nonce with retry
+    const fetchNonceWithRetry = async (maxAttempts = 5): Promise<number> => {
+      for (let attempt = 0; attempt < maxAttempts; attempt++) {
+        try {
+          console.log(`[Sequential][Nonce] Fetching nonce, attempt ${attempt + 1}/${maxAttempts}`);
+          const balanceData = await fetchBalance(wallet.address);
+          console.log(`[Sequential][Nonce] Got nonce: ${balanceData.nonce}`);
+          return balanceData.nonce;
+        } catch (error) {
+          console.error(`[Sequential][Nonce] Fetch failed, attempt ${attempt + 1}:`, error);
+          if (attempt === maxAttempts - 1) throw error;
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        }
+      }
+      throw new Error('Failed to fetch nonce');
+    };
+
+    // Helper function to fetch epoch with retry
+    const fetchEpochWithRetry = async (maxAttempts = 5): Promise<number> => {
+      for (let attempt = 0; attempt < maxAttempts; attempt++) {
+        try {
+          const epoch = await fetchCurrentEpoch();
+          return epoch;
+        } catch (error) {
+          if (attempt === maxAttempts - 1) throw error;
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        }
+      }
+      throw new Error('Failed to fetch epoch');
+    };
+
+    // Helper function to wait for epoch change
+    const waitForEpochChange = async (currentEpoch: number): Promise<number> => {
+      console.log(`[Sequential][Epoch] Waiting for epoch to change from ${currentEpoch}...`);
+      while (true) {
+        await new Promise(resolve => setTimeout(resolve, EPOCH_CHECK_INTERVAL));
+        try {
+          const newEpoch = await fetchCurrentEpoch();
+          if (newEpoch > currentEpoch) {
+            console.log(`[Sequential][Epoch] Epoch changed: ${currentEpoch} -> ${newEpoch}`);
+            return newEpoch;
+          }
+        } catch (error) {
+          console.error(`[Sequential][Epoch] Error checking epoch:`, error);
+        }
+      }
+    };
+
+    type SeqRecipient = { address: string; amount: string; originalIndex: number };
+
+    try {
+      // Initialize recipients
+      const allRecipients: SeqRecipient[] = validRecipients.map((r, idx) => ({
+        address: r.address,
+        amount: r.amount,
+        originalIndex: idx
+      }));
+
+      // For sequential mode, don't add all logs at once - add them one by one
+      // Start with empty logs
+      setTxLogs([]);
+
+      let totalSuccessCount = 0;
+      let currentEpoch = await fetchEpochWithRetry();
+      let currentNonce = await fetchNonceWithRetry();
+      let failedRecipients: SeqRecipient[] = [];
+
+      console.log(`[Sequential][Start] Initial epoch: ${currentEpoch}, nonce: ${currentNonce}, recipients: ${allRecipients.length}`);
+
+      // Process each recipient one by one
+      for (let i = 0; i < allRecipients.length; i++) {
+        const recipient = allRecipients[i];
+        
+        // Add this recipient to log as pending (sequential - one at a time)
+        setTxLogs(prev => [...prev, {
+          recipient: recipient.address,
+          amount: recipient.amount,
+          status: 'pending' as const,
+          timestamp: new Date()
+        }]);
+
+        let txSuccess = false;
+        let txHash = '';
+        let lastError = '';
+        let retryCount = 0;
+
+        // Try up to MAX_RETRIES times with RETRY_DELAY
+        while (!txSuccess && retryCount <= MAX_RETRIES) {
+          if (retryCount > 0) {
+            console.log(`[Sequential] TX ${i + 1} retry ${retryCount}/${MAX_RETRIES}, waiting ${RETRY_DELAY}ms and checking epoch...`);
+            setTxLogs(prev => prev.map(log => {
+              if ('recipient' in log && log.recipient === recipient.address) {
+                return { ...log, status: 'retrying' as const, error: `Retry ${retryCount}/${MAX_RETRIES}, checking epoch...`, retryCount };
+              }
+              return log;
+            }));
+            
+            // Wait and check if epoch changed during the delay
+            await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
+            
+            // Check if epoch changed
+            try {
+              const newEpoch = await fetchCurrentEpoch();
+              if (newEpoch > currentEpoch) {
+                console.log(`[Sequential] Epoch changed during retry: ${currentEpoch} -> ${newEpoch}`);
+                currentEpoch = newEpoch;
+              }
+            } catch (error) {
+              console.error(`[Sequential] Error checking epoch during retry:`, error);
+            }
+            
+            // Fetch fresh nonce on retry
+            currentNonce = await fetchNonceWithRetry();
+          }
+
+          try {
+            const amount = parseFloat(recipient.amount);
+            const txNonce = currentNonce + 1;
+            
+            // Start timer when first transaction is about to be submitted
+            if (i === 0 && retryCount === 0) {
+              startTime = Date.now();
+            }
+            
+            console.log(`[Sequential] TX ${i + 1}/${allRecipients.length}: ${recipient.address.slice(0, 10)}... nonce=${txNonce}`);
+            
+            const transaction = createTransaction(
+              wallet.address,
+              recipient.address.trim(),
+              amount,
+              txNonce,
+              wallet.privateKey,
+              wallet.publicKey || '',
+              undefined,
+              getOuValue(amount)
+            );
+
+            const result = await sendTransaction(transaction);
+
+            if (result.success) {
+              txSuccess = true;
+              txHash = result.hash || '';
+              currentNonce = txNonce; // Update nonce on success
+              console.log(`[Sequential] TX ${i + 1} SUCCESS: ${txHash.slice(0, 16)}`);
+            } else {
+              lastError = result.error || 'Transaction failed';
+              console.log(`[Sequential] TX ${i + 1} FAILED: ${lastError}`);
+              
+              // Check if nonce error
+              if (lastError.toLowerCase().includes('nonce')) {
+                retryCount++;
+                continue;
+              }
+              // For non-nonce errors, also retry
+              retryCount++;
+            }
+          } catch (error) {
+            lastError = error instanceof Error ? error.message : 'Unknown error';
+            console.error(`[Sequential] TX ${i + 1} ERROR: ${lastError}`);
+            retryCount++;
+          }
+        }
+
+        if (txSuccess) {
+          totalSuccessCount++;
+          setTxLogs(prev => prev.map(log => {
+            if ('recipient' in log && log.recipient === recipient.address) {
+              return { ...log, status: 'success' as const, hash: txHash, error: undefined };
+            }
+            return log;
+          }));
+        } else {
+          // After MAX_RETRIES failed, add to failed list for epoch-based retry
+          failedRecipients.push(recipient);
+          setTxLogs(prev => prev.map(log => {
+            if ('recipient' in log && log.recipient === recipient.address) {
+              return { ...log, status: 'error' as const, error: lastError, retryCount: MAX_RETRIES };
+            }
+            return log;
+          }));
+        }
+      }
+
+      // Epoch-based retry for remaining failed transactions
+      let epochRetryRound = 0;
+      const MAX_EPOCH_RETRIES = 5;
+
+      while (failedRecipients.length > 0 && epochRetryRound < MAX_EPOCH_RETRIES) {
+        epochRetryRound++;
+        console.log(`\n[Sequential][EpochRetry ${epochRetryRound}] ${failedRecipients.length} failed transactions`);
+
+        // Update status
+        setTxLogs(prev => prev.map(log => {
+          if ('recipient' in log && failedRecipients.some(r => r.address === log.recipient)) {
+            return { ...log, status: 'retrying' as const, error: `Waiting for epoch change (round ${epochRetryRound})...` };
+          }
+          return log;
+        }));
+
+        // Wait for epoch change
+        currentEpoch = await waitForEpochChange(currentEpoch);
+        
+        // Fetch fresh nonce
+        currentNonce = await fetchNonceWithRetry();
+        console.log(`[Sequential][EpochRetry ${epochRetryRound}] New epoch: ${currentEpoch}, fresh nonce: ${currentNonce}`);
+
+        const recipientsToRetry = [...failedRecipients];
+        failedRecipients = [];
+
+        for (const recipient of recipientsToRetry) {
+          setTxLogs(prev => prev.map(log => {
+            if ('recipient' in log && log.recipient === recipient.address) {
+              return { ...log, status: 'pending' as const, error: undefined };
+            }
+            return log;
+          }));
+
+          let txSuccess = false;
+          let txHash = '';
+          let lastError = '';
+
+          try {
+            const amount = parseFloat(recipient.amount);
+            const txNonce = currentNonce + 1;
+
+            const transaction = createTransaction(
+              wallet.address,
+              recipient.address.trim(),
+              amount,
+              txNonce,
+              wallet.privateKey,
+              wallet.publicKey || '',
+              undefined,
+              getOuValue(amount)
+            );
+
+            const result = await sendTransaction(transaction);
+
+            if (result.success) {
+              txSuccess = true;
+              txHash = result.hash || '';
+              currentNonce = txNonce;
+              console.log(`[Sequential][EpochRetry ${epochRetryRound}] TX SUCCESS: ${recipient.address.slice(0, 10)}...`);
+            } else {
+              lastError = result.error || 'Transaction failed';
+              console.log(`[Sequential][EpochRetry ${epochRetryRound}] TX FAILED: ${lastError}`);
+            }
+          } catch (error) {
+            lastError = error instanceof Error ? error.message : 'Unknown error';
+          }
+
+          if (txSuccess) {
+            totalSuccessCount++;
+            setTxLogs(prev => prev.map(log => {
+              if ('recipient' in log && log.recipient === recipient.address) {
+                return { ...log, status: 'success' as const, hash: txHash, error: undefined };
+              }
+              return log;
+            }));
+          } else {
+            failedRecipients.push(recipient);
+            setTxLogs(prev => prev.map(log => {
+              if ('recipient' in log && log.recipient === recipient.address) {
+                return { ...log, status: 'error' as const, error: lastError };
+              }
+              return log;
+            }));
+          }
+        }
+      }
+
+      // Calculate final results
+      const endTime = Date.now();
+      const elapsedTime = (endTime - startTime) / 1000;
+      const finalErrorCount = failedRecipients.length;
+
+      console.log(`\n[Sequential][Complete] Total: ${totalSuccessCount} success, ${finalErrorCount} failed, ${elapsedTime.toFixed(1)}s`);
+
+      // Add summary log entry
+      setTxLogs(prev => [...prev, {
+        type: 'summary' as const,
+        successCount: totalSuccessCount,
+        errorCount: finalErrorCount,
+        totalTime: elapsedTime,
+        totalBatches: 1,
+        timestamp: new Date()
+      }]);
+
+      if (totalSuccessCount > 0) {
+        try {
+          const finalBalance = await fetchBalance(wallet.address);
+          onNonceUpdate(finalBalance.nonce);
+          onBalanceUpdate(finalBalance.balance);
+        } catch (error) {
+          console.error('Failed to refresh balance:', error);
+        }
+      }
+    } catch (error) {
+      console.error('Sequential send error:', error);
+      toast({ title: "Error", description: "Failed to send transactions", variant: "destructive" });
+    } finally {
+      setIsSending(false);
+    }
+  };
+
   if (!wallet) {
     return (
       <Alert>
@@ -714,19 +1053,11 @@ export function FileMultiSend({ wallet, balance, onBalanceUpdate, onNonceUpdate,
     <div className="flex gap-6 h-full">
       {/* Left Panel - Wallet Info & Controls */}
       <div className="w-72 flex-shrink-0 space-y-4">
-        {/* Active Address */}
+        {/* Active Address & Balance */}
         <div className="space-y-1.5">
           <Label className="text-xs text-muted-foreground">Active Address</Label>
-          <div className="p-2.5 bg-muted rounded-md font-mono text-xs break-all">
-            {wallet.address}
-          </div>
-        </div>
-
-        {/* Balance */}
-        <div className="space-y-1.5">
-          <Label className="text-xs text-muted-foreground">Balance</Label>
-          <div className="p-2.5 bg-muted rounded-md font-mono text-sm font-medium">
-            {currentBalance.toFixed(8)} OCT
+          <div className="p-2.5 bg-muted rounded-md font-mono text-xs">
+            {wallet.address.slice(0, 10)}...{wallet.address.slice(-6)} | {currentBalance.toFixed(4)} OCT
           </div>
         </div>
 
@@ -817,9 +1148,23 @@ export function FileMultiSend({ wallet, balance, onBalanceUpdate, onNonceUpdate,
           </div>
         )}
 
+        {/* Execution Mode */}
+        <div className="space-y-1.5">
+          <Label className="text-xs text-muted-foreground">Execution Mode</Label>
+          <Select value={executionMode} onValueChange={(value: 'parallel' | 'sequential') => setExecutionMode(value)} disabled={isSending}>
+            <SelectTrigger className="text-sm h-9">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="parallel">Parallel (50 tx/batch)</SelectItem>
+              <SelectItem value="sequential">Sequential (1 tx at a time)</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
         {/* Send Button */}
         <Button
-          onClick={handleSendAll}
+          onClick={executionMode === 'parallel' ? handleSendAll : handleSendAllSequential}
           disabled={isSending || validRecipients.length === 0 || totalCost > currentBalance}
           className="w-full h-11"
           size="lg"
@@ -827,7 +1172,7 @@ export function FileMultiSend({ wallet, balance, onBalanceUpdate, onNonceUpdate,
           {isSending ? (
             <>
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              Sending...
+              Sending ({executionMode})...
             </>
           ) : (
             <span className="text-sm">

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -34,6 +34,7 @@ interface MultiSendProps {
   onTransactionSuccess: () => void;
   onModalClose?: () => void;
   hideBorder?: boolean;
+  resetTrigger?: number;
 }
 
 // Simple address validation function
@@ -56,7 +57,7 @@ function validateRecipientInput(input: string): { isValid: boolean; error?: stri
   };
 }
 
-export function MultiSend({ wallet, balance, onBalanceUpdate, onNonceUpdate, onTransactionSuccess }: MultiSendProps) {
+export function MultiSend({ wallet, balance, onBalanceUpdate, onNonceUpdate, onTransactionSuccess, resetTrigger }: MultiSendProps) {
   const [recipients, setRecipients] = useState<Recipient[]>([
     { address: '', amount: '', message: '', showMessage: false }
   ]);
@@ -70,6 +71,18 @@ export function MultiSend({ wallet, balance, onBalanceUpdate, onNonceUpdate, onT
   const [txModalStatus, setTxModalStatus] = useState<'sending' | 'success' | 'error' | 'partial'>('sending');
   const [elapsedTime, setElapsedTime] = useState<number>(0);
   const { toast } = useToast();
+
+  // Reset all state when resetTrigger changes
+  useEffect(() => {
+    if (resetTrigger && resetTrigger > 0) {
+      setRecipients([{ address: '', amount: '', message: '', showMessage: false }]);
+      setResults([]);
+      setOuOption('auto');
+      setCustomOu('');
+      setShowOuSettings(false);
+      setElapsedTime(0);
+    }
+  }, [resetTrigger]);
 
   // Get OU value for a specific amount
   const getOuValue = (amount: number): number => {
@@ -172,7 +185,7 @@ export function MultiSend({ wallet, balance, onBalanceUpdate, onNonceUpdate, onT
     setTxProgress({ current: 0, total: recipients.length, currentRecipient: '', currentAmount: '' });
     setElapsedTime(0);
 
-    const startTime = Date.now();
+    let startTime = 0; // Will be set when first transaction is submitted
     const MAX_RETRIES = 5;
     const RETRY_DELAY = 5000; // 5 seconds delay between retries
 
@@ -212,6 +225,11 @@ export function MultiSend({ wallet, balance, onBalanceUpdate, onNonceUpdate, onT
               // Fetch fresh nonce for retry
               const retryBalanceData = await fetchBalance(wallet.address);
               currentNonce = retryBalanceData.nonce;
+            }
+
+            // Start timer when first transaction is about to be submitted
+            if (i === 0 && retry === 0) {
+              startTime = Date.now();
             }
 
             const transaction = createTransaction(
@@ -453,7 +471,7 @@ export function MultiSend({ wallet, balance, onBalanceUpdate, onNonceUpdate, onT
       </div>
 
       {/* Right Panel - Recipients Grid with ScrollArea */}
-      <div className="flex-1 border-l pl-6">
+      <div className="flex-1 border-l pl-6 flex flex-col">
         <ScrollArea className="h-[calc(100vh-140px)] pr-4">
           <div className="grid grid-cols-3 gap-4">
             {recipients.map((recipient, index) => (

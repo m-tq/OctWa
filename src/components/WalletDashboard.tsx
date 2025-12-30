@@ -130,6 +130,7 @@ export function WalletDashboard({
   // Expanded mode send modal states
   const [expandedSendModal, setExpandedSendModal] = useState<'standard' | 'multi' | 'bulk' | null>(null);
   const [bulkResetTrigger, setBulkResetTrigger] = useState(0);
+  const [multiResetTrigger, setMultiResetTrigger] = useState(0);
   const { toast } = useToast();
 
   // Determine if private mode is available (encrypted balance > 0 OR pending transfers > 0)
@@ -2331,6 +2332,17 @@ export function WalletDashboard({
                 Reset
               </Button>
             )}
+            {expandedSendModal === 'multi' && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setMultiResetTrigger(prev => prev + 1)}
+                className="text-xs"
+              >
+                <RotateCcw className="h-3.5 w-3.5 mr-1.5" />
+                Reset
+              </Button>
+            )}
           </div>
           
           {/* Modal Content */}
@@ -2360,6 +2372,7 @@ export function WalletDashboard({
                   onTransactionSuccess={handleTransactionSuccess}
                   onModalClose={() => setExpandedSendModal(null)}
                   hideBorder={true}
+                  resetTrigger={multiResetTrigger}
                 />
               )}
               {expandedSendModal === 'bulk' && (

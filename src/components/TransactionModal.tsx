@@ -78,7 +78,8 @@ export function TransactionModal({
 
   const handleClose = () => {
     onOpenChange(false);
-    onClose?.();
+    // Note: onClose is intentionally NOT called here
+    // onClose is meant for closing the parent modal/form, not the transaction result modal
   };
 
   const truncateHash = (hash: string) => `${hash.slice(0, 12)}...${hash.slice(-12)}`;
