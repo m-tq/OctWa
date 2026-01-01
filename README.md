@@ -149,6 +149,12 @@ OctWa implements industry-standard security practices to protect your assets:
 - **TypeScript Support** - Full type definitions for all SDK methods
 - **Event System** - Subscribe to wallet events (connect, disconnect, accountChanged)
 
+### Performance & Caching
+- **Smart Data Caching** - Balance and wallet data cached locally to reduce RPC calls
+- **Epoch-Based Auto Update** - Automatic data refresh when blockchain epoch changes
+- **Optimized Loading** - Uses cached data for instant display, updates in background
+- **Reduced Network Load** - Minimizes redundant API calls with intelligent cache invalidation
+
 ### User Experience
 - **Dark/Light Theme** - Toggle between dark and light themes
 - **Responsive Design** - Works on desktop and mobile browsers
