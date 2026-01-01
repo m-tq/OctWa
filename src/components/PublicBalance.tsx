@@ -5,7 +5,7 @@ import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { RefreshCw, Wallet, Lock, Globe } from 'lucide-react';
+import { RefreshCw, Wallet, Lock } from 'lucide-react';
 import { Wallet as WalletType } from '../types/wallet';
 import { fetchBalance, fetchEncryptedBalance } from '../utils/api';
 import { useToast } from '@/hooks/use-toast';
@@ -76,32 +76,22 @@ export function PublicBalance({
     }
   };
 
+  // Only fetch encrypted balance if not provided via props (for standalone usage)
+  // When used in WalletDashboard, data is passed via props and cached
   useEffect(() => {
-    if (wallet) {
-      fetchBalance(wallet.address)
-        .then(async (balanceData) => {
-          try {
-            const encData = await fetchEncryptedBalance(wallet.address, wallet.privateKey);
-            if (encData) {
-              setEncryptedBalance(encData);
-            } else {
-              setEncryptedBalance({
-                public: balanceData.balance,
-                public_raw: Math.floor(balanceData.balance * 1_000_000),
-                encrypted: 0,
-                encrypted_raw: 0,
-                total: balanceData.balance
-              });
-            }
-          } catch (error) {
-            console.error('Failed to fetch encrypted balance on mount:', error);
+    if (wallet && !propEncryptedBalance && !encryptedBalance) {
+      // Only fetch if no encrypted balance data is available at all
+      fetchEncryptedBalance(wallet.address, wallet.privateKey)
+        .then((encData) => {
+          if (encData) {
+            setLocalEncryptedBalance(encData);
           }
         })
-        .catch(error => {
-          console.error('Failed to fetch balance on mount:', error);
+        .catch((error) => {
+          console.error('Failed to fetch encrypted balance on mount:', error);
         });
     }
-  }, [wallet]);
+  }, [wallet?.address]);
 
   const handleEncryptSuccess = () => {
     setShowEncryptDialog(false);
@@ -122,8 +112,6 @@ export function PublicBalance({
       <Card className={hideBorder || isPopupMode ? 'border-0 shadow-none' : ''}>
         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
           <CardTitle className="flex items-center gap-2 text-base">
-            <Globe className="h-4 w-4" />
-            Overview
           </CardTitle>
           <Button variant="outline" size="sm" onClick={fetchWalletBalance} disabled={refreshing} className={isPopupMode ? 'h-7 px-2' : ''}>
             <RefreshCw className={`h-4 w-4 ${isPopupMode ? '' : 'mr-1.5'} ${refreshing ? 'animate-spin' : ''}`} />
@@ -132,9 +120,8 @@ export function PublicBalance({
         </CardHeader>
         <CardContent className="pt-2 pb-4">
           {/* Public Balance Display */}
-          <div className="text-center py-4">
+          <div className="text-center py-4 bg-muted/50 rounded-lg">
             <div className="flex items-center justify-center gap-1.5 mb-2">
-              <Wallet className="h-4 w-4 text-muted-foreground" />
               <span className="text-xs font-medium text-muted-foreground">Available</span>
             </div>
             {isLoading ? (

@@ -75,39 +75,31 @@ export function PrivateBalance({
     }
   };
 
+  // Only fetch if data is not provided via props (for standalone usage)
+  // When used in WalletDashboard, data is passed via props and cached
   useEffect(() => {
-    // Only fetch if encryptedBalance is not provided via props
-    if (wallet && !propEncryptedBalance) {
-      fetchBalance(wallet.address)
-        .then(async (balanceData) => {
-          try {
-            const encData = await fetchEncryptedBalance(wallet.address, wallet.privateKey);
-            if (encData) {
-              setEncryptedBalance(encData);
-            }
-          } catch (error) {
-            console.error('Failed to fetch encrypted balance on mount:', error);
-          }
-
-          try {
-            const pending = await getPendingPrivateTransfers(wallet.address, wallet.privateKey);
-            setPendingTransfers(pending);
-          } catch (error) {
-            console.error('Failed to fetch pending transfers on mount:', error);
+    if (wallet && !propEncryptedBalance && !encryptedBalance) {
+      // Only fetch encrypted balance if not available
+      fetchEncryptedBalance(wallet.address, wallet.privateKey)
+        .then((encData) => {
+          if (encData) {
+            setLocalEncryptedBalance(encData);
           }
         })
         .catch((error) => {
-          console.error('Failed to fetch balance on mount:', error);
+          console.error('Failed to fetch encrypted balance on mount:', error);
         });
-    } else if (wallet && propEncryptedBalance) {
-      // Only fetch pending transfers if encryptedBalance is provided
+    }
+    
+    // Always fetch pending transfers (they're not passed via props)
+    if (wallet) {
       getPendingPrivateTransfers(wallet.address, wallet.privateKey)
         .then(setPendingTransfers)
         .catch((error) => {
           console.error('Failed to fetch pending transfers on mount:', error);
         });
     }
-  }, [wallet, propEncryptedBalance]);
+  }, [wallet?.address]);
 
   const handleDecryptSuccess = () => {
     setShowDecryptDialog(false);
@@ -128,8 +120,6 @@ export function PrivateBalance({
       <Card className={hideBorder || isPopupMode ? 'border-0 shadow-none' : 'border-[#0000db]/20'}>
         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
           <CardTitle className="flex items-center gap-2 text-[#0000db] text-base">
-            <Shield className="h-4 w-4" />
-            Overview
           </CardTitle>
           <Button
             variant="outline"
@@ -146,7 +136,6 @@ export function PrivateBalance({
           {/* Private Balance Display */}
           <div className="text-center py-4 bg-[#0000db]/5 rounded-lg">
             <div className="flex items-center justify-center gap-1.5 mb-2">
-              <Shield className="h-4 w-4 text-[#0000db]" />
               <span className="text-xs font-medium text-[#0000db]">Available</span>
             </div>
             {isLoading ? (
@@ -163,7 +152,7 @@ export function PrivateBalance({
 
           {/* Pending Transfers */}
           {pendingTransfers.length > 0 && (
-            <div className="flex items-center justify-between p-2.5 mt-3 bg-green-50 dark:bg-green-950/20 rounded-lg border border-green-200 dark:border-green-800">
+            <div className="flex items-center justify-between p-2.5 mt-3 bg-green-50 dark:bg-green-950/20  border border-green-200 dark:border-green-800">
               <div className="flex items-center gap-1.5">
                 <Gift className="h-3.5 w-3.5 text-green-600" />
                 <span className="text-xs font-medium text-green-700 dark:text-green-400">

@@ -118,13 +118,13 @@ export function PasswordSetup({ wallet, onPasswordSet, onBack }: PasswordSetupPr
       
       console.log('🔐 PasswordSetup: ExtensionStorage saved');
       
-      // Set session password for runtime operations
+      // Set session password for runtime operations (this also generates encryption key)
       WalletManager.setSessionPassword(password);
       
-      // Store decrypted wallet in session storage for immediate access
-      await ExtensionStorageManager.setSession('sessionWallets', JSON.stringify([wallet]));
+      // Store decrypted wallet in encrypted session storage
+      await WalletManager.updateSessionWallets([wallet]);
       
-      console.log('🔐 PasswordSetup: Session storage saved');
+      console.log('🔐 PasswordSetup: Session storage saved (encrypted)');
       
       // SECURITY: Remove any unencrypted wallet data that might exist
       localStorage.removeItem('wallets');
@@ -135,7 +135,6 @@ export function PasswordSetup({ wallet, onPasswordSet, onBack }: PasswordSetupPr
       const verifyEncrypted = localStorage.getItem('encryptedWallets');
       console.log('🔐 PasswordSetup: Verify - hash exists:', !!verifyHash, ', encrypted exists:', !!verifyEncrypted);
 
-      toast({ title: "Password Created!", description: "Your wallet is now protected" });
       onPasswordSet(wallet);
     } catch (error) {
       console.error('🔐 PasswordSetup: Error:', error);
@@ -179,7 +178,7 @@ export function PasswordSetup({ wallet, onPasswordSet, onBack }: PasswordSetupPr
             {password && (
               <div className="space-y-1">
                 <div className="flex items-center gap-2">
-                  <div className="flex-1 h-1.5 bg-muted rounded-full overflow-hidden">
+                  <div className="flex-1 h-1.5 bg-muted  overflow-hidden">
                     <div 
                       className={`h-full transition-all ${passwordStrength.color}`}
                       style={{ width: `${(passwordStrength.score / 5) * 100}%` }}

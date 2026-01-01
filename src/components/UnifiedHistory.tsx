@@ -276,9 +276,9 @@ export function UnifiedHistory({ wallet, transactions, onTransactionsUpdate, isL
           </Alert>
         ) : (
           <ScrollArea className={isPopupMode ? 'h-auto' : 'h-[calc(100vh-450px)] pr-3'}>
-            <div ref={historyListRef} className={`${isPopupMode ? 'space-y-2 mb-[110px]' : 'space-y-3 pr-1'}`}>
+            <div ref={historyListRef} className={`${isPopupMode ? 'space-y-2 mb-[110px]' : 'space-y-3 pr-1 pb-4'}`}>
               {unifiedHistory.map((item) => (
-                <div key={item.id} className={`border rounded-lg ${isPopupMode ? 'p-2' : 'p-3'} space-y-2`}>
+                <div key={item.id} className={`border  ${isPopupMode ? 'p-2' : 'p-3'} space-y-2`}>
                   {item.type === 'transfer' && item.transaction && (
                     <TransferItem 
                       tx={item.transaction} 
@@ -357,14 +357,14 @@ export function UnifiedHistory({ wallet, transactions, onTransactionsUpdate, isL
               ) : selectedTx ? (
                 <div className="space-y-2">
                   {/* Status */}
-                  <div className="bg-muted/50 rounded-lg p-3 flex items-center justify-between">
+                  <div className="bg-muted/50  p-3 flex items-center justify-between">
                     <span className="text-xs text-muted-foreground">Status</span>
                     {'stage_status' in selectedTx ? (
                       <Badge variant="secondary" className="text-xs bg-yellow-500/20 text-yellow-600">
                         {selectedTx.stage_status || 'pending'}
                       </Badge>
                     ) : (
-                      <Badge variant="secondary" className="text-xs bg-green-500/20 text-green-600">
+                      <Badge variant="secondary" className="text-xs bg-[#0000db]/20 text-[#0000db]">
                         confirmed
                       </Badge>
                     )}
@@ -372,7 +372,7 @@ export function UnifiedHistory({ wallet, transactions, onTransactionsUpdate, isL
 
                   {/* Epoch - only for confirmed */}
                   {'epoch' in selectedTx && (
-                    <div className="bg-muted/50 rounded-lg p-3 flex items-center justify-between">
+                    <div className="bg-muted/50  p-3 flex items-center justify-between">
                       <span className="text-xs text-muted-foreground">Epoch</span>
                       <span className="font-mono text-sm">{selectedTx.epoch}</span>
                     </div>
@@ -380,7 +380,7 @@ export function UnifiedHistory({ wallet, transactions, onTransactionsUpdate, isL
 
                   {/* Time */}
                   {('timestamp' in selectedTx || 'parsed_tx' in selectedTx) && (
-                    <div className="bg-muted/50 rounded-lg p-3 flex items-center justify-between">
+                    <div className="bg-muted/50  p-3 flex items-center justify-between">
                       <span className="text-xs text-muted-foreground">Time (UTC)</span>
                       <span className="text-sm">
                         {'timestamp' in selectedTx 
@@ -392,7 +392,7 @@ export function UnifiedHistory({ wallet, transactions, onTransactionsUpdate, isL
                   )}
 
                   {/* Hash */}
-                  <div className="bg-muted/50 rounded-lg p-3">
+                  <div className="bg-muted/50  p-3">
                     <div className="flex items-center justify-between mb-1">
                       <span className="text-xs text-muted-foreground">Hash</span>
                       <Button 
@@ -411,7 +411,7 @@ export function UnifiedHistory({ wallet, transactions, onTransactionsUpdate, isL
 
                   {/* From - full address */}
                   {('from' in selectedTx || 'parsed_tx' in selectedTx) && (
-                    <div className="bg-muted/50 rounded-lg p-3">
+                    <div className="bg-muted/50  p-3">
                       <div className="flex items-center justify-between mb-1">
                         <span className="text-xs text-muted-foreground">From</span>
                         <Button 
@@ -431,7 +431,7 @@ export function UnifiedHistory({ wallet, transactions, onTransactionsUpdate, isL
 
                   {/* To - full address */}
                   {('to' in selectedTx || 'parsed_tx' in selectedTx) && (
-                    <div className="bg-muted/50 rounded-lg p-3">
+                    <div className="bg-muted/50  p-3">
                       <div className="flex items-center justify-between mb-1">
                         <span className="text-xs text-muted-foreground">To</span>
                         <Button 
@@ -452,7 +452,7 @@ export function UnifiedHistory({ wallet, transactions, onTransactionsUpdate, isL
                   {/* Amount, OU (Gas), Nonce */}
                   <div className="grid grid-cols-3 gap-2">
                     {('amount' in selectedTx || 'parsed_tx' in selectedTx) && (
-                      <div className="bg-muted/50 rounded-lg p-3">
+                      <div className="bg-muted/50  p-3">
                         <span className="text-xs text-muted-foreground">Amount</span>
                         <p className="font-mono text-sm mt-0.5">
                           {'amount' in selectedTx ? selectedTx.amount : selectedTx.parsed_tx.amount} OCT
@@ -464,7 +464,7 @@ export function UnifiedHistory({ wallet, transactions, onTransactionsUpdate, isL
                       const ouNum = parseInt(ouValue) || 0;
                       const feeOct = (ouNum * 0.0000001).toFixed(7);
                       return (
-                        <div className="bg-muted/50 rounded-lg p-3">
+                        <div className="bg-muted/50  p-3">
                           <span className="text-xs text-muted-foreground">OU (Gas)</span>
                           <p className="font-mono text-xs mt-0.5">{ouValue}</p>
                           <p className="text-[10px] text-muted-foreground">≈ {feeOct} OCT</p>
@@ -472,7 +472,7 @@ export function UnifiedHistory({ wallet, transactions, onTransactionsUpdate, isL
                       );
                     })()}
                     {('nonce' in selectedTx || 'parsed_tx' in selectedTx) && (
-                      <div className="bg-muted/50 rounded-lg p-3">
+                      <div className="bg-muted/50  p-3">
                         <span className="text-xs text-muted-foreground">Nonce</span>
                         <p className="font-mono text-sm mt-0.5">
                           {'nonce' in selectedTx ? selectedTx.nonce : selectedTx.parsed_tx.nonce}

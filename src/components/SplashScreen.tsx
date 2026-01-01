@@ -5,20 +5,63 @@ interface SplashScreenProps {
   duration?: number;
 }
 
+const AnimatedLogo = () => (
+  <svg
+    width="112"
+    height="112"
+    viewBox="0 0 50 50"
+    fill="none"
+    xmlns="http://www.w3.org/2000/svg"
+  >
+    <style>
+      {`
+        .outer-circle {
+          stroke-dasharray: 132;
+          stroke-dashoffset: 132;
+          animation: drawOuter 1s ease-out forwards;
+        }
+        .inner-circle {
+          transform-origin: center;
+          transform: scale(0);
+          animation: scaleIn 0.5s ease-out 0.8s forwards;
+        }
+        @keyframes drawOuter {
+          to {
+            stroke-dashoffset: 0;
+          }
+        }
+        @keyframes scaleIn {
+          to {
+            transform: scale(1);
+          }
+        }
+      `}
+    </style>
+    <circle
+      cx="25"
+      cy="25"
+      r="21"
+      stroke="#0000FF"
+      strokeWidth="8"
+      fill="none"
+      className="outer-circle"
+    />
+    <circle cx="25" cy="25" r="9" fill="#0000FF" className="inner-circle" />
+  </svg>
+);
+
 export function SplashScreen({
   onComplete,
-  duration = 1500,
+  duration = 3000,
 }: SplashScreenProps) {
   const [isAnimating, setIsAnimating] = useState(true);
   const [isFading, setIsFading] = useState(false);
 
   useEffect(() => {
-    // Start fade out before completing
     const fadeTimer = setTimeout(() => {
       setIsFading(true);
     }, duration - 400);
 
-    // Complete after duration
     const completeTimer = setTimeout(() => {
       setIsAnimating(false);
       onComplete();
@@ -39,62 +82,30 @@ export function SplashScreen({
       }`}
     >
       <div className="flex flex-col items-center space-y-6">
-        {/* Animated Logo with Circles */}
-        <div className="relative">
-          {/* Outer rotating circle */}
-          <div className="absolute inset-0 flex items-center justify-center">
-            <div
-              className="w-32 h-32 rounded-full border-4 border-transparent animate-spin"
-              style={{
-                borderTopColor: '#0000db',
-                borderRightColor: '#0000db',
-                animationDuration: '1.5s',
-              }}
-            />
-          </div>
-
-          {/* Middle pulsing circle */}
-          <div className="absolute inset-0 flex items-center justify-center">
-            <div
-              className="w-24 h-24 rounded-full animate-pulse"
-              style={{
-                backgroundColor: 'rgba(0, 0, 219, 0.1)',
-                animationDuration: '1s',
-              }}
-            />
-          </div>
-
-          {/* Inner circle with logo */}
-          <div className="relative w-32 h-32 flex items-center justify-center">
-            <div
-              className="w-20 h-20 rounded-full flex items-center justify-center animate-bounce-subtle"
-              style={{ backgroundColor: '#0000db' }}
-            >
-              <img
-                src="/icons/octwa48x48.png"
-                alt="OctWa"
-                className="w-12 h-12 object-contain"
-              />
-            </div>
-          </div>
-
-          {/* Ripple effects */}
-          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-            <div
-              className="w-20 h-20 rounded-full animate-ripple"
-              style={{ borderColor: '#0000db' }}
-            />
-          </div>
-          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-            <div
-              className="w-20 h-20 rounded-full animate-ripple-delayed"
-              style={{ borderColor: '#0000db' }}
-            />
-          </div>
+        <div className="w-32 h-32 flex items-center justify-center">
+          <AnimatedLogo />
         </div>
 
-        {/* App Name */}
-        <div className="text-center animate-fade-in-up">
+        <div
+          className="text-center opacity-0"
+          style={{
+            animation: 'fadeInUp 0.5s ease-out 1.3s forwards',
+          }}
+        >
+          <style>
+            {`
+              @keyframes fadeInUp {
+                from {
+                  opacity: 0;
+                  transform: translateY(10px);
+                }
+                to {
+                  opacity: 1;
+                  transform: translateY(0);
+                }
+              }
+            `}
+          </style>
           <h1 className="text-2xl font-bold" style={{ color: '#0000db' }}>
             OctWa
           </h1>

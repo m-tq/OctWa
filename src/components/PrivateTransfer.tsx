@@ -6,7 +6,7 @@ import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Shield, AlertTriangle, Wallet as WalletIcon, CheckCircle, Loader2 } from 'lucide-react';
 import { Wallet } from '../types/wallet';
-import { fetchEncryptedBalance, createPrivateTransfer, getAddressInfo } from '../utils/api';
+import { fetchEncryptedBalance, createPrivateTransfer, getAddressInfo, invalidateCacheAfterPrivateSend } from '../utils/api';
 import { useToast } from '@/hooks/use-toast';
 import { TransactionModal, TransactionStatus, TransactionResult } from './TransactionModal';
 import { AnimatedIcon } from './AnimatedIcon';
@@ -72,12 +72,12 @@ export function PrivateTransfer({
   // Use prop if available, otherwise use local state
   const encryptedBalance = propEncryptedBalance || localEncryptedBalance;
 
-  // Only fetch encrypted balance if not provided via props
+  // Only fetch encrypted balance if not provided via props (uses cache)
   useEffect(() => {
-    if (wallet && !propEncryptedBalance) {
+    if (wallet && !propEncryptedBalance && !localEncryptedBalance) {
       fetchEncryptedBalance(wallet.address, wallet.privateKey).then(setLocalEncryptedBalance);
     }
-  }, [wallet, propEncryptedBalance]);
+  }, [wallet?.address]);
 
   // Validate recipient address when input changes
   useEffect(() => {
@@ -201,6 +201,8 @@ export function PrivateTransfer({
       );
 
       if (transferResult.success) {
+        // Invalidate cache after private send
+        await invalidateCacheAfterPrivateSend(wallet.address);
         // Update modal to success state
         setTxModalStatus('success');
         setTxModalResult({ hash: transferResult.tx_hash, amount: amountNum.toFixed(8) });
@@ -211,7 +213,7 @@ export function PrivateTransfer({
         setRecipientInfo(null);
 
         // Refresh encrypted balance after transaction
-        fetchEncryptedBalance(wallet.address, wallet.privateKey).then(setLocalEncryptedBalance);
+        fetchEncryptedBalance(wallet.address, wallet.privateKey, true).then(setLocalEncryptedBalance);
 
         onTransactionSuccess();
       } else {
@@ -386,9 +388,12 @@ export function PrivateTransfer({
 
   // Full mode - Simplified
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 max-w-xl mx-auto">
+      {/* Animated Icon */}
+      <AnimatedIcon type="send-private" size="sm" />
+
       {/* Encrypted Balance Display */}
-      <div className="p-3 bg-[#0000db]/5 border border-[#0000db]/20 rounded-md">
+      <div className="p-3 bg-[#0000db]/5 border border-[#0000db]/20 ">
         <div className="flex justify-between items-center">
           <span className="text-sm font-medium">Private Balance</span>
           <span className="font-mono text-lg font-bold text-[#0000db]">

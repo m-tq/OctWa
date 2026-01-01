@@ -6,7 +6,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Gift, RefreshCw, Wallet as WalletIcon, CheckCircle, AlertTriangle, Loader2, Package } from 'lucide-react';
 import { Wallet } from '../types/wallet';
-import { getPendingPrivateTransfers, claimPrivateTransfer, fetchEncryptedBalance } from '../utils/api';
+import { getPendingPrivateTransfers, claimPrivateTransfer, fetchEncryptedBalance, invalidateCacheAfterClaim } from '../utils/api';
 import { deriveSharedSecretForClaim, decryptPrivateAmount } from '../utils/crypto';
 import { useToast } from '@/hooks/use-toast';
 import { TransactionModal, TransactionStatus, TransactionResult } from './TransactionModal';
@@ -98,6 +98,8 @@ export function ClaimTransfers({ wallet, onTransactionSuccess, isPopupMode = fal
       const result = await claimPrivateTransfer(wallet.address, wallet.privateKey, transferId);
       
       if (result.success) {
+        // Invalidate cache after claim
+        await invalidateCacheAfterClaim(wallet.address);
         // Update modal to success state
         setTxModalStatus('success');
         setTxModalResult({ amount: result.amount });
@@ -271,24 +273,22 @@ export function ClaimTransfers({ wallet, onTransactionSuccess, isPopupMode = fal
           <div className={isPopupMode ? 'space-y-2' : 'space-y-4'}>
             <div className={`text-muted-foreground ${isPopupMode ? 'text-xs' : 'text-sm'}`}>Loading...</div>
             {[...Array(isPopupMode ? 1 : 2)].map((_, i) => (
-              <div key={i} className={`space-y-2 border rounded-lg ${isPopupMode ? 'p-2' : 'p-4'}`}>
+              <div key={i} className={`space-y-2 border  ${isPopupMode ? 'p-2' : 'p-4'}`}>
                 <Skeleton className="h-4 w-full" />
                 <Skeleton className="h-4 w-3/4" />
               </div>
             ))}
           </div>
         ) : transfers.length === 0 ? (
-          <Alert className={isPopupMode ? 'py-2' : ''}>
-            <div className={`flex items-start ${isPopupMode ? 'space-x-2' : 'space-x-3'}`}>
-              <Gift className={`${isPopupMode ? 'h-3 w-3' : 'h-4 w-4'} mt-0.5 flex-shrink-0`} />
-              <AlertDescription className={isPopupMode ? 'text-[11px] leading-tight' : ''}>
-                {isPopupMode 
-                  ? 'No pending transfers. Private transfers will appear here.'
-                  : 'No pending private transfers found. When someone sends you a private transfer, it will appear here for claiming.'
-                }
-              </AlertDescription>
-            </div>
-          </Alert>
+          <div className={`flex items-start ${isPopupMode ? 'space-x-2 py-2' : 'space-x-3 py-3'}`}>
+            <Gift className={`${isPopupMode ? 'h-3 w-3' : 'h-4 w-4'} mt-0.5 flex-shrink-0 text-muted-foreground`} />
+            <span className={`text-muted-foreground ${isPopupMode ? 'text-[11px] leading-tight' : 'text-sm'}`}>
+              {isPopupMode 
+                ? 'No pending transfers. Private transfers will appear here.'
+                : 'No pending private transfers found. When someone sends you a private transfer, it will appear here for claiming.'
+              }
+            </span>
+          </div>
         ) : (
           <div className={isPopupMode ? 'space-y-2' : 'space-y-4'}>
             {!isPopupMode && (
@@ -298,7 +298,7 @@ export function ClaimTransfers({ wallet, onTransactionSuccess, isPopupMode = fal
             )}
             
             {transfers.map((transfer, index) => (
-              <div key={transfer.id} className={`border rounded-lg ${isPopupMode ? 'p-2 space-y-1.5' : 'p-4 space-y-3'}`}>
+              <div key={transfer.id} className={`border  ${isPopupMode ? 'p-2 space-y-1.5' : 'p-4 space-y-3'}`}>
                 <div className="flex items-center justify-between">
                   <div className={isPopupMode ? 'space-y-0.5' : 'space-y-1'}>
                     <div className="flex items-center gap-1.5">

@@ -128,7 +128,7 @@ export function CapabilityApprovalDialog({
 
         <div className="space-y-4">
           {/* App Info */}
-          <div className="flex items-center gap-3 p-3 bg-muted rounded-lg">
+          <div className="flex items-center gap-3 p-3 bg-muted ">
             <Avatar className="h-10 w-10">
               {request.appIcon && <AvatarImage src={request.appIcon} />}
               <AvatarFallback className="bg-primary text-primary-foreground">
@@ -145,7 +145,7 @@ export function CapabilityApprovalDialog({
 
           {/* High Risk Warning */}
           {hasHighRiskCapabilities && (
-            <div className="flex items-start gap-2 p-3 bg-amber-50 dark:bg-amber-950 rounded-md border border-amber-200 dark:border-amber-800">
+            <div className="flex items-start gap-2 p-3 bg-amber-50 dark:bg-amber-950  border border-amber-200 dark:border-amber-800">
               <AlertTriangle className="h-4 w-4 text-amber-600 mt-0.5 flex-shrink-0" />
               <p className="text-sm text-amber-800 dark:text-amber-200">
                 This app is requesting high-risk permissions. Only approve if you
@@ -161,7 +161,7 @@ export function CapabilityApprovalDialog({
               {request.capabilities.map((capability) => (
                 <div
                   key={capability}
-                  className="flex items-start gap-3 p-2 rounded-md hover:bg-muted/50 cursor-pointer"
+                  className="flex items-start gap-3 p-2  hover:bg-muted/50 cursor-pointer"
                   onClick={() => handleToggleCapability(capability)}
                 >
                   <Checkbox

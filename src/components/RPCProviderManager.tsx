@@ -235,7 +235,7 @@ export function RPCProviderManager({ onClose, onRPCChange, isPopupMode = false }
                 Add
               </Button>
             </DialogTrigger>
-            <DialogContent className={isPopupMode ? "w-[320px] p-3" : "sm:max-w-md"}>
+            <DialogContent className={isPopupMode ? "w-[320px] p-3 z-[10001]" : "sm:max-w-md z-[10001]"} overlayClassName="z-[10000]">
               <DialogHeader className={isPopupMode ? "pb-2" : ""}>
                 <DialogTitle className={isPopupMode ? "text-sm" : ""}>
                   {editingProvider ? 'Edit RPC Provider' : 'Add RPC Provider'}
@@ -344,7 +344,7 @@ export function RPCProviderManager({ onClose, onRPCChange, isPopupMode = false }
             {providers.map((provider) => (
               <div
                 key={provider.id}
-                className={`flex items-center justify-between ${isPopupMode ? "p-2" : "p-3"} border rounded-lg ${
+                className={`flex items-center justify-between ${isPopupMode ? "p-2" : "p-3"} border  ${
                   provider.isActive ? 'border-primary bg-primary/5' : ''
                 }`}
               >
@@ -379,7 +379,7 @@ export function RPCProviderManager({ onClose, onRPCChange, isPopupMode = false }
                         <MoreVertical className={isPopupMode ? "h-3 w-3" : "h-4 w-4"} />
                       </Button>
                     </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
+                    <DropdownMenuContent align="end" className="z-[9999]">
                       <DropdownMenuItem onClick={() => handleEdit(provider)} className={isPopupMode ? "text-xs" : ""}>
                         <Settings className={`${isPopupMode ? "h-3 w-3" : "h-4 w-4"} mr-2`} />
                         Edit

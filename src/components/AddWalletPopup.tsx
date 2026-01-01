@@ -61,7 +61,11 @@ export function AddWalletPopup({
   if (isPopupMode) {
     return (
       <Dialog open={open} onOpenChange={handleOpenChange}>
-        <DialogContent className="w-[360px] max-h-[500px] overflow-hidden p-0" aria-describedby={screen === 'menu' ? undefined : undefined}>
+        <DialogContent 
+          className="w-[360px] max-h-[500px] overflow-hidden p-0" 
+          aria-describedby={screen === 'menu' ? undefined : undefined}
+          hideCloseButton={screen !== 'menu'}
+        >
           {screen === 'menu' && (
             <PageTransition key={`menu-${transitionKey}`} variant="fade-slide" duration={200}>
               <DialogHeader className="p-3 pb-2">
@@ -99,7 +103,7 @@ export function AddWalletPopup({
           {screen === 'create' && (
             <PageTransition key={`create-${transitionKey}`} variant="slide-left" duration={200}>
               <div className="flex flex-col h-full max-h-[500px]">
-                <div className="p-3 pb-2 flex items-center gap-2 border-b">
+                <div className="p-3 flex items-center gap-2 border-b">
                   <Button variant="ghost" size="sm" onClick={handleBack} className="h-6 w-6 p-0">
                     <ArrowLeft className="h-3.5 w-3.5" />
                   </Button>
@@ -115,7 +119,7 @@ export function AddWalletPopup({
           {screen === 'import-mnemonic' && (
             <PageTransition key={`mnemonic-${transitionKey}`} variant="slide-left" duration={200}>
               <div className="flex flex-col h-full max-h-[500px]">
-                <div className="p-3 pb-2 flex items-center gap-2 border-b">
+                <div className="p-3 flex items-center gap-2 border-b">
                   <Button variant="ghost" size="sm" onClick={handleBack} className="h-6 w-6 p-0">
                     <ArrowLeft className="h-3.5 w-3.5" />
                   </Button>
@@ -131,7 +135,7 @@ export function AddWalletPopup({
           {screen === 'import-privatekey' && (
             <PageTransition key={`privatekey-${transitionKey}`} variant="slide-left" duration={200}>
               <div className="flex flex-col h-full max-h-[500px]">
-                <div className="p-3 pb-2 flex items-center gap-2 border-b">
+                <div className="p-3 flex items-center gap-2 border-b">
                   <Button variant="ghost" size="sm" onClick={handleBack} className="h-6 w-6 p-0">
                     <ArrowLeft className="h-3.5 w-3.5" />
                   </Button>
@@ -151,7 +155,10 @@ export function AddWalletPopup({
   // Expanded mode: larger dialog with centered text
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="sm:max-w-lg max-h-[85vh] overflow-hidden p-0">
+      <DialogContent 
+        className="sm:max-w-lg max-h-[85vh] overflow-hidden p-0"
+        hideCloseButton={screen !== 'menu'}
+      >
         {screen === 'menu' && (
           <PageTransition key={`menu-${transitionKey}`} variant="fade-slide" duration={250}>
             <DialogHeader className="p-6 pb-4">
@@ -192,14 +199,14 @@ export function AddWalletPopup({
         {screen === 'create' && (
           <PageTransition key={`create-${transitionKey}`} variant="slide-left" duration={250}>
             <div className="flex flex-col h-full max-h-[85vh]">
-              <div className="p-4 pb-2 flex items-center gap-2 border-b">
+              <div className="p-4 flex items-center gap-2 border-b">
                 <Button variant="ghost" size="sm" onClick={handleBack} className="h-8 w-8 p-0">
                   <ArrowLeft className="h-4 w-4" />
                 </Button>
                 <DialogTitle className="text-lg">Generate Wallet</DialogTitle>
               </div>
               <div className="flex-1 overflow-y-auto p-4">
-                <GenerateWallet onWalletGenerated={handleWalletGenerated} />
+                <GenerateWallet onWalletGenerated={handleWalletGenerated} hideBorder />
               </div>
             </div>
           </PageTransition>
@@ -208,14 +215,14 @@ export function AddWalletPopup({
         {screen === 'import-mnemonic' && (
           <PageTransition key={`mnemonic-${transitionKey}`} variant="slide-left" duration={250}>
             <div className="flex flex-col h-full max-h-[85vh]">
-              <div className="p-4 pb-2 flex items-center gap-2 border-b">
+              <div className="p-4 flex items-center gap-2 border-b">
                 <Button variant="ghost" size="sm" onClick={handleBack} className="h-8 w-8 p-0">
                   <ArrowLeft className="h-4 w-4" />
                 </Button>
                 <DialogTitle className="text-lg">Import from Mnemonic</DialogTitle>
               </div>
               <div className="flex-1 overflow-y-auto p-4">
-                <ImportWallet onWalletImported={handleWalletGenerated} defaultTab="mnemonic" />
+                <ImportWallet onWalletImported={handleWalletGenerated} defaultTab="mnemonic" hideBorder />
               </div>
             </div>
           </PageTransition>
@@ -224,14 +231,14 @@ export function AddWalletPopup({
         {screen === 'import-privatekey' && (
           <PageTransition key={`privatekey-${transitionKey}`} variant="slide-left" duration={250}>
             <div className="flex flex-col h-full max-h-[85vh]">
-              <div className="p-4 pb-2 flex items-center gap-2 border-b">
+              <div className="p-4 flex items-center gap-2 border-b">
                 <Button variant="ghost" size="sm" onClick={handleBack} className="h-8 w-8 p-0">
                   <ArrowLeft className="h-4 w-4" />
                 </Button>
                 <DialogTitle className="text-lg">Import from Private Key</DialogTitle>
               </div>
               <div className="flex-1 overflow-y-auto p-4">
-                <ImportWallet onWalletImported={handleWalletGenerated} defaultTab="private-key" />
+                <ImportWallet onWalletImported={handleWalletGenerated} defaultTab="private-key" hideBorder />
               </div>
             </div>
           </PageTransition>

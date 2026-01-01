@@ -13,7 +13,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Plus, Trash2, AlertTriangle, Wallet as WalletIcon, CheckCircle, MessageSquare, Loader2, Settings2, XCircle, ChevronDown, Clock } from 'lucide-react';
 import { Wallet } from '../types/wallet';
-import { fetchBalance, sendTransaction, createTransaction } from '../utils/api';
+import { fetchBalance, sendTransaction, createTransaction, invalidateCacheAfterTransaction } from '../utils/api';
 import { useToast } from '@/hooks/use-toast';
 import { AnimatedIcon } from './AnimatedIcon';
 
@@ -41,6 +41,11 @@ interface MultiSendProps {
 function isOctraAddress(input: string): boolean {
   const addressRegex = /^oct[123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz]{44}$/;
   return addressRegex.test(input);
+}
+
+// Truncate address for display
+function truncateAddress(address: string): string {
+  return `${address.slice(0, 10)}...${address.slice(-6)}`;
 }
 
 function validateRecipientInput(input: string): { isValid: boolean; error?: string } {
@@ -294,7 +299,9 @@ export function MultiSend({ wallet, balance, onBalanceUpdate, onNonceUpdate, onT
 
         setTimeout(async () => {
           try {
-            const updatedBalance = await fetchBalance(wallet.address);
+            // Invalidate cache first
+            await invalidateCacheAfterTransaction(wallet.address);
+            const updatedBalance = await fetchBalance(wallet.address, true);
             onBalanceUpdate(updatedBalance.balance);
             onNonceUpdate(updatedBalance.nonce);
           } catch (error) {
@@ -342,41 +349,35 @@ export function MultiSend({ wallet, balance, onBalanceUpdate, onNonceUpdate, onT
   const validRecipientCount = recipients.filter(r => r.address.trim() && r.addressValidation?.isValid && validateAmount(r.amount)).length;
 
   return (
-    <div className="flex gap-6 h-full">
+    <div className="h-full flex flex-col lg:flex-row gap-4 lg:gap-6 overflow-auto lg:overflow-hidden p-1">
       {/* Left Panel - Wallet Info & Controls */}
-      <div className="w-64 flex-shrink-0 space-y-4 flex flex-col justify-center">
-        {/* Animated Icon */}
-        <AnimatedIcon type="multi-send" size="sm" />
-
-        {/* Active Address */}
-        <div className="space-y-1.5">
-          <Label className="text-xs text-muted-foreground">Active Address</Label>
-          <div className="p-2.5 bg-muted rounded-md font-mono text-xs break-all">
-            {wallet.address}
+      <div className="w-full lg:w-64 flex-shrink-0 space-y-4 lg:flex lg:flex-col lg:justify-center overflow-visible">
+          {/* Animated Icon - Hidden on mobile */}
+          <div className="hidden lg:block">
+            <AnimatedIcon type="multi-send" size="sm" />
           </div>
-        </div>
 
-        {/* Balance */}
-        <div className="space-y-1.5">
-          <Label className="text-xs text-muted-foreground">Balance</Label>
-          <div className="p-2.5 bg-muted rounded-md font-mono text-sm font-medium">
-            {currentBalance.toFixed(8)} OCT
+          {/* Active Address + Balance Combined */}
+          <div className="space-y-1.5">
+            <Label className="text-xs text-muted-foreground">Active Address</Label>
+            <div className="p-2.5 bg-muted font-mono text-xs">
+              {truncateAddress(wallet.address)} | {currentBalance.toFixed(4)} OCT
+            </div>
           </div>
-        </div>
 
-        {/* Recipients Count */}
-        <div className="flex items-center justify-between p-2.5 border rounded-md">
-          <span className="text-sm">Recipients</span>
-          <Badge variant="secondary">{recipients.length}</Badge>
-        </div>
+          {/* Recipients Count */}
+          <div className="flex items-center justify-between p-2.5 border">
+            <span className="text-sm">Recipients</span>
+            <Badge variant="secondary">{recipients.length}</Badge>
+          </div>
 
-        {/* Add Recipient Button */}
-        <Button
-          type="button"
-          variant="outline"
-          onClick={addRecipient}
-          className="w-full flex items-center justify-center gap-2 text-[#0000db] border-[#0000db] hover:bg-[#0000db]/10"
-        >
+          {/* Add Recipient Button */}
+          <Button
+            type="button"
+            variant="outline"
+            onClick={addRecipient}
+            className="w-full flex items-center justify-center gap-2 text-[#0000db] border-[#0000db] hover:bg-[#0000db]/10"
+          >
           <Plus className="h-4 w-4" />
           Add Recipient
         </Button>
@@ -422,7 +423,7 @@ export function MultiSend({ wallet, balance, onBalanceUpdate, onNonceUpdate, onT
 
         {/* Fee & Total Summary */}
         {validRecipientCount > 0 && (
-          <div className="p-3 bg-muted/50 rounded-md space-y-1.5 text-xs">
+          <div className="p-3 bg-muted/50  space-y-1.5 text-xs">
             <div className="flex justify-between">
               <span className="text-muted-foreground">Amount</span>
               <span className="font-mono">{totalAmount.toFixed(8)} OCT</span>
@@ -431,7 +432,8 @@ export function MultiSend({ wallet, balance, onBalanceUpdate, onNonceUpdate, onT
               <span className="text-muted-foreground">Fee ({validRecipientCount}x)</span>
               <span className="font-mono">{(totalCost - totalAmount).toFixed(8)} OCT</span>
             </div>
-            <div className="flex justify-between font-medium border-t pt-1.5 mt-1.5">
+            <div className="h-px bg-border my-1.5" />
+            <div className="flex justify-between font-medium">
               <span>Total</span>
               <span className="font-mono">{totalCost.toFixed(8)} OCT</span>
             </div>
@@ -470,10 +472,13 @@ export function MultiSend({ wallet, balance, onBalanceUpdate, onNonceUpdate, onT
         )}
       </div>
 
+      {/* Separator - Hidden on mobile */}
+      <div className="hidden lg:block w-px bg-border flex-shrink-0" />
+
       {/* Right Panel - Recipients Grid with ScrollArea */}
-      <div className="flex-1 border-l pl-6 flex flex-col">
-        <ScrollArea className="h-[calc(100vh-140px)] pr-4">
-          <div className="grid grid-cols-3 gap-4">
+      <div className="flex-1 lg:flex lg:flex-col lg:min-h-0">
+        <ScrollArea className="h-[400px] lg:flex-1 pr-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {recipients.map((recipient, index) => (
               <Card key={index} className="p-3 space-y-3">
                 {/* Header with number and delete */}

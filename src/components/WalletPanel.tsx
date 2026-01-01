@@ -109,7 +109,7 @@ export function WalletPanel({
           <div className="space-y-1">
             <label className="text-xs text-muted-foreground">Address</label>
             <div className="flex items-center gap-2">
-              <code className="flex-1 text-sm font-mono bg-muted px-2 py-1 rounded truncate">
+              <code className="flex-1 text-sm font-mono bg-muted px-2 py-1 truncate">
                 {wallet.address}
               </code>
               <Button
@@ -128,7 +128,7 @@ export function WalletPanel({
             <div className="space-y-1">
               <label className="text-xs text-muted-foreground">Public Key</label>
               <div className="flex items-center gap-2">
-                <code className="flex-1 text-sm font-mono bg-muted px-2 py-1 rounded truncate">
+                <code className="flex-1 text-sm font-mono bg-muted px-2 py-1 truncate">
                   {truncateAddress(wallet.publicKey)}
                 </code>
                 <Button
@@ -150,7 +150,7 @@ export function WalletPanel({
               Private Key
             </label>
             <div className="flex items-center gap-2">
-              <code className="flex-1 text-sm font-mono bg-muted px-2 py-1 rounded truncate">
+              <code className="flex-1 text-sm font-mono bg-muted px-2 py-1 truncate">
                 {showPrivateKey ? wallet.privateKey : '••••••••••••••••'}
               </code>
               <Button
@@ -200,7 +200,7 @@ export function WalletPanel({
                   .map((w, i) => (
                     <div
                       key={w.address}
-                      className="flex items-center justify-between p-2 rounded-md hover:bg-muted/50 cursor-pointer"
+                      className="flex items-center justify-between p-2 hover:bg-muted/50 cursor-pointer"
                       onClick={() => onSwitchWallet?.(w)}
                     >
                       <div className="flex items-center gap-2">
@@ -241,7 +241,7 @@ export function WalletPanel({
               {connectedDApps.slice(0, 3).map((dapp) => (
                 <div
                   key={dapp.origin}
-                  className="flex items-center justify-between p-2 rounded-md bg-muted/50"
+                  className="flex items-center justify-between p-2 bg-muted/50"
                 >
                   <div className="flex items-center gap-2">
                     <Shield className="h-4 w-4 text-muted-foreground" />

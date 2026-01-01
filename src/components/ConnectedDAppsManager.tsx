@@ -221,7 +221,7 @@ export function ConnectedDAppsManager({ wallets, onClose, isPopupMode = false }:
                 return (
                   <div
                     key={dapp.origin}
-                    className={`flex items-center justify-between border rounded-lg hover:bg-muted/50 transition-colors ${isPopupMode ? "p-2" : "p-4"}`}
+                    className={`flex items-center justify-between border  hover:bg-muted/50 transition-colors ${isPopupMode ? "p-2" : "p-4"}`}
                   >
                     <div className="flex items-center space-x-2 flex-1 min-w-0">
                       <Avatar className={isPopupMode ? "h-8 w-8" : "h-12 w-12"}>
@@ -283,7 +283,7 @@ export function ConnectedDAppsManager({ wallets, onClose, isPopupMode = false }:
           
           {selectedDApp && (
             <div className={isPopupMode ? "space-y-3" : "space-y-4"}>
-              <div className={`flex items-center gap-2 bg-muted rounded-lg ${isPopupMode ? "p-2" : "p-3"}`}>
+              <div className={`flex items-center gap-2 bg-muted  ${isPopupMode ? "p-2" : "p-3"}`}>
                 <Avatar className={isPopupMode ? "h-8 w-8" : "h-10 w-10"}>
                   <AvatarFallback className="bg-primary text-primary-foreground text-xs">
                     {selectedDApp.appName.charAt(0).toUpperCase()}

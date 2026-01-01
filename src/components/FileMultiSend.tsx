@@ -23,7 +23,7 @@ import {
   Clock
 } from 'lucide-react';
 import { Wallet } from '../types/wallet';
-import { fetchBalance, sendTransaction, createTransaction, fetchCurrentEpoch } from '../utils/api';
+import { fetchBalance, sendTransaction, createTransaction, fetchCurrentEpoch, invalidateCacheAfterTransaction } from '../utils/api';
 import { useToast } from '@/hooks/use-toast';
 
 interface FileRecipient {
@@ -681,7 +681,8 @@ export function FileMultiSend({ wallet, balance, onBalanceUpdate, onNonceUpdate,
       if (totalSuccessCount > 0) {
         // Fetch final balance
         try {
-          const finalBalance = await fetchBalance(wallet.address);
+          await invalidateCacheAfterTransaction(wallet.address);
+          const finalBalance = await fetchBalance(wallet.address, true);
           onNonceUpdate(finalBalance.nonce);
           onBalanceUpdate(finalBalance.balance);
         } catch (error) {
@@ -1013,7 +1014,8 @@ export function FileMultiSend({ wallet, balance, onBalanceUpdate, onNonceUpdate,
 
       if (totalSuccessCount > 0) {
         try {
-          const finalBalance = await fetchBalance(wallet.address);
+          await invalidateCacheAfterTransaction(wallet.address);
+          const finalBalance = await fetchBalance(wallet.address, true);
           onNonceUpdate(finalBalance.nonce);
           onBalanceUpdate(finalBalance.balance);
         } catch (error) {
@@ -1050,22 +1052,22 @@ export function FileMultiSend({ wallet, balance, onBalanceUpdate, onNonceUpdate,
   const pendingCount = txLogEntries.filter(l => l.status === 'pending' || l.status === 'retrying' || l.status === 'queued').length;
 
   return (
-    <div className="flex gap-6 h-full">
+    <div className="h-full flex flex-col xl:flex-row gap-4 xl:gap-6 overflow-auto xl:overflow-hidden p-1">
       {/* Left Panel - Wallet Info & Controls */}
-      <div className="w-72 flex-shrink-0 space-y-4">
-        {/* Active Address & Balance */}
-        <div className="space-y-1.5">
-          <Label className="text-xs text-muted-foreground">Active Address</Label>
-          <div className="p-2.5 bg-muted rounded-md font-mono text-xs">
-            {wallet.address.slice(0, 10)}...{wallet.address.slice(-6)} | {currentBalance.toFixed(4)} OCT
+      <div className="w-full xl:w-72 flex-shrink-0 space-y-4 overflow-visible">
+          {/* Active Address & Balance */}
+          <div className="space-y-1.5">
+            <Label className="text-xs text-muted-foreground">Active Address</Label>
+            <div className="p-2.5 bg-muted  font-mono text-xs">
+              {wallet.address.slice(0, 10)}...{wallet.address.slice(-6)} | {currentBalance.toFixed(4)} OCT
+            </div>
           </div>
-        </div>
 
-        {/* Amount Configuration */}
-        <div className="p-3 border rounded-lg space-y-3">
-          <Label className="text-sm font-medium">Amount Configuration</Label>
-          <RadioGroup value={amountMode} onValueChange={(value: 'same' | 'different') => setAmountMode(value)} className="space-y-2">
-            <div className="flex items-center space-x-2">
+          {/* Amount Configuration */}
+          <div className="p-3 border  space-y-3">
+            <Label className="text-sm font-medium">Amount Configuration</Label>
+            <RadioGroup value={amountMode} onValueChange={(value: 'same' | 'different') => setAmountMode(value)} className="space-y-2">
+              <div className="flex items-center space-x-2">
               <RadioGroupItem value="same" id="same" />
               <Label htmlFor="same" className="text-xs cursor-pointer">Same amount for all</Label>
             </div>
@@ -1132,7 +1134,7 @@ export function FileMultiSend({ wallet, balance, onBalanceUpdate, onNonceUpdate,
 
         {/* Fee & Total Summary */}
         {validRecipients.length > 0 && (
-          <div className="p-3 bg-muted/50 rounded-lg space-y-1.5 text-xs">
+          <div className="p-3 bg-muted/50  space-y-1.5 text-xs">
             <div className="flex justify-between">
               <span className="text-muted-foreground">Amount</span>
               <span className="font-mono">{totalAmount.toFixed(8)} OCT</span>
@@ -1141,7 +1143,8 @@ export function FileMultiSend({ wallet, balance, onBalanceUpdate, onNonceUpdate,
               <span className="text-muted-foreground">Fee ({validRecipients.length}x)</span>
               <span className="font-mono">{(totalCost - totalAmount).toFixed(8)} OCT</span>
             </div>
-            <div className="flex justify-between font-medium border-t pt-1.5 mt-1.5">
+            <div className="h-px bg-border my-1.5" />
+            <div className="flex justify-between font-medium">
               <span>Total</span>
               <span className="font-mono">{totalCost.toFixed(8)} OCT</span>
             </div>
@@ -1188,14 +1191,17 @@ export function FileMultiSend({ wallet, balance, onBalanceUpdate, onNonceUpdate,
         )}
       </div>
 
+      {/* Separator - Hidden on mobile */}
+      <div className="hidden xl:block w-px bg-border flex-shrink-0" />
+
       {/* Middle Panel - File Upload & Recipients */}
-      <div className="w-[500px] flex-shrink-0 flex flex-col space-y-4 border-l pl-6">
+      <div className="w-full xl:w-[450px] flex-shrink-0 xl:flex xl:flex-col space-y-4">
         {/* Upload Recipients File */}
         <TooltipProvider>
           <Tooltip>
-            <TooltipTrigger asChild>
+            <TooltipTrigger asChild disabled={!(amountMode === 'same' && !validateAmount(sameAmount))}>
               <div
-                className={`border-2 border-dashed rounded-lg py-8 px-6 text-center transition-colors ${
+                className={`border-2 border-dashed rounded-lg p-6 text-center transition-colors ${
                   isDragOver 
                     ? 'border-[#0000db] bg-[#0000db]/5' 
                     : amountMode === 'same' && !validateAmount(sameAmount)
@@ -1227,7 +1233,7 @@ export function FileMultiSend({ wallet, balance, onBalanceUpdate, onNonceUpdate,
                   variant="outline"
                   onClick={() => document.getElementById('bulkFileInput')?.click()}
                   disabled={isProcessing || (amountMode === 'same' && !validateAmount(sameAmount))}
-                  className="h-10 px-6"
+                  size="sm"
                 >
                   {isProcessing ? 'Processing...' : 'Browse Files'}
                 </Button>
@@ -1263,8 +1269,8 @@ export function FileMultiSend({ wallet, balance, onBalanceUpdate, onNonceUpdate,
         </div>
 
         {/* Recipients Preview */}
-        <div className="border rounded-lg flex-1 flex flex-col min-h-0">
-          <div className="flex items-center justify-between p-3 border-b flex-shrink-0">
+        <div className="rounded-lg border xl:flex-1 xl:flex xl:flex-col xl:min-h-0 overflow-hidden">
+          <div className="flex items-center justify-between p-3 bg-muted/30 flex-shrink-0">
             <div className="flex items-center gap-2">
               <span className="text-sm font-medium">Recipients Preview</span>
               {recipients.length > 0 && (
@@ -1293,9 +1299,9 @@ export function FileMultiSend({ wallet, balance, onBalanceUpdate, onNonceUpdate,
             )}
           </div>
           
-          <ScrollArea className="flex-1">
+          <ScrollArea className="h-[200px] xl:flex-1">
             {recipients.length === 0 ? (
-              <div className="flex flex-col items-center justify-center h-40 text-muted-foreground">
+              <div className="flex flex-col items-center justify-center h-full min-h-[150px] text-muted-foreground">
                 <Upload className="h-8 w-8 mb-2 opacity-50" />
                 <p className="text-sm">No recipients loaded</p>
                 <p className="text-xs">Upload a file to get started</p>
@@ -1343,10 +1349,13 @@ export function FileMultiSend({ wallet, balance, onBalanceUpdate, onNonceUpdate,
         </div>
       </div>
 
+      {/* Separator - Hidden on mobile */}
+      <div className="hidden xl:block w-px bg-border" />
+
       {/* Right Panel - Live Transaction Logs */}
-      <div className="flex-1 border-l pl-6 flex flex-col">
-        <div className="border rounded-lg flex-1 flex flex-col min-h-0">
-          <div className="flex items-center justify-between p-3 border-b flex-shrink-0">
+      <div className="xl:flex-1 xl:flex xl:flex-col xl:min-w-[300px]">
+        <div className="rounded-lg border xl:flex-1 xl:flex xl:flex-col xl:min-h-0 overflow-hidden">
+          <div className="flex items-center justify-between p-3 bg-muted/30">
             <span className="text-sm font-medium">Transaction Logs</span>
             {txLogs.length > 0 && (
               <div className="flex gap-1">
@@ -1363,7 +1372,7 @@ export function FileMultiSend({ wallet, balance, onBalanceUpdate, onNonceUpdate,
             )}
           </div>
           
-          <ScrollArea className="flex-1">
+          <ScrollArea className="h-[200px] xl:flex-1">
             {txLogs.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-40 text-muted-foreground">
                 <Clock className="h-8 w-8 mb-2 opacity-50" />

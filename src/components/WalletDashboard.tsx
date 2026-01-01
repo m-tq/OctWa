@@ -22,6 +22,8 @@ import {
   Globe,
   ChevronDown,
   ChevronUp,
+  ChevronLeft,
+  ChevronRight,
   Plus,
   Trash2,
   Wifi,
@@ -36,7 +38,10 @@ import {
   ExternalLink,
   ArrowUpRight,
   ArrowDownLeft,
-  Check
+  Check,
+  PanelLeftClose,
+  PanelLeft,
+  Wallet as WalletIcon
 } from 'lucide-react';
 import { ExtensionStorageManager } from '../utils/extensionStorage';
 import { PublicBalance } from './PublicBalance';
@@ -59,7 +64,7 @@ import { EncryptBalanceDialog } from './EncryptBalanceDialog';
 import { DecryptBalanceDialog } from './DecryptBalanceDialog';
 import { Wallet } from '../types/wallet';
 import { WalletManager } from '../utils/walletManager';
-import { fetchBalance, getTransactionHistory, fetchEncryptedBalance, fetchTransactionDetails, fetchPendingTransactionByHash, getPendingPrivateTransfers } from '../utils/api';
+import { fetchBalance, getTransactionHistory, fetchEncryptedBalance, fetchTransactionDetails, fetchPendingTransactionByHash, getPendingPrivateTransfers, apiCache } from '../utils/api';
 import { useToast } from '@/hooks/use-toast';
 import { OperationMode, saveOperationMode, loadOperationMode, isPrivateModeAvailable } from '../utils/modeStorage';
 import { verifyPassword } from '../utils/password';
@@ -108,6 +113,7 @@ export function WalletDashboard({
   const [showLockConfirm, setShowLockConfirm] = useState(false);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
   const [showWalletSelector, setShowWalletSelector] = useState(false);
+  const [showWalletSidebar, setShowWalletSidebar] = useState(true); // Sidebar toggle for expanded mode
   // Popup mode fullscreen states
   const [popupScreen, setPopupScreen] = useState<'main' | 'encrypt' | 'decrypt' | 'send' | 'receive' | 'claim' | 'txDetail'>('main');
   const [showReceiveDialog, setShowReceiveDialog] = useState(false);
@@ -258,6 +264,116 @@ export function WalletDashboard({
 
     return () => clearInterval(interval);
   }, []);
+
+  // Epoch-based auto-refresh: Poll for epoch changes and refresh data when epoch changes
+  useEffect(() => {
+    if (!wallet) return;
+
+    // Subscribe to epoch changes
+    const unsubscribe = apiCache.onEpochChange(async (newEpoch, oldEpoch) => {
+      console.log(
+        `🔄 Epoch changed (${oldEpoch} → ${newEpoch}), checking for data changes...`
+      );
+
+      try {
+        // Fetch fresh balance data (cache was already invalidated by epoch change)
+        const balanceData = await fetchBalance(wallet.address, true);
+
+        // Only update UI if balance or nonce changed
+        if (balanceData.balance !== balance || balanceData.nonce !== nonce) {
+          console.log(
+            `💰 Balance changed: ${balance} → ${balanceData.balance}, nonce: ${nonce} → ${balanceData.nonce}`
+          );
+          setBalance(balanceData.balance);
+          setNonce(balanceData.nonce);
+        }
+
+        // Fetch fresh encrypted balance
+        const encData = await fetchEncryptedBalance(
+          wallet.address,
+          wallet.privateKey,
+          true
+        );
+        if (encData) {
+          // Only update if encrypted balance changed
+          const currentEncrypted = encryptedBalance?.encrypted || 0;
+          const currentPublic = encryptedBalance?.public || 0;
+          if (
+            encData.encrypted !== currentEncrypted ||
+            encData.public !== currentPublic
+          ) {
+            console.log(
+              `🔐 Encrypted balance changed: ${currentEncrypted} → ${encData.encrypted}`
+            );
+            setEncryptedBalance(encData);
+          }
+        }
+
+        // Fetch fresh transaction history
+        const result = await getTransactionHistory(wallet.address, {}, true);
+        if (Array.isArray(result.transactions)) {
+          // Only update if transaction count changed or latest tx hash is different
+          const newLatestHash = result.transactions[0]?.hash;
+          const currentLatestHash = transactions[0]?.hash;
+          if (
+            result.transactions.length !== transactions.length ||
+            newLatestHash !== currentLatestHash
+          ) {
+            console.log(
+              `📜 Transactions changed: ${transactions.length} → ${result.transactions.length}`
+            );
+            const transformedTxs = result.transactions.map((tx) => ({
+              ...tx,
+              type:
+                tx.from?.toLowerCase() === wallet.address.toLowerCase()
+                  ? 'sent'
+                  : 'received',
+            })) as Transaction[];
+            setTransactions(transformedTxs);
+          }
+        }
+
+        // Fetch pending transfers count
+        const pending = await getPendingPrivateTransfers(
+          wallet.address,
+          wallet.privateKey,
+          true
+        );
+        if (pending.length !== pendingTransfersCount) {
+          console.log(
+            `🎁 Pending transfers changed: ${pendingTransfersCount} → ${pending.length}`
+          );
+          setPendingTransfersCount(pending.length);
+        }
+
+        console.log('✅ Epoch change check complete');
+      } catch (error) {
+        console.error('Failed to check data after epoch change:', error);
+      }
+    });
+
+    // Poll for epoch changes every 10 seconds
+    const epochPollInterval = setInterval(async () => {
+      try {
+        await apiCache.checkEpochChange();
+      } catch (error) {
+        console.error('Epoch check failed:', error);
+      }
+    }, 10000);
+
+    return () => {
+      unsubscribe();
+      clearInterval(epochPollInterval);
+    };
+  }, [
+    wallet?.address,
+    wallet?.privateKey,
+    balance,
+    nonce,
+    encryptedBalance,
+    transactions,
+    pendingTransfersCount,
+  ]);
 
   // Initial data fetch when wallet is connected
   useEffect(() => {
@@ -774,11 +890,7 @@ export function WalletDashboard({
   };
 
   return (
-    <div className={`h-screen overflow-hidden transition-all duration-300 ${
-      operationMode === 'private' 
-        ? 'ring-1 ring-[#0000db] ring-inset' 
-        : ''
-    }`}>
+    <div className="h-screen overflow-hidden transition-all duration-300">
       {/* ============================================ */}
       {/* POPUP MODE - NEW FULLSCREEN UI */}
       {/* ============================================ */}
@@ -948,14 +1060,14 @@ export function WalletDashboard({
                 ) : selectedTxDetails ? (
                   <div className="space-y-2">
                     {/* Status */}
-                    <div className="bg-muted/50 rounded-lg p-2 flex items-center justify-between">
+                    <div className="bg-muted/50  p-2 flex items-center justify-between">
                       <span className="text-[10px] text-muted-foreground">Status</span>
                       {'stage_status' in selectedTxDetails ? (
                         <Badge variant="secondary" className="text-[10px] bg-yellow-500/20 text-yellow-600 h-5">
                           {selectedTxDetails.stage_status || 'pending'}
                         </Badge>
                       ) : (
-                        <Badge variant="secondary" className="text-[10px] bg-green-500/20 text-green-600 h-5">
+                        <Badge variant="secondary" className="text-[10px] bg-[#0000db]/20 text-[#0000db] h-5">
                           confirmed
                         </Badge>
                       )}
@@ -963,7 +1075,7 @@ export function WalletDashboard({
 
                     {/* Epoch - only for confirmed */}
                     {'epoch' in selectedTxDetails && (
-                      <div className="bg-muted/50 rounded-lg p-2 flex items-center justify-between">
+                      <div className="bg-muted/50  p-2 flex items-center justify-between">
                         <span className="text-[10px] text-muted-foreground">Epoch</span>
                         <span className="font-mono text-xs">{selectedTxDetails.epoch}</span>
                       </div>
@@ -971,7 +1083,7 @@ export function WalletDashboard({
 
                     {/* Time */}
                     {('timestamp' in selectedTxDetails || 'parsed_tx' in selectedTxDetails) && (
-                      <div className="bg-muted/50 rounded-lg p-2 flex items-center justify-between">
+                      <div className="bg-muted/50  p-2 flex items-center justify-between">
                         <span className="text-[10px] text-muted-foreground">Time (UTC)</span>
                         <span className="text-xs">
                           {'timestamp' in selectedTxDetails 
@@ -983,7 +1095,7 @@ export function WalletDashboard({
                     )}
 
                     {/* Hash */}
-                    <div className="bg-muted/50 rounded-lg p-2">
+                    <div className="bg-muted/50  p-2">
                       <div className="flex items-center justify-between mb-1">
                         <span className="text-[10px] text-muted-foreground">Hash</span>
                         <Button 
@@ -1002,7 +1114,7 @@ export function WalletDashboard({
 
                     {/* From - full address */}
                     {('from' in selectedTxDetails || 'parsed_tx' in selectedTxDetails) && (
-                      <div className="bg-muted/50 rounded-lg p-2">
+                      <div className="bg-muted/50  p-2">
                         <div className="flex items-center justify-between mb-1">
                           <span className="text-[10px] text-muted-foreground">From</span>
                           <Button 
@@ -1022,7 +1134,7 @@ export function WalletDashboard({
 
                     {/* To - full address */}
                     {('to' in selectedTxDetails || 'parsed_tx' in selectedTxDetails) && (
-                      <div className="bg-muted/50 rounded-lg p-2">
+                      <div className="bg-muted/50  p-2">
                         <div className="flex items-center justify-between mb-1">
                           <span className="text-[10px] text-muted-foreground">To</span>
                           <Button 
@@ -1043,7 +1155,7 @@ export function WalletDashboard({
                     {/* Amount, OU (Gas), Nonce */}
                     <div className="grid grid-cols-3 gap-2">
                       {('amount' in selectedTxDetails || 'parsed_tx' in selectedTxDetails) && (
-                        <div className="bg-muted/50 rounded-lg p-2">
+                        <div className="bg-muted/50  p-2">
                           <span className="text-[10px] text-muted-foreground">Amount</span>
                           <p className="font-mono text-xs mt-0.5">
                             {'amount' in selectedTxDetails ? selectedTxDetails.amount : selectedTxDetails.parsed_tx.amount} OCT
@@ -1055,7 +1167,7 @@ export function WalletDashboard({
                         const ouNum = parseInt(ouValue) || 0;
                         const feeOct = (ouNum * 0.0000001).toFixed(7);
                         return (
-                          <div className="bg-muted/50 rounded-lg p-2">
+                          <div className="bg-muted/50  p-2">
                             <span className="text-[10px] text-muted-foreground">OU (Gas)</span>
                             <p className="font-mono text-[10px] mt-0.5">{ouValue}</p>
                             <p className="text-[9px] text-muted-foreground">≈ {feeOct} OCT</p>
@@ -1063,7 +1175,7 @@ export function WalletDashboard({
                         );
                       })()}
                       {('nonce' in selectedTxDetails || 'parsed_tx' in selectedTxDetails) && (
-                        <div className="bg-muted/50 rounded-lg p-2">
+                        <div className="bg-muted/50  p-2">
                           <span className="text-[10px] text-muted-foreground">Nonce</span>
                           <p className="font-mono text-xs mt-0.5">
                             {'nonce' in selectedTxDetails ? selectedTxDetails.nonce : selectedTxDetails.parsed_tx.nonce}
@@ -1144,7 +1256,7 @@ export function WalletDashboard({
                                     <div key={w.address}>
                                       {i > 0 && <div className="h-px bg-border my-0.5" />}
                                       <div
-                                        className={`flex items-center justify-between p-2 rounded-lg cursor-pointer group gap-1.5 ${
+                                        className={`flex items-center justify-between p-2  cursor-pointer group gap-1.5 ${
                                           isActive 
                                             ? 'bg-[#0000db]/10 border border-[#0000db]/30 text-[#0000db]' 
                                             : 'hover:bg-accent hover:text-accent-foreground border border-transparent'
@@ -1204,7 +1316,7 @@ export function WalletDashboard({
                               </div>
                             </ScrollArea>
                           </div>
-                          <div className="mt-3 pt-3 border-t flex-shrink-0">
+                          <div className="mt-3 flex-shrink-0">
                             <Button
                               variant="outline"
                               size="sm"
@@ -1221,106 +1333,12 @@ export function WalletDashboard({
                         </SheetContent>
                       </Sheet>
                     ) : (
-                      <Sheet open={showWalletSelector} onOpenChange={setShowWalletSelector}>
-                        <SheetTrigger asChild>
-                          <Button variant="ghost" className="h-auto p-0 hover:bg-transparent">
-                            <div className="flex items-center space-x-2">
-                              <p className="text-sm text-muted-foreground">
-                                {truncateAddress(wallet.address)}
-                              </p>
-                              <ChevronDown className="h-3 w-3 text-muted-foreground" />
-                            </div>
-                          </Button>
-                        </SheetTrigger>
-                        <SheetContent side="left" className="w-[400px] sm:w-[480px] flex flex-col">
-                          <SheetHeader>
-                            <SheetTitle>Select Wallet ({wallets.length})</SheetTitle>
-                            <SheetDescription className="sr-only">Choose a wallet from your list</SheetDescription>
-                          </SheetHeader>
-                          <div className="flex-1 mt-4 overflow-hidden">
-                            <ScrollArea className="h-full max-h-[calc(100vh-200px)]">
-                              <div className="space-y-1 pr-4">
-                                {wallets.map((w, i) => {
-                                  const isActive = w.address === wallet.address;
-                                  return (
-                                    <div key={w.address}>
-                                      {i > 0 && <div className="h-px bg-border my-1" />}
-                                      <div
-                                        className={`flex items-center justify-between p-3 rounded-lg cursor-pointer group gap-2 ${
-                                          isActive 
-                                            ? 'bg-[#0000db]/10 border border-[#0000db]/30 text-[#0000db]' 
-                                            : 'hover:bg-accent hover:text-accent-foreground border border-transparent'
-                                        }`}
-                                        onClick={() => {
-                                          onSwitchWallet(w);
-                                          setShowWalletSelector(false);
-                                        }}
-                                      >
-                                        <div className="flex-1 min-w-0">
-                                          <div className="flex items-center space-x-2">
-                                            <span className={`font-mono text-sm truncate ${isActive ? 'font-semibold' : ''}`}>
-                                              #{i + 1} {truncateAddress(w.address)}
-                                            </span>
-                                          </div>
-                                          {w.type && (
-                                            <div className={`text-xs mt-1 ${isActive ? 'text-[#0000db]/70' : 'text-muted-foreground'}`}>
-                                              {w.type === 'generated' && 'Generated wallet'}
-                                              {w.type === 'imported-mnemonic' && 'Imported wallet (mnemonic)'}
-                                              {w.type === 'imported-private-key' && 'Imported wallet (private key)'}
-                                            </div>
-                                          )}
-                                        </div>
-                                        <div className="flex items-center space-x-1 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
-                                          <Button
-                                            variant="ghost"
-                                            size="sm"
-                                            onClick={(e) => {
-                                              e.stopPropagation();
-                                              copyToClipboard(w.address, `walletExpanded-${w.address}`);
-                                            }}
-                                            className="h-7 w-7 p-0 text-muted-foreground hover:text-foreground"
-                                            title="Copy address"
-                                          >
-                                            {copiedField === `walletExpanded-${w.address}` ? <Check className="h-3.5 w-3.5 text-green-500" /> : <Copy className="h-3.5 w-3.5" />}
-                                          </Button>
-                                          {wallets.length > 1 && (
-                                            <Button
-                                              variant="ghost"
-                                              size="sm"
-                                              onClick={(e) => {
-                                                e.stopPropagation();
-                                                setWalletToDelete(w);
-                                                setShowWalletSelector(false);
-                                              }}
-                                              className="h-7 w-7 p-0 text-red-500 hover:text-red-700"
-                                              title="Remove wallet"
-                                            >
-                                              <Trash2 className="h-3.5 w-3.5" />
-                                            </Button>
-                                          )}
-                                        </div>
-                                      </div>
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                            </ScrollArea>
-                          </div>
-                          <div className="mt-4 pt-4 border-t flex-shrink-0">
-                            <Button
-                              variant="outline"
-                              onClick={() => {
-                                setShowAddWalletDialog(true);
-                                setShowWalletSelector(false);
-                              }}
-                              className="w-full justify-center gap-2"
-                            >
-                              <Plus className="h-4 w-4" />
-                              Add Wallet
-                            </Button>
-                          </div>
-                        </SheetContent>
-                      </Sheet>
+                      /* Expanded mode - just show address, wallet list is in sidebar */
+                      <div className="flex items-center space-x-2">
+                        <p className="text-sm text-muted-foreground">
+                          {truncateAddress(wallet.address)}
+                        </p>
+                      </div>
                     )}
                     <Button
                       variant="ghost"
@@ -1333,17 +1351,7 @@ export function WalletDashboard({
                   </div>
                 </div>
               </div>
-              {/* Hide badges in popup mode to save space */}
-              {!isPopupMode && (
-                <div className="flex items-center space-x-2">
-                  <Badge variant="outline" className="hidden sm:inline-flex text-xs">
-                    Nonce: {nonce}
-                  </Badge>
-                  <Badge variant="outline" className="hidden sm:inline-flex text-xs">
-                    {wallets.length} Wallet{wallets.length !== 1 ? 's' : ''}
-                  </Badge>
-                </div>
-              )}
+              {/* Hide badges in popup mode to save space - Nonce moved to sidebar */}
             </div>
 
             <div className={`flex items-center ${isPopupMode ? 'space-x-1' : 'space-x-2'}`}>
@@ -1365,14 +1373,14 @@ export function WalletDashboard({
                       </SheetHeader>
                       <div className="mt-4 space-y-3">
                         {/* Wallet Info Card */}
-                        <div className="p-3 bg-gradient-to-br from-[#0000db]/5 to-[#0000db]/10 border border-[#0000db]/20 rounded-lg">
+                        <div className="p-3 bg-gradient-to-br from-[#0000db]/5 to-[#0000db]/10 border border-[#0000db]/20 ">
                           {/* Stats Grid */}
                           <div className="grid grid-cols-2 gap-2">
-                            <div className="bg-transparent border border-[#0000db]/50 rounded-md p-2 text-center">
+                            <div className="bg-transparent border border-[#0000db]/50  p-2 text-center">
                               <div className="text-[10px] text-muted-foreground mb-0.5">Nonce</div>
                               <div className="text-sm font-semibold text-[#0000db]">{nonce}</div>
                             </div>
-                            <div className="bg-transparent border border-[#0000db]/50 rounded-md p-2 text-center">
+                            <div className="bg-transparent border border-[#0000db]/50  p-2 text-center">
                               <div className="text-[10px] text-muted-foreground mb-0.5">Wallets</div>
                               <div className="text-sm font-semibold text-[#0000db]">{wallets.length}</div>
                             </div>
@@ -1478,7 +1486,7 @@ export function WalletDashboard({
                   <ThemeToggle isPopupMode={false} />
                   {/* Desktop Menu Items */}
                   <div className="hidden md:flex items-center space-x-2">
-                    {/* Buttons with caption: RPC, dApps, Add Wallet */}
+                    {/* Buttons with caption: RPC, dApps */}
                     <Button
                       variant="outline"
                       size="sm"
@@ -1496,15 +1504,6 @@ export function WalletDashboard({
                     >
                       <Globe className="h-4 w-4" />
                       dApps
-                    </Button>
-                    <Button 
-                      variant="outline" 
-                      size="sm"
-                      className="flex items-center gap-2"
-                      onClick={() => setShowAddWalletDialog(true)}
-                    >
-                      <Plus className="h-4 w-4" />
-                      Add Wallet
                     </Button>
                     
                     {/* Text buttons: Export Private Keys, Lock Wallet, Reset All */}
@@ -1575,19 +1574,6 @@ export function WalletDashboard({
                           >
                             <Globe className="h-4 w-4" />
                             Connected dApps
-                          </Button>
-
-                          {/* Add Wallet */}
-                          <Button
-                            variant="outline"
-                            onClick={() => {
-                              setShowAddWalletDialog(true);
-                              setShowMobileMenu(false);
-                            }}
-                            className="w-full justify-start gap-2"
-                          >
-                            <Plus className="h-4 w-4" />
-                            Add Wallet
                           </Button>
 
                           {/* Export Private Keys */}
@@ -1841,8 +1827,11 @@ export function WalletDashboard({
 
       {/* Sticky Mode Toggle - Only for expanded mode */}
       {!isPopupMode && (
-        <div className="fixed top-[70px] sm:top-[83px] left-0 right-0 z-40 bg-background/95 backdrop-blur-sm py-3">
-          <div className="octra-container px-6 sm:px-8 lg:px-12">
+        <div 
+          className="fixed top-[70px] sm:top-[83px] right-0 z-40 bg-background/95 backdrop-blur-sm py-3 transition-[left] duration-300 ease-out"
+          style={{ left: showWalletSidebar ? '320px' : '2px' }}
+        >
+          <div className="px-6 sm:px-8 lg:px-12 max-w-6xl mx-auto">
             <ModeToggle
               currentMode={operationMode}
               onModeChange={handleModeChange}
@@ -1855,8 +1844,120 @@ export function WalletDashboard({
         </div>
       )}
 
+      {/* Wallet Sidebar - Only for expanded mode */}
+      {!isPopupMode && (
+        <>
+          <aside className={`fixed top-[70px] sm:top-[83px] left-0 bottom-0 z-30 bg-background border-r border-border transition-all duration-300 ${showWalletSidebar ? 'w-80' : 'w-0'} overflow-hidden`}>
+            <div className="h-full flex flex-col p-4 w-80">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="font-semibold text-base flex items-center gap-2">
+                  <WalletIcon className="h-5 w-5" />
+                  Wallets ({wallets.length})
+                </h3>
+              </div>
+              <ScrollArea className="flex-1 -mr-4 pr-4">
+                <div className="space-y-2">
+                  {wallets.map((w, i) => {
+                    const isActive = w.address === wallet.address;
+                    const shortAddress = `${w.address.slice(0, 6)}...${w.address.slice(-4)}`;
+                    const walletType = w.type === 'generated' ? 'Generated' 
+                      : w.type === 'imported-mnemonic' ? 'Mnemonic' 
+                      : w.type === 'imported-private-key' ? 'Private Key' 
+                      : '';
+                    
+                    return (
+                      <div
+                        key={w.address}
+                        className={`p-3 rounded-lg cursor-pointer transition-colors ${
+                          isActive 
+                            ? 'bg-[#0000db]/10 border border-[#0000db]/30' 
+                            : 'hover:bg-accent border border-transparent'
+                        }`}
+                        onClick={() => onSwitchWallet(w)}
+                      >
+                        {/* Row 1: Number + Address + Actions */}
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className={`text-xs font-medium px-1.5 py-0.5 rounded ${
+                              isActive ? 'bg-[#0000db] text-white' : 'bg-muted text-muted-foreground'
+                            }`}>
+                              {i + 1}
+                            </span>
+                            <span className={`font-mono text-sm truncate ${isActive ? 'text-[#0000db] font-semibold' : ''}`}>
+                              {shortAddress}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-1 flex-shrink-0">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                copyToClipboard(w.address, `sidebarWallet-${w.address}`);
+                              }}
+                              className={`h-6 w-6 p-0 ${isActive ? 'text-[#0000db] hover:text-[#0000db]/80' : ''}`}
+                              title="Copy address"
+                            >
+                              {copiedField === `sidebarWallet-${w.address}` ? <Check className="h-3 w-3 text-green-500" /> : <Copy className="h-3 w-3" />}
+                            </Button>
+                            {wallets.length > 1 && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setWalletToDelete(w);
+                                }}
+                                className="h-6 w-6 p-0 text-red-500 hover:text-red-700"
+                                title="Remove wallet"
+                              >
+                                <Trash2 className="h-3 w-3" />
+                              </Button>
+                            )}
+                          </div>
+                        </div>
+                        
+                        {/* Row 2: Type + Nonce (for active) */}
+                        <div className={`flex items-center justify-between mt-1.5 text-xs ${
+                          isActive ? 'text-[#0000db]/70' : 'text-muted-foreground'
+                        }`}>
+                          <span>{walletType}</span>
+                          {isActive && <span>Nonce: {nonce}</span>}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </ScrollArea>
+              <div className="mt-4">
+                <Button
+                  variant="outline"
+                  onClick={() => setShowAddWalletDialog(true)}
+                  className="w-full justify-center gap-2 h-10"
+                >
+                  <Plus className="h-4 w-4" />
+                  Add Wallet
+                </Button>
+              </div>
+            </div>
+          </aside>
+          
+          {/* Sidebar Toggle Button */}
+          <button
+            onClick={() => setShowWalletSidebar(!showWalletSidebar)}
+            className={`fixed top-1/2 -translate-y-1/2 z-40 h-10 w-5 flex items-center justify-center bg-muted hover:bg-accent border border-l-0 border-border rounded-r-md transition-all duration-300 ${showWalletSidebar ? 'left-80' : 'left-0'}`}
+          >
+            {showWalletSidebar ? <ChevronLeft className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+          </button>
+        </>
+      )}
+
       {/* Main Content - Add padding-top for fixed header in expanded mode */}
-      <main className={`octra-container ${isPopupMode ? 'pt-0 pb-0 px-3 flex flex-col h-[calc(100vh-50px)] overflow-hidden' : 'pt-[149px] sm:pt-[165px] pb-16 px-6 sm:px-8 lg:px-12 sm:pb-20'}`}>
+      <div 
+        className={isPopupMode ? '' : 'transition-[padding-left] duration-300 ease-out'}
+        style={!isPopupMode ? { paddingLeft: showWalletSidebar ? '320px' : '0px' } : undefined}
+      >
+        <main className={isPopupMode ? 'octra-container pt-0 pb-0 px-3 flex flex-col h-[calc(100vh-50px)] overflow-hidden' : 'pt-[149px] sm:pt-[165px] pb-16 px-6 sm:px-8 lg:px-12 sm:pb-20 max-w-6xl mx-auto'}>
         {/* ============================================ */}
         {/* POPUP MODE - NEW MAIN UI */}
         {/* ============================================ */}
@@ -1877,7 +1978,7 @@ export function WalletDashboard({
               </div>
 
               {/* Balance Display */}
-              <div className="rounded-lg p-2">
+              <div className=" p-2">
                 <div className="text-center">
                   <p className={`text-[10px] font-medium ${operationMode === 'private' ? 'text-[#0000db]' : 'text-muted-foreground'}`}>
                     Balance
@@ -1909,7 +2010,7 @@ export function WalletDashboard({
                     {/* Encrypt Button */}
                     <Button
                       variant="outline"
-                      className="flex flex-col items-center gap-0.5 h-auto py-2 px-3 rounded-lg border"
+                      className="flex flex-col items-center gap-0.5 h-auto py-2 px-3  border"
                       onClick={() => setPopupScreen('encrypt')}
                     >
                       <Lock className="h-3.5 w-3.5" />
@@ -1918,7 +2019,7 @@ export function WalletDashboard({
                     {/* Send Button */}
                     <Button
                       variant="outline"
-                      className="flex flex-col items-center gap-0.5 h-auto py-2 px-3 rounded-lg border"
+                      className="flex flex-col items-center gap-0.5 h-auto py-2 px-3  border"
                       onClick={() => setPopupScreen('send')}
                     >
                       <Send className="h-3.5 w-3.5" />
@@ -1927,7 +2028,7 @@ export function WalletDashboard({
                     {/* Receive Button */}
                     <Button
                       variant="outline"
-                      className="flex flex-col items-center gap-0.5 h-auto py-2 px-3 rounded-lg border"
+                      className="flex flex-col items-center gap-0.5 h-auto py-2 px-3  border"
                       onClick={() => setPopupScreen('receive')}
                     >
                       <QrCode className="h-3.5 w-3.5" />
@@ -1939,7 +2040,7 @@ export function WalletDashboard({
                     {/* Decrypt Button */}
                     <Button
                       variant="outline"
-                      className="flex flex-col items-center gap-0.5 h-auto py-2 px-2 rounded-lg border border-[#0000db]/30 text-[#0000db] hover:bg-[#0000db]/5"
+                      className="flex flex-col items-center gap-0.5 h-auto py-2 px-2  border border-[#0000db]/30 text-[#0000db] hover:bg-[#0000db]/5"
                       onClick={() => setPopupScreen('decrypt')}
                     >
                       <Unlock className="h-3.5 w-3.5" />
@@ -1948,7 +2049,7 @@ export function WalletDashboard({
                     {/* Send Button */}
                     <Button
                       variant="outline"
-                      className="flex flex-col items-center gap-0.5 h-auto py-2 px-2 rounded-lg border border-[#0000db]/30 text-[#0000db] hover:bg-[#0000db]/5"
+                      className="flex flex-col items-center gap-0.5 h-auto py-2 px-2  border border-[#0000db]/30 text-[#0000db] hover:bg-[#0000db]/5"
                       onClick={() => setPopupScreen('send')}
                     >
                       <Send className="h-3.5 w-3.5" />
@@ -1957,7 +2058,7 @@ export function WalletDashboard({
                     {/* Receive Button */}
                     <Button
                       variant="outline"
-                      className="flex flex-col items-center gap-0.5 h-auto py-2 px-2 rounded-lg border border-[#0000db]/30 text-[#0000db] hover:bg-[#0000db]/5"
+                      className="flex flex-col items-center gap-0.5 h-auto py-2 px-2  border border-[#0000db]/30 text-[#0000db] hover:bg-[#0000db]/5"
                       onClick={() => setPopupScreen('receive')}
                     >
                       <QrCode className="h-3.5 w-3.5" />
@@ -1966,7 +2067,7 @@ export function WalletDashboard({
                     {/* Claim Button */}
                     <Button
                       variant="outline"
-                      className="flex flex-col items-center gap-0.5 h-auto py-2 px-2 rounded-lg border border-[#0000db]/30 text-[#0000db] hover:bg-[#0000db]/5"
+                      className="flex flex-col items-center gap-0.5 h-auto py-2 px-2  border border-[#0000db]/30 text-[#0000db] hover:bg-[#0000db]/5"
                       onClick={() => setPopupScreen('claim')}
                     >
                       <Gift className="h-3.5 w-3.5" />
@@ -2047,7 +2148,7 @@ export function WalletDashboard({
                     return (
                       <div 
                         key={tx.hash} 
-                        className={`border rounded-lg p-2.5 cursor-pointer hover:bg-muted/50 transition-colors ${
+                        className={`border  p-2.5 cursor-pointer hover:bg-muted/50 transition-colors ${
                           operationMode === 'private' ? 'border-[#0000db]/20' : 'border-border'
                         }`}
                         onClick={() => handleViewTxDetails(tx.hash, tx.status === 'pending')}
@@ -2067,12 +2168,12 @@ export function WalletDashboard({
                                   <span className="font-mono text-xs">{(tx.amount || 0).toFixed(4)} OCT</span>
                                 )}
                                 {tx.status === 'confirmed' ? (
-                                  <div className="h-1.5 w-1.5 rounded-full bg-[#0000db]" />
+                                  <div className="h-1.5 w-1.5  bg-[#0000db]" />
                                 ) : tx.status === 'pending' ? (
-                                  <div className="h-3 w-3 rounded-full border border-yellow-500 animate-pulse" />
+                                  <div className="h-3 w-3  border border-yellow-500 animate-pulse" />
                                 ) : (
-                                  <div className="h-3 w-3 rounded-full bg-red-500/20 flex items-center justify-center">
-                                    <div className="h-1.5 w-1.5 rounded-full bg-red-500" />
+                                  <div className="h-3 w-3  bg-red-500/20 flex items-center justify-center">
+                                    <div className="h-1.5 w-1.5  bg-red-500" />
                                   </div>
                                 )}
                               </div>
@@ -2106,26 +2207,26 @@ export function WalletDashboard({
         }} className="">
           {/* TabsList - Only show inline for expanded mode */}
           {operationMode === 'public' ? (
-              // Public Mode Tabs - Classic tab style full width with centered caption
+              // Public Mode Tabs - Classic segmented style
               <div className="relative">
                 <TabsList className="relative z-10 grid w-full grid-cols-3 h-auto p-0 bg-transparent gap-0">
                   <TabsTrigger 
                     value="balance" 
-                    className="flex items-center justify-center gap-2 text-sm px-6 py-3 rounded-t-lg rounded-b-none border border-b-0 border-border bg-muted/50 data-[state=active]:bg-background data-[state=active]:border-foreground/20 data-[state=active]:border-b-background data-[state=active]:-mb-px data-[state=active]:z-10 data-[state=inactive]:hover:bg-muted transition-all -mr-px"
+                    className="flex items-center justify-center gap-2 text-sm px-6 py-3 border border-b-0 border-border bg-muted/50 data-[state=active]:bg-background data-[state=active]:border-foreground/20 data-[state=active]:border-b-background data-[state=active]:-mb-px data-[state=active]:z-10 data-[state=inactive]:hover:bg-muted transition-all -mr-px"
                   >
                     <PieChart className="h-4 w-4" />
                     <span className="font-medium">Balance</span>
                   </TabsTrigger>
                   <TabsTrigger 
                     value="send" 
-                    className="flex items-center justify-center gap-2 text-sm px-6 py-3 rounded-t-lg rounded-b-none border border-b-0 border-border bg-muted/50 data-[state=active]:bg-background data-[state=active]:border-foreground/20 data-[state=active]:border-b-background data-[state=active]:-mb-px data-[state=active]:z-10 data-[state=inactive]:hover:bg-muted transition-all -mr-px"
+                    className="flex items-center justify-center gap-2 text-sm px-6 py-3 border border-b-0 border-border bg-muted/50 data-[state=active]:bg-background data-[state=active]:border-foreground/20 data-[state=active]:border-b-background data-[state=active]:-mb-px data-[state=active]:z-10 data-[state=inactive]:hover:bg-muted transition-all -mr-px"
                   >
                     <Send className="h-4 w-4" />
                     <span className="font-medium">Send</span>
                   </TabsTrigger>
                   <TabsTrigger 
                     value="history" 
-                    className="flex items-center justify-center gap-2 text-sm px-6 py-3 rounded-t-lg rounded-b-none border border-b-0 border-border bg-muted/50 data-[state=active]:bg-background data-[state=active]:border-foreground/20 data-[state=active]:border-b-background data-[state=active]:-mb-px data-[state=active]:z-10 data-[state=inactive]:hover:bg-muted transition-all"
+                    className="flex items-center justify-center gap-2 text-sm px-6 py-3 border border-b-0 border-border bg-muted/50 data-[state=active]:bg-background data-[state=active]:border-foreground/20 data-[state=active]:border-b-background data-[state=active]:-mb-px data-[state=active]:z-10 data-[state=inactive]:hover:bg-muted transition-all"
                   >
                     <History className="h-4 w-4" />
                     <span className="font-medium">History</span>
@@ -2133,33 +2234,33 @@ export function WalletDashboard({
                 </TabsList>
               </div>
             ) : (
-              // Private Mode Tabs - Classic tab style full width with centered caption
+              // Private Mode Tabs - Classic segmented style
               <div className="relative">
                 <TabsList className="relative z-10 grid w-full grid-cols-4 h-auto p-0 bg-transparent gap-0">
                   <TabsTrigger 
                     value="balance" 
-                    className="flex items-center justify-center gap-2 text-sm px-6 py-3 rounded-t-lg rounded-b-none border border-b-0 border-[#0000db]/30 bg-[#0000db]/5 data-[state=active]:bg-background data-[state=active]:border-[#0000db]/40 data-[state=active]:border-b-background data-[state=active]:-mb-px data-[state=active]:z-10 data-[state=active]:text-[#0000db] data-[state=inactive]:hover:bg-[#0000db]/10 transition-all -mr-px"
+                    className="flex items-center justify-center gap-2 text-sm px-6 py-3 border border-b-0 border-[#0000db]/30 bg-[#0000db]/5 data-[state=active]:bg-background data-[state=active]:border-[#0000db]/40 data-[state=active]:border-b-background data-[state=active]:-mb-px data-[state=active]:z-10 data-[state=active]:text-[#0000db] data-[state=inactive]:hover:bg-[#0000db]/10 transition-all -mr-px"
                   >
                     <Shield className="h-4 w-4" />
                     <span className="font-medium">Balance</span>
                   </TabsTrigger>
                   <TabsTrigger 
                     value="transfer" 
-                    className="flex items-center justify-center gap-2 text-sm px-6 py-3 rounded-t-lg rounded-b-none border border-b-0 border-[#0000db]/30 bg-[#0000db]/5 data-[state=active]:bg-background data-[state=active]:border-[#0000db]/40 data-[state=active]:border-b-background data-[state=active]:-mb-px data-[state=active]:z-10 data-[state=active]:text-[#0000db] data-[state=inactive]:hover:bg-[#0000db]/10 transition-all -mr-px"
+                    className="flex items-center justify-center gap-2 text-sm px-6 py-3 border border-b-0 border-[#0000db]/30 bg-[#0000db]/5 data-[state=active]:bg-background data-[state=active]:border-[#0000db]/40 data-[state=active]:border-b-background data-[state=active]:-mb-px data-[state=active]:z-10 data-[state=active]:text-[#0000db] data-[state=inactive]:hover:bg-[#0000db]/10 transition-all -mr-px"
                   >
                     <Send className="h-4 w-4" />
                     <span className="font-medium">Send</span>
                   </TabsTrigger>
                   <TabsTrigger 
                     value="claim" 
-                    className="flex items-center justify-center gap-2 text-sm px-6 py-3 rounded-t-lg rounded-b-none border border-b-0 border-[#0000db]/30 bg-[#0000db]/5 data-[state=active]:bg-background data-[state=active]:border-[#0000db]/40 data-[state=active]:border-b-background data-[state=active]:-mb-px data-[state=active]:z-10 data-[state=active]:text-[#0000db] data-[state=inactive]:hover:bg-[#0000db]/10 transition-all -mr-px"
+                    className="flex items-center justify-center gap-2 text-sm px-6 py-3 border border-b-0 border-[#0000db]/30 bg-[#0000db]/5 data-[state=active]:bg-background data-[state=active]:border-[#0000db]/40 data-[state=active]:border-b-background data-[state=active]:-mb-px data-[state=active]:z-10 data-[state=active]:text-[#0000db] data-[state=inactive]:hover:bg-[#0000db]/10 transition-all -mr-px"
                   >
                     <Gift className="h-4 w-4" />
                     <span className="font-medium">Claim</span>
                   </TabsTrigger>
                   <TabsTrigger 
                     value="history" 
-                    className="flex items-center justify-center gap-2 text-sm px-6 py-3 rounded-t-lg rounded-b-none border border-b-0 border-[#0000db]/30 bg-[#0000db]/5 data-[state=active]:bg-background data-[state=active]:border-[#0000db]/40 data-[state=active]:border-b-background data-[state=active]:-mb-px data-[state=active]:z-10 data-[state=active]:text-[#0000db] data-[state=inactive]:hover:bg-[#0000db]/10 transition-all"
+                    className="flex items-center justify-center gap-2 text-sm px-6 py-3 border border-b-0 border-[#0000db]/30 bg-[#0000db]/5 data-[state=active]:bg-background data-[state=active]:border-[#0000db]/40 data-[state=active]:border-b-background data-[state=active]:-mb-px data-[state=active]:z-10 data-[state=active]:text-[#0000db] data-[state=inactive]:hover:bg-[#0000db]/10 transition-all"
                   >
                     <History className="h-4 w-4" />
                     <span className="font-medium">History</span>
@@ -2169,7 +2270,7 @@ export function WalletDashboard({
             )}
 
           {/* Balance Tab Content - Connected to tabs */}
-          <TabsContent value="balance" className={`tab-animated mt-0 border ${operationMode === 'private' ? 'border-[#0000db]/40' : 'border-foreground/20'} rounded-b-lg rounded-t-none bg-background`}>
+          <TabsContent value="balance" className={`tab-animated mt-0 border ${operationMode === 'private' ? 'border-[#0000db]/40' : 'border-foreground/20'} bg-background`}>
             <div className="p-4">
               {operationMode === 'public' ? (
                 <PublicBalance 
@@ -2199,13 +2300,13 @@ export function WalletDashboard({
 
           {/* Send Tab (Public Mode) */}
           {operationMode === 'public' && (
-            <TabsContent value="send" className="tab-animated mt-0 border border-foreground/20 rounded-b-lg rounded-t-none bg-background">
+            <TabsContent value="send" className="tab-animated mt-0 border border-foreground/20 bg-background">
               <div className="p-6">
                 <div className="grid grid-cols-3 gap-4 max-w-xl mx-auto">
                   {/* Standard Send Button */}
                   <Button
                     variant="outline"
-                    className="flex flex-col items-center gap-2 h-auto py-6 rounded-xl border-2 hover:border-foreground/30 hover:bg-accent transition-all"
+                    className="flex flex-col items-center gap-2 h-auto py-6  border-2 hover:border-foreground/30 hover:bg-accent transition-all"
                     onClick={() => setExpandedSendModal('standard')}
                   >
                     <Send className="h-8 w-8" />
@@ -2215,7 +2316,7 @@ export function WalletDashboard({
                   {/* Multi Send Button */}
                   <Button
                     variant="outline"
-                    className="flex flex-col items-center gap-2 h-auto py-6 rounded-xl border-2 hover:border-foreground/30 hover:bg-accent transition-all"
+                    className="flex flex-col items-center gap-2 h-auto py-6  border-2 hover:border-foreground/30 hover:bg-accent transition-all"
                     onClick={() => setExpandedSendModal('multi')}
                   >
                     <svg className="h-8 w-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -2227,7 +2328,7 @@ export function WalletDashboard({
                   {/* Bulk Send Button */}
                   <Button
                     variant="outline"
-                    className="flex flex-col items-center gap-2 h-auto py-6 rounded-xl border-2 hover:border-foreground/30 hover:bg-accent transition-all"
+                    className="flex flex-col items-center gap-2 h-auto py-6  border-2 hover:border-foreground/30 hover:bg-accent transition-all"
                     onClick={() => setExpandedSendModal('bulk')}
                   >
                     <Download className="h-8 w-8" />
@@ -2241,7 +2342,7 @@ export function WalletDashboard({
 
           {/* Transfer Tab (Private Mode) */}
           {operationMode === 'private' && (
-            <TabsContent value="transfer" className="tab-animated mt-0 border border-[#0000db]/40 rounded-b-lg rounded-t-none bg-background">
+            <TabsContent value="transfer" className="tab-animated mt-0 border border-[#0000db]/40 bg-background">
               <div className="p-4">
                 <PrivateTransfer
                   wallet={wallet}
@@ -2259,7 +2360,7 @@ export function WalletDashboard({
 
           {/* Claim Tab (Private Mode) */}
           {operationMode === 'private' && (
-            <TabsContent value="claim" className="tab-animated mt-0 border border-[#0000db]/40 rounded-b-lg rounded-t-none bg-background">
+            <TabsContent value="claim" className="tab-animated mt-0 border border-[#0000db]/40 bg-background">
               <div className="p-4">
                 <ClaimTransfers
                   wallet={wallet}
@@ -2272,7 +2373,7 @@ export function WalletDashboard({
           )}
 
           {/* History Tab (Both Modes) */}
-          <TabsContent value="history" className={`tab-animated mt-0 border ${operationMode === 'private' ? 'border-[#0000db]/40' : 'border-foreground/20'} rounded-b-lg rounded-t-none bg-background`}>
+          <TabsContent value="history" className={`tab-animated mt-0 border ${operationMode === 'private' ? 'border-[#0000db]/40' : 'border-foreground/20'} bg-background`}>
             <div className="p-4">
               <UnifiedHistory 
                 wallet={wallet} 
@@ -2288,6 +2389,7 @@ export function WalletDashboard({
         </Tabs>
         )}
       </main>
+      </div>
 
       {/* Expanded Mode Send Modals */}
       {!isPopupMode && expandedSendModal && (
@@ -2358,7 +2460,7 @@ export function WalletDashboard({
               </div>
             </ScrollArea>
           ) : (
-            <div className="flex-1 p-6 overflow-hidden">
+            <div className="flex-1 p-6 overflow-auto xl:overflow-hidden">
               {expandedSendModal === 'multi' && (
                 <MultiSend
                   wallet={wallet}
@@ -2394,9 +2496,7 @@ export function WalletDashboard({
         <div className="fixed bottom-0 left-0 right-0 z-[200] bg-background border-t border-border">
           {/* Network Status Footer */}
           <div className="flex items-center justify-between px-3 py-1.5">
-            <span className="text-[10px] text-muted-foreground">
-              Mainnet | OctWa {__APP_VERSION__}
-            </span>
+            {/* Left: Connection Status */}
             <div className="flex items-center gap-1.5">
               <div className={`w-1.5 h-1.5 rounded-full ${
                 rpcStatus === 'connected' ? 'bg-[#0000db]' : 
@@ -2408,10 +2508,32 @@ export function WalletDashboard({
                 rpcStatus === 'disconnected' ? 'text-red-500' : 
                 'text-yellow-500'
               }`}>
-                {rpcStatus === 'connected' ? 'Connected' : 
+                {rpcStatus === 'connected' ? 'Connected (Mainnet)' : 
                  rpcStatus === 'disconnected' ? 'Disconnected' : 
                  'Connecting...'}
               </span>
+            </div>
+            {/* Right: GitHub + Version */}
+            <div className="flex items-center gap-1.5">
+              <a
+                href="https://github.com/m-tq/OctWa"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="hover:text-foreground transition-colors text-muted-foreground"
+                title="View on GitHub"
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  width="12"
+                  height="12"
+                  viewBox="0 0 24 24"
+                  fill="currentColor"
+                >
+                  <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/>
+                </svg>
+              </a>
+              <span className="text-muted-foreground/50">|</span>
+              <span className="text-[10px] text-muted-foreground">OctWa {__APP_VERSION__}</span>
             </div>
           </div>
         </div>
@@ -2425,11 +2547,29 @@ export function WalletDashboard({
 
       {/* Footer Credit - Only for expanded mode */}
       {!isPopupMode && (
-        <footer className="fixed bottom-0 left-0 right-0 py-2 px-4 text-xs text-muted-foreground bg-background/80 backdrop-blur-sm border-t border-border/40 flex items-center justify-between">
-          {/* Left: Mainnet | Version */}
-          <span className="text-muted-foreground">Mainnet | OctWa {__APP_VERSION__}</span>
+        <footer 
+          className="fixed bottom-0 right-0 py-2 px-4 text-xs text-muted-foreground bg-background/80 backdrop-blur-sm border-t border-border/40 flex items-center justify-between transition-[left] duration-300 ease-out"
+          style={{ left: showWalletSidebar ? '320px' : '0px' }}
+        >
+          {/* Left: Connection Status */}
+          <div className="flex items-center gap-1.5">
+            <div className={`w-1.5 h-1.5 rounded-full ${
+              rpcStatus === 'connected' ? 'bg-[#0000db]' : 
+              rpcStatus === 'disconnected' ? 'bg-red-500' : 
+              'bg-yellow-500 animate-pulse'
+            }`} />
+            <span className={`${
+              rpcStatus === 'connected' ? 'text-[#0000db]' : 
+              rpcStatus === 'disconnected' ? 'text-red-500' : 
+              'text-yellow-500'
+            }`}>
+              {rpcStatus === 'connected' ? 'Connected (Mainnet)' : 
+               rpcStatus === 'disconnected' ? 'Disconnected' : 
+               'Connecting...'}
+            </span>
+          </div>
           
-          {/* Center: Made with heart + GitHub */}
+          {/* Center: Made with heart for Octra */}
           <span className="flex items-center justify-center gap-1.5">
             Made with
             <svg
@@ -2440,11 +2580,15 @@ export function WalletDashboard({
               <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" />
             </svg>
             for Octra
+          </span>
+          
+          {/* Right: GitHub + Version */}
+          <div className="flex items-center gap-2">
             <a
               href="https://github.com/m-tq/OctWa"
               target="_blank"
               rel="noopener noreferrer"
-              className="ml-1 hover:text-foreground transition-colors"
+              className="hover:text-foreground transition-colors"
               title="View on GitHub"
             >
               <svg
@@ -2457,24 +2601,8 @@ export function WalletDashboard({
                 <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/>
               </svg>
             </a>
-          </span>
-          
-          {/* Right: Connection Status */}
-          <div className="flex items-center gap-1.5">
-            <div className={`w-1.5 h-1.5 rounded-full ${
-              rpcStatus === 'connected' ? 'bg-[#0000db]' : 
-              rpcStatus === 'disconnected' ? 'bg-red-500' : 
-              'bg-yellow-500 animate-pulse'
-            }`} />
-            <span className={`${
-              rpcStatus === 'connected' ? 'text-[#0000db]' : 
-              rpcStatus === 'disconnected' ? 'text-red-500' : 
-              'text-yellow-500'
-            }`}>
-              {rpcStatus === 'connected' ? 'Connected' : 
-               rpcStatus === 'disconnected' ? 'Disconnected' : 
-               'Connecting...'}
-            </span>
+            <span className="text-muted-foreground/50">|</span>
+            <span className="text-muted-foreground">OctWa {__APP_VERSION__}</span>
           </div>
         </footer>
       )}

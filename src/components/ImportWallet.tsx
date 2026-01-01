@@ -12,9 +12,10 @@ interface ImportWalletProps {
   onWalletImported: (wallet: Wallet) => void;
   defaultTab?: 'private-key' | 'mnemonic';
   isCompact?: boolean;
+  hideBorder?: boolean;
 }
 
-export function ImportWallet({ onWalletImported, defaultTab = 'private-key', isCompact = false }: ImportWalletProps) {
+export function ImportWallet({ onWalletImported, defaultTab = 'private-key', isCompact = false, hideBorder = false }: ImportWalletProps) {
   const [privateKey, setPrivateKey] = useState('');
   const [mnemonic, setMnemonic] = useState('');
   const [isImporting, setIsImporting] = useState(false);
@@ -126,14 +127,16 @@ export function ImportWallet({ onWalletImported, defaultTab = 'private-key', isC
     }
 
     return (
-      <Card>
-        <CardHeader className="pb-4">
-          <CardTitle className="flex items-center gap-2 text-lg">
-            <FileText className="h-5 w-5" />
-            Import from Mnemonic
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
+      <Card className={hideBorder ? 'border-0 shadow-none' : ''}>
+        {!hideBorder && (
+          <CardHeader className="pb-4">
+            <CardTitle className="flex items-center gap-2 text-lg">
+              <FileText className="h-5 w-5" />
+              Import from Mnemonic
+            </CardTitle>
+          </CardHeader>
+        )}
+        <CardContent className={`space-y-4 ${hideBorder ? 'p-0' : ''}`}>
           <div className="space-y-2">
             <Label htmlFor="mnemonic">Mnemonic Phrase</Label>
             <Textarea
@@ -198,14 +201,16 @@ export function ImportWallet({ onWalletImported, defaultTab = 'private-key', isC
   }
 
   return (
-    <Card>
-      <CardHeader className="pb-4">
-        <CardTitle className="flex items-center gap-2 text-lg">
-          <Key className="h-5 w-5" />
-          Import from Private Key
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-4">
+    <Card className={hideBorder ? 'border-0 shadow-none' : ''}>
+      {!hideBorder && (
+        <CardHeader className="pb-4">
+          <CardTitle className="flex items-center gap-2 text-lg">
+            <Key className="h-5 w-5" />
+            Import from Private Key
+          </CardTitle>
+        </CardHeader>
+      )}
+      <CardContent className={`space-y-4 ${hideBorder ? 'p-0' : ''}`}>
         <div className="space-y-2">
           <Label htmlFor="private-key">Private Key</Label>
           <Input

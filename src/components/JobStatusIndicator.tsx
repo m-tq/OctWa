@@ -116,7 +116,7 @@ export function JobStatusDot({
 
   return (
     <span
-      className={`inline-block rounded-full ${dotSizes[size]} ${dotColors[status]} ${className}`}
+      className={`inline-block  ${dotSizes[size]} ${dotColors[status]} ${className}`}
     />
   );
 }

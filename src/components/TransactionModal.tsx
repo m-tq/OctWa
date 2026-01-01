@@ -140,7 +140,7 @@ export function TransactionModal({
               {result.hash && (
                 <div className="w-full space-y-1.5 animate-in fade-in-50 slide-in-from-bottom-4 duration-500 delay-150">
                   <div className={`text-muted-foreground text-center ${isPopupMode ? 'text-[10px]' : 'text-xs'}`}>Transaction Hash</div>
-                  <div className={`flex items-center gap-1.5 bg-muted rounded-lg ${isPopupMode ? 'p-2' : 'p-3'}`}>
+                  <div className={`flex items-center gap-1.5 bg-muted  ${isPopupMode ? 'p-2' : 'p-3'}`}>
                     <code className={`flex-1 font-mono break-all ${isPopupMode ? 'text-[10px]' : 'text-xs'}`}>{truncateHash(result.hash)}</code>
                     <Button variant="ghost" size="sm" className={isPopupMode ? "h-6 w-6 p-0" : "h-8 w-8 p-0"} onClick={() => copyToClipboard(result.hash!)}>
                       {copied ? <Check className={`${isPopupMode ? "h-3 w-3" : "h-4 w-4"} text-green-500`} /> : <Copy className={isPopupMode ? "h-3 w-3" : "h-4 w-4"} />}
@@ -185,7 +185,7 @@ export function TransactionModal({
               {/* Error Message */}
               {result.error && (
                 <div className="w-full animate-in fade-in-50 slide-in-from-bottom-4 duration-500 delay-150">
-                  <div className={`bg-red-50 dark:bg-red-900/20 rounded-lg border border-red-200 dark:border-red-800 ${isPopupMode ? 'p-2' : 'p-3'}`}>
+                  <div className={`bg-red-50 dark:bg-red-900/20  border border-red-200 dark:border-red-800 ${isPopupMode ? 'p-2' : 'p-3'}`}>
                     <p className={`text-red-600 dark:text-red-400 break-all ${isPopupMode ? 'text-[10px]' : 'text-xs'}`}>{result.error}</p>
                   </div>
                 </div>

@@ -83,10 +83,6 @@ export function ExportPrivateKeys({ wallet, open, onOpenChange, isPopupMode = fa
       
       if (isValid) {
         setIsUnlocked(true);
-        toast({
-          title: "Access Granted",
-          description: "Password verified successfully",
-        });
       } else {
         toast({
           title: "Invalid Password",
@@ -259,17 +255,15 @@ ${wallet.mnemonic}
             <div className={isPopupMode ? "" : "pr-2"}>
               {!isUnlocked ? (
                   <div className={isPopupMode ? "space-y-3" : "space-y-4"}>
-                    <Alert className={isPopupMode ? "py-2" : ""}>
-                      <div className={`flex items-start ${isPopupMode ? 'space-x-2' : 'space-x-3'}`}>
-                        <AlertTriangle className={`${isPopupMode ? 'h-3 w-3' : 'h-4 w-4'} mt-0.5 flex-shrink-0`} />
-                        <AlertDescription className={isPopupMode ? "text-[11px] leading-tight" : ""}>
-                          {isPopupMode 
-                            ? "Enter password to access private keys."
-                            : "Enter your wallet password to access private key information. This is required for security purposes."
-                          }
-                        </AlertDescription>
-                      </div>
-                    </Alert>
+                    <div className={`flex items-start ${isPopupMode ? 'space-x-2' : 'space-x-3'}`}>
+                      <AlertTriangle className={`${isPopupMode ? 'h-3 w-3' : 'h-4 w-4'} mt-0.5 flex-shrink-0 text-yellow-600`} />
+                      <p className={`text-muted-foreground ${isPopupMode ? "text-[11px] leading-tight" : "text-sm"}`}>
+                        {isPopupMode 
+                          ? "Enter password to access private keys."
+                          : "Enter your wallet password to access private key information. This is required for security purposes."
+                        }
+                      </p>
+                    </div>
 
                     <div className="space-y-2">
                       <Label htmlFor="password" className={isPopupMode ? "text-xs" : ""}>Wallet Password</Label>
@@ -334,7 +328,7 @@ ${wallet.mnemonic}
                     <div className="space-y-1">
                       <Label className={isPopupMode ? "text-xs" : "text-sm font-medium"}>Address</Label>
                       <div className={`flex items-center ${isPopupMode ? 'gap-1' : 'flex-col sm:flex-row sm:items-center space-y-2 sm:space-y-0 sm:space-x-2'}`}>
-                        <div className={`flex-1 bg-muted rounded-md font-mono break-all ${isPopupMode ? 'p-2 text-[10px]' : 'p-3 text-xs sm:text-sm'}`}>
+                        <div className={`flex-1 bg-muted  font-mono break-all ${isPopupMode ? 'p-2 text-[10px]' : 'p-3 text-xs sm:text-sm'}`}>
                           {wallet.address}
                         </div>
                         <Button
@@ -352,7 +346,7 @@ ${wallet.mnemonic}
                     <div className="space-y-1">
                       <Label className={isPopupMode ? "text-xs" : "text-sm font-medium"}>Private Key</Label>
                       <div className={`flex items-center ${isPopupMode ? 'gap-1' : 'flex-col sm:flex-row sm:items-center space-y-2 sm:space-y-0 sm:space-x-2'}`}>
-                        <div className={`flex-1 bg-muted rounded-md font-mono break-all ${isPopupMode ? 'p-2 text-[10px]' : 'p-3 text-xs sm:text-sm'}`}>
+                        <div className={`flex-1 bg-muted  font-mono break-all ${isPopupMode ? 'p-2 text-[10px]' : 'p-3 text-xs sm:text-sm'}`}>
                           {showPrivateKey ? wallet.privateKey : '•'.repeat(isPopupMode ? 24 : 44)}
                         </div>
                         <div className={`flex ${isPopupMode ? 'gap-0.5 flex-shrink-0' : 'space-x-2 self-start sm:self-auto'}`}>
@@ -382,7 +376,7 @@ ${wallet.mnemonic}
                     {wallet.mnemonic && (
                       <div className="space-y-1">
                         <Label className={isPopupMode ? "text-xs" : "text-sm font-medium"}>Mnemonic</Label>
-                        <div className={`bg-muted rounded-md ${isPopupMode ? 'p-2' : 'p-3'}`}>
+                        <div className={`bg-muted  ${isPopupMode ? 'p-2' : 'p-3'}`}>
                           {showMnemonic ? (
                             <div className={`grid ${isPopupMode ? 'grid-cols-4 gap-1' : 'grid-cols-2 sm:grid-cols-3 gap-2'}`}>
                               {wallet.mnemonic.split(' ').map((word, index) => (
@@ -550,14 +544,12 @@ ${wallet.mnemonic}
           <div className="pr-2">
             {!isUnlocked ? (
               <div className="space-y-4">
-                <Alert>
-                  <div className="flex items-start space-x-3">
-                    <AlertTriangle className="h-4 w-4 mt-0.5 flex-shrink-0" />
-                    <AlertDescription>
-                      Enter your wallet password to access private key information. This is required for security purposes.
-                    </AlertDescription>
-                  </div>
-                </Alert>
+                <div className="flex items-start space-x-3">
+                  <AlertTriangle className="h-4 w-4 mt-0.5 flex-shrink-0 text-yellow-600" />
+                  <p className="text-sm text-muted-foreground">
+                    Enter your wallet password to access private key information. This is required for security purposes.
+                  </p>
+                </div>
 
                 <div className="space-y-2">
                   <Label htmlFor="password-uncontrolled">Wallet Password</Label>
@@ -622,7 +614,7 @@ ${wallet.mnemonic}
                 <div className="space-y-2">
                   <Label className="text-sm font-medium">Wallet Address</Label>
                   <div className="flex flex-col sm:flex-row sm:items-center space-y-2 sm:space-y-0 sm:space-x-2">
-                    <div className="flex-1 p-3 bg-muted rounded-md font-mono text-xs sm:text-sm break-all">
+                    <div className="flex-1 p-3 bg-muted  font-mono text-xs sm:text-sm break-all">
                       {wallet.address}
                     </div>
                     <Button
@@ -640,7 +632,7 @@ ${wallet.mnemonic}
                 <div className="space-y-2">
                   <Label className="text-sm font-medium">Private Key (Base64)</Label>
                   <div className="flex flex-col sm:flex-row sm:items-center space-y-2 sm:space-y-0 sm:space-x-2">
-                    <div className="flex-1 p-3 bg-muted rounded-md font-mono text-xs sm:text-sm break-all">
+                    <div className="flex-1 p-3 bg-muted  font-mono text-xs sm:text-sm break-all">
                       {showPrivateKey ? wallet.privateKey : '•'.repeat(44)}
                     </div>
                     <div className="flex space-x-2 self-start sm:self-auto">
@@ -669,7 +661,7 @@ ${wallet.mnemonic}
                   <div className="space-y-2">
                     <Label className="text-sm font-medium">Public Key (Hex)</Label>
                     <div className="flex flex-col sm:flex-row sm:items-center space-y-2 sm:space-y-0 sm:space-x-2">
-                      <div className="flex-1 p-3 bg-muted rounded-md font-mono text-xs sm:text-sm break-all">
+                      <div className="flex-1 p-3 bg-muted  font-mono text-xs sm:text-sm break-all">
                         {wallet.publicKey}
                       </div>
                       <Button
@@ -688,7 +680,7 @@ ${wallet.mnemonic}
                 {wallet.mnemonic && (
                   <div className="space-y-2">
                     <Label className="text-sm font-medium">Mnemonic Phrase</Label>
-                    <div className="p-3 bg-muted rounded-md">
+                    <div className="p-3 bg-muted ">
                       {showMnemonic ? (
                         <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                           {wallet.mnemonic.split(' ').map((word, index) => (

@@ -81,7 +81,7 @@ export function DecryptionConsentDialog({
           </AlertDialogTitle>
           <AlertDialogDescription className="space-y-3">
             <p>{description || defaultDescription}</p>
-            <div className="flex items-start gap-2 p-3 bg-amber-50 dark:bg-amber-950 rounded-md border border-amber-200 dark:border-amber-800">
+            <div className="flex items-start gap-2 p-3 bg-amber-50 dark:bg-amber-950  border border-amber-200 dark:border-amber-800">
               <AlertTriangle className="h-4 w-4 text-amber-600 mt-0.5 flex-shrink-0" />
               <p className="text-sm text-amber-800 dark:text-amber-200">
                 Make sure no one is watching your screen before proceeding.

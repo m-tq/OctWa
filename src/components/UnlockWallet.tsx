@@ -148,7 +148,7 @@ export function UnlockWallet({ onUnlock }: UnlockWalletProps) {
       <div className="flex items-center justify-center min-h-screen bg-background">
         <div className="w-full max-w-md p-6 space-y-6">
           <div className="flex justify-center mb-4">
-            <div className="p-3 rounded-full bg-red-500">
+            <div className="p-3 bg-red-500 rounded-full">
               <AlertTriangle className="h-8 w-8 text-white" />
             </div>
           </div>
@@ -159,7 +159,7 @@ export function UnlockWallet({ onUnlock }: UnlockWalletProps) {
             </p>
           </div>
 
-          <div className="p-4 bg-red-50 dark:bg-red-950/30 rounded-lg border border-red-200 dark:border-red-800">
+          <div className="p-4 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800">
             <p className="text-sm text-red-600 dark:text-red-400 text-center">
               Type <span className="font-bold">RESET</span> to confirm
             </p>
@@ -170,7 +170,7 @@ export function UnlockWallet({ onUnlock }: UnlockWalletProps) {
             value={resetConfirmText}
             onChange={(e) => setResetConfirmText(e.target.value.toUpperCase())}
             placeholder="Type RESET"
-            className="w-full px-3 py-2 border border-border rounded-md bg-background text-center font-mono"
+            className="w-full px-3 py-2 border border-border bg-background text-center font-mono"
           />
 
           <div className="flex gap-3">
@@ -179,14 +179,14 @@ export function UnlockWallet({ onUnlock }: UnlockWalletProps) {
                 setShowResetConfirm(false);
                 setResetConfirmText('');
               }}
-              className="flex-1 py-2 px-4 border border-border rounded-md hover:bg-accent"
+              className="flex-1 py-2 px-4 border border-border hover:bg-accent"
             >
               Cancel
             </button>
             <button
               onClick={handleForgotPassword}
               disabled={resetConfirmText !== 'RESET'}
-              className="flex-1 py-2 px-4 bg-red-500 text-white rounded-md hover:bg-red-600 disabled:opacity-50"
+              className="flex-1 py-2 px-4 bg-red-500 text-white hover:bg-red-600 disabled:opacity-50"
             >
               Reset Wallet
             </button>
@@ -201,7 +201,7 @@ export function UnlockWallet({ onUnlock }: UnlockWalletProps) {
       <div className="w-full max-w-md p-6 space-y-6">
         <div className="flex justify-center mb-4">
           {isLocked ? (
-            <div className="p-3 rounded-full bg-red-500">
+            <div className="p-3 bg-red-500">
               <Clock className="h-8 w-8 text-white" />
             </div>
           ) : (
@@ -226,7 +226,7 @@ export function UnlockWallet({ onUnlock }: UnlockWalletProps) {
 
         {/* Lockout Timer */}
         {isLocked && (
-          <div className="flex flex-col items-center gap-2 p-4 bg-red-50 dark:bg-red-950/30 rounded-lg border border-red-200 dark:border-red-800">
+          <div className="flex flex-col items-center gap-2 p-4 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800">
             <AlertTriangle className="h-6 w-6 text-red-500" />
             <div className="text-center">
               <p className="text-sm text-red-600 dark:text-red-400">
@@ -246,7 +246,7 @@ export function UnlockWallet({ onUnlock }: UnlockWalletProps) {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="Enter password"
-              className="w-full px-3 py-2 pr-10 border border-border rounded-md bg-background disabled:opacity-50"
+              className="w-full px-3 py-2 pr-10 border border-border bg-background disabled:opacity-50"
               disabled={isLoading || isLocked}
             />
             <button
@@ -261,7 +261,7 @@ export function UnlockWallet({ onUnlock }: UnlockWalletProps) {
 
           {/* Caps Lock Warning */}
           {capsLockOn && !isLocked && (
-            <div className="flex items-center gap-2 p-2 bg-yellow-500/10 border border-yellow-500/30 rounded text-yellow-600 dark:text-yellow-400">
+            <div className="flex items-center gap-2 p-2 bg-yellow-500/10 border border-yellow-500/30 text-yellow-600 dark:text-yellow-400">
               <AlertTriangle className="h-4 w-4 flex-shrink-0" />
               <span className="text-xs">Caps Lock is ON</span>
             </div>
@@ -284,7 +284,7 @@ export function UnlockWallet({ onUnlock }: UnlockWalletProps) {
           <button
             type="submit"
             disabled={isLoading || isLocked}
-            className="w-full py-2 px-4 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 disabled:opacity-50"
+            className="w-full py-2 px-4 bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
           >
             {isLoading ? 'Unlocking...' : isLocked ? 'Locked' : 'Unlock'}
           </button>

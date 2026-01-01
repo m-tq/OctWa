@@ -6,7 +6,7 @@ import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Unlock, AlertTriangle } from 'lucide-react';
 import { Wallet } from '../types/wallet';
-import { decryptBalance } from '../utils/api';
+import { decryptBalance, invalidateCacheAfterDecrypt } from '../utils/api';
 import { useToast } from '@/hooks/use-toast';
 import { AnimatedIcon } from './AnimatedIcon';
 import { TransactionModal, TransactionStatus, TransactionResult } from './TransactionModal';
@@ -69,6 +69,8 @@ export function DecryptBalanceDialog({
       const result = await decryptBalance(wallet.address, amountNum, wallet.privateKey);
       
       if (result.success) {
+        // Invalidate cache after decrypt
+        await invalidateCacheAfterDecrypt(wallet.address);
         // Update modal to success state
         setTxModalStatus('success');
         setTxModalResult({ hash: result.tx_hash, amount: amountNum.toFixed(8) });
@@ -95,25 +97,23 @@ export function DecryptBalanceDialog({
         <AnimatedIcon type="decrypt" size="sm" />
       )}
 
-      {/* Description text - no border in popup mode, centered */}
+      {/* Description text - no border, aligned with icon */}
       {isPopupMode && isInline ? (
         <p className="text-xs text-center text-[#0000db]">
           Convert private OCT back to public OCT.
         </p>
       ) : (
-        <Alert className={isPopupMode ? "py-2" : ""}>
-          <div className={isPopupMode ? "flex items-center gap-2" : ""}>
-            <AlertTriangle className={`${isPopupMode ? "h-4 w-4 flex-shrink-0" : "h-4 w-4"}`} />
-            <AlertDescription className={isPopupMode ? "text-xs leading-normal" : ""}>
-              {isPopupMode ? "Convert private OCT back to public OCT." : "Decrypting balance converts private OCT back to public OCT."}
-            </AlertDescription>
-          </div>
-        </Alert>
+        <div className={`flex items-center gap-2 ${isPopupMode ? "py-2" : "py-3"}`}>
+          <AlertTriangle className="h-4 w-4 flex-shrink-0 text-yellow-500" />
+          <span className={`text-muted-foreground ${isPopupMode ? "text-xs leading-normal" : "text-sm"}`}>
+            {isPopupMode ? "Convert private OCT back to public OCT." : "Decrypting balance converts private OCT back to public OCT."}
+          </span>
+        </div>
       )}
 
       <div className={isPopupMode ? "space-y-1" : "space-y-2"}>
         <Label className={isPopupMode ? "text-xs" : ""}>Current Private Balance</Label>
-        <div className={`bg-[#0000db]/5 border border-[#0000db]/20 rounded-md font-mono text-[#0000db] ${isPopupMode ? 'p-2 text-xs' : 'p-3'}`}>
+        <div className={`bg-[#0000db]/5 border border-[#0000db]/20  font-mono text-[#0000db] ${isPopupMode ? 'p-2 text-xs' : 'p-3'}`}>
           {encryptedBalance.toFixed(8)} OCT
         </div>
       </div>

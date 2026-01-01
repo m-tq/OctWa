@@ -111,11 +111,12 @@ export function WelcomeScreen({ onWalletCreated }: WelcomeScreenProps) {
           {/* Logo & Title */}
           <div className="text-center mb-8">
             <div className="flex items-center justify-center mb-4">
-              <div className="p-3 bg-primary/10 rounded-full border border-primary/20">
+              <div className="p-4 bg-primary/10 rounded-full border border-primary/20">
                 <img 
                   src="/icons/octwa128x128.png" 
                   alt="OctWa Logo" 
-                  className="h-12 w-12"
+                  className="h-18 w-18"
+                  style={{ width: '72px', height: '72px' }}
                 />
               </div>
             </div>

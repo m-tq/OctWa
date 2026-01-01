@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Send, AlertTriangle, Wallet as WalletIcon, CheckCircle, MessageSquare, Calculator, Settings2 } from 'lucide-react';
 import { Wallet } from '../types/wallet';
-import { fetchBalance, sendTransaction, createTransaction } from '../utils/api';
+import { fetchBalance, sendTransaction, createTransaction, invalidateCacheAfterTransaction } from '../utils/api';
 import { useToast } from '@/hooks/use-toast';
 import { TransactionModal, TransactionStatus, TransactionResult } from './TransactionModal';
 import { AnimatedIcon } from './AnimatedIcon';
@@ -239,7 +239,9 @@ export function SendTransaction({ wallet, balance, nonce, onBalanceUpdate, onNon
         // Update balance after successful transaction
         setTimeout(async () => {
           try {
-            const updatedBalance = await fetchBalance(wallet.address);
+            // Invalidate cache first
+            await invalidateCacheAfterTransaction(wallet.address);
+            const updatedBalance = await fetchBalance(wallet.address, true);
             onBalanceUpdate(updatedBalance.balance);
             onNonceUpdate(updatedBalance.nonce);
           } catch (error) {
@@ -408,7 +410,8 @@ export function SendTransaction({ wallet, balance, nonce, onBalanceUpdate, onNon
               <span>Fee:</span>
               <span className="font-mono">{fee.toFixed(4)} OCT</span>
             </div>
-            <div className="flex justify-between font-medium border-t pt-1 mt-1">
+            <div className="h-px bg-border my-1" />
+            <div className="flex justify-between font-medium">
               <span>Total:</span>
               <span className="font-mono">{totalCost.toFixed(4)} OCT</span>
             </div>
@@ -594,7 +597,7 @@ export function SendTransaction({ wallet, balance, nonce, onBalanceUpdate, onNon
 
       {/* Fee Summary */}
       {amount && validateAmount(amount) && (
-        <div className="p-3 bg-muted rounded-md text-sm space-y-1">
+        <div className="p-3 bg-muted  text-sm space-y-1">
           <div className="flex justify-between">
             <span>Amount:</span>
             <span className="font-mono">{amountNum.toFixed(8)} OCT</span>
@@ -603,7 +606,8 @@ export function SendTransaction({ wallet, balance, nonce, onBalanceUpdate, onNon
             <span>Fee:</span>
             <span className="font-mono">{fee.toFixed(8)} OCT</span>
           </div>
-          <div className="flex justify-between font-medium border-t pt-1 mt-1">
+          <div className="h-px bg-border my-1" />
+          <div className="flex justify-between font-medium">
             <span>Total:</span>
             <span className="font-mono">{totalCost.toFixed(8)} OCT</span>
           </div>
@@ -635,7 +639,7 @@ export function SendTransaction({ wallet, balance, nonce, onBalanceUpdate, onNon
             </AlertDialogTitle>
             <AlertDialogDescription className="space-y-3">
               <p>You are about to send a large amount:</p>
-              <div className="bg-muted p-3 rounded-md space-y-2 font-mono text-sm">
+              <div className="bg-muted p-3  space-y-2 font-mono text-sm">
                 <div className="flex justify-between">
                   <span>Amount:</span>
                   <span className="font-bold text-orange-500">{amountNum.toFixed(8)} OCT</span>

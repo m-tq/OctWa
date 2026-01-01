@@ -498,7 +498,7 @@ function App() {
             addWallet(pendingSetupWallet);
             setPendingSetupWallet(null);
           }} 
-          duration={1500} 
+          duration={3500} 
         />
       </ThemeProvider>
     );

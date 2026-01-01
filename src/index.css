@@ -28,7 +28,7 @@
     --chart-3: 197 37% 24%;
     --chart-4: 43 74% 66%;
     --chart-5: 27 87% 67%;
-    --radius: 0.375rem;
+    --radius: 0rem;
   }
   
   .dark {
@@ -60,9 +60,33 @@
   }
 }
 
+/* ============================================
+   GLOBAL SHARP EDGES - NO ROUNDED CORNERS
+   ============================================ */
 @layer base {
   * {
     @apply border-border;
+    border-radius: 0 !important;
+  }
+  
+  /* Override all rounded utilities */
+  .rounded, .rounded-sm, .rounded-md, .rounded-lg, .rounded-xl, .rounded-2xl, .rounded-3xl {
+    border-radius: 0 !important;
+  }
+  
+  /* EXCEPTIONS: Keep rounded for specific elements */
+  /* Logo backgrounds, loading spinners, animated icons */
+  .rounded-full,
+  .animate-spin,
+  [class*="animate-spin"],
+  .logo-circle,
+  .loading-spinner {
+    border-radius: 9999px !important;
+  }
+  
+  /* Consistent border width */
+  .border, [class*="border-"] {
+    border-width: 1px;
   }
   
   html, body {
@@ -102,7 +126,8 @@
 }
 
 .octra-card {
-  @apply bg-card/50 border border-border/40 rounded-lg backdrop-blur-sm;
+  @apply bg-card/50 border border-border/40 backdrop-blur-sm;
+  border-radius: 0 !important;
 }
 
 .octra-nav-item {
@@ -115,9 +140,10 @@
 
 /* Clean button styling */
 .octra-button {
-  @apply inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors;
+  @apply inline-flex items-center justify-center text-sm font-medium transition-colors;
   @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring;
   @apply disabled:pointer-events-none disabled:opacity-50;
+  border-radius: 0 !important;
 }
 
 /* Subtle animations */
@@ -187,7 +213,7 @@
 
 .popup-view .card {
   margin-bottom: 0.75rem !important;
-  border-radius: 0.5rem !important;
+  border-radius: 0 !important;
 }
 
 .popup-view .card-header {
@@ -298,8 +324,9 @@
 }
 
 .docs-nav-item {
-  @apply block px-3 py-2 text-sm font-medium rounded-md transition-colors;
+  @apply block px-3 py-2 text-sm font-medium transition-colors;
   @apply text-muted-foreground hover:text-foreground hover:bg-accent;
+  border-radius: 0 !important;
 }
 
 .docs-nav-item.active {
@@ -308,7 +335,8 @@
 
 /* Improved card styling */
 .docs-card {
-  @apply bg-card border border-border rounded-lg p-6 shadow-sm;
+  @apply bg-card border border-border p-6 shadow-sm;
+  border-radius: 0 !important;
 }
 
 .docs-card-header {

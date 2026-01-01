@@ -83,7 +83,7 @@ export function ModeToggle({
                   onClick={handleToggle}
                   disabled={!privateEnabled && !isPrivate}
                   className={`flex items-center justify-center relative overflow-hidden transition-all duration-300 shadow-md
-                    ${isCompact ? 'h-12 w-12 p-0 rounded-xl' : 'h-14 w-14 p-0 rounded-xl'}
+                    ${isCompact ? 'h-12 w-12 p-0 ' : 'h-14 w-14 p-0 '}
                     ${isPrivate 
                       ? 'bg-[#0000db] border-[#0000db] hover:bg-[#0000db]/90 hover:border-[#0000db]/90 shadow-[#0000db]/30' 
                       : 'bg-background border-2 border-border hover:bg-accent hover:border-foreground/20'

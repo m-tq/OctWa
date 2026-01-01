@@ -561,7 +561,7 @@ export function UnifiedContractHandler({
                 <Code className="h-4 w-4" />
                 Contract Method Details
               </h3>
-              <div className="space-y-3 p-4 bg-muted rounded-md">
+              <div className="space-y-3 p-4 bg-muted ">
                 <div className="flex justify-between items-center">
                   <span className="text-sm text-muted-foreground">Contract:</span>
                   <span className="font-mono text-sm">{truncateAddress(request.contractAddress)}</span>
@@ -669,7 +669,7 @@ export function UnifiedContractHandler({
                 </Button>
                 
                 {showAdvanced && (
-                  <div className="space-y-4 p-4 bg-muted rounded-md">
+                  <div className="space-y-4 p-4 bg-muted ">
                     <div className="grid grid-cols-2 gap-4">
                       <div className="space-y-2">
                         <Label htmlFor="gasLimit" className="text-sm">Gas Limit</Label>
@@ -705,7 +705,7 @@ export function UnifiedContractHandler({
                   <Shield className="h-4 w-4" />
                   Wallet Info
                 </h3>
-                <div className="p-4 bg-muted rounded-md space-y-3">
+                <div className="p-4 bg-muted  space-y-3">
                   <div className="flex justify-between items-center">
                     <span className="text-sm text-muted-foreground">From Address:</span>
                     <span className="font-mono text-sm">{truncateAddress(selectedWallet.address)}</span>

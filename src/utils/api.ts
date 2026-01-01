@@ -1,5 +1,16 @@
 // api.ts
-import { BalanceResponse, Transaction, AddressHistoryResponse, TransactionDetails, PendingTransaction, StagingResponse, EncryptedBalanceResponse, PendingPrivateTransfer, PrivateTransferResult, ClaimResult } from '../types/wallet';
+import {
+  BalanceResponse,
+  Transaction,
+  AddressHistoryResponse,
+  TransactionDetails,
+  PendingTransaction,
+  StagingResponse,
+  EncryptedBalanceResponse,
+  PendingPrivateTransfer,
+  PrivateTransferResult,
+  ClaimResult,
+} from '../types/wallet';
 import { encryptClientBalance } from './crypto';
 import { getActiveRPCProvider } from './rpc';
 import * as nacl from 'tweetnacl';
@@ -11,8 +22,390 @@ const MAX_RETRIES = 3;
 const RETRY_DELAY_MS = 1000; // 1 second base delay
 const RETRY_BACKOFF_MULTIPLIER = 2; // Exponential backoff
 
+// ============================================
+// PERSISTENT EPOCH-BASED CACHING SYSTEM
+// ============================================
+// Uses chrome.storage.local for persistent cache that syncs between popup/expanded
+// Cache is invalidated when epoch changes (transaction processed)
+// TTL is fallback if epoch check fails
+
+const EPOCH_CHECK_INTERVAL = 5 * 1000; // Check epoch every 5 seconds
+const CACHE_TTL_FALLBACK = 60 * 1000; // 1 minute fallback if epoch check fails
+const CACHE_STORAGE_KEY = 'octwa_api_cache';
+
+interface CacheEntry<T> {
+  data: T;
+  epoch: number;
+  timestamp: number;
+}
+
+interface CacheStorage {
+  balance: Record<string, CacheEntry<BalanceResponse>>;
+  encryptedBalance: Record<string, CacheEntry<EncryptedBalanceResponse>>;
+  history: Record<string, CacheEntry<any>>;
+  pendingTransfers: Record<string, CacheEntry<PendingPrivateTransfer[]>>;
+  currentEpoch: number;
+  lastEpochCheck: number;
+}
+
+// Check if we're in extension context
+function isExtensionContext(): boolean {
+  return typeof chrome !== 'undefined' && 
+         chrome.storage && 
+         typeof chrome.storage.local !== 'undefined';
+}
+
+class APICache {
+  // In-memory cache for non-extension context (dev mode)
+  private memoryCache: CacheStorage = {
+    balance: {},
+    encryptedBalance: {},
+    history: {},
+    pendingTransfers: {},
+    currentEpoch: 0,
+    lastEpochCheck: 0
+  };
+
+  // Epoch tracking
+  private currentEpoch: number = 0;
+  private lastEpochCheck: number = 0;
+  private epochCheckPromise: Promise<number> | null = null;
+
+  constructor() {
+    // Load cache from storage on init
+    this.loadFromStorage();
+    
+    // Listen for storage changes (sync between popup/expanded)
+    if (isExtensionContext()) {
+      chrome.storage.onChanged.addListener((changes, areaName) => {
+        if (areaName === 'local' && changes[CACHE_STORAGE_KEY]) {
+          const newValue = changes[CACHE_STORAGE_KEY].newValue as CacheStorage;
+          if (newValue) {
+            this.memoryCache = newValue;
+            this.currentEpoch = newValue.currentEpoch || 0;
+            this.lastEpochCheck = newValue.lastEpochCheck || 0;
+            console.log('📦 Cache synced from storage');
+          }
+        }
+      });
+    }
+  }
+
+  // Load cache from chrome.storage.local
+  private async loadFromStorage(): Promise<void> {
+    if (!isExtensionContext()) return;
+    
+    try {
+      const result = await chrome.storage.local.get(CACHE_STORAGE_KEY);
+      if (result[CACHE_STORAGE_KEY]) {
+        this.memoryCache = result[CACHE_STORAGE_KEY];
+        this.currentEpoch = this.memoryCache.currentEpoch || 0;
+        this.lastEpochCheck = this.memoryCache.lastEpochCheck || 0;
+        console.log('📦 Cache loaded from storage');
+      }
+    } catch (error) {
+      console.warn('📦 Failed to load cache from storage:', error);
+    }
+  }
+
+  // Save cache to chrome.storage.local
+  private async saveToStorage(): Promise<void> {
+    if (!isExtensionContext()) return;
+    
+    try {
+      this.memoryCache.currentEpoch = this.currentEpoch;
+      this.memoryCache.lastEpochCheck = this.lastEpochCheck;
+      await chrome.storage.local.set({ [CACHE_STORAGE_KEY]: this.memoryCache });
+    } catch (error) {
+      console.warn('📦 Failed to save cache to storage:', error);
+    }
+  }
+
+  // Get current epoch with caching
+  async getCurrentEpoch(): Promise<number> {
+    const now = Date.now();
+
+    // Return cached epoch if recently checked
+    if (now - this.lastEpochCheck < EPOCH_CHECK_INTERVAL && this.currentEpoch > 0) {
+      return this.currentEpoch;
+    }
+
+    // Prevent multiple simultaneous epoch fetches
+    if (this.epochCheckPromise) {
+      return this.epochCheckPromise;
+    }
+
+    this.epochCheckPromise = this.fetchEpoch();
+    try {
+      const epoch = await this.epochCheckPromise;
+      return epoch;
+    } finally {
+      this.epochCheckPromise = null;
+    }
+  }
+
+  private async fetchEpoch(): Promise<number> {
+    try {
+      const response = await makeAPIRequest('/status');
+      if (response.ok) {
+        const data = await response.json();
+        const newEpoch = data.current_epoch;
+
+        // Just update epoch tracking, don't auto-invalidate cache
+        // Cache invalidation is handled manually after user actions
+        // or by WalletDashboard when it detects data changes
+        this.currentEpoch = newEpoch;
+        this.lastEpochCheck = Date.now();
+        await this.saveToStorage();
+        return newEpoch;
+      }
+    } catch (error) {
+      console.warn('📦 Failed to fetch epoch:', error);
+    }
+    return this.currentEpoch || 0;
+  }
+
+  // Check if cache entry exists (cache is valid until manually invalidated or updated)
+  private isValid<T>(entry: CacheEntry<T> | undefined): boolean {
+    // Cache is valid as long as entry exists
+    // Invalidation is handled by:
+    // 1. Manual invalidate after user TX actions
+    // 2. WalletDashboard updating cache when epoch change detects new data
+    return !!entry;
+  }
+
+  // Balance cache
+  async getBalance(address: string): Promise<BalanceResponse | null> {
+    const entry = this.memoryCache.balance[address];
+    if (this.isValid(entry)) {
+      console.log(
+        `📦 Cache hit: balance for ${address.slice(0, 8)}`
+      );
+      return entry!.data;
+    }
+    return null;
+  }
+
+  async setBalance(address: string, data: BalanceResponse): Promise<void> {
+    const currentEpoch = await this.getCurrentEpoch();
+    this.memoryCache.balance[address] = {
+      data,
+      epoch: currentEpoch,
+      timestamp: Date.now(),
+    };
+    console.log(`📦 Cache set: balance for ${address.slice(0, 8)}`);
+    await this.saveToStorage();
+  }
+
+  async invalidateBalance(address: string): Promise<void> {
+    delete this.memoryCache.balance[address];
+    console.log(`📦 Cache invalidated: balance for ${address.slice(0, 8)}`);
+    await this.saveToStorage();
+  }
+
+  // Encrypted balance cache
+  async getEncryptedBalance(
+    address: string
+  ): Promise<EncryptedBalanceResponse | null> {
+    const entry = this.memoryCache.encryptedBalance[address];
+    if (this.isValid(entry)) {
+      console.log(
+        `📦 Cache hit: encrypted balance for ${address.slice(0, 8)}`
+      );
+      return entry!.data;
+    }
+    return null;
+  }
+
+  async setEncryptedBalance(
+    address: string,
+    data: EncryptedBalanceResponse
+  ): Promise<void> {
+    const currentEpoch = await this.getCurrentEpoch();
+    this.memoryCache.encryptedBalance[address] = {
+      data,
+      epoch: currentEpoch,
+      timestamp: Date.now(),
+    };
+    console.log(`📦 Cache set: encrypted balance for ${address.slice(0, 8)}`);
+    await this.saveToStorage();
+  }
+
+  async invalidateEncryptedBalance(address: string): Promise<void> {
+    delete this.memoryCache.encryptedBalance[address];
+    console.log(
+      `📦 Cache invalidated: encrypted balance for ${address.slice(0, 8)}`
+    );
+    await this.saveToStorage();
+  }
+
+  // History cache
+  async getHistory(address: string): Promise<any | null> {
+    const entry = this.memoryCache.history[address];
+    if (this.isValid(entry)) {
+      console.log(`📦 Cache hit: history for ${address.slice(0, 8)}`);
+      return entry!.data;
+    }
+    return null;
+  }
+
+  async setHistory(address: string, data: any): Promise<void> {
+    const currentEpoch = await this.getCurrentEpoch();
+    this.memoryCache.history[address] = {
+      data,
+      epoch: currentEpoch,
+      timestamp: Date.now(),
+    };
+    console.log(`📦 Cache set: history for ${address.slice(0, 8)}`);
+    await this.saveToStorage();
+  }
+
+  async invalidateHistory(address: string): Promise<void> {
+    delete this.memoryCache.history[address];
+    console.log(`📦 Cache invalidated: history for ${address.slice(0, 8)}`);
+    await this.saveToStorage();
+  }
+
+  // Pending transfers cache
+  async getPendingTransfers(
+    address: string
+  ): Promise<PendingPrivateTransfer[] | null> {
+    const entry = this.memoryCache.pendingTransfers[address];
+    if (this.isValid(entry)) {
+      console.log(`📦 Cache hit: pending transfers for ${address.slice(0, 8)}`);
+      return entry!.data;
+    }
+    return null;
+  }
+
+  async setPendingTransfers(
+    address: string,
+    data: PendingPrivateTransfer[]
+  ): Promise<void> {
+    const currentEpoch = await this.getCurrentEpoch();
+    this.memoryCache.pendingTransfers[address] = {
+      data,
+      epoch: currentEpoch,
+      timestamp: Date.now(),
+    };
+    console.log(
+      `📦 Cache set: pending transfers for ${address.slice(0, 8)} (epoch ${currentEpoch})`
+    );
+    await this.saveToStorage();
+  }
+
+  async invalidatePendingTransfers(address: string): Promise<void> {
+    delete this.memoryCache.pendingTransfers[address];
+    console.log(
+      `📦 Cache invalidated: pending transfers for ${address.slice(0, 8)}`
+    );
+    await this.saveToStorage();
+  }
+
+  // Invalidate all cache for an address (call after transactions)
+  async invalidateAll(address: string): Promise<void> {
+    delete this.memoryCache.balance[address];
+    delete this.memoryCache.encryptedBalance[address];
+    delete this.memoryCache.history[address];
+    delete this.memoryCache.pendingTransfers[address];
+    console.log(`📦 Cache invalidated: ALL for ${address.slice(0, 8)}`);
+    await this.saveToStorage();
+  }
+
+  // Clear all cache
+  async clearAll(): Promise<void> {
+    this.memoryCache = {
+      balance: {},
+      encryptedBalance: {},
+      history: {},
+      pendingTransfers: {},
+      currentEpoch: this.currentEpoch,
+      lastEpochCheck: this.lastEpochCheck
+    };
+    console.log('📦 Cache cleared: ALL');
+    await this.saveToStorage();
+  }
+
+  // Get current cached epoch (for display/debug)
+  getCachedEpoch(): number {
+    return this.currentEpoch;
+  }
+
+  // Epoch change listeners
+  private epochChangeListeners: Set<(newEpoch: number, oldEpoch: number) => void> = new Set();
+
+  // Subscribe to epoch changes
+  onEpochChange(callback: (newEpoch: number, oldEpoch: number) => void): () => void {
+    this.epochChangeListeners.add(callback);
+    // Return unsubscribe function
+    return () => {
+      this.epochChangeListeners.delete(callback);
+    };
+  }
+
+  // Notify all listeners of epoch change
+  private notifyEpochChange(newEpoch: number, oldEpoch: number): void {
+    this.epochChangeListeners.forEach(callback => {
+      try {
+        callback(newEpoch, oldEpoch);
+      } catch (error) {
+        console.error('Error in epoch change listener:', error);
+      }
+    });
+  }
+
+  // Check for epoch change and notify listeners (call this periodically)
+  async checkEpochChange(): Promise<boolean> {
+    const oldEpoch = this.currentEpoch;
+    const newEpoch = await this.fetchEpoch();
+    
+    if (oldEpoch > 0 && newEpoch > oldEpoch) {
+      console.log(`📦 Epoch change detected: ${oldEpoch} → ${newEpoch}`);
+      this.notifyEpochChange(newEpoch, oldEpoch);
+      return true;
+    }
+    return false;
+  }
+}
+
+// Singleton cache instance
+export const apiCache = new APICache();
+
+// Helper to invalidate cache after transaction
+export async function invalidateCacheAfterTransaction(address: string): Promise<void> {
+  await apiCache.invalidateBalance(address);
+  await apiCache.invalidateHistory(address);
+}
+
+export async function invalidateCacheAfterEncrypt(address: string): Promise<void> {
+  await apiCache.invalidateBalance(address);
+  await apiCache.invalidateEncryptedBalance(address);
+  await apiCache.invalidateHistory(address);
+}
+
+export async function invalidateCacheAfterDecrypt(address: string): Promise<void> {
+  await apiCache.invalidateBalance(address);
+  await apiCache.invalidateEncryptedBalance(address);
+  await apiCache.invalidateHistory(address);
+}
+
+export async function invalidateCacheAfterClaim(address: string): Promise<void> {
+  await apiCache.invalidateEncryptedBalance(address);
+  await apiCache.invalidatePendingTransfers(address);
+  await apiCache.invalidateHistory(address);
+}
+
+export async function invalidateCacheAfterPrivateSend(address: string): Promise<void> {
+  await apiCache.invalidateEncryptedBalance(address);
+  await apiCache.invalidateHistory(address);
+}
+
+// ============================================
+// END CACHING SYSTEM
+// ============================================
+
 // Helper function to delay execution
-const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 // Helper function to check if error is retryable
 const isRetryableError = (error: any, response?: Response): boolean => {
@@ -445,7 +838,13 @@ export async function fetchPendingTransactionByHash(hash: string, maxRetries: nu
   return null;
 }
 
-export async function fetchBalance(address: string): Promise<BalanceResponse> {
+export async function fetchBalance(address: string, forceRefresh = false): Promise<BalanceResponse> {
+  // Check cache first (unless force refresh)
+  if (!forceRefresh) {
+    const cached = await apiCache.getBalance(address);
+    if (cached) return cached;
+  }
+
   try {
     // Fetch both balance and staging data like CLI does
     const [balanceResponse, stagingResponse] = await Promise.all([
@@ -513,7 +912,10 @@ export async function fetchBalance(address: string): Promise<BalanceResponse> {
       return { balance: 0, nonce: 0 };
     }
 
-    return { balance, nonce };
+    const result = { balance, nonce };
+    // Cache the result
+    await apiCache.setBalance(address, result);
+    return result;
   } catch (error) {
     console.error('Error fetching balance:', error);
     // Return zero balance for network errors (new address)
@@ -521,12 +923,21 @@ export async function fetchBalance(address: string): Promise<BalanceResponse> {
   }
 }
 
-export async function fetchEncryptedBalance(address: string, privateKey: string): Promise<EncryptedBalanceResponse | null> {
+export async function fetchEncryptedBalance(address: string, privateKey?: string, forceRefresh = false): Promise<EncryptedBalanceResponse | null> {
+  // Check cache first (unless force refresh)
+  if (!forceRefresh) {
+    const cached = await apiCache.getEncryptedBalance(address);
+    if (cached) return cached;
+  }
+
   try {
+    const headers: Record<string, string> = {};
+    if (privateKey) {
+      headers['X-Private-Key'] = privateKey;
+    }
+    
     const response = await makeAPIRequest(`/view_encrypted_balance/${address}`, {
-      headers: {
-        'X-Private-Key': privateKey
-      }
+      headers
     });
     
     if (!response.ok) {
@@ -547,13 +958,17 @@ export async function fetchEncryptedBalance(address: string, privateKey: string)
       return null;
     }
     
-    return {
+    const result = {
       public: parseFloat(data.public_balance?.split(' ')[0] || '0'),
       public_raw: parseInt(data.public_balance_raw || '0'),
       encrypted: parseFloat(data.encrypted_balance?.split(' ')[0] || '0'),
       encrypted_raw: parseInt(data.encrypted_balance_raw || '0'),
       total: parseFloat(data.total_balance?.split(' ')[0] || '0')
     };
+    
+    // Cache the result
+    await apiCache.setEncryptedBalance(address, result);
+    return result;
   } catch (error) {
     console.error('Error fetching encrypted balance:', error);
     return null;
@@ -686,12 +1101,21 @@ export async function createPrivateTransfer(fromAddress: string, toAddress: stri
   }
 }
 
-export async function getPendingPrivateTransfers(address: string, privateKey: string): Promise<PendingPrivateTransfer[]> {
+export async function getPendingPrivateTransfers(address: string, privateKey?: string, forceRefresh = false): Promise<PendingPrivateTransfer[]> {
+  // Check cache first (unless force refresh)
+  if (!forceRefresh) {
+    const cached = await apiCache.getPendingTransfers(address);
+    if (cached) return cached;
+  }
+
   try {
+    const headers: Record<string, string> = {};
+    if (privateKey) {
+      headers['X-Private-Key'] = privateKey;
+    }
+    
     const response = await makeAPIRequest(`/pending_private_transfers?address=${address}`, {
-      headers: {
-        'X-Private-Key': privateKey
-      }
+      headers
     });
     
     if (response.ok) {
@@ -707,7 +1131,10 @@ export async function getPendingPrivateTransfers(address: string, privateKey: st
         console.error('Failed to parse pending private transfers response as JSON:', parseError);
         return [];
       }
-      return data.pending_transfers || [];
+      const transfers = data.pending_transfers || [];
+      // Cache the result
+      await apiCache.setPendingTransfers(address, transfers);
+      return transfers;
     }
     console.error('Failed to fetch pending private transfers:', response.status);
     return [];
@@ -878,14 +1305,28 @@ export async function sendMultipleTransactions(transactions: any[]): Promise<str
 
 export async function getTransactionHistory(
   address: string, 
-  options: HistoryPaginationOptions = {}
+  options: HistoryPaginationOptions = {},
+  forceRefresh = false
 ): Promise<{ transactions: any[]; totalCount: number }> {
+  // Check cache first (unless force refresh or pagination)
+  if (!forceRefresh && (options.offset === 0 || options.offset === undefined)) {
+    const cached = await apiCache.getHistory(address);
+    if (cached) return cached;
+  }
+
   try {
     const result = await fetchTransactionHistory(address, options);
-    return { 
+    const historyResult = { 
       transactions: result.transactions || [], 
       totalCount: result.totalCount || 0 
     };
+    
+    // Cache only first page results
+    if (options.offset === 0 || options.offset === undefined) {
+      await apiCache.setHistory(address, historyResult);
+    }
+    
+    return historyResult;
   } catch (error) {
     console.error('Error fetching transaction history:', error);
     return { transactions: [], totalCount: 0 };

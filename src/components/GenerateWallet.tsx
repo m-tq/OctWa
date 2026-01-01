@@ -19,6 +19,7 @@ import {
 interface GenerateWalletProps {
   onWalletGenerated: (wallet: Wallet) => void;
   isCompact?: boolean;
+  hideBorder?: boolean;
 }
 
 const CLIPBOARD_CLEAR_DELAY = 30000;
@@ -35,7 +36,7 @@ function getRandomIndices(total: number, count: number): number[] {
   return indices.sort((a, b) => a - b);
 }
 
-export function GenerateWallet({ onWalletGenerated, isCompact = false }: GenerateWalletProps) {
+export function GenerateWallet({ onWalletGenerated, isCompact = false, hideBorder = false }: GenerateWalletProps) {
   const [generatedWallet, setGeneratedWallet] = useState<Wallet | null>(null);
   const [isGenerating, setIsGenerating] = useState(true);
   const [hasBackedUp, setHasBackedUp] = useState(false);
@@ -201,42 +202,42 @@ export function GenerateWallet({ onWalletGenerated, isCompact = false }: Generat
     return (
       <>
         <Dialog open={showVerifyModal} onOpenChange={setShowVerifyModal}>
-          <DialogContent className="sm:max-w-md">
-            <DialogHeader>
-              <DialogTitle className="flex items-center gap-2">
-                <ShieldCheck className="h-5 w-5 text-primary" />
-                Are you sure you have a backup?
+          <DialogContent className="w-[90vw] max-w-[320px] p-4 z-[10001]" overlayClassName="z-[10000]">
+            <DialogHeader className="pb-2">
+              <DialogTitle className="flex items-center gap-2 text-sm">
+                <ShieldCheck className="h-4 w-4 text-primary" />
+                Verify Backup
               </DialogTitle>
-              <DialogDescription>
-                Please enter the following words from your mnemonic phrase to verify your backup.
+              <DialogDescription className="text-xs">
+                Enter the words below to confirm your backup.
               </DialogDescription>
             </DialogHeader>
-            <div className="space-y-4 py-4">
+            <div className="space-y-3 py-2">
               {verifyIndices.map((idx) => (
-                <div key={idx} className="space-y-2">
-                  <Label htmlFor={`word-compact-${idx}`}>Word {idx + 1}</Label>
+                <div key={idx} className="space-y-1">
+                  <Label htmlFor={`word-compact-${idx}`} className="text-xs">Word #{idx + 1}</Label>
                   <Input
                     id={`word-compact-${idx}`}
-                    placeholder={`Enter word #${idx + 1}`}
+                    placeholder={`Word #${idx + 1}`}
                     value={verifyInputs[idx] || ''}
                     onChange={(e) => handleVerifyInputChange(idx, e.target.value)}
-                    className={verifyError ? 'border-destructive' : ''}
+                    className={`h-8 text-xs ${verifyError ? 'border-destructive' : ''}`}
                   />
                 </div>
               ))}
               {verifyError && (
-                <p className="text-sm text-destructive flex items-center gap-1">
-                  <AlertCircle className="h-4 w-4" />
+                <p className="text-xs text-destructive flex items-center gap-1">
+                  <AlertCircle className="h-3 w-3" />
                   {verifyError}
                 </p>
               )}
             </div>
-            <div className="flex flex-col-reverse sm:flex-row gap-2">
-              <Button variant="outline" onClick={handleCancelVerify} className="flex-1">
-                Okay, I don't have a backup yet
+            <div className="flex gap-2 pt-1">
+              <Button variant="outline" onClick={handleCancelVerify} size="sm" className="flex-1 h-8 text-xs">
+                Cancel
               </Button>
-              <Button onClick={handleVerifyBackup} className="flex-1">
-                Verify Backup
+              <Button onClick={handleVerifyBackup} size="sm" className="flex-1 h-8 text-xs">
+                Verify
               </Button>
             </div>
           </DialogContent>
@@ -320,7 +321,7 @@ export function GenerateWallet({ onWalletGenerated, isCompact = false }: Generat
   return (
     <>
       <Dialog open={showVerifyModal} onOpenChange={setShowVerifyModal}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-md z-[10001]" overlayClassName="z-[10000]">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <ShieldCheck className="h-5 w-5 text-primary" />
@@ -360,11 +361,13 @@ export function GenerateWallet({ onWalletGenerated, isCompact = false }: Generat
           </div>
         </DialogContent>
       </Dialog>
-      <Card>
-      <CardHeader className="pb-4">
-        <CardTitle className="text-lg">Backup Your Wallet</CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-4">
+      <Card className={hideBorder ? 'border-0 shadow-none' : ''}>
+      {!hideBorder && (
+        <CardHeader className="pb-4">
+          <CardTitle className="text-lg">Backup Your Wallet</CardTitle>
+        </CardHeader>
+      )}
+      <CardContent className={`space-y-4 ${hideBorder ? 'p-0' : ''}`}>
         <div className="space-y-2">
           <label className="text-sm font-medium">Address</label>
           <div className="flex items-center gap-2">

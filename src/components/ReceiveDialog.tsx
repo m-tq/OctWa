@@ -53,7 +53,7 @@ export function ReceiveDialog({
   const content = (
     <div className="flex flex-col items-center py-4">
       {/* QR Code */}
-      <div className="bg-white p-4 rounded-xl shadow-sm border">
+      <div className="bg-white p-4  shadow-sm border">
         <img 
           src={qrCodeUrl} 
           alt="Wallet QR Code" 
@@ -64,7 +64,7 @@ export function ReceiveDialog({
       {/* Address */}
       <div className="mt-4 w-full max-w-sm px-4">
         <p className="text-xs text-muted-foreground text-center mb-2">Your Wallet Address</p>
-        <div className="bg-muted/50 rounded-lg p-3 border">
+        <div className="bg-muted/50  p-3 border">
           <p className="font-mono text-xs text-center break-all leading-relaxed">
             {wallet.address}
           </p>
