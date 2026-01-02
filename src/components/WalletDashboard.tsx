@@ -2617,7 +2617,7 @@ export function WalletDashboard({
               </div>
             </ScrollArea>
           ) : (
-            <div className="flex-1 p-6 overflow-auto xl:overflow-hidden">
+            <div className="flex-1 px-6 py-2 overflow-auto xl:overflow-hidden">
               {expandedSendModal === 'multi' && (
                 <MultiSend
                   wallet={wallet}
