@@ -1,13 +1,13 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Gift, RefreshCw, Wallet as WalletIcon, CheckCircle, AlertTriangle, Loader2, Package } from 'lucide-react';
+import { Gift, RefreshCw, Wallet as WalletIcon, Package } from 'lucide-react';
 import { Wallet } from '../types/wallet';
-import { getPendingPrivateTransfers, claimPrivateTransfer, fetchEncryptedBalance, invalidateCacheAfterClaim } from '../utils/api';
+import { getPendingPrivateTransfers, claimPrivateTransfer, invalidateCacheAfterClaim } from '../utils/api';
 import { deriveSharedSecretForClaim, decryptPrivateAmount } from '../utils/crypto';
 import { useToast } from '@/hooks/use-toast';
 import { TransactionModal, TransactionStatus, TransactionResult } from './TransactionModal';

@@ -20,6 +20,7 @@ interface PublicBalanceProps {
   isLoading?: boolean;
   hideBorder?: boolean;
   isPopupMode?: boolean;
+  onOpenEncryptModal?: () => void;
 }
 
 export function PublicBalance({ 
@@ -30,7 +31,8 @@ export function PublicBalance({
   onBalanceUpdate, 
   isLoading = false,
   hideBorder = false,
-  isPopupMode = false
+  isPopupMode = false,
+  onOpenEncryptModal
 }: PublicBalanceProps) {
   const [refreshing, setRefreshing] = useState(false);
   const [localEncryptedBalance, setLocalEncryptedBalance] = useState<any>(null);
@@ -146,7 +148,13 @@ export function PublicBalance({
                   <span className="inline-flex">
                     <Button
                       variant="outline"
-                      onClick={() => setShowEncryptDialog(true)}
+                      onClick={() => {
+                        if (onOpenEncryptModal) {
+                          onOpenEncryptModal();
+                        } else {
+                          setShowEncryptDialog(true);
+                        }
+                      }}
                       disabled={!balance || balance <= 0.001}
                       className="flex items-center gap-2 h-11 px-5 text-base"
                     >

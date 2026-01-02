@@ -12,7 +12,7 @@ export function ModeIndicator({ mode }: ModeIndicatorProps) {
   }
 
   return (
-    <div className="fixed bottom-[32px] right-0 z-40 pointer-events-none">
+    <div className="fixed bottom-[32px] right-0 z-[50] pointer-events-none">
       {/* Triangle Corner Badge - Private Mode Only */}
       <div className="relative overflow-hidden transition-all duration-300">
         {/* Triangle Shape using clip-path */}

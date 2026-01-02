@@ -4,8 +4,7 @@
  * Requirements: 2.4
  */
 
-import React from 'react';
-import { Loader2, CheckCircle2, XCircle, Clock } from 'lucide-react';
+import { Loader2, CheckCircle2, XCircle } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { JobStatus } from '../adapters/types';
 

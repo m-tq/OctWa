@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { DAppConnection } from './DAppConnection';
 import { UnifiedContractHandler } from './UnifiedContractHandler';
 import { Wallet, DAppConnectionRequest } from '../types/wallet';

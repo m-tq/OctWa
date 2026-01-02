@@ -1,12 +1,12 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Copy, RefreshCw, Wallet, Eye, EyeOff, Lock, Unlock, ArrowUpDown, PieChart } from 'lucide-react';
+import { RefreshCw, Wallet, Lock, Unlock, PieChart } from 'lucide-react';
 import { Wallet as WalletType } from '../types/wallet';
-import { fetchBalance, fetchEncryptedBalance, encryptBalance, decryptBalance, getPendingPrivateTransfers } from '../utils/api';
+import { fetchBalance, fetchEncryptedBalance, getPendingPrivateTransfers } from '../utils/api';
 import { useToast } from '@/hooks/use-toast';
 import { EncryptBalanceDialog } from './EncryptBalanceDialog';
 import { DecryptBalanceDialog } from './DecryptBalanceDialog';
@@ -23,7 +23,6 @@ interface BalanceProps {
 
 export function Balance({ wallet, balance, encryptedBalance: propEncryptedBalance, onEncryptedBalanceUpdate, onBalanceUpdate, isLoading = false }: BalanceProps) {
   const [refreshing, setRefreshing] = useState(false);
-  const [showPrivateKey, setShowPrivateKey] = useState(false);
   const [localEncryptedBalance, setLocalEncryptedBalance] = useState<any>(null);
   const [pendingTransfers, setPendingTransfers] = useState<any[]>([]);
   const [showEncryptDialog, setShowEncryptDialog] = useState(false);

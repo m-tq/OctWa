@@ -4,7 +4,6 @@
  * Requirements: 6.3
  */
 
-import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { FileCode2, Construction } from 'lucide-react';
 

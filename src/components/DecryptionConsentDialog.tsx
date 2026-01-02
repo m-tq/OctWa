@@ -4,7 +4,6 @@
  * Requirements: 4.4
  */
 
-import React from 'react';
 import { Lock, AlertTriangle } from 'lucide-react';
 import {
   AlertDialog,

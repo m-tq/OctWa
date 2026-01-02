@@ -19,14 +19,10 @@ import {
   CircleCheckBig,
   CheckCircle,
   XCircle,
-  Shield,
-  Globe,
   Code,
   Zap,
   ChevronLeft,
   ChevronRight,
-  ChevronDown,
-  ChevronUp,
 } from 'lucide-react';
 import { Wallet } from '../types/wallet';
 import { getTransactionHistory, fetchTransactionDetails, fetchPendingTransactionByHash } from '../utils/api';

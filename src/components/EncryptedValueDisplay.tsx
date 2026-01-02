@@ -4,7 +4,7 @@
  * Requirements: 4.2, 4.3
  */
 
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { Lock, Unlock, Eye, EyeOff } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { EncryptedValue, isEncryptedValue, getDisplayValue } from '../types/encrypted';

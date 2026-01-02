@@ -1,16 +1,15 @@
 import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription } from '@/components/ui/dialog';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger, SheetDescription } from '@/components/ui/sheet';
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Avatar } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+
 import { 
   Send, 
   History, 
@@ -145,6 +144,10 @@ export function WalletDashboard({
   const [bulkResetTrigger, setBulkResetTrigger] = useState(0);
   const [multiResetTrigger, setMultiResetTrigger] = useState(0);
   const [copiedField, setCopiedField] = useState<string | null>(null);
+  // Expanded mode encrypt/decrypt modal states (for private mode)
+  const [expandedPrivateModal, setExpandedPrivateModal] = useState<'encrypt' | 'decrypt' | null>(null);
+  const [privateModalAnimating, setPrivateModalAnimating] = useState(false);
+  const [privateModalClosing, setPrivateModalClosing] = useState(false);
   // Address Book state
   const [showAddressBook, setShowAddressBook] = useState(false);
   const { autoLabelWallets, getWalletDisplayName } = useAddressBook();
@@ -163,6 +166,22 @@ export function WalletDashboard({
     setTimeout(() => {
       setExpandedSendModal(null);
       setSendModalClosing(false);
+    }, 200);
+  };
+
+  // Handle opening private modal (encrypt/decrypt) with animation
+  const openPrivateModal = (type: 'encrypt' | 'decrypt') => {
+    setPrivateModalAnimating(true);
+    setExpandedPrivateModal(type);
+    setTimeout(() => setPrivateModalAnimating(false), 300);
+  };
+
+  // Handle closing private modal with animation
+  const closePrivateModal = () => {
+    setPrivateModalClosing(true);
+    setTimeout(() => {
+      setExpandedPrivateModal(null);
+      setPrivateModalClosing(false);
     }, 200);
   };
 
@@ -206,6 +225,20 @@ export function WalletDashboard({
     const savedMode = loadOperationMode(encBalance, pendingTransfersCount);
     setOperationMode(savedMode);
   }, [encryptedBalance, pendingTransfersCount]);
+
+  // Close private modal when wallet changes or when conditions are not met
+  useEffect(() => {
+    if (expandedPrivateModal) {
+      // Close decrypt modal if no encrypted balance
+      if (expandedPrivateModal === 'decrypt' && (!encryptedBalance || encryptedBalance.encrypted <= 0)) {
+        setExpandedPrivateModal(null);
+      }
+      // Close encrypt modal if no public balance
+      if (expandedPrivateModal === 'encrypt' && (!balance || balance <= 0.001)) {
+        setExpandedPrivateModal(null);
+      }
+    }
+  }, [wallet?.address, encryptedBalance, balance, expandedPrivateModal]);
 
   // Check if content is scrollable (for popup mode scroll indicator in history tab)
   useEffect(() => {
@@ -1245,7 +1278,7 @@ export function WalletDashboard({
 
       {/* Header - Fixed position for expanded mode */}
       <header className={`octra-header w-full ${isPopupMode ? 'sticky top-0' : 'fixed top-0 left-0 right-0'} z-50`}>
-        <div className={`w-full ${isPopupMode ? 'px-3' : 'px-6 sm:px-8 lg:px-12'}`}>
+        <div className={`w-full ${isPopupMode ? 'px-3' : 'px-14 sm:px-16 lg:px-20'}`}>
           <div className={`flex items-center justify-between ${isPopupMode ? 'py-1' : 'py-2 sm:py-4'}`}>
             <div className="flex items-center space-x-4">
               <div className={`flex items-center ${isPopupMode ? 'space-x-2' : 'space-x-3'}`}>
@@ -2394,6 +2427,7 @@ export function WalletDashboard({
                   isLoading={isLoadingBalance || isRefreshingData}
                   hideBorder={true}
                   isPopupMode={false}
+                  onOpenEncryptModal={() => openPrivateModal('encrypt')}
                 />
               ) : (
                 <PrivateBalance 
@@ -2405,6 +2439,7 @@ export function WalletDashboard({
                   isLoading={isLoadingBalance || isRefreshingData}
                   hideBorder={true}
                   isPopupMode={false}
+                  onOpenDecryptModal={() => openPrivateModal('decrypt')}
                 />
               )}
             </div>
@@ -2455,7 +2490,7 @@ export function WalletDashboard({
           {/* Transfer Tab (Private Mode) */}
           {operationMode === 'private' && (
             <TabsContent value="transfer" className="tab-animated mt-0 border border-[#0000db]/40 bg-background">
-              <div className="p-4 py-6">
+              <div className="p-4 py-8">
                 <PrivateTransfer
                   wallet={wallet}
                   balance={balance}
@@ -2611,6 +2646,81 @@ export function WalletDashboard({
               )}
             </div>
           )}
+        </div>
+      )}
+
+      {/* Expanded Mode Private Modals (Encrypt/Decrypt) */}
+      {!isPopupMode && expandedPrivateModal && (
+        <div 
+          className={`fixed z-[45] bg-background/95 backdrop-blur-sm flex flex-col transition-all duration-300 ease-out ${
+            privateModalAnimating ? 'animate-send-modal-enter' : ''
+          } ${privateModalClosing ? 'animate-send-modal-exit' : ''}`}
+          style={{ 
+            top: '83px', 
+            left: showWalletSidebar ? '384px' : '0px',
+            right: 0,
+            bottom: '40px'
+          }}
+        >
+          {/* Modal Header */}
+          <div className="flex items-center justify-between px-6 pt-4 pb-2">
+            <div className="flex items-center gap-3">
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                onClick={closePrivateModal} 
+                className="h-9 w-9 p-0"
+              >
+                <ChevronDown className="h-5 w-5 rotate-90" />
+              </Button>
+              <div className="flex items-center gap-2">
+                {expandedPrivateModal === 'encrypt' && <Lock className="h-5 w-5 text-[#0000db]" />}
+                {expandedPrivateModal === 'decrypt' && <Unlock className="h-5 w-5 text-[#0000db]" />}
+                <h2 className="text-lg font-semibold text-[#0000db]">
+                  {expandedPrivateModal === 'encrypt' && 'Encrypt OCT'}
+                  {expandedPrivateModal === 'decrypt' && 'Decrypt OCT'}
+                </h2>
+              </div>
+            </div>
+          </div>
+          
+          {/* Modal Content */}
+          <ScrollArea className="flex-1">
+            <div className="p-6 max-w-xl mx-auto">
+              {expandedPrivateModal === 'encrypt' && (
+                <EncryptBalanceDialog
+                  open={true}
+                  onOpenChange={(open) => {
+                    if (!open) closePrivateModal();
+                  }}
+                  wallet={wallet}
+                  publicBalance={encryptedBalance?.public || balance || 0}
+                  onSuccess={() => {
+                    closePrivateModal();
+                    refreshWalletData();
+                  }}
+                  isPopupMode={false}
+                  isInline={true}
+                />
+              )}
+              {expandedPrivateModal === 'decrypt' && (
+                <DecryptBalanceDialog
+                  open={true}
+                  onOpenChange={(open) => {
+                    if (!open) closePrivateModal();
+                  }}
+                  wallet={wallet}
+                  encryptedBalance={encryptedBalance?.encrypted || 0}
+                  onSuccess={() => {
+                    closePrivateModal();
+                    refreshWalletData();
+                  }}
+                  isPopupMode={false}
+                  isInline={true}
+                />
+              )}
+            </div>
+          </ScrollArea>
         </div>
       )}
 

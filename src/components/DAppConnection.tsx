@@ -1,17 +1,14 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Separator } from '@/components/ui/separator';
-import { ScrollArea } from '@/components/ui/scroll-area';
-import { Checkbox } from '@/components/ui/checkbox';
 import { ExternalLink, Shield, Eye, Send, X, Check, Lock, RefreshCw, AlertTriangle } from 'lucide-react';
 import { Wallet, DAppConnectionRequest } from '../types/wallet';
 import { useToast } from '@/hooks/use-toast';
-import { WalletCapability, CAPABILITY_DESCRIPTIONS, GrantedCapabilities } from '../permissions/types';
-import { getPermissionManager } from '../permissions/permissionManager';
+import { WalletCapability, CAPABILITY_DESCRIPTIONS } from '../permissions/types';
 
 interface DAppConnectionProps {
   connectionRequest: DAppConnectionRequest;

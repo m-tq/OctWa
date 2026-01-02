@@ -3,7 +3,6 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Unlock, AlertTriangle } from 'lucide-react';
 import { Wallet } from '../types/wallet';
 import { decryptBalance, invalidateCacheAfterDecrypt } from '../utils/api';
@@ -92,14 +91,18 @@ export function DecryptBalanceDialog({
 
   const content = (
     <div className={isPopupMode ? "space-y-3" : "space-y-4"}>
-      {/* Animated Icon - only in popup inline mode */}
-      {isPopupMode && isInline && (
+      {/* Animated Icon - in inline mode */}
+      {isInline && (
         <AnimatedIcon type="decrypt" size="sm" />
       )}
 
       {/* Description text - no border, aligned with icon */}
       {isPopupMode && isInline ? (
         <p className="text-xs text-center text-[#0000db]">
+          Convert private OCT back to public OCT.
+        </p>
+      ) : isInline ? (
+        <p className="text-sm text-center text-[#0000db]">
           Convert private OCT back to public OCT.
         </p>
       ) : (

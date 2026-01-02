@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { RefreshCw, Wallet, Shield, Unlock, Gift } from 'lucide-react';
+import { RefreshCw, Wallet, Unlock, Gift } from 'lucide-react';
 import { Wallet as WalletType } from '../types/wallet';
 import { fetchBalance, fetchEncryptedBalance, getPendingPrivateTransfers } from '../utils/api';
 import { useToast } from '@/hooks/use-toast';
@@ -19,6 +19,7 @@ interface PrivateBalanceProps {
   isLoading?: boolean;
   hideBorder?: boolean;
   isPopupMode?: boolean;
+  onOpenDecryptModal?: () => void;
 }
 
 export function PrivateBalance({ 
@@ -29,7 +30,8 @@ export function PrivateBalance({
   onBalanceUpdate, 
   isLoading = false,
   hideBorder = false,
-  isPopupMode = false
+  isPopupMode = false,
+  onOpenDecryptModal
 }: PrivateBalanceProps) {
   const [refreshing, setRefreshing] = useState(false);
   const [localEncryptedBalance, setLocalEncryptedBalance] = useState<any>(null);
@@ -168,7 +170,13 @@ export function PrivateBalance({
           {/* Decrypt Action */}
           <div className="flex justify-center pt-4">
             <Button
-              onClick={() => setShowDecryptDialog(true)}
+              onClick={() => {
+                if (onOpenDecryptModal) {
+                  onOpenDecryptModal();
+                } else {
+                  setShowDecryptDialog(true);
+                }
+              }}
               disabled={!encryptedBalance || encryptedBalance.encrypted <= 0}
               className="flex items-center gap-2 h-11 px-5 text-base bg-[#0000db] hover:bg-[#0000db]/90"
             >
