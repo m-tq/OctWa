@@ -35,6 +35,9 @@ export function ThemeProvider({
 
     root.classList.remove('light', 'dark');
     root.classList.add(theme);
+    
+    // Set color-scheme for proper cursor colors in Windows
+    root.style.colorScheme = theme;
   }, [theme]);
 
   // Listen for storage events to handle theme reset

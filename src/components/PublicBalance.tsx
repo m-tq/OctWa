@@ -120,7 +120,7 @@ export function PublicBalance({
         </CardHeader>
         <CardContent className="pt-2 pb-4">
           {/* Public Balance Display */}
-          <div className="text-center py-4 bg-muted/50 rounded-lg">
+          <div className={`text-center py-4 ${isPopupMode ? 'bg-muted/50 rounded-lg' : ''}`}>
             <div className="flex items-center justify-center gap-1.5 mb-2">
               <span className="text-xs font-medium text-muted-foreground">Available</span>
             </div>

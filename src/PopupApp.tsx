@@ -666,7 +666,7 @@ function PopupApp() {
     return (
       <ThemeProvider defaultTheme="dark" storageKey="octra-wallet-theme">
         <div className="w-[400px] h-[600px] overflow-hidden">
-          <SplashScreen onComplete={() => setShowSplash(false)} />
+          <SplashScreen onComplete={() => setShowSplash(false)} isPopupMode={true} />
         </div>
       </ThemeProvider>
     );
@@ -695,7 +695,7 @@ function PopupApp() {
         <div className="w-[400px] h-[600px] bg-background popup-view overflow-hidden">
           <div className="popup-container h-full overflow-y-auto">
             <PageTransition variant="fade-slide">
-              <UnlockWallet onUnlock={handleUnlock} />
+              <UnlockWallet onUnlock={handleUnlock} isPopupMode={true} />
             </PageTransition>
           </div>
           <Toaster />

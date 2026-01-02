@@ -1169,8 +1169,7 @@ export function FileMultiSend({ wallet, balance, onBalanceUpdate, onNonceUpdate,
         <Button
           onClick={executionMode === 'parallel' ? handleSendAll : handleSendAllSequential}
           disabled={isSending || validRecipients.length === 0 || totalCost > currentBalance}
-          className="w-full h-11"
-          size="lg"
+          className="w-full"
         >
           {isSending ? (
             <>

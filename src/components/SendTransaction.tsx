@@ -14,6 +14,7 @@ import { fetchBalance, sendTransaction, createTransaction, invalidateCacheAfterT
 import { useToast } from '@/hooks/use-toast';
 import { TransactionModal, TransactionStatus, TransactionResult } from './TransactionModal';
 import { AnimatedIcon } from './AnimatedIcon';
+import { AddressInput } from './AddressInput';
 
 // Threshold for confirmation dialog (500 OCT)
 const LARGE_TRANSACTION_THRESHOLD = 500;
@@ -295,12 +296,12 @@ export function SendTransaction({ wallet, balance, nonce, onBalanceUpdate, onNon
         {/* Recipient Address */}
         <div className="space-y-1.5">
           <Label htmlFor="recipient" className="text-sm">Recipient</Label>
-          <Input
+          <AddressInput
             id="recipient"
-            placeholder="oct..."
             value={recipientAddress}
-            onChange={(e) => setRecipientAddress(e.target.value)}
-            className="font-mono text-sm h-9"
+            onChange={setRecipientAddress}
+            isPopupMode={true}
+            className="text-sm h-9"
           />
           {recipientAddress.trim() && addressValidation && !addressValidation.isValid && (
             <p className="text-xs text-red-600">{addressValidation.error}</p>
@@ -479,12 +480,11 @@ export function SendTransaction({ wallet, balance, nonce, onBalanceUpdate, onNon
       {/* Recipient Address */}
       <div className="space-y-2">
         <Label htmlFor="recipient">Recipient Address</Label>
-        <Input
+        <AddressInput
           id="recipient"
-          placeholder="oct..."
           value={recipientAddress}
-          onChange={(e) => setRecipientAddress(e.target.value)}
-          className="font-mono"
+          onChange={setRecipientAddress}
+          isPopupMode={false}
         />
         {recipientAddress.trim() && addressValidation && !addressValidation.isValid && (
           <p className="text-sm text-red-600">{addressValidation.error}</p>

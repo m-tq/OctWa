@@ -164,6 +164,16 @@ OctWa implements industry-standard security practices to protect your assets:
 - **Connection Status** - Real-time RPC connection status indicator
 - **Dynamic Version Display** - Version automatically synced from manifest.json
 
+### Address Book & Wallet Naming
+- **Address Book** - Store and manage contacts with labels, tags, and notes
+- **Contact Tags** - Categorize contacts (Public, Private, Encrypted, Service, Circle, Exchange, Personal)
+- **Preferred Send Mode** - Set preferred mode per contact with auto-warning on mode mismatch
+- **Wallet Naming** - Custom labels for your wallets (auto-labeled as Wallet 1, Wallet 2, etc.)
+- **Quick Address Selection** - Select recipient from contacts or wallets directly in send forms
+- **Search Contacts** - Quick search through contacts and wallets
+- **Local & Private** - All address book data stored locally, never sent to servers
+- **Cross-Mode Sync** - Address book synced between popup and expanded modes
+
 ---
 
 ## Deployment Guide

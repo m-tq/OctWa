@@ -134,7 +134,7 @@ export function PrivateBalance({
         </CardHeader>
         <CardContent className="pt-2 pb-4">
           {/* Private Balance Display */}
-          <div className="text-center py-4 bg-[#0000db]/5 rounded-lg">
+          <div className={`text-center py-4 ${isPopupMode ? 'bg-[#0000db]/5 rounded-lg' : ''}`}>
             <div className="flex items-center justify-center gap-1.5 mb-2">
               <span className="text-xs font-medium text-[#0000db]">Available</span>
             </div>

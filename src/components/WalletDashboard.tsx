@@ -41,7 +41,8 @@ import {
   Check,
   PanelLeftClose,
   PanelLeft,
-  Wallet as WalletIcon
+  Wallet as WalletIcon,
+  BookUser
 } from 'lucide-react';
 import { ExtensionStorageManager } from '../utils/extensionStorage';
 import { PublicBalance } from './PublicBalance';
@@ -62,6 +63,8 @@ import { ExportPrivateKeys } from './ExportPrivateKeys';
 import { ReceiveDialog } from './ReceiveDialog';
 import { EncryptBalanceDialog } from './EncryptBalanceDialog';
 import { DecryptBalanceDialog } from './DecryptBalanceDialog';
+import { AddressBook } from './AddressBook';
+import { WalletLabelEditor, WalletDisplayName } from './WalletLabelEditor';
 import { Wallet } from '../types/wallet';
 import { WalletManager } from '../utils/walletManager';
 import { fetchBalance, getTransactionHistory, fetchEncryptedBalance, fetchTransactionDetails, fetchPendingTransactionByHash, getPendingPrivateTransfers, apiCache } from '../utils/api';
@@ -69,6 +72,7 @@ import { useToast } from '@/hooks/use-toast';
 import { OperationMode, saveOperationMode, loadOperationMode, isPrivateModeAvailable } from '../utils/modeStorage';
 import { verifyPassword } from '../utils/password';
 import { isPrivateTransfer } from '../utils/historyMerge';
+import { useAddressBook } from '../hooks/useAddressBook';
 
 interface Transaction {
   hash: string;
@@ -139,7 +143,17 @@ export function WalletDashboard({
   const [bulkResetTrigger, setBulkResetTrigger] = useState(0);
   const [multiResetTrigger, setMultiResetTrigger] = useState(0);
   const [copiedField, setCopiedField] = useState<string | null>(null);
+  // Address Book state
+  const [showAddressBook, setShowAddressBook] = useState(false);
+  const { autoLabelWallets, getWalletDisplayName } = useAddressBook();
   const { toast } = useToast();
+
+  // Auto-label wallets on mount and when wallets change
+  useEffect(() => {
+    if (wallets.length > 0) {
+      autoLabelWallets(wallets.map(w => ({ address: w.address, type: w.type })));
+    }
+  }, [wallets, autoLabelWallets]);
 
   // Determine if private mode is available (encrypted balance > 0 OR pending transfers > 0)
   const privateEnabled = isPrivateModeAvailable(encryptedBalance?.encrypted || 0, pendingTransfersCount);
@@ -1242,44 +1256,47 @@ export function WalletDashboard({
                             </div>
                           </Button>
                         </SheetTrigger>
-                        <SheetContent side="left" className="w-72 flex flex-col pb-14">
+                        <SheetContent side="left" className="w-80 flex flex-col pb-14">
                           <SheetHeader>
                             <SheetTitle className="text-sm">Select Wallet ({wallets.length})</SheetTitle>
                             <SheetDescription className="sr-only">Choose a wallet from your list</SheetDescription>
                           </SheetHeader>
                           <div className="flex-1 mt-3 overflow-hidden">
                             <ScrollArea className="h-full max-h-[calc(100vh-200px)]">
-                              <div className="space-y-0.5 pr-2">
+                              <div className="space-y-1.5 pr-2">
                                 {wallets.map((w, i) => {
                                   const isActive = w.address === wallet.address;
+                                  const shortAddress = `${w.address.slice(0, 6)}...${w.address.slice(-4)}`;
+                                  const walletType = w.type === 'generated' ? 'Generated' 
+                                    : w.type === 'imported-mnemonic' ? 'Imported (Mnemonic)' 
+                                    : w.type === 'imported-private-key' ? 'Imported (Key)' 
+                                    : '';
                                   return (
-                                    <div key={w.address}>
-                                      <div
-                                        className={`flex items-center justify-between p-2  cursor-pointer group gap-1.5 ${
-                                          isActive 
-                                            ? 'bg-[#0000db]/10 border border-[#0000db]/30 text-[#0000db]' 
-                                            : 'hover:bg-accent hover:text-accent-foreground border border-transparent'
-                                        }`}
-                                        onClick={() => {
-                                          onSwitchWallet(w);
-                                          setShowWalletSelector(false);
-                                        }}
-                                      >
-                                        <div className="flex-1 min-w-0">
-                                          <div className="flex items-center space-x-1.5">
-                                            <span className={`font-mono text-xs truncate ${isActive ? 'font-semibold' : ''}`}>
-                                              #{i + 1} {truncateAddress(w.address)}
-                                            </span>
-                                          </div>
-                                          {w.type && (
-                                            <div className={`text-[10px] mt-0.5 ${isActive ? 'text-[#0000db]/70' : 'text-muted-foreground'}`}>
-                                              {w.type === 'generated' && 'Generated'}
-                                              {w.type === 'imported-mnemonic' && 'Imported (mnemonic)'}
-                                              {w.type === 'imported-private-key' && 'Imported (key)'}
-                                            </div>
-                                          )}
+                                    <div
+                                      key={w.address}
+                                      className={`p-2.5 rounded-lg cursor-pointer transition-colors ${
+                                        isActive 
+                                          ? 'bg-[#0000db]/10 border border-[#0000db]/30' 
+                                          : 'hover:bg-accent border border-transparent'
+                                      }`}
+                                      onClick={() => {
+                                        onSwitchWallet(w);
+                                        setShowWalletSelector(false);
+                                      }}
+                                    >
+                                      {/* Row 1: Number + Address + Actions */}
+                                      <div className="flex items-center justify-between">
+                                        <div className="flex items-center gap-1.5 min-w-0">
+                                          <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${
+                                            isActive ? 'bg-[#0000db] text-white' : 'bg-muted text-muted-foreground'
+                                          }`}>
+                                            {i + 1}
+                                          </span>
+                                          <span className={`font-mono text-xs truncate ${isActive ? 'text-[#0000db] font-semibold' : ''}`}>
+                                            {shortAddress}
+                                          </span>
                                         </div>
-                                        <div className="flex items-center space-x-0.5 flex-shrink-0">
+                                        <div className="flex items-center gap-0.5 flex-shrink-0">
                                           <Button
                                             variant="ghost"
                                             size="sm"
@@ -1287,11 +1304,14 @@ export function WalletDashboard({
                                               e.stopPropagation();
                                               copyToClipboard(w.address, `walletPopup-${w.address}`);
                                             }}
-                                            className="h-6 w-6 p-0 text-muted-foreground hover:text-foreground"
+                                            className={`h-6 w-6 p-0 ${isActive ? 'text-[#0000db] hover:text-[#0000db]/80' : ''}`}
                                             title="Copy address"
                                           >
                                             {copiedField === `walletPopup-${w.address}` ? <Check className="h-3 w-3 text-green-500" /> : <Copy className="h-3 w-3" />}
                                           </Button>
+                                          <div onClick={(e) => e.stopPropagation()}>
+                                            <WalletLabelEditor address={w.address} isPopupMode={true} />
+                                          </div>
                                           {wallets.length > 1 && (
                                             <Button
                                               variant="ghost"
@@ -1308,6 +1328,18 @@ export function WalletDashboard({
                                             </Button>
                                           )}
                                         </div>
+                                      </div>
+                                      
+                                      {/* Row 2: Wallet Name */}
+                                      <div className={`mt-1 text-xs font-medium truncate ${isActive ? 'text-[#0000db]' : ''}`}>
+                                        <WalletDisplayName address={w.address} isPopupMode={true} />
+                                      </div>
+                                      
+                                      {/* Row 3: Type */}
+                                      <div className={`mt-0.5 text-[10px] ${
+                                        isActive ? 'text-[#0000db]/70' : 'text-muted-foreground'
+                                      }`}>
+                                        {walletType}
                                       </div>
                                     </div>
                                   );
@@ -1434,6 +1466,20 @@ export function WalletDashboard({
                           Connected dApps
                         </Button>
 
+                        {/* Address Book */}
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            setShowAddressBook(true);
+                            setShowMobileMenu(false);
+                          }}
+                          className="w-full justify-start gap-1.5 text-xs h-10"
+                        >
+                          <BookUser className="h-3.5 w-3.5" />
+                          Address Book
+                        </Button>
+
                         {/* Export Private Keys */}
                         <Button
                           variant="destructive"
@@ -1485,7 +1531,7 @@ export function WalletDashboard({
                   <ThemeToggle isPopupMode={false} />
                   {/* Desktop Menu Items */}
                   <div className="hidden md:flex items-center space-x-2">
-                    {/* Buttons with caption: RPC, dApps */}
+                    {/* Buttons with caption: RPC, dApps, Address Book */}
                     <Button
                       variant="outline"
                       size="sm"
@@ -1503,6 +1549,15 @@ export function WalletDashboard({
                     >
                       <Globe className="h-4 w-4" />
                       dApps
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setShowAddressBook(true)}
+                      className="flex items-center gap-2"
+                    >
+                      <BookUser className="h-4 w-4" />
+                      Contacts
                     </Button>
                     
                     {/* Text buttons: Export Private Keys, Lock Wallet, Reset All */}
@@ -1573,6 +1628,19 @@ export function WalletDashboard({
                           >
                             <Globe className="h-4 w-4" />
                             Connected dApps
+                          </Button>
+
+                          {/* Address Book */}
+                          <Button
+                            variant="outline"
+                            onClick={() => {
+                              setShowAddressBook(true);
+                              setShowMobileMenu(false);
+                            }}
+                            className="w-full justify-start gap-2"
+                          >
+                            <BookUser className="h-4 w-4" />
+                            Address Book
                           </Button>
 
                           {/* Export Private Keys */}
@@ -1698,6 +1766,24 @@ export function WalletDashboard({
                 </DialogContent>
               </Dialog>
 
+              {/* Address Book Dialog */}
+              <Dialog open={showAddressBook} onOpenChange={setShowAddressBook}>
+                <DialogContent className={isPopupMode ? "w-[380px] max-h-[550px] overflow-hidden p-4" : "sm:max-w-lg max-h-[80vh] overflow-hidden"}>
+                  <DialogHeader className={isPopupMode ? "pb-2" : ""}>
+                    <DialogTitle className={isPopupMode ? "text-sm" : ""}>Address Book</DialogTitle>
+                    {!isPopupMode && (
+                      <DialogDescription>
+                        Manage your contacts and wallet labels. All data is stored locally and privately.
+                      </DialogDescription>
+                    )}
+                  </DialogHeader>
+                  <AddressBook 
+                    isPopupMode={isPopupMode}
+                    currentMode={operationMode}
+                  />
+                </DialogContent>
+              </Dialog>
+
               {/* Export Private Keys Dialog */}
               <ExportPrivateKeys 
                 wallet={wallet} 
@@ -1747,6 +1833,7 @@ export function WalletDashboard({
                           <li>Your password protection</li>
                           <li>Connected dApps</li>
                           <li>All encrypted data</li>
+                          <li>Address book & contacts</li>
                         </ul>
                         <p className={`font-semibold ${isPopupMode ? "mt-2 text-[11px]" : "mt-3"}`}>
                           {isPopupMode ? "Backup your keys before proceeding!" : "Make sure you have backed up your private keys or seed phrases before proceeding!"}
@@ -1827,8 +1914,8 @@ export function WalletDashboard({
       {/* Sticky Mode Toggle - Only for expanded mode */}
       {!isPopupMode && (
         <div 
-          className="fixed top-[70px] sm:top-[83px] right-0 z-40 bg-background/95 backdrop-blur-sm py-3 transition-[left] duration-300 ease-out"
-          style={{ left: showWalletSidebar ? '320px' : '2px' }}
+          className="fixed top-[70px] sm:top-[85px] right-0 z-40 bg-background/95 backdrop-blur-sm py-3 transition-[left] duration-300 ease-out"
+          style={{ left: showWalletSidebar ? '384px' : '2px' }}
         >
           <div className="px-6 sm:px-8 lg:px-12 max-w-6xl mx-auto">
             <ModeToggle
@@ -1846,8 +1933,8 @@ export function WalletDashboard({
       {/* Wallet Sidebar - Only for expanded mode */}
       {!isPopupMode && (
         <>
-          <aside className={`fixed top-[70px] sm:top-[83px] left-0 bottom-0 z-30 bg-background border-r border-border transition-all duration-300 ${showWalletSidebar ? 'w-80' : 'w-0'} overflow-hidden`}>
-            <div className="h-full flex flex-col p-4 w-80">
+          <aside className={`fixed top-[70px] sm:top-[83px] left-0 bottom-0 z-30 bg-background border-r border-border transition-all duration-300 ${showWalletSidebar ? 'w-96' : 'w-0'} overflow-hidden`}>
+            <div className="h-full flex flex-col p-4 w-96">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="font-semibold text-base flex items-center gap-2">
                   <WalletIcon className="h-5 w-5" />
@@ -1899,6 +1986,9 @@ export function WalletDashboard({
                             >
                               {copiedField === `sidebarWallet-${w.address}` ? <Check className="h-3 w-3 text-green-500" /> : <Copy className="h-3 w-3" />}
                             </Button>
+                            <div onClick={(e) => e.stopPropagation()}>
+                              <WalletLabelEditor address={w.address} isPopupMode={false} />
+                            </div>
                             {wallets.length > 1 && (
                               <Button
                                 variant="ghost"
@@ -1916,8 +2006,13 @@ export function WalletDashboard({
                           </div>
                         </div>
                         
-                        {/* Row 2: Type + Nonce (for active) */}
-                        <div className={`flex items-center justify-between mt-1.5 text-xs ${
+                        {/* Row 2: Wallet Name */}
+                        <div className={`mt-1 text-sm font-medium truncate ${isActive ? 'text-[#0000db]' : ''}`}>
+                          <WalletDisplayName address={w.address} />
+                        </div>
+                        
+                        {/* Row 3: Type + Nonce (for active) */}
+                        <div className={`flex items-center justify-between mt-1 text-xs ${
                           isActive ? 'text-[#0000db]/70' : 'text-muted-foreground'
                         }`}>
                           <span>{walletType}</span>
@@ -1944,7 +2039,7 @@ export function WalletDashboard({
           {/* Sidebar Toggle Button */}
           <button
             onClick={() => setShowWalletSidebar(!showWalletSidebar)}
-            className={`fixed top-1/2 -translate-y-1/2 z-40 h-10 w-5 flex items-center justify-center bg-muted hover:bg-accent border border-l-0 border-border rounded-r-md transition-all duration-300 ${showWalletSidebar ? 'left-80' : 'left-0'}`}
+            className={`fixed top-1/2 -translate-y-1/2 z-[50] h-10 w-5 flex items-center justify-center bg-muted hover:bg-accent border border-l-0 border-border rounded-r-md transition-all duration-300 ${showWalletSidebar ? 'left-96' : 'left-0'}`}
           >
             {showWalletSidebar ? <ChevronLeft className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
           </button>
@@ -1954,7 +2049,7 @@ export function WalletDashboard({
       {/* Main Content - Add padding-top for fixed header in expanded mode */}
       <div 
         className={isPopupMode ? '' : 'transition-[padding-left] duration-300 ease-out'}
-        style={!isPopupMode ? { paddingLeft: showWalletSidebar ? '320px' : '0px' } : undefined}
+        style={!isPopupMode ? { paddingLeft: showWalletSidebar ? '384px' : '0px' } : undefined}
       >
         <main className={isPopupMode ? 'octra-container pt-0 pb-0 px-3 flex flex-col h-[calc(100vh-50px)] overflow-hidden' : 'pt-[149px] sm:pt-[165px] pb-16 px-6 sm:px-8 lg:px-12 sm:pb-20 max-w-6xl mx-auto'}>
         {/* ============================================ */}
@@ -2342,7 +2437,7 @@ export function WalletDashboard({
           {/* Transfer Tab (Private Mode) */}
           {operationMode === 'private' && (
             <TabsContent value="transfer" className="tab-animated mt-0 border border-[#0000db]/40 bg-background">
-              <div className="p-4">
+              <div className="p-4 py-6">
                 <PrivateTransfer
                   wallet={wallet}
                   balance={balance}
@@ -2392,9 +2487,17 @@ export function WalletDashboard({
 
       {/* Expanded Mode Send Modals */}
       {!isPopupMode && expandedSendModal && (
-        <div className="fixed inset-0 z-[100] bg-background/95 backdrop-blur-sm flex flex-col">
+        <div 
+          className="fixed z-[45] bg-background/95 backdrop-blur-sm flex flex-col transition-[left] duration-300 ease-out"
+          style={{ 
+            top: '83px', 
+            left: showWalletSidebar ? '384px' : '0px',
+            right: 0,
+            bottom: '40px'
+          }}
+        >
           {/* Modal Header */}
-          <div className="flex items-center justify-between px-6 py-4 border-b">
+          <div className="flex items-center justify-between px-6 pt-4 pb-2">
             <div className="flex items-center gap-3">
               <Button 
                 variant="ghost" 
@@ -2446,7 +2549,7 @@ export function WalletDashboard({
           {/* Modal Content */}
           {expandedSendModal === 'standard' ? (
             <ScrollArea className="flex-1">
-              <div className="p-6 max-w-md mx-auto">
+              <div className="p-6 max-w-xl mx-auto">
                 <SendTransaction
                   wallet={wallet}
                   balance={balance}
@@ -2471,6 +2574,7 @@ export function WalletDashboard({
                   onModalClose={() => setExpandedSendModal(null)}
                   hideBorder={true}
                   resetTrigger={multiResetTrigger}
+                  sidebarOpen={showWalletSidebar}
                 />
               )}
               {expandedSendModal === 'bulk' && (
@@ -2547,8 +2651,8 @@ export function WalletDashboard({
       {/* Footer Credit - Only for expanded mode */}
       {!isPopupMode && (
         <footer 
-          className="fixed bottom-0 right-0 py-2 px-4 text-xs text-muted-foreground bg-background/80 backdrop-blur-sm border-t border-border/80 flex items-center justify-between transition-[left] duration-300 ease-out"
-          style={{ left: showWalletSidebar ? '320px' : '0px' }}
+          className="fixed bottom-0 right-0 py-2 px-4 text-xs text-muted-foreground bg-background/80 backdrop-blur-sm border-t border-border/80 flex items-center justify-between transition-[left] duration-300 ease-out z-[46]"
+          style={{ left: showWalletSidebar ? '384px' : '0px' }}
         >
           {/* Left: Connection Status */}
           <div className="flex items-center gap-1.5">

@@ -6,11 +6,22 @@
     <title>OctWa - Octra Wallet</title>
     <link rel="stylesheet" href="assets/index.css" />
     <style>
+      /* Remove any browser default borders/outlines */
+      html, body, #root {
+        border: none !important;
+        outline: none !important;
+        box-shadow: none !important;
+        margin: 0;
+        padding: 0;
+      }
+      
       /* Popup container - no overflow on main screen */
       .popup-container {
         overflow: hidden;
         scrollbar-width: none; /* Firefox */
         -ms-overflow-style: none; /* Internet Explorer 10+ */
+        border: none !important;
+        outline: none !important;
       }
       
       .popup-container::-webkit-scrollbar {
@@ -19,13 +30,7 @@
       
       /* Ensure content is focusable for keyboard navigation */
       .popup-container {
-        outline: none;
         scroll-behavior: smooth;
-      }
-      
-      /* Add subtle focus indicator when navigating with keyboard */
-      .popup-container:focus-visible {
-        box-shadow: inset 0 0 0 2px rgba(59, 130, 246, 0.3);
       }
     </style>
   </head>

@@ -16,6 +16,7 @@ import { Wallet } from '../types/wallet';
 import { fetchBalance, sendTransaction, createTransaction, invalidateCacheAfterTransaction } from '../utils/api';
 import { useToast } from '@/hooks/use-toast';
 import { AnimatedIcon } from './AnimatedIcon';
+import { AddressInput } from './AddressInput';
 
 interface Recipient {
   address: string;
@@ -35,6 +36,7 @@ interface MultiSendProps {
   onModalClose?: () => void;
   hideBorder?: boolean;
   resetTrigger?: number;
+  sidebarOpen?: boolean;
 }
 
 // Simple address validation function
@@ -62,7 +64,7 @@ function validateRecipientInput(input: string): { isValid: boolean; error?: stri
   };
 }
 
-export function MultiSend({ wallet, balance, onBalanceUpdate, onNonceUpdate, onTransactionSuccess, resetTrigger }: MultiSendProps) {
+export function MultiSend({ wallet, balance, onBalanceUpdate, onNonceUpdate, onTransactionSuccess, resetTrigger, sidebarOpen = true }: MultiSendProps) {
   const [recipients, setRecipients] = useState<Recipient[]>([
     { address: '', amount: '', message: '', showMessage: false }
   ]);
@@ -351,7 +353,7 @@ export function MultiSend({ wallet, balance, onBalanceUpdate, onNonceUpdate, onT
   return (
     <div className="h-full flex flex-col lg:flex-row gap-4 lg:gap-6 overflow-auto lg:overflow-hidden p-1">
       {/* Left Panel - Wallet Info & Controls */}
-      <div className="w-full lg:w-64 flex-shrink-0 space-y-4 lg:flex lg:flex-col lg:justify-center overflow-visible">
+      <div className="w-full lg:w-80 flex-shrink-0 space-y-4 lg:flex lg:flex-col lg:justify-center overflow-visible">
           {/* Animated Icon - Hidden on mobile */}
           <div className="hidden lg:block">
             <AnimatedIcon type="multi-send" size="sm" />
@@ -478,7 +480,7 @@ export function MultiSend({ wallet, balance, onBalanceUpdate, onNonceUpdate, onT
       {/* Right Panel - Recipients Grid with ScrollArea */}
       <div className="flex-1 lg:flex lg:flex-col lg:min-h-0">
         <ScrollArea className="h-[400px] lg:flex-1 pr-4">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div className={`grid grid-cols-1 gap-4 ${sidebarOpen ? 'sm:grid-cols-2' : 'sm:grid-cols-2 xl:grid-cols-3'}`}>
             {recipients.map((recipient, index) => (
               <Card key={index} className="p-3 space-y-3">
                 {/* Header with number and delete */}
@@ -500,11 +502,12 @@ export function MultiSend({ wallet, balance, onBalanceUpdate, onNonceUpdate, onT
                 {/* Address */}
                 <div className="space-y-1">
                   <Label className="text-xs">Address</Label>
-                  <Input
-                    placeholder="oct..."
+                  <AddressInput
                     value={recipient.address}
-                    onChange={(e) => validateAndUpdateRecipient(index, 'address', e.target.value)}
-                    className={`font-mono text-xs h-8 ${
+                    onChange={(value) => validateAndUpdateRecipient(index, 'address', value)}
+                    isPopupMode={true}
+                    isCompact={true}
+                    className={`text-xs ${
                       recipient.address.trim() && recipient.addressValidation
                         ? recipient.addressValidation.isValid
                           ? 'border-green-500 focus-visible:ring-green-500'

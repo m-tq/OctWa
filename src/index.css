@@ -12,16 +12,16 @@
     --popover-foreground: 0 0% 3.9%;
     --primary: 240 100% 43%;
     --primary-foreground: 0 0% 100%;
-    --secondary: 0 0% 96.1%;
+    --secondary: 220 14% 93%;
     --secondary-foreground: 0 0% 9%;
-    --muted: 0 0% 96.1%;
+    --muted: 220 14% 93%;
     --muted-foreground: 0 0% 45.1%;
-    --accent: 0 0% 96.1%;
+    --accent: 220 14% 80%;
     --accent-foreground: 0 0% 9%;
     --destructive: 0 84.2% 60.2%;
     --destructive-foreground: 0 0% 98%;
-    --border: 0 0% 89.8%;
-    --input: 0 0% 89.8%;
+    --border: 220 13% 82%;
+    --input: 220 13% 82%;
     --ring: 0 0% 3.9%;
     --chart-1: 12 76% 61%;
     --chart-2: 173 58% 39%;
@@ -29,6 +29,7 @@
     --chart-4: 43 74% 66%;
     --chart-5: 27 87% 67%;
     --radius: 0rem;
+    color-scheme: light;
   }
   
   .dark {
@@ -57,6 +58,11 @@
     --chart-3: 30 80% 55%;
     --chart-4: 280 65% 60%;
     --chart-5: 340 75% 55%;
+    color-scheme: dark;
+  }
+
+  .light {
+    color-scheme: light;
   }
 }
 
@@ -194,12 +200,41 @@
   height: 600px;
   width: 400px;
   overflow: hidden; /* Prevent any overflow that could cause sizing issues */
+  border: none !important;
+  outline: none !important;
+  box-shadow: none !important;
+}
+
+.popup-view * {
+  outline: none;
 }
 
 .popup-container {
   height: 600px;
   max-height: 600px;
   overflow: hidden;
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* IE 10+ */
+  border: none !important;
+  outline: none !important;
+}
+
+.popup-container::-webkit-scrollbar {
+  display: none; /* Chrome, Safari, Edge */
+}
+
+/* Hide scrollbar for popup-view overflow-y-auto elements */
+.popup-view *::-webkit-scrollbar {
+  width: 4px;
+}
+
+.popup-view *::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.popup-view *::-webkit-scrollbar-thumb {
+  background: hsl(var(--border));
+  border-radius: 2px;
 }
 
 .popup-view .octra-header {
@@ -357,6 +392,73 @@
 .relative input[type="email"] {
   margin: 2px;
   width: calc(100% - 4px);
+}
+
+/* Fix light theme input - prevent white background on autocomplete/hover */
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus,
+input:-webkit-autofill:active {
+  -webkit-box-shadow: 0 0 0 30px hsl(var(--background)) inset !important;
+  -webkit-text-fill-color: hsl(var(--foreground)) !important;
+  caret-color: hsl(var(--foreground)) !important;
+  transition: background-color 5000s ease-in-out 0s;
+}
+
+/* Text selection styling */
+::selection {
+  background-color: hsl(var(--primary) / 0.3);
+  color: hsl(var(--foreground));
+}
+
+::-moz-selection {
+  background-color: hsl(var(--primary) / 0.3);
+  color: hsl(var(--foreground));
+}
+
+/* Light theme - ensure caret/cursor is visible (dark color on light background) */
+:root input,
+:root textarea {
+  caret-color: hsl(var(--foreground)) !important;
+  color: hsl(var(--foreground)) !important;
+  cursor: text;
+}
+
+/* Light theme specific - ensure visible hover state */
+:root input:hover,
+:root textarea:hover,
+:root input:focus,
+:root textarea:focus {
+  background-color: hsl(var(--background)) !important;
+  caret-color: hsl(var(--foreground)) !important;
+  color: hsl(var(--foreground)) !important;
+  cursor: text;
+}
+
+/* Dark theme - caret should be light color */
+.dark input,
+.dark textarea {
+  caret-color: hsl(var(--foreground)) !important;
+  color: hsl(var(--foreground)) !important;
+}
+
+/* Dark theme input styling */
+.dark input:hover,
+.dark textarea:hover,
+.dark input:focus,
+.dark textarea:focus {
+  background-color: transparent !important;
+  caret-color: hsl(var(--foreground)) !important;
+  color: hsl(var(--foreground)) !important;
+}
+
+/* Disable browser autocomplete dropdown white background */
+input::-webkit-calendar-picker-indicator {
+  filter: invert(0);
+}
+
+.dark input::-webkit-calendar-picker-indicator {
+  filter: invert(1);
 }
 
 /* Adjust button positioning in relative containers with inputs */

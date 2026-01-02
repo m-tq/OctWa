@@ -468,7 +468,7 @@ function ExpandedApp() {
   if (showSplash) {
     return (
       <ThemeProvider defaultTheme="dark" storageKey="octra-wallet-theme">
-        <SplashScreen onComplete={() => setShowSplash(false)} />
+        <SplashScreen onComplete={() => setShowSplash(false)} isPopupMode={false} />
       </ThemeProvider>
     );
   }
@@ -490,7 +490,8 @@ function ExpandedApp() {
             setWallet(pendingSetupWallet);
             setPendingSetupWallet(null);
           }} 
-          duration={3500} 
+          duration={3500}
+          isPopupMode={false}
         />
       </ThemeProvider>
     );
@@ -517,7 +518,7 @@ function ExpandedApp() {
       <ThemeProvider defaultTheme="dark" storageKey="octra-wallet-theme">
         <div className="min-h-screen bg-background overflow-hidden">
           <PageTransition variant="fade-slide">
-            <UnlockWallet onUnlock={handleUnlock} />
+            <UnlockWallet onUnlock={handleUnlock} isPopupMode={false} />
           </PageTransition>
           <Toaster />
         </div>

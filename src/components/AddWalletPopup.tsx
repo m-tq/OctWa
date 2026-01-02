@@ -199,7 +199,7 @@ export function AddWalletPopup({
         {screen === 'create' && (
           <PageTransition key={`create-${transitionKey}`} variant="slide-left" duration={250}>
             <div className="flex flex-col h-full max-h-[85vh]">
-              <div className="p-4 flex items-center gap-2 border-b">
+              <div className="p-4 flex items-center gap-2">
                 <Button variant="ghost" size="sm" onClick={handleBack} className="h-8 w-8 p-0">
                   <ArrowLeft className="h-4 w-4" />
                 </Button>
@@ -215,7 +215,7 @@ export function AddWalletPopup({
         {screen === 'import-mnemonic' && (
           <PageTransition key={`mnemonic-${transitionKey}`} variant="slide-left" duration={250}>
             <div className="flex flex-col h-full max-h-[85vh]">
-              <div className="p-4 flex items-center gap-2 border-b">
+              <div className="p-4 flex items-center gap-2">
                 <Button variant="ghost" size="sm" onClick={handleBack} className="h-8 w-8 p-0">
                   <ArrowLeft className="h-4 w-4" />
                 </Button>
@@ -231,7 +231,7 @@ export function AddWalletPopup({
         {screen === 'import-privatekey' && (
           <PageTransition key={`privatekey-${transitionKey}`} variant="slide-left" duration={250}>
             <div className="flex flex-col h-full max-h-[85vh]">
-              <div className="p-4 flex items-center gap-2 border-b">
+              <div className="p-4 flex items-center gap-2">
                 <Button variant="ghost" size="sm" onClick={handleBack} className="h-8 w-8 p-0">
                   <ArrowLeft className="h-4 w-4" />
                 </Button>

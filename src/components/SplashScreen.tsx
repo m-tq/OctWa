@@ -3,12 +3,13 @@ import { useState, useEffect } from 'react';
 interface SplashScreenProps {
   onComplete: () => void;
   duration?: number;
+  isPopupMode?: boolean;
 }
 
-const AnimatedLogo = () => (
+const AnimatedLogo = ({ size = 112 }: { size?: number }) => (
   <svg
-    width="112"
-    height="112"
+    width={size}
+    height={size}
     viewBox="0 0 50 50"
     fill="none"
     xmlns="http://www.w3.org/2000/svg"
@@ -53,6 +54,7 @@ const AnimatedLogo = () => (
 export function SplashScreen({
   onComplete,
   duration = 3000,
+  isPopupMode = true,
 }: SplashScreenProps) {
   const [isAnimating, setIsAnimating] = useState(true);
   const [isFading, setIsFading] = useState(false);
@@ -82,8 +84,8 @@ export function SplashScreen({
       }`}
     >
       <div className="flex flex-col items-center space-y-6">
-        <div className="w-32 h-32 flex items-center justify-center">
-          <AnimatedLogo />
+        <div className={`flex items-center justify-center ${isPopupMode ? 'w-32 h-32' : 'w-48 h-48'}`}>
+          <AnimatedLogo size={isPopupMode ? 112 : 160} />
         </div>
 
         <div
@@ -106,10 +108,10 @@ export function SplashScreen({
               }
             `}
           </style>
-          <h1 className="text-2xl font-bold" style={{ color: '#0000db' }}>
+          <h1 className={`font-bold ${isPopupMode ? 'text-2xl' : 'text-4xl'}`} style={{ color: '#0000db' }}>
             OctWa
           </h1>
-          <p className="text-sm text-muted-foreground mt-1">Stay Encrypted</p>
+          <p className={`text-muted-foreground mt-1 ${isPopupMode ? 'text-sm' : 'text-base'}`}>Stay Encrypted</p>
         </div>
       </div>
     </div>
