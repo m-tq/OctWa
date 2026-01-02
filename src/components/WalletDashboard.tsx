@@ -1235,7 +1235,7 @@ export function WalletDashboard({
                         <SheetTrigger asChild>
                           <Button variant="ghost" className="h-auto p-0 hover:bg-transparent">
                             <div className="flex items-center space-x-1">
-                              <p className="text-[10px] text-muted-foreground">
+                              <p className="text-[10px] text-[#0000db] font-medium">
                                 {truncateAddress(wallet.address)}
                               </p>
                               <ChevronDown className="h-2.5 w-2.5 text-muted-foreground" />
@@ -1254,7 +1254,6 @@ export function WalletDashboard({
                                   const isActive = w.address === wallet.address;
                                   return (
                                     <div key={w.address}>
-                                      {i > 0 && <div className="h-px bg-border my-0.5" />}
                                       <div
                                         className={`flex items-center justify-between p-2  cursor-pointer group gap-1.5 ${
                                           isActive 
@@ -1335,7 +1334,7 @@ export function WalletDashboard({
                     ) : (
                       /* Expanded mode - just show address, wallet list is in sidebar */
                       <div className="flex items-center space-x-2">
-                        <p className="text-sm text-muted-foreground">
+                        <p className="text-sm text-[#0000db] font-medium">
                           {truncateAddress(wallet.address)}
                         </p>
                       </div>
@@ -1861,8 +1860,8 @@ export function WalletDashboard({
                     const isActive = w.address === wallet.address;
                     const shortAddress = `${w.address.slice(0, 6)}...${w.address.slice(-4)}`;
                     const walletType = w.type === 'generated' ? 'Generated' 
-                      : w.type === 'imported-mnemonic' ? 'Mnemonic' 
-                      : w.type === 'imported-private-key' ? 'Private Key' 
+                      : w.type === 'imported-mnemonic' ? 'Imported (Mnemonic)' 
+                      : w.type === 'imported-private-key' ? 'Imported (Key)' 
                       : '';
                     
                     return (
@@ -2106,7 +2105,7 @@ export function WalletDashboard({
 
             {/* Transaction List - Scrollable area */}
             <ScrollArea className="flex-1 min-h-0">
-              <div className="space-y-1.5 pr-4 pb-4">
+              <div className="space-y-1.5 pr-4 pb-6">
                 {isLoadingTransactions ? (
                   <div className="flex items-center justify-center py-4">
                     <div className="w-4 h-4 rounded-full border-2 border-transparent animate-spin" style={{ borderTopColor: '#0000db' }} />
@@ -2548,7 +2547,7 @@ export function WalletDashboard({
       {/* Footer Credit - Only for expanded mode */}
       {!isPopupMode && (
         <footer 
-          className="fixed bottom-0 right-0 py-2 px-4 text-xs text-muted-foreground bg-background/80 backdrop-blur-sm border-t border-border/40 flex items-center justify-between transition-[left] duration-300 ease-out"
+          className="fixed bottom-0 right-0 py-2 px-4 text-xs text-muted-foreground bg-background/80 backdrop-blur-sm border-t border-border/80 flex items-center justify-between transition-[left] duration-300 ease-out"
           style={{ left: showWalletSidebar ? '320px' : '0px' }}
         >
           {/* Left: Connection Status */}

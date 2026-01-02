@@ -126,10 +126,10 @@ export function ModeToggle({
         </TooltipProvider>
 
         {/* Right: Animated Status Text */}
-        <div className={`relative overflow-hidden flex items-center ${isCompact ? 'h-5' : 'h-6'}`}>
+        <div className={`relative overflow-hidden flex items-center ${isCompact ? 'h-7' : 'h-8'}`}>
           {/* Public Mode Text */}
           <span
-            className={`${isCompact ? 'text-xs' : 'text-sm'} font-medium text-muted-foreground whitespace-nowrap transition-all duration-300 ease-in-out
+            className={`${isCompact ? 'text-lg' : 'text-xl'} font-medium text-muted-foreground whitespace-nowrap transition-all duration-300 ease-in-out
               ${isPrivate 
                 ? '-translate-y-full opacity-0 absolute' 
                 : 'translate-y-0 opacity-100'
@@ -140,7 +140,7 @@ export function ModeToggle({
           </span>
           {/* Private Mode Text */}
           <span
-            className={`${isCompact ? 'text-xs' : 'text-sm'} font-medium text-[#0000db] whitespace-nowrap transition-all duration-300 ease-in-out
+            className={`${isCompact ? 'text-lg' : 'text-xl'} font-medium text-[#0000db] whitespace-nowrap transition-all duration-300 ease-in-out
               ${isPrivate 
                 ? 'translate-y-0 opacity-100' 
                 : 'translate-y-full opacity-0 absolute'

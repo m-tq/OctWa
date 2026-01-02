@@ -122,7 +122,7 @@
 }
 
 .octra-header {
-  @apply border-b border-border/40 bg-background/80 backdrop-blur-sm;
+  @apply border-b border-border/80 bg-background/80 backdrop-blur-sm;
 }
 
 .octra-card {

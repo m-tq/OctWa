@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Skeleton } from '@/components/ui/skeleton';
+import { ScrollArea } from '@/components/ui/scroll-area';
 import { Gift, RefreshCw, Wallet as WalletIcon, CheckCircle, AlertTriangle, Loader2, Package } from 'lucide-react';
 import { Wallet } from '../types/wallet';
 import { getPendingPrivateTransfers, claimPrivateTransfer, fetchEncryptedBalance, invalidateCacheAfterClaim } from '../utils/api';
@@ -290,72 +291,74 @@ export function ClaimTransfers({ wallet, onTransactionSuccess, isPopupMode = fal
             </span>
           </div>
         ) : (
-          <div className={isPopupMode ? 'space-y-2' : 'space-y-4'}>
-            {!isPopupMode && (
-              <div className="text-sm text-muted-foreground">
-                Found {transfers.length} claimable transfer{transfers.length !== 1 ? 's' : ''}
-              </div>
-            )}
-            
-            {transfers.map((transfer, index) => (
-              <div key={transfer.id} className={`border  ${isPopupMode ? 'p-2 space-y-1.5' : 'p-4 space-y-3'}`}>
-                <div className="flex items-center justify-between">
-                  <div className={isPopupMode ? 'space-y-0.5' : 'space-y-1'}>
-                    <div className="flex items-center gap-1.5">
-                      <span className={`font-medium ${isPopupMode ? 'text-xs' : 'text-sm'}`}>#{transfer.id}</span>
-                      <Badge variant="outline" className={isPopupMode ? 'text-[9px] px-1 py-0' : 'text-xs'}>
-                        E.{transfer.epoch_id}
-                      </Badge>
+          <ScrollArea className={isPopupMode ? 'h-auto' : 'h-[calc(100vh-450px)] pr-3'}>
+            <div className={isPopupMode ? 'space-y-2' : 'space-y-4 pr-1 pb-4'}>
+              {!isPopupMode && (
+                <div className="text-sm text-muted-foreground">
+                  Found {transfers.length} claimable transfer{transfers.length !== 1 ? 's' : ''}
+                </div>
+              )}
+              
+              {transfers.map((transfer, index) => (
+                <div key={transfer.id} className={`border  ${isPopupMode ? 'p-2 space-y-1.5' : 'p-4 space-y-3'}`}>
+                  <div className="flex items-center justify-between">
+                    <div className={isPopupMode ? 'space-y-0.5' : 'space-y-1'}>
+                      <div className="flex items-center gap-1.5">
+                        <span className={`font-medium ${isPopupMode ? 'text-xs' : 'text-sm'}`}>#{transfer.id}</span>
+                        <Badge variant="outline" className={isPopupMode ? 'text-[9px] px-1 py-0' : 'text-xs'}>
+                          E.{transfer.epoch_id}
+                        </Badge>
+                      </div>
+                      <div className={`text-muted-foreground ${isPopupMode ? 'text-[10px]' : 'text-xs'}`}>
+                        {isPopupMode 
+                          ? `${transfer.sender.slice(0, 6)}...${transfer.sender.slice(-4)}`
+                          : `From: ${transfer.sender.slice(0, 12)}...${transfer.sender.slice(-8)}`
+                        }
+                      </div>
                     </div>
-                    <div className={`text-muted-foreground ${isPopupMode ? 'text-[10px]' : 'text-xs'}`}>
-                      {isPopupMode 
-                        ? `${transfer.sender.slice(0, 6)}...${transfer.sender.slice(-4)}`
-                        : `From: ${transfer.sender.slice(0, 12)}...${transfer.sender.slice(-8)}`
-                      }
+                    
+                    <div className={`text-right ${isPopupMode ? 'space-y-0' : 'space-y-1'}`}>
+                      <div className={`font-mono font-bold text-green-600 ${isPopupMode ? 'text-xs' : ''}`}>
+                        {transfer.decryptedAmount !== null 
+                          ? `${transfer.decryptedAmount.toFixed(isPopupMode ? 4 : 8)} OCT`
+                          : '[Encrypted]'
+                        }
+                      </div>
+                      {!isPopupMode && (
+                        <div className="text-xs text-muted-foreground">
+                          {julianToDate(transfer.created_at).toLocaleDateString()}
+                        </div>
+                      )}
                     </div>
                   </div>
                   
-                  <div className={`text-right ${isPopupMode ? 'space-y-0' : 'space-y-1'}`}>
-                    <div className={`font-mono font-bold text-green-600 ${isPopupMode ? 'text-xs' : ''}`}>
-                      {transfer.decryptedAmount !== null 
-                        ? `${transfer.decryptedAmount.toFixed(isPopupMode ? 4 : 8)} OCT`
-                        : '[Encrypted]'
-                      }
-                    </div>
-                    {!isPopupMode && (
-                      <div className="text-xs text-muted-foreground">
-                        {julianToDate(transfer.created_at).toLocaleDateString()}
-                      </div>
-                    )}
+                  <div className="flex justify-end">
+                    <Button
+                      onClick={() => handleClaim(transfer.id)}
+                      disabled={claimingId === transfer.id || claimingAll}
+                      size="sm"
+                      className={`flex items-center gap-1.5 bg-[#0000db] hover:bg-[#0000db]/90 ${isPopupMode ? 'h-7 text-xs px-2' : ''}`}
+                    >
+                      {claimingId === transfer.id || claimingAll ? (
+                        <div className="flex items-center gap-1">
+                          <div className="relative w-3 h-3">
+                            <div className="absolute inset-0 rounded-full border-2 border-white/20" />
+                            <div className="absolute inset-0 rounded-full border-2 border-transparent border-t-white animate-spin" />
+                          </div>
+                          <span>{isPopupMode ? '...' : (claimingAll ? 'Processing...' : 'Claiming...')}</span>
+                        </div>
+                      ) : (
+                        <>
+                          <Gift className={isPopupMode ? 'h-3 w-3' : 'h-4 w-4'} />
+                          Claim
+                        </>
+                      )}
+                    </Button>
                   </div>
                 </div>
-                
-                <div className="flex justify-end">
-                  <Button
-                    onClick={() => handleClaim(transfer.id)}
-                    disabled={claimingId === transfer.id || claimingAll}
-                    size="sm"
-                    className={`flex items-center gap-1.5 bg-[#0000db] hover:bg-[#0000db]/90 ${isPopupMode ? 'h-7 text-xs px-2' : ''}`}
-                  >
-                    {claimingId === transfer.id || claimingAll ? (
-                      <div className="flex items-center gap-1">
-                        <div className="relative w-3 h-3">
-                          <div className="absolute inset-0 rounded-full border-2 border-white/20" />
-                          <div className="absolute inset-0 rounded-full border-2 border-transparent border-t-white animate-spin" />
-                        </div>
-                        <span>{isPopupMode ? '...' : (claimingAll ? 'Processing...' : 'Claiming...')}</span>
-                      </div>
-                    ) : (
-                      <>
-                        <Gift className={isPopupMode ? 'h-3 w-3' : 'h-4 w-4'} />
-                        Claim
-                      </>
-                    )}
-                  </Button>
-                </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          </ScrollArea>
         )}
 
         {/* Transaction Modal */}
