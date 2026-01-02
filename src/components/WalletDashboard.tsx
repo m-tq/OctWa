@@ -140,6 +140,8 @@ export function WalletDashboard({
   const [showScrollUpIndicator, setShowScrollUpIndicator] = useState(false);
   // Expanded mode send modal states
   const [expandedSendModal, setExpandedSendModal] = useState<'standard' | 'multi' | 'bulk' | null>(null);
+  const [sendModalAnimating, setSendModalAnimating] = useState(false);
+  const [sendModalClosing, setSendModalClosing] = useState(false);
   const [bulkResetTrigger, setBulkResetTrigger] = useState(0);
   const [multiResetTrigger, setMultiResetTrigger] = useState(0);
   const [copiedField, setCopiedField] = useState<string | null>(null);
@@ -147,6 +149,22 @@ export function WalletDashboard({
   const [showAddressBook, setShowAddressBook] = useState(false);
   const { autoLabelWallets, getWalletDisplayName } = useAddressBook();
   const { toast } = useToast();
+
+  // Handle opening send modal with animation
+  const openSendModal = (type: 'standard' | 'multi' | 'bulk') => {
+    setSendModalAnimating(true);
+    setExpandedSendModal(type);
+    setTimeout(() => setSendModalAnimating(false), 300);
+  };
+
+  // Handle closing send modal with animation
+  const closeSendModal = () => {
+    setSendModalClosing(true);
+    setTimeout(() => {
+      setExpandedSendModal(null);
+      setSendModalClosing(false);
+    }, 200);
+  };
 
   // Auto-label wallets on mount and when wallets change
   useEffect(() => {
@@ -2401,7 +2419,7 @@ export function WalletDashboard({
                   <Button
                     variant="outline"
                     className="flex flex-col items-center gap-2 h-auto py-6  border-2 hover:border-foreground/30 hover:bg-accent transition-all"
-                    onClick={() => setExpandedSendModal('standard')}
+                    onClick={() => openSendModal('standard')}
                   >
                     <Send className="h-8 w-8" />
                     <span className="text-sm font-medium">Standard</span>
@@ -2411,7 +2429,7 @@ export function WalletDashboard({
                   <Button
                     variant="outline"
                     className="flex flex-col items-center gap-2 h-auto py-6  border-2 hover:border-foreground/30 hover:bg-accent transition-all"
-                    onClick={() => setExpandedSendModal('multi')}
+                    onClick={() => openSendModal('multi')}
                   >
                     <svg className="h-8 w-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
@@ -2423,7 +2441,7 @@ export function WalletDashboard({
                   <Button
                     variant="outline"
                     className="flex flex-col items-center gap-2 h-auto py-6  border-2 hover:border-foreground/30 hover:bg-accent transition-all"
-                    onClick={() => setExpandedSendModal('bulk')}
+                    onClick={() => openSendModal('bulk')}
                   >
                     <Download className="h-8 w-8" />
                     <span className="text-sm font-medium">Bulk Send</span>
@@ -2488,7 +2506,9 @@ export function WalletDashboard({
       {/* Expanded Mode Send Modals */}
       {!isPopupMode && expandedSendModal && (
         <div 
-          className="fixed z-[45] bg-background/95 backdrop-blur-sm flex flex-col transition-[left] duration-300 ease-out"
+          className={`fixed z-[45] bg-background/95 backdrop-blur-sm flex flex-col transition-all duration-300 ease-out ${
+            sendModalAnimating ? 'animate-send-modal-enter' : ''
+          } ${sendModalClosing ? 'animate-send-modal-exit' : ''}`}
           style={{ 
             top: '83px', 
             left: showWalletSidebar ? '384px' : '0px',
@@ -2502,7 +2522,7 @@ export function WalletDashboard({
               <Button 
                 variant="ghost" 
                 size="sm" 
-                onClick={() => setExpandedSendModal(null)} 
+                onClick={closeSendModal} 
                 className="h-9 w-9 p-0"
               >
                 <ChevronDown className="h-5 w-5 rotate-90" />
@@ -2557,7 +2577,7 @@ export function WalletDashboard({
                   onBalanceUpdate={handleBalanceUpdate}
                   onNonceUpdate={handleNonceUpdate}
                   onTransactionSuccess={handleTransactionSuccess}
-                  onModalClose={() => setExpandedSendModal(null)}
+                  onModalClose={closeSendModal}
                 />
               </div>
             </ScrollArea>
@@ -2571,7 +2591,7 @@ export function WalletDashboard({
                   onBalanceUpdate={handleBalanceUpdate}
                   onNonceUpdate={handleNonceUpdate}
                   onTransactionSuccess={handleTransactionSuccess}
-                  onModalClose={() => setExpandedSendModal(null)}
+                  onModalClose={closeSendModal}
                   hideBorder={true}
                   resetTrigger={multiResetTrigger}
                   sidebarOpen={showWalletSidebar}
