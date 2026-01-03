@@ -73,6 +73,8 @@ interface MultiSendProps {
   onModalClose?: () => void;
   hideBorder?: boolean;
   resetTrigger?: number;
+  sidebarOpen?: boolean;
+  historySidebarOpen?: boolean;
 }
 
 // Simple address validation function
@@ -95,7 +97,7 @@ function validateRecipientInput(input: string): { isValid: boolean; error?: stri
   };
 }
 
-export function FileMultiSend({ wallet, balance, onBalanceUpdate, onNonceUpdate, resetTrigger }: MultiSendProps) {
+export function FileMultiSend({ wallet, balance, onBalanceUpdate, onNonceUpdate, resetTrigger, sidebarOpen = true, historySidebarOpen = true }: MultiSendProps) {
   const [recipients, setRecipients] = useState<FileRecipient[]>([]);
   const [amountMode, setAmountMode] = useState<'same' | 'different'>('same');
   const [sameAmount, setSameAmount] = useState('');
@@ -1240,10 +1242,26 @@ export function FileMultiSend({ wallet, balance, onBalanceUpdate, onNonceUpdate,
   const errorCount = txLogEntries.filter(l => l.status === 'error').length;
   const pendingCount = txLogEntries.filter(l => l.status === 'pending' || l.status === 'retrying' || l.status === 'queued').length;
 
+  // Determine layout based on sidebar states
+  const bothSidebarsOpen = sidebarOpen && historySidebarOpen;
+  const oneSidebarOpen = sidebarOpen || historySidebarOpen;
+
   return (
-    <div className="h-full flex flex-col xl:flex-row gap-4 xl:gap-6 overflow-auto xl:overflow-hidden p-1">
+    <div className={`h-full flex flex-col gap-4 overflow-auto p-1 ${
+      bothSidebarsOpen 
+        ? 'lg:flex-col' 
+        : oneSidebarOpen 
+          ? 'xl:flex-row xl:gap-6 xl:overflow-hidden' 
+          : 'lg:flex-row lg:gap-6 lg:overflow-hidden'
+    }`}>
       {/* Left Panel - Wallet Info & Controls */}
-      <div className="w-full xl:w-72 flex-shrink-0 space-y-4 overflow-visible">
+      <div className={`w-full flex-shrink-0 space-y-4 overflow-visible ${
+        bothSidebarsOpen 
+          ? 'lg:w-full' 
+          : oneSidebarOpen 
+            ? 'xl:w-72' 
+            : 'lg:w-72'
+      }`}>
           {/* Active Address & Balance */}
           <div className="space-y-1.5">
             <Label className="text-xs text-muted-foreground">Active Address</Label>
@@ -1380,10 +1398,22 @@ export function FileMultiSend({ wallet, balance, onBalanceUpdate, onNonceUpdate,
       </div>
 
       {/* Separator - Hidden on mobile */}
-      <div className="hidden xl:block w-px bg-border flex-shrink-0" />
+      <div className={`hidden w-px bg-border flex-shrink-0 ${
+        bothSidebarsOpen 
+          ? 'lg:hidden' 
+          : oneSidebarOpen 
+            ? 'xl:block' 
+            : 'lg:block'
+      }`} />
 
       {/* Middle Panel - File Upload & Recipients */}
-      <div className="w-full xl:w-[450px] flex-shrink-0 xl:flex xl:flex-col space-y-4">
+      <div className={`w-full flex-shrink-0 space-y-4 ${
+        bothSidebarsOpen 
+          ? 'lg:w-full lg:flex lg:flex-col' 
+          : oneSidebarOpen 
+            ? 'xl:w-[450px] xl:flex xl:flex-col' 
+            : 'xl:w-[450px] xl:flex xl:flex-col'
+      }`}>
         {/* Upload Recipients File */}
         <TooltipProvider>
           <Tooltip>
@@ -1457,7 +1487,13 @@ export function FileMultiSend({ wallet, balance, onBalanceUpdate, onNonceUpdate,
         </div>
 
         {/* Recipients Preview */}
-        <div className="rounded-lg border xl:flex-1 xl:flex xl:flex-col xl:min-h-0 overflow-hidden">
+        <div className={`rounded-lg border overflow-hidden ${
+          bothSidebarsOpen 
+            ? 'lg:flex-1 lg:flex lg:flex-col lg:min-h-0' 
+            : oneSidebarOpen 
+              ? 'xl:flex-1 xl:flex xl:flex-col xl:min-h-0' 
+              : 'xl:flex-1 xl:flex xl:flex-col xl:min-h-0'
+        }`}>
           <div className="flex items-center justify-between p-3 bg-muted/30 flex-shrink-0">
             <div className="flex items-center gap-2">
               <span className="text-sm font-medium">Recipients Preview</span>
@@ -1539,11 +1575,29 @@ export function FileMultiSend({ wallet, balance, onBalanceUpdate, onNonceUpdate,
       </div>
 
       {/* Separator - Hidden on mobile */}
-      <div className="hidden xl:block w-px bg-border" />
+      <div className={`hidden w-px bg-border ${
+        bothSidebarsOpen 
+          ? 'lg:hidden' 
+          : oneSidebarOpen 
+            ? 'xl:block' 
+            : 'lg:block'
+      }`} />
 
       {/* Right Panel - Live Transaction Logs */}
-      <div className="xl:flex-1 xl:flex xl:flex-col xl:min-w-[300px]">
-        <div className="rounded-lg border xl:flex-1 xl:flex xl:flex-col xl:min-h-0 overflow-hidden">
+      <div className={`${
+        bothSidebarsOpen 
+          ? 'lg:flex-1 lg:flex lg:flex-col' 
+          : oneSidebarOpen 
+            ? 'xl:flex-1 xl:flex xl:flex-col xl:min-w-[300px]' 
+            : 'lg:flex-1 lg:flex lg:flex-col lg:min-w-[300px]'
+      }`}>
+        <div className={`rounded-lg border overflow-hidden ${
+          bothSidebarsOpen 
+            ? 'lg:flex-1 lg:flex lg:flex-col lg:min-h-0' 
+            : oneSidebarOpen 
+              ? 'xl:flex-1 xl:flex xl:flex-col xl:min-h-0' 
+              : 'lg:flex-1 lg:flex lg:flex-col lg:min-h-0'
+        }`}>
           <div className="flex items-center justify-between p-3 bg-muted/30">
             <span className="text-sm font-medium">Transaction Logs</span>
             {txLogs.length > 0 && (

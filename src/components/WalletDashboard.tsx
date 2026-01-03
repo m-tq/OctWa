@@ -123,8 +123,18 @@ export function WalletDashboard({
   const MAX_SIDEBAR_WIDTH = 500;
   const AUTO_HIDE_THRESHOLD = 200; // Auto hide when dragged below this width
   
+  // History sidebar state (right side)
+  const [showHistorySidebar, setShowHistorySidebar] = useState(true);
+  const [historySidebarWidth, setHistorySidebarWidth] = useState(530);
+  const [isResizingHistory, setIsResizingHistory] = useState(false);
+  const MIN_HISTORY_WIDTH = 300;
+  const MAX_HISTORY_WIDTH = 600;
+  const AUTO_HIDE_HISTORY_THRESHOLD = 200;
+  
   // Computed sidebar left position for all fixed elements
   const sidebarLeftOffset = showWalletSidebar ? `${sidebarWidth}px` : '2px';
+  // Computed history sidebar right position
+  const historySidebarRightOffset = showHistorySidebar ? `${historySidebarWidth}px` : '2px';
   // Popup mode fullscreen states
   const [popupScreen, setPopupScreen] = useState<'main' | 'encrypt' | 'decrypt' | 'send' | 'receive' | 'claim' | 'txDetail'>('main');
   const [showReceiveDialog, setShowReceiveDialog] = useState(false);
@@ -156,8 +166,12 @@ export function WalletDashboard({
   const [expandedPrivateModal, setExpandedPrivateModal] = useState<'encrypt' | 'decrypt' | null>(null);
   const [privateModalAnimating, setPrivateModalAnimating] = useState(false);
   const [privateModalClosing, setPrivateModalClosing] = useState(false);
+  // Expanded mode transaction details inline screen
+  const [showExpandedTxDetails, setShowExpandedTxDetails] = useState(false);
   // Address Book state
   const [showAddressBook, setShowAddressBook] = useState(false);
+  // Current epoch state
+  const [currentEpoch, setCurrentEpoch] = useState<number>(0);
   const { autoLabelWallets, getWalletDisplayName } = useAddressBook();
   const { toast } = useToast();
 
@@ -234,6 +248,41 @@ export function WalletDashboard({
       document.body.style.userSelect = '';
     };
   }, [isResizing]);
+
+  // Handle history sidebar resize (right side)
+  useEffect(() => {
+    if (!isResizingHistory) return;
+
+    const handleMouseMove = (e: MouseEvent) => {
+      const newWidth = window.innerWidth - e.clientX;
+      if (newWidth < AUTO_HIDE_HISTORY_THRESHOLD) {
+        // Auto hide when dragged too far right
+        setShowHistorySidebar(false);
+        setHistorySidebarWidth(MIN_HISTORY_WIDTH);
+        setIsResizingHistory(false);
+      } else if (newWidth >= MIN_HISTORY_WIDTH && newWidth <= MAX_HISTORY_WIDTH) {
+        setHistorySidebarWidth(newWidth);
+      }
+    };
+
+    const handleMouseUp = () => {
+      setIsResizingHistory(false);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    };
+
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    };
+  }, [isResizingHistory]);
 
   // Determine if private mode is available (encrypted balance > 0 OR pending transfers > 0)
   const privateEnabled = isPrivateModeAvailable(encryptedBalance?.encrypted || 0, pendingTransfersCount);
@@ -383,6 +432,9 @@ export function WalletDashboard({
         `🔄 Epoch changed (${oldEpoch} → ${newEpoch}), checking for data changes...`
       );
 
+      // Update current epoch state
+      setCurrentEpoch(newEpoch);
+
       try {
         // Fetch fresh balance data (cache was already invalidated by epoch change)
         const balanceData = await fetchBalance(wallet.address, true);
@@ -464,10 +516,15 @@ export function WalletDashboard({
     const epochPollInterval = setInterval(async () => {
       try {
         await apiCache.checkEpochChange();
+        // Also update current epoch state
+        setCurrentEpoch(apiCache.getCachedEpoch());
       } catch (error) {
         console.error('Epoch check failed:', error);
       }
     }, 10000);
+
+    // Initialize current epoch on mount
+    setCurrentEpoch(apiCache.getCachedEpoch());
 
     return () => {
       unsubscribe();
@@ -952,11 +1009,17 @@ export function WalletDashboard({
     return `${address.slice(0, 8)}...${address.slice(-6)}`;
   };
 
-  // Handler for viewing transaction details in popup mode
+  // Handler for viewing transaction details
   const handleViewTxDetails = async (txHash: string, isPending: boolean = false) => {
     setSelectedTxHash(txHash);
     setLoadingTxDetails(true);
-    setPopupScreen('txDetail');
+    
+    // For popup mode, use fullscreen; for expanded mode, use inline screen
+    if (isPopupMode) {
+      setPopupScreen('txDetail');
+    } else {
+      setShowExpandedTxDetails(true);
+    }
     
     try {
       if (isPending) {
@@ -995,6 +1058,13 @@ export function WalletDashboard({
     } finally {
       setLoadingTxDetails(false);
     }
+  };
+
+  // Close expanded transaction details
+  const closeExpandedTxDetails = () => {
+    setShowExpandedTxDetails(false);
+    setSelectedTxHash(null);
+    setSelectedTxDetails(null);
   };
 
   return (
@@ -2020,10 +2090,10 @@ export function WalletDashboard({
       {/* Sticky Mode Toggle - Only for expanded mode */}
       {!isPopupMode && (
         <div 
-          className={`fixed top-[70px] sm:top-[85px] right-0 z-40 bg-background/95 backdrop-blur-sm py-3 transition-[left] ${isResizing ? 'duration-0' : 'duration-300'} ease-out`}
-          style={{ left: sidebarLeftOffset }}
+          className={`fixed top-[85px] sm:top-[100px] z-40 bg-background/95 backdrop-blur-sm py-3 transition-[left,right] ${isResizing || isResizingHistory ? 'duration-0' : 'duration-300'} ease-out`}
+          style={{ left: sidebarLeftOffset, right: historySidebarRightOffset }}
         >
-          <div className="px-6 sm:px-8 lg:px-12 max-w-6xl mx-auto">
+          <div className="px-6 sm:px-8 lg:px-12">
             <ModeToggle
               currentMode={operationMode}
               onModeChange={handleModeChange}
@@ -2167,10 +2237,10 @@ export function WalletDashboard({
 
       {/* Main Content - Add padding-top for fixed header in expanded mode */}
       <div 
-        className={isPopupMode ? '' : `transition-[padding-left] ${isResizing ? 'duration-0' : 'duration-300'} ease-out`}
-        style={!isPopupMode ? { paddingLeft: sidebarLeftOffset } : undefined}
+        className={isPopupMode ? '' : `transition-[padding-left,padding-right] ${isResizing || isResizingHistory ? 'duration-0' : 'duration-300'} ease-out`}
+        style={!isPopupMode ? { paddingLeft: sidebarLeftOffset, paddingRight: historySidebarRightOffset } : undefined}
       >
-        <main className={isPopupMode ? 'octra-container pt-0 pb-0 px-3 flex flex-col h-[calc(100vh-50px)] overflow-hidden' : 'pt-[149px] sm:pt-[165px] pb-16 px-6 sm:px-8 lg:px-12 sm:pb-20 max-w-6xl mx-auto'}>
+        <main className={isPopupMode ? 'octra-container pt-0 pb-0 px-3 flex flex-col h-[calc(100vh-50px)] overflow-hidden' : 'pt-[149px] sm:pt-[165px] pb-16 px-6 sm:px-8 lg:px-12 sm:pb-20'}>
         {/* ============================================ */}
         {/* POPUP MODE - NEW MAIN UI */}
         {/* ============================================ */}
@@ -2296,14 +2366,6 @@ export function WalletDashboard({
                   Recent Activity
                 </h3>
                 <div className="flex items-center gap-1.5">
-                  <button
-                    onClick={refreshWalletData}
-                    disabled={isRefreshingData}
-                    className={`p-1 rounded hover:bg-muted transition-colors ${isRefreshingData ? 'opacity-50' : ''}`}
-                    title="Refresh"
-                  >
-                    <RotateCcw className={`h-3 w-3 text-muted-foreground ${isRefreshingData ? 'animate-spin' : ''}`} />
-                  </button>
                   <a 
                     href={`https://octrascan.io/addresses/${wallet.address}`}
                     target="_blank"
@@ -2409,174 +2471,165 @@ export function WalletDashboard({
           </div>
         ) : (
         /* ============================================ */
-        /* EXPANDED MODE - ORIGINAL TABS UI */
+        /* EXPANDED MODE - NEW DASHBOARD UI */
         /* ============================================ */
-        <Tabs value={activeTab} onValueChange={(tab) => {
-          setActiveTab(tab);
-          // Fetch latest state when switching to balance or history tab
-          if (tab === 'balance' || tab === 'history') {
-            refreshWalletData();
-          }
-        }} className="">
-          {/* TabsList - Only show inline for expanded mode */}
-          {operationMode === 'public' ? (
-              // Public Mode Tabs - Classic segmented style
-              <div className="relative">
-                <TabsList className="relative z-10 grid w-full grid-cols-3 h-auto p-0 bg-transparent gap-0">
-                  <TabsTrigger 
-                    value="balance" 
-                    className="flex items-center justify-center gap-2 text-sm px-6 py-3 border border-b-0 border-border bg-muted/50 data-[state=active]:bg-background data-[state=active]:border-foreground/20 data-[state=active]:border-b-background data-[state=active]:-mb-px data-[state=active]:z-10 data-[state=inactive]:hover:bg-muted transition-all -mr-px"
-                  >
-                    <PieChart className="h-4 w-4" />
-                    <span className="font-medium">Balance</span>
-                  </TabsTrigger>
-                  <TabsTrigger 
-                    value="send" 
-                    className="flex items-center justify-center gap-2 text-sm px-6 py-3 border border-b-0 border-border bg-muted/50 data-[state=active]:bg-background data-[state=active]:border-foreground/20 data-[state=active]:border-b-background data-[state=active]:-mb-px data-[state=active]:z-10 data-[state=inactive]:hover:bg-muted transition-all -mr-px"
-                  >
-                    <Send className="h-4 w-4" />
-                    <span className="font-medium">Send</span>
-                  </TabsTrigger>
-                  <TabsTrigger 
-                    value="history" 
-                    className="flex items-center justify-center gap-2 text-sm px-6 py-3 border border-b-0 border-border bg-muted/50 data-[state=active]:bg-background data-[state=active]:border-foreground/20 data-[state=active]:border-b-background data-[state=active]:-mb-px data-[state=active]:z-10 data-[state=inactive]:hover:bg-muted transition-all"
-                  >
-                    <History className="h-4 w-4" />
-                    <span className="font-medium">History</span>
-                  </TabsTrigger>
-                </TabsList>
-              </div>
-            ) : (
-              // Private Mode Tabs - Classic segmented style
-              <div className="relative">
-                <TabsList className="relative z-10 grid w-full grid-cols-4 h-auto p-0 bg-transparent gap-0">
-                  <TabsTrigger 
-                    value="balance" 
-                    className="flex items-center justify-center gap-2 text-sm px-6 py-3 border border-b-0 border-[#0000db]/30 bg-[#0000db]/5 data-[state=active]:bg-background data-[state=active]:border-[#0000db]/40 data-[state=active]:border-b-background data-[state=active]:-mb-px data-[state=active]:z-10 data-[state=active]:text-[#0000db] data-[state=inactive]:hover:bg-[#0000db]/10 transition-all -mr-px"
-                  >
-                    <Shield className="h-4 w-4" />
-                    <span className="font-medium">Balance</span>
-                  </TabsTrigger>
-                  <TabsTrigger 
-                    value="transfer" 
-                    className="flex items-center justify-center gap-2 text-sm px-6 py-3 border border-b-0 border-[#0000db]/30 bg-[#0000db]/5 data-[state=active]:bg-background data-[state=active]:border-[#0000db]/40 data-[state=active]:border-b-background data-[state=active]:-mb-px data-[state=active]:z-10 data-[state=active]:text-[#0000db] data-[state=inactive]:hover:bg-[#0000db]/10 transition-all -mr-px"
-                  >
-                    <Send className="h-4 w-4" />
-                    <span className="font-medium">Send</span>
-                  </TabsTrigger>
-                  <TabsTrigger 
-                    value="claim" 
-                    className="flex items-center justify-center gap-2 text-sm px-6 py-3 border border-b-0 border-[#0000db]/30 bg-[#0000db]/5 data-[state=active]:bg-background data-[state=active]:border-[#0000db]/40 data-[state=active]:border-b-background data-[state=active]:-mb-px data-[state=active]:z-10 data-[state=active]:text-[#0000db] data-[state=inactive]:hover:bg-[#0000db]/10 transition-all -mr-px"
-                  >
-                    <Gift className="h-4 w-4" />
-                    <span className="font-medium">Claim</span>
-                  </TabsTrigger>
-                  <TabsTrigger 
-                    value="history" 
-                    className="flex items-center justify-center gap-2 text-sm px-6 py-3 border border-b-0 border-[#0000db]/30 bg-[#0000db]/5 data-[state=active]:bg-background data-[state=active]:border-[#0000db]/40 data-[state=active]:border-b-background data-[state=active]:-mb-px data-[state=active]:z-10 data-[state=active]:text-[#0000db] data-[state=inactive]:hover:bg-[#0000db]/10 transition-all"
-                  >
-                    <History className="h-4 w-4" />
-                    <span className="font-medium">History</span>
-                  </TabsTrigger>
-                </TabsList>
-              </div>
-            )}
+        <div className="flex flex-col h-[calc(100vh-165px)] sm:h-[calc(100vh-180px)]">
+          {/* Main Content Area */}
+          <div className="flex-1 flex flex-col items-center justify-start pt-8 pb-4 overflow-auto">
+            {/* Mode Label */}
+            <div className="text-sm text-muted-foreground mb-2">
+              {operationMode === 'private' ? 'Private Balance' : 'Public Balance'}
+            </div>
 
-          {/* Balance Tab Content - Connected to tabs */}
-          <TabsContent value="balance" className={`tab-animated mt-0 border ${operationMode === 'private' ? 'border-[#0000db]/40' : 'border-foreground/20'} bg-background`}>
-            <div className="p-4">
-              {operationMode === 'public' ? (
-                <PublicBalance 
-                  wallet={wallet} 
-                  balance={balance}
-                  encryptedBalance={encryptedBalance}
-                  onEncryptedBalanceUpdate={setEncryptedBalance}
-                  onBalanceUpdate={handleBalanceUpdate}
-                  isLoading={isLoadingBalance || isRefreshingData}
-                  hideBorder={true}
-                  isPopupMode={false}
-                  onOpenEncryptModal={() => openPrivateModal('encrypt')}
-                />
+            {/* Balance Display */}
+            <div className="text-center mb-6">
+              {isLoadingBalance || isRefreshingData ? (
+                <div className="flex items-center justify-center gap-2">
+                  <div className="w-6 h-6 rounded-full border-2 border-transparent animate-spin" style={{ borderTopColor: '#0000db' }} />
+                </div>
               ) : (
-                <PrivateBalance 
-                  wallet={wallet} 
-                  balance={balance}
-                  encryptedBalance={encryptedBalance}
-                  onEncryptedBalanceUpdate={setEncryptedBalance}
-                  onBalanceUpdate={handleBalanceUpdate}
-                  isLoading={isLoadingBalance || isRefreshingData}
-                  hideBorder={true}
-                  isPopupMode={false}
-                  onOpenDecryptModal={() => openPrivateModal('decrypt')}
-                />
+                <div className={`text-4xl font-bold tracking-tight ${operationMode === 'private' ? 'text-[#0000db]' : ''}`}>
+                  {operationMode === 'private' 
+                    ? `${(encryptedBalance?.encrypted || 0).toFixed(8)} OCT`
+                    : `${(balance || 0).toFixed(8)} OCT`
+                  }
+                </div>
               )}
             </div>
-          </TabsContent>
 
-          {/* Send Tab (Public Mode) */}
-          {operationMode === 'public' && (
-            <TabsContent value="send" className="tab-animated mt-0 border border-foreground/20 bg-background">
-              <div className="p-6">
-                <div className="grid grid-cols-3 gap-4 max-w-xl mx-auto">
-                  {/* Standard Send Button */}
-                  <Button
-                    variant="outline"
-                    className="flex flex-col items-center gap-2 h-auto py-6 border border-border hover:border-foreground/30 hover:bg-accent transition-all"
-                    onClick={() => openSendModal('standard')}
+            {/* Encrypt/Decrypt Button */}
+            {operationMode === 'public' ? (
+              <Button
+                variant="outline"
+                className="w-full max-w-lg h-12 mb-8 border border-border"
+                onClick={() => openPrivateModal('encrypt')}
+                disabled={!balance || balance <= 0.001}
+              >
+                <Lock className="h-4 w-4 mr-2" />
+                Encrypt
+              </Button>
+            ) : (
+              <Button
+                variant="outline"
+                className="w-full max-w-lg h-12 mb-8 border border-[#0000db]/30 text-[#0000db] hover:bg-[#0000db]/10"
+                onClick={() => openPrivateModal('decrypt')}
+                disabled={!encryptedBalance || encryptedBalance.encrypted <= 0}
+              >
+                <Unlock className="h-4 w-4 mr-2" />
+                Decrypt
+              </Button>
+            )}
+
+            {/* Action Buttons */}
+            {operationMode === 'public' ? (
+              /* Public Mode Actions */
+              <div className="grid grid-cols-3 gap-4 w-full max-w-lg">
+                {/* Standard Send */}
+                <Button
+                  variant="outline"
+                  className="flex flex-col items-center gap-3 h-auto py-6 border border-border hover:border-foreground/30 hover:bg-accent transition-all"
+                  onClick={() => openSendModal('standard')}
+                >
+                  <Send className="h-8 w-8" />
+                  <span className="text-sm font-medium">Standard</span>
+                  <span className="text-[10px] text-muted-foreground">Single transfer</span>
+                </Button>
+                
+                {/* Multi Send */}
+                <Button
+                  variant="outline"
+                  className="flex flex-col items-center gap-3 h-auto py-6 border border-border hover:border-foreground/30 hover:bg-accent transition-all"
+                  onClick={() => openSendModal('multi')}
+                >
+                  <svg className="h-8 w-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
+                  </svg>
+                  <span className="text-sm font-medium">Multi Send</span>
+                  <span className="text-[10px] text-muted-foreground">Multiple recipients</span>
+                </Button>
+                
+                {/* Bulk Send */}
+                <Button
+                  variant="outline"
+                  className="flex flex-col items-center gap-3 h-auto py-6 border border-border hover:border-foreground/30 hover:bg-accent transition-all"
+                  onClick={() => openSendModal('bulk')}
+                >
+                  <Download className="h-8 w-8" />
+                  <span className="text-sm font-medium">Bulk Send</span>
+                  <span className="text-[10px] text-muted-foreground">Import from file</span>
+                </Button>
+              </div>
+            ) : (
+              /* Private Mode Actions */
+              <div className="grid grid-cols-3 gap-4 w-full max-w-lg">
+                {/* Send (Private Transfer) */}
+                <Button
+                  variant="outline"
+                  className="flex flex-col items-center gap-3 h-auto py-6 border border-[#0000db]/30 hover:border-[#0000db]/50 hover:bg-[#0000db]/5 transition-all text-[#0000db]"
+                  onClick={() => openSendModal('standard')}
+                >
+                  <Send className="h-8 w-8" />
+                  <span className="text-sm font-medium">Send</span>
+                  <span className="text-[10px] text-[#0000db]/70">Private transfer</span>
+                </Button>
+                
+                {/* Multi Send - Coming Soon */}
+                <Button
+                  variant="outline"
+                  className="flex flex-col items-center gap-3 h-auto py-6 border border-[#0000db]/20 opacity-50 cursor-not-allowed"
+                  disabled
+                >
+                  <svg className="h-8 w-8 text-[#0000db]/50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
+                  </svg>
+                  <span className="text-sm font-medium text-[#0000db]/50">Multi Send</span>
+                  <span className="text-[10px] text-[#0000db]/40">Coming soon</span>
+                </Button>
+                
+                {/* Claim */}
+                <Button
+                  variant="outline"
+                  className="flex flex-col items-center gap-3 h-auto py-6 border border-[#0000db]/30 hover:border-[#0000db]/50 hover:bg-[#0000db]/5 transition-all text-[#0000db] relative"
+                  onClick={() => setActiveTab('claim')}
+                >
+                  <Gift className="h-8 w-8" />
+                  <span className="text-sm font-medium">Claim</span>
+                  <span className="text-[10px] text-[#0000db]/70">Pending transfers</span>
+                  {pendingTransfersCount > 0 && (
+                    <Badge className="absolute -top-2 -right-2 bg-[#0000db] text-white text-[10px] h-5 min-w-5 flex items-center justify-center">
+                      {pendingTransfersCount}
+                    </Badge>
+                  )}
+                </Button>
+              </div>
+            )}
+          </div>
+
+          {/* Claim Inline Screen (Private Mode) */}
+          {operationMode === 'private' && activeTab === 'claim' && (
+            <div className="fixed inset-0 z-[45] bg-background/95 backdrop-blur-sm flex flex-col" style={{ 
+              top: '83px', 
+              left: sidebarLeftOffset,
+              right: historySidebarRightOffset,
+              bottom: '40px'
+            }}>
+              <div className="flex items-center justify-between px-6 pt-4 pb-2">
+                <div className="flex items-center gap-3">
+                  <Button 
+                    variant="ghost" 
+                    size="sm" 
+                    onClick={() => setActiveTab('balance')} 
+                    className="h-9 w-9 p-0"
                   >
-                    <Send className="h-8 w-8" />
-                    <span className="text-sm font-medium">Standard</span>
-                    <span className="text-[10px] text-muted-foreground">Single transfer</span>
+                    <ChevronDown className="h-5 w-5 rotate-90" />
                   </Button>
-                  {/* Multi Send Button */}
-                  <Button
-                    variant="outline"
-                    className="flex flex-col items-center gap-2 h-auto py-6 border border-border hover:border-foreground/30 hover:bg-accent transition-all"
-                    onClick={() => openSendModal('multi')}
-                  >
-                    <svg className="h-8 w-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
-                    </svg>
-                    <span className="text-sm font-medium">Multi Send</span>
-                    <span className="text-[10px] text-muted-foreground">Multiple recipients</span>
-                  </Button>
-                  {/* Bulk Send Button */}
-                  <Button
-                    variant="outline"
-                    className="flex flex-col items-center gap-2 h-auto py-6 border border-border hover:border-foreground/30 hover:bg-accent transition-all"
-                    onClick={() => openSendModal('bulk')}
-                  >
-                    <Download className="h-8 w-8" />
-                    <span className="text-sm font-medium">Bulk Send</span>
-                    <span className="text-[10px] text-muted-foreground">Import from file</span>
-                  </Button>
+                  <div className="flex items-center gap-2">
+                    <Gift className="h-5 w-5 text-[#0000db]" />
+                    <h2 className="text-lg font-semibold text-[#0000db]">Claim Transfers</h2>
+                  </div>
                 </div>
               </div>
-            </TabsContent>
-          )}
-
-          {/* Transfer Tab (Private Mode) */}
-          {operationMode === 'private' && (
-            <TabsContent value="transfer" className="tab-animated mt-0 border border-[#0000db]/40 bg-background">
-              <div className="p-4 py-8">
-                <PrivateTransfer
-                  wallet={wallet}
-                  balance={balance}
-                  nonce={nonce}
-                  encryptedBalance={encryptedBalance}
-                  onBalanceUpdate={handleBalanceUpdate}
-                  onNonceUpdate={handleNonceUpdate}
-                  onTransactionSuccess={handleTransactionSuccess}
-                  isCompact={false}
-                />
-              </div>
-            </TabsContent>
-          )}
-
-          {/* Claim Tab (Private Mode) */}
-          {operationMode === 'private' && (
-            <TabsContent value="claim" className="tab-animated mt-0 border border-[#0000db]/40 bg-background">
-              <div className="p-4">
+              <div className="flex-1 overflow-auto p-6">
                 <ClaimTransfers
                   wallet={wallet}
                   onTransactionSuccess={handleTransactionSuccess}
@@ -2584,38 +2637,269 @@ export function WalletDashboard({
                   hideBorder={true}
                 />
               </div>
-            </TabsContent>
-          )}
-
-          {/* History Tab (Both Modes) */}
-          <TabsContent value="history" className={`tab-animated mt-0 border ${operationMode === 'private' ? 'border-[#0000db]/40' : 'border-foreground/20'} bg-background`}>
-            <div className="p-4">
-              <UnifiedHistory 
-                wallet={wallet} 
-                transactions={transactions}
-                onTransactionsUpdate={handleTransactionsUpdate}
-                isLoading={isLoadingTransactions}
-                isPopupMode={false}
-                hideBorder={true}
-                operationMode={operationMode}
-              />
             </div>
-          </TabsContent>
-        </Tabs>
+          )}
+        </div>
         )}
       </main>
       </div>
 
+      {/* History Sidebar - Right side (Expanded mode only) */}
+      {!isPopupMode && (
+        <>
+          <aside 
+            className={`fixed top-[70px] sm:top-[83px] right-0 bottom-0 z-30 bg-background border-l border-border transition-all ${isResizingHistory ? 'duration-0' : 'duration-300'} ${showHistorySidebar ? '' : 'w-0'} overflow-hidden`}
+            style={{ width: showHistorySidebar ? `${historySidebarWidth}px` : '0px' }}
+          >
+            <div className="h-full flex flex-col" style={{ width: `${historySidebarWidth}px` }}>
+              {/* Transaction Details View */}
+              {showExpandedTxDetails ? (
+                <div className="h-full flex flex-col">
+                  {/* Header */}
+                  <div className="flex items-center gap-2 p-4 pl-6 border-b flex-shrink-0">
+                    <Button 
+                      variant="ghost" 
+                      size="sm" 
+                      onClick={closeExpandedTxDetails} 
+                      className="h-8 w-8 p-0"
+                    >
+                      <ChevronDown className="h-4 w-4 rotate-90" />
+                    </Button>
+                    <div className="flex items-center gap-2">
+                      <Eye className="h-4 w-4" />
+                      <h3 className="font-semibold text-sm">Transaction Details</h3>
+                    </div>
+                  </div>
+                  
+                  {/* Content */}
+                  <ScrollArea className="flex-1">
+                    <div className="p-4 pl-6 pb-6">
+                      {loadingTxDetails ? (
+                        <div className="flex items-center justify-center py-12">
+                          <div className="w-6 h-6 rounded-full border-2 border-transparent animate-spin" style={{ borderTopColor: '#0000db' }} />
+                        </div>
+                      ) : selectedTxDetails ? (
+                        <div className="space-y-3">
+                          {/* Status */}
+                          <div className="bg-muted/50 rounded-lg p-3 flex items-center justify-between">
+                            <span className="text-xs text-muted-foreground">Status</span>
+                            {'stage_status' in selectedTxDetails ? (
+                              <Badge variant="secondary" className="text-xs bg-yellow-500/20 text-yellow-600">
+                                {selectedTxDetails.stage_status || 'pending'}
+                              </Badge>
+                            ) : (
+                              <Badge variant="secondary" className="text-xs bg-[#0000db]/20 text-[#0000db]">
+                                confirmed
+                              </Badge>
+                            )}
+                          </div>
+
+                          {/* Epoch - only for confirmed */}
+                          {'epoch' in selectedTxDetails && (
+                            <div className="bg-muted/50 rounded-lg p-3 flex items-center justify-between">
+                              <span className="text-xs text-muted-foreground">Epoch</span>
+                              <span className="font-mono text-sm">{selectedTxDetails.epoch}</span>
+                            </div>
+                          )}
+
+                          {/* Time */}
+                          {('timestamp' in selectedTxDetails || 'parsed_tx' in selectedTxDetails) && (
+                            <div className="bg-muted/50 rounded-lg p-3 flex items-center justify-between">
+                              <span className="text-xs text-muted-foreground">Time (UTC)</span>
+                              <span className="text-xs">
+                                {'timestamp' in selectedTxDetails 
+                                  ? new Date(selectedTxDetails.timestamp * 1000).toLocaleString('en-US', { timeZone: 'UTC', hour12: false })
+                                  : new Date(selectedTxDetails.parsed_tx.timestamp * 1000).toLocaleString('en-US', { timeZone: 'UTC', hour12: false })
+                                }
+                              </span>
+                            </div>
+                          )}
+
+                          {/* Hash */}
+                          <div className="bg-muted/50 rounded-lg p-3">
+                            <div className="flex items-center justify-between mb-1">
+                              <span className="text-xs text-muted-foreground">Hash</span>
+                              <Button 
+                                variant="ghost" 
+                                size="sm" 
+                                className="h-6 w-6 p-0" 
+                                onClick={() => copyToClipboard('hash' in selectedTxDetails ? selectedTxDetails.hash : selectedTxDetails.tx_hash, 'txHash')}
+                              >
+                                {copiedField === 'txHash' ? <Check className="h-3 w-3 text-green-500" /> : <Copy className="h-3 w-3" />}
+                              </Button>
+                            </div>
+                            <p className="font-mono text-xs break-all leading-relaxed">
+                              {'hash' in selectedTxDetails ? selectedTxDetails.hash : selectedTxDetails.tx_hash}
+                            </p>
+                          </div>
+
+                          {/* From */}
+                          {('from' in selectedTxDetails || 'parsed_tx' in selectedTxDetails) && (
+                            <div className="bg-muted/50 rounded-lg p-3">
+                              <div className="flex items-center justify-between mb-1">
+                                <span className="text-xs text-muted-foreground">From</span>
+                                <Button 
+                                  variant="ghost" 
+                                  size="sm" 
+                                  className="h-6 w-6 p-0" 
+                                  onClick={() => copyToClipboard('from' in selectedTxDetails ? selectedTxDetails.from : selectedTxDetails.parsed_tx.from, 'txFrom')}
+                                >
+                                  {copiedField === 'txFrom' ? <Check className="h-3 w-3 text-green-500" /> : <Copy className="h-3 w-3" />}
+                                </Button>
+                              </div>
+                              <p className="font-mono text-xs break-all leading-relaxed">
+                                {'from' in selectedTxDetails ? selectedTxDetails.from : selectedTxDetails.parsed_tx.from}
+                              </p>
+                            </div>
+                          )}
+
+                          {/* To */}
+                          {('to' in selectedTxDetails || 'parsed_tx' in selectedTxDetails) && (
+                            <div className="bg-muted/50 rounded-lg p-3">
+                              <div className="flex items-center justify-between mb-1">
+                                <span className="text-xs text-muted-foreground">To</span>
+                                <Button 
+                                  variant="ghost" 
+                                  size="sm" 
+                                  className="h-6 w-6 p-0" 
+                                  onClick={() => copyToClipboard('to' in selectedTxDetails ? selectedTxDetails.to : selectedTxDetails.parsed_tx.to, 'txTo')}
+                                >
+                                  {copiedField === 'txTo' ? <Check className="h-3 w-3 text-green-500" /> : <Copy className="h-3 w-3" />}
+                                </Button>
+                              </div>
+                              <p className="font-mono text-xs break-all leading-relaxed">
+                                {'to' in selectedTxDetails ? selectedTxDetails.to : selectedTxDetails.parsed_tx.to}
+                              </p>
+                            </div>
+                          )}
+
+                          {/* Amount, OU (Gas), Nonce */}
+                          <div className="grid grid-cols-3 gap-2">
+                            {('amount' in selectedTxDetails || 'parsed_tx' in selectedTxDetails) && (
+                              <div className="bg-muted/50 rounded-lg p-3">
+                                <span className="text-[10px] text-muted-foreground">Amount</span>
+                                <p className="font-mono text-xs mt-0.5">
+                                  {'amount' in selectedTxDetails ? selectedTxDetails.amount : selectedTxDetails.parsed_tx.amount} OCT
+                                </p>
+                              </div>
+                            )}
+                            {('ou' in selectedTxDetails || 'parsed_tx' in selectedTxDetails) && (() => {
+                              const ouValue = 'ou' in selectedTxDetails ? selectedTxDetails.ou : selectedTxDetails.parsed_tx.ou;
+                              const ouNum = parseInt(ouValue) || 0;
+                              const feeOct = (ouNum * 0.0000001).toFixed(7);
+                              return (
+                                <div className="bg-muted/50 rounded-lg p-3">
+                                  <span className="text-[10px] text-muted-foreground">OU (Gas)</span>
+                                  <p className="font-mono text-xs mt-0.5">{ouValue}</p>
+                                  <p className="text-[9px] text-muted-foreground">≈ {feeOct} OCT</p>
+                                </div>
+                              );
+                            })()}
+                            {('nonce' in selectedTxDetails || 'parsed_tx' in selectedTxDetails) && (
+                              <div className="bg-muted/50 rounded-lg p-3">
+                                <span className="text-[10px] text-muted-foreground">Nonce</span>
+                                <p className="font-mono text-xs mt-0.5">
+                                  {'nonce' in selectedTxDetails ? selectedTxDetails.nonce : selectedTxDetails.parsed_tx.nonce}
+                                </p>
+                              </div>
+                            )}
+                          </div>
+
+                          {/* View on Explorer */}
+                          {!('stage_status' in selectedTxDetails) && (
+                            <Button
+                              variant="outline"
+                              className="w-full h-9 text-xs"
+                              asChild
+                            >
+                              <a 
+                                href={`https://octrascan.io/transactions/${selectedTxHash}`} 
+                                target="_blank" 
+                                rel="noopener noreferrer"
+                              >
+                                <ExternalLink className="h-3.5 w-3.5 mr-2" />
+                                View on Explorer
+                              </a>
+                            </Button>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="text-center py-12 text-muted-foreground">
+                          <p className="text-sm">No transaction data available</p>
+                        </div>
+                      )}
+                    </div>
+                  </ScrollArea>
+                </div>
+              ) : (
+                /* History List View */
+                <div className="h-full flex flex-col p-4 pl-6 pb-6">
+                  <div className="flex items-center justify-between mb-4 flex-shrink-0">
+                    <h3 className={`font-semibold text-base flex items-center gap-2 ${operationMode === 'private' ? 'text-[#0000db]' : ''}`}>
+                      <History className="h-5 w-5" />
+                      Transaction History
+                    </h3>
+                    <div className="flex items-center gap-1">
+                      <Button 
+                        variant="outline" 
+                        size="sm" 
+                        className="h-7 w-7 p-0"
+                        asChild
+                      >
+                        <a href={`https://octrascan.io/addresses/${wallet.address}`} target="_blank" rel="noopener noreferrer">
+                          <ExternalLink className="h-3.5 w-3.5" />
+                        </a>
+                      </Button>
+                    </div>
+                  </div>
+                  <div className="flex-1 min-h-0 overflow-hidden">
+                    <UnifiedHistory 
+                      wallet={wallet} 
+                      transactions={transactions}
+                      onTransactionsUpdate={handleTransactionsUpdate}
+                      isLoading={isLoadingTransactions}
+                      isPopupMode={false}
+                      hideBorder={true}
+                      operationMode={operationMode}
+                      isCompact={true}
+                      onViewTxDetails={handleViewTxDetails}
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+            
+            {/* Resize Handle - positioned on left side */}
+            <div
+              className="absolute top-0 left-0 w-2 h-full cursor-col-resize hover:bg-primary/20 active:bg-primary/40 transition-colors z-10"
+              onMouseDown={(e) => {
+                e.preventDefault();
+                setIsResizingHistory(true);
+              }}
+            />
+          </aside>
+          
+          {/* History Sidebar Toggle Button */}
+          <button
+            onClick={() => setShowHistorySidebar(!showHistorySidebar)}
+            className={`fixed top-1/2 -translate-y-1/2 z-[50] h-12 w-4 flex items-center justify-center bg-muted/80 hover:bg-accent border-y border-l border-border transition-all ${isResizingHistory ? 'duration-0' : 'duration-300'}`}
+            style={{ right: showHistorySidebar ? `${historySidebarWidth}px` : '0px' }}
+          >
+            {showHistorySidebar ? <ChevronRight className="h-3 w-3" /> : <ChevronLeft className="h-3 w-3" />}
+          </button>
+        </>
+      )}
+
       {/* Expanded Mode Send Modals */}
       {!isPopupMode && expandedSendModal && (
         <div 
-          className={`fixed z-[45] bg-background/95 backdrop-blur-sm flex flex-col transition-all ${isResizing ? 'duration-0' : 'duration-300'} ease-out ${
+          className={`fixed z-[45] bg-background/95 backdrop-blur-sm flex flex-col transition-all ${isResizing || isResizingHistory ? 'duration-0' : 'duration-300'} ease-out ${
             sendModalAnimating ? 'animate-send-modal-enter' : ''
           } ${sendModalClosing ? 'animate-send-modal-exit' : ''}`}
           style={{ 
             top: '83px', 
             left: sidebarLeftOffset,
-            right: 0,
+            right: historySidebarRightOffset,
             bottom: '40px'
           }}
         >
@@ -2631,17 +2915,27 @@ export function WalletDashboard({
                 <ChevronDown className="h-5 w-5 rotate-90" />
               </Button>
               <div className="flex items-center gap-2">
-                {expandedSendModal === 'standard' && <Send className="h-5 w-5" />}
-                {expandedSendModal === 'multi' && (
-                  <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
-                  </svg>
+                {operationMode === 'private' ? (
+                  <Send className="h-5 w-5 text-[#0000db]" />
+                ) : (
+                  <>
+                    {expandedSendModal === 'standard' && <Send className="h-5 w-5" />}
+                    {expandedSendModal === 'multi' && (
+                      <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
+                      </svg>
+                    )}
+                    {expandedSendModal === 'bulk' && <Download className="h-5 w-5" />}
+                  </>
                 )}
-                {expandedSendModal === 'bulk' && <Download className="h-5 w-5" />}
-                <h2 className="text-lg font-semibold">
-                  {expandedSendModal === 'standard' && 'Standard Send'}
-                  {expandedSendModal === 'multi' && 'Multi Send'}
-                  {expandedSendModal === 'bulk' && 'Bulk Send'}
+                <h2 className={`text-lg font-semibold ${operationMode === 'private' ? 'text-[#0000db]' : ''}`}>
+                  {operationMode === 'private' ? 'Private Transfer' : (
+                    <>
+                      {expandedSendModal === 'standard' && 'Standard Send'}
+                      {expandedSendModal === 'multi' && 'Multi Send'}
+                      {expandedSendModal === 'bulk' && 'Bulk Send'}
+                    </>
+                  )}
                 </h2>
               </div>
             </div>
@@ -2670,7 +2964,26 @@ export function WalletDashboard({
           </div>
           
           {/* Modal Content */}
-          {expandedSendModal === 'standard' ? (
+          {operationMode === 'private' ? (
+            /* Private Mode - Private Transfer */
+            <ScrollArea className="flex-1">
+              <div className="p-6 max-w-xl mx-auto">
+                <PrivateTransfer
+                  wallet={wallet}
+                  balance={balance}
+                  nonce={nonce}
+                  encryptedBalance={encryptedBalance}
+                  onBalanceUpdate={handleBalanceUpdate}
+                  onNonceUpdate={handleNonceUpdate}
+                  onTransactionSuccess={() => {
+                    handleTransactionSuccess();
+                    closeSendModal();
+                  }}
+                  isCompact={false}
+                />
+              </div>
+            </ScrollArea>
+          ) : expandedSendModal === 'standard' ? (
             <ScrollArea className="flex-1">
               <div className="p-6 max-w-xl mx-auto">
                 <SendTransaction
@@ -2698,6 +3011,7 @@ export function WalletDashboard({
                   hideBorder={true}
                   resetTrigger={multiResetTrigger}
                   sidebarOpen={showWalletSidebar}
+                  historySidebarOpen={showHistorySidebar}
                 />
               )}
               {expandedSendModal === 'bulk' && (
@@ -2710,6 +3024,8 @@ export function WalletDashboard({
                   onTransactionSuccess={handleTransactionSuccess}
                   hideBorder={true}
                   resetTrigger={bulkResetTrigger}
+                  sidebarOpen={showWalletSidebar}
+                  historySidebarOpen={showHistorySidebar}
                 />
               )}
             </div>
@@ -2720,13 +3036,13 @@ export function WalletDashboard({
       {/* Expanded Mode Private Modals (Encrypt/Decrypt) */}
       {!isPopupMode && expandedPrivateModal && (
         <div 
-          className={`fixed z-[45] bg-background/95 backdrop-blur-sm flex flex-col transition-all ${isResizing ? 'duration-0' : 'duration-300'} ease-out ${
+          className={`fixed z-[45] bg-background/95 backdrop-blur-sm flex flex-col transition-all ${isResizing || isResizingHistory ? 'duration-0' : 'duration-300'} ease-out ${
             privateModalAnimating ? 'animate-send-modal-enter' : ''
           } ${privateModalClosing ? 'animate-send-modal-exit' : ''}`}
           style={{ 
             top: '83px', 
             left: sidebarLeftOffset,
-            right: 0,
+            right: historySidebarRightOffset,
             bottom: '40px'
           }}
         >
@@ -2849,8 +3165,8 @@ export function WalletDashboard({
       {/* Footer Credit - Only for expanded mode */}
       {!isPopupMode && (
         <footer 
-          className={`fixed bottom-0 right-0 py-2 px-4 text-xs text-muted-foreground bg-background/80 backdrop-blur-sm border-t border-border flex items-center justify-between transition-[left] ${isResizing ? 'duration-0' : 'duration-300'} ease-out z-[46]`}
-          style={{ left: sidebarLeftOffset }}
+          className={`fixed bottom-0 py-2 px-4 text-xs text-muted-foreground bg-background/80 backdrop-blur-sm border-t border-border flex items-center justify-between transition-[left,right] ${isResizing || isResizingHistory ? 'duration-0' : 'duration-300'} ease-out z-[46]`}
+          style={{ left: sidebarLeftOffset, right: historySidebarRightOffset }}
         >
           {/* Left: Connection Status */}
           <div className="flex items-center gap-1.5">
@@ -2870,17 +3186,10 @@ export function WalletDashboard({
             </span>
           </div>
           
-          {/* Center: Made with heart for Octra */}
+          {/* Center: Current Epoch */}
           <span className="flex items-center justify-center gap-1.5">
-            Made with
-            <svg
-              viewBox="0 0 24 24"
-              className="h-3.5 w-3.5 text-[#0000db]"
-              fill="currentColor"
-            >
-              <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" />
-            </svg>
-            for Octra
+            <span className="text-muted-foreground">Epoch:</span>
+            <span className="font-mono text-[#0000db]">#{currentEpoch || '...'}</span>
           </span>
           
           {/* Right: GitHub + Version */}

@@ -37,6 +37,7 @@ interface MultiSendProps {
   hideBorder?: boolean;
   resetTrigger?: number;
   sidebarOpen?: boolean;
+  historySidebarOpen?: boolean;
 }
 
 // Simple address validation function
@@ -64,7 +65,7 @@ function validateRecipientInput(input: string): { isValid: boolean; error?: stri
   };
 }
 
-export function MultiSend({ wallet, balance, onBalanceUpdate, onNonceUpdate, onTransactionSuccess, resetTrigger, sidebarOpen = true }: MultiSendProps) {
+export function MultiSend({ wallet, balance, onBalanceUpdate, onNonceUpdate, onTransactionSuccess, resetTrigger, sidebarOpen = true, historySidebarOpen = true }: MultiSendProps) {
   const [recipients, setRecipients] = useState<Recipient[]>([
     { address: '', amount: '', message: '', showMessage: false }
   ]);
@@ -480,7 +481,13 @@ export function MultiSend({ wallet, balance, onBalanceUpdate, onNonceUpdate, onT
       {/* Right Panel - Recipients Grid with ScrollArea */}
       <div className="flex-1 lg:flex lg:flex-col lg:min-h-0">
         <ScrollArea className="h-[400px] lg:flex-1 pr-4">
-          <div className={`grid grid-cols-1 gap-4 ${sidebarOpen ? 'sm:grid-cols-2' : 'sm:grid-cols-2 xl:grid-cols-3'}`}>
+          <div className={`grid grid-cols-1 gap-4 ${
+            sidebarOpen && historySidebarOpen 
+              ? '' 
+              : sidebarOpen || historySidebarOpen 
+                ? 'sm:grid-cols-2' 
+                : 'sm:grid-cols-2 xl:grid-cols-3'
+          }`}>
             {recipients.map((recipient, index) => (
               <Card key={index} className="p-3 space-y-3">
                 {/* Header with number and delete */}

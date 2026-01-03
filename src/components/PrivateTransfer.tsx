@@ -393,16 +393,6 @@ export function PrivateTransfer({
       {/* Animated Icon */}
       <AnimatedIcon type="send-private" size="sm" />
 
-      {/* Encrypted Balance Display */}
-      <div className="p-3 bg-[#0000db]/5 border border-[#0000db]/20 ">
-        <div className="flex justify-between items-center">
-          <span className="text-sm font-medium">Private Balance</span>
-          <span className="font-mono text-lg font-bold text-[#0000db]">
-            {encryptedBalance.encrypted.toFixed(8)} OCT
-          </span>
-        </div>
-      </div>
-
       {/* Recipient Address */}
       <div className="space-y-2">
         <Label htmlFor="recipient">Recipient Address</Label>
@@ -426,29 +416,34 @@ export function PrivateTransfer({
         )}
       </div>
 
-      {/* Amount with Max */}
+      {/* Amount with Balance and Max */}
       <div className="space-y-2">
         <div className="flex items-center justify-between">
           <Label htmlFor="amount">Amount (OCT)</Label>
-          <button
-            type="button"
-            onClick={() => {
-              // Private transfer: use full encrypted balance (no fee needed)
-              const maxAmount = encryptedBalance.encrypted;
-              if (maxAmount > 0) {
-                setAmount(maxAmount.toFixed(8));
-              } else {
-                toast({
-                  title: "No Balance",
-                  description: "No encrypted balance available",
-                  variant: "destructive",
-                });
-              }
-            }}
-            className="text-sm text-[#0000db] hover:text-[#0000db]/80 font-medium hover:underline"
-          >
-            Max
-          </button>
+          <div className="flex items-center gap-2 text-sm">
+            <span className="text-muted-foreground">
+              Balance: <span className="font-mono">{encryptedBalance.encrypted.toFixed(4)}</span>
+            </span>
+            <button
+              type="button"
+              onClick={() => {
+                // Private transfer: use full encrypted balance (no fee needed)
+                const maxAmount = encryptedBalance.encrypted;
+                if (maxAmount > 0) {
+                  setAmount(maxAmount.toFixed(8));
+                } else {
+                  toast({
+                    title: "No Balance",
+                    description: "No encrypted balance available",
+                    variant: "destructive",
+                  });
+                }
+              }}
+              className="text-[#0000db] hover:text-[#0000db]/80 font-medium hover:underline"
+            >
+              Max
+            </button>
+          </div>
         </div>
         <Input
           id="amount"

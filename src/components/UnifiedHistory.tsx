@@ -8,7 +8,6 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { ScrollArea } from '@/components/ui/scroll-area';
 import {
   History,
-  RefreshCw,
   ExternalLink,
   ArrowUpRight,
   ArrowDownLeft,
@@ -47,9 +46,11 @@ interface UnifiedHistoryProps {
   isPopupMode?: boolean;
   hideBorder?: boolean;
   operationMode?: OperationMode;
+  isCompact?: boolean;
+  onViewTxDetails?: (txHash: string, isPending: boolean) => void;
 }
 
-export function UnifiedHistory({ wallet, transactions, onTransactionsUpdate, isLoading = false, isPopupMode = false, hideBorder = false, operationMode = 'public' }: UnifiedHistoryProps) {
+export function UnifiedHistory({ wallet, transactions, onTransactionsUpdate, isLoading = false, isPopupMode = false, hideBorder = false, operationMode = 'public', isCompact = false, onViewTxDetails }: UnifiedHistoryProps) {
   const [refreshing, setRefreshing] = useState(false);
   const [selectedTx, setSelectedTx] = useState<TransactionDetails | PendingTransaction | null>(null);
   const [loadingDetails, setLoadingDetails] = useState(false);
@@ -197,11 +198,11 @@ export function UnifiedHistory({ wallet, transactions, onTransactionsUpdate, isL
   const pendingCount = filteredTransactions.filter(tx => tx.status === 'pending').length;
 
   return (
-    <Card className={hideBorder || isPopupMode ? 'border-0 shadow-none' : ''}>
-      <CardHeader className={`flex flex-row items-center justify-between space-y-0 ${isPopupMode ? 'pb-2 px-3 pt-3' : 'pb-4'}`}>
+    <Card className={`${hideBorder || isPopupMode ? 'border-0 shadow-none' : ''} ${isCompact ? 'h-full flex flex-col' : ''}`}>
+      <CardHeader className={`flex flex-row items-center justify-between space-y-0 ${isPopupMode ? 'pb-2 px-3 pt-3' : isCompact ? 'pb-2 px-0 pt-0 flex-shrink-0' : 'pb-4'}`}>
         <div className="flex flex-col gap-0.5">
-          <CardTitle className={`flex items-center gap-2 ${isPopupMode ? 'text-sm' : ''}`}>
-            <History className={isPopupMode ? 'h-4 w-4' : 'h-5 w-5'} />
+          <CardTitle className={`flex items-center gap-2 ${isPopupMode ? 'text-sm' : isCompact ? 'text-sm' : ''}`}>
+            {!isCompact && <History className={isPopupMode ? 'h-4 w-4' : 'h-5 w-5'} />}
             {operationMode === 'private' ? 'Private History' : 'Public History'}
             {pendingCount > 0 && (
               <Badge variant="secondary" className={isPopupMode ? 'ml-1 text-[10px]' : 'ml-2'}>{pendingCount}</Badge>
@@ -215,21 +216,19 @@ export function UnifiedHistory({ wallet, transactions, onTransactionsUpdate, isL
           </span>
         </div>
         <div className="flex items-center gap-1">
-          <Button variant="outline" size="sm" onClick={() => { setCurrentPage(1); fetchTransactions(1); }} disabled={refreshing} className={isPopupMode ? 'h-7 px-2' : ''}>
-            <RefreshCw className={`${isPopupMode ? 'h-3 w-3' : 'h-4 w-4'} ${isPopupMode ? '' : 'mr-2'} ${refreshing ? 'animate-spin' : ''}`} />
-            {!isPopupMode && 'Refresh'}
-          </Button>
-          <Button variant="outline" size="sm" asChild className={isPopupMode ? 'h-7 px-2' : ''}>
-            <a href={`https://octrascan.io/addresses/${wallet.address}`} target="_blank" rel="noopener noreferrer">
-              <ExternalLink className={`${isPopupMode ? 'h-3 w-3' : 'h-4 w-4'} ${isPopupMode ? '' : 'mr-2'}`} />
-              {!isPopupMode && 'View All'}
-            </a>
-          </Button>
+          {!isCompact && (
+            <Button variant="outline" size="sm" asChild className={isPopupMode ? 'h-7 px-2' : ''}>
+              <a href={`https://octrascan.io/addresses/${wallet.address}`} target="_blank" rel="noopener noreferrer">
+                <ExternalLink className={`${isPopupMode ? 'h-3 w-3' : 'h-4 w-4'} ${isPopupMode ? '' : 'mr-2'}`} />
+                {!isPopupMode && 'View All'}
+              </a>
+            </Button>
+          )}
         </div>
       </CardHeader>
-      <CardContent className={isPopupMode ? 'px-3 pb-3 pt-0' : ''}>
+      <CardContent className={`${isPopupMode ? 'px-3 pb-3 pt-0' : ''} ${isCompact ? 'flex-1 overflow-hidden flex flex-col px-0 pb-0' : ''}`}>
         {/* Filter Buttons */}
-        <div className={`flex flex-wrap ${isPopupMode ? 'gap-1 mb-2' : 'gap-2 mb-4'}`}>
+        <div className={`flex flex-wrap ${isPopupMode ? 'gap-1 mb-2' : 'gap-2 mb-4'} ${isCompact ? 'flex-shrink-0' : ''}`}>
           {(['all', 'sent', 'received'] as HistoryFilter[]).map((filter) => {
             const sentCount = filteredTransactions.filter(tx => tx.type === 'sent').length;
             const receivedCount = filteredTransactions.filter(tx => tx.type === 'received').length;
@@ -271,10 +270,10 @@ export function UnifiedHistory({ wallet, transactions, onTransactionsUpdate, isL
             <AlertDescription>No history found for this filter.</AlertDescription>
           </Alert>
         ) : (
-          <ScrollArea className={isPopupMode ? 'h-auto' : 'h-[calc(100vh-450px)] pr-3'}>
-            <div ref={historyListRef} className={`${isPopupMode ? 'space-y-2 mb-[110px]' : 'space-y-3 pr-1 pb-1'}`}>
+          <ScrollArea className={isPopupMode ? 'h-auto' : isCompact ? 'flex-1 min-h-0' : 'h-[calc(100vh-450px)] pr-3'}>
+            <div ref={historyListRef} className={`${isPopupMode ? 'space-y-2 mb-[110px]' : 'space-y-3 pr-3 pb-1'}`}>
               {unifiedHistory.map((item) => (
-                <div key={item.id} className={`border  ${isPopupMode ? 'p-2' : 'p-3'} space-y-2`}>
+                <div key={item.id} className={`border ${isPopupMode ? 'p-2' : isCompact ? 'p-2' : 'p-3'} space-y-2 ${isCompact ? 'rounded-lg' : ''}`}>
                   {item.type === 'transfer' && item.transaction && (
                     <TransferItem 
                       tx={item.transaction} 
@@ -285,6 +284,8 @@ export function UnifiedHistory({ wallet, transactions, onTransactionsUpdate, isL
                       getStatusColor={getStatusColor}
                       copyToClipboard={copyToClipboard}
                       isPopupMode={isPopupMode}
+                      isCompact={isCompact}
+                      onItemClick={onViewTxDetails}
                     />
                   )}
                   {item.type === 'contract' && item.contractInteraction && (
@@ -517,6 +518,8 @@ interface TransferItemProps {
   getStatusColor: (status: string) => string;
   copyToClipboard: (text: string, label: string) => void;
   isPopupMode?: boolean;
+  isCompact?: boolean;
+  onItemClick?: (txHash: string, isPending: boolean) => void;
 }
 
 function TransferItem({ 
@@ -527,9 +530,18 @@ function TransferItem({
   getStatusIcon, 
   getStatusColor,
   copyToClipboard,
-  isPopupMode = false
+  isPopupMode = false,
+  isCompact = false,
+  onItemClick
 }: TransferItemProps) {
   const isPrivate = isPrivateTransfer(tx);
+  
+  // Handle item click for compact mode
+  const handleItemClick = () => {
+    if (isCompact && onItemClick) {
+      onItemClick(tx.hash, tx.status === 'pending');
+    }
+  };
   
   // Popup mode: simplified compact view
   if (isPopupMode) {
@@ -566,6 +578,50 @@ function TransferItem({
               </a>
             </Button>
           )}
+        </div>
+      </div>
+    );
+  }
+  
+  // Compact mode (sidebar): clickable item without eye/external link buttons
+  if (isCompact) {
+    return (
+      <div 
+        className="cursor-pointer hover:bg-accent/50 transition-colors -m-2 p-2 rounded"
+        onClick={handleItemClick}
+      >
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            {tx.type === 'sent' ? (
+              <ArrowUpRight className="h-4 w-4 text-red-500" />
+            ) : (
+              <ArrowDownLeft className="h-4 w-4 text-green-500" />
+            )}
+            <span className="font-medium capitalize text-sm">{tx.type}</span>
+            {getStatusIcon(tx.status)}
+          </div>
+        </div>
+        <div className="grid grid-cols-2 gap-2 text-xs mt-2">
+          <div>
+            <span className="text-muted-foreground">Amount: </span>
+            {isPrivate ? (
+              <span className="text-[#0000db] font-medium">private OCT</span>
+            ) : (
+              <span className="font-mono">{tx.amount?.toFixed(8) || '0'} OCT</span>
+            )}
+          </div>
+          <div>
+            <span className="text-muted-foreground">Hash: </span>
+            <span className="font-mono">{truncateHash(tx.hash || 'N/A')}</span>
+          </div>
+          <div>
+            <span className="text-muted-foreground">{tx.type === 'sent' ? 'To: ' : 'From: '}</span>
+            <span className="font-mono">{truncateAddress(tx.type === 'sent' ? tx.to : tx.from)}</span>
+          </div>
+          <div>
+            <span className="text-muted-foreground">Time: </span>
+            <span>{new Date(tx.timestamp * 1000).toLocaleString('en-US', { timeZone: 'UTC', hour12: false })} UTC</span>
+          </div>
         </div>
       </div>
     );
