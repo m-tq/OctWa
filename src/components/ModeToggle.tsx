@@ -85,8 +85,8 @@ export function ModeToggle({
                   className={`flex items-center justify-center relative overflow-hidden transition-all duration-300 shadow-md
                     ${isCompact ? 'h-12 w-12 p-0 ' : 'h-14 w-14 p-0 '}
                     ${isPrivate 
-                      ? 'bg-[#0000db] border-[#0000db] hover:bg-[#0000db]/90 hover:border-[#0000db]/90 shadow-[#0000db]/30' 
-                      : 'bg-background border-2 border-border hover:bg-accent hover:border-foreground/20'
+                      ? 'bg-[#0000db] border border-[#0000db] hover:bg-[#0000db]/90 hover:border-[#0000db]/90 shadow-[#0000db]/30' 
+                      : 'bg-background border border-border hover:bg-accent hover:border-foreground/20'
                     }
                     ${!privateEnabled && !isPrivate ? 'opacity-50 cursor-not-allowed' : ''}
                   `}

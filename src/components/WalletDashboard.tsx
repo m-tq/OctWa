@@ -2465,7 +2465,7 @@ export function WalletDashboard({
                   {/* Standard Send Button */}
                   <Button
                     variant="outline"
-                    className="flex flex-col items-center gap-2 h-auto py-6  border-2 hover:border-foreground/30 hover:bg-accent transition-all"
+                    className="flex flex-col items-center gap-2 h-auto py-6 border border-border hover:border-foreground/30 hover:bg-accent transition-all"
                     onClick={() => openSendModal('standard')}
                   >
                     <Send className="h-8 w-8" />
@@ -2475,7 +2475,7 @@ export function WalletDashboard({
                   {/* Multi Send Button */}
                   <Button
                     variant="outline"
-                    className="flex flex-col items-center gap-2 h-auto py-6  border-2 hover:border-foreground/30 hover:bg-accent transition-all"
+                    className="flex flex-col items-center gap-2 h-auto py-6 border border-border hover:border-foreground/30 hover:bg-accent transition-all"
                     onClick={() => openSendModal('multi')}
                   >
                     <svg className="h-8 w-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -2487,7 +2487,7 @@ export function WalletDashboard({
                   {/* Bulk Send Button */}
                   <Button
                     variant="outline"
-                    className="flex flex-col items-center gap-2 h-auto py-6  border-2 hover:border-foreground/30 hover:bg-accent transition-all"
+                    className="flex flex-col items-center gap-2 h-auto py-6 border border-border hover:border-foreground/30 hover:bg-accent transition-all"
                     onClick={() => openSendModal('bulk')}
                   >
                     <Download className="h-8 w-8" />
@@ -2793,7 +2793,7 @@ export function WalletDashboard({
       {/* Footer Credit - Only for expanded mode */}
       {!isPopupMode && (
         <footer 
-          className="fixed bottom-0 right-0 py-2 px-4 text-xs text-muted-foreground bg-background/80 backdrop-blur-sm border-t border-border/80 flex items-center justify-between transition-[left] duration-300 ease-out z-[46]"
+          className="fixed bottom-0 right-0 py-2 px-4 text-xs text-muted-foreground bg-background/80 backdrop-blur-sm border-t border-border flex items-center justify-between transition-[left] duration-300 ease-out z-[46]"
           style={{ left: showWalletSidebar ? '384px' : '0px' }}
         >
           {/* Left: Connection Status */}
