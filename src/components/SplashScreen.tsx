@@ -54,10 +54,12 @@ const AnimatedLogo = ({ size = 112 }: { size?: number }) => (
 export function SplashScreen({
   onComplete,
   duration = 3000,
-  isPopupMode = true,
+  isPopupMode = false,
 }: SplashScreenProps) {
   const [isAnimating, setIsAnimating] = useState(true);
   const [isFading, setIsFading] = useState(false);
+
+  console.log('🎨 SplashScreen isPopupMode:', isPopupMode);
 
   useEffect(() => {
     const fadeTimer = setTimeout(() => {
@@ -83,9 +85,9 @@ export function SplashScreen({
         isFading ? 'opacity-0' : 'opacity-100'
       }`}
     >
-      <div className="flex flex-col items-center space-y-6">
+      <div className="flex flex-col items-center pb-0 mb-2">
         <div className={`flex items-center justify-center ${isPopupMode ? 'w-32 h-32' : 'w-48 h-48'}`}>
-          <AnimatedLogo size={isPopupMode ? 112 : 160} />
+          <AnimatedLogo size={isPopupMode ? 112 : 130} />
         </div>
 
         <div
@@ -108,10 +110,21 @@ export function SplashScreen({
               }
             `}
           </style>
-          <h1 className={`font-bold ${isPopupMode ? 'text-2xl' : 'text-4xl'}`} style={{ color: '#0000db' }}>
+          <h1 
+            className="font-bold" 
+            style={{ 
+              color: '#0000db',
+              fontSize: isPopupMode ? '1.75rem' : '2.5rem'
+            }}
+          >
             OctWa
           </h1>
-          <p className={`text-muted-foreground mt-1 ${isPopupMode ? 'text-sm' : 'text-base'}`}>Stay Encrypted</p>
+          <p 
+            className="text-muted-foreground"
+            style={{ fontSize: isPopupMode ? '0.875rem' : '1rem' }}
+          >
+            Stay Encrypted
+          </p>
         </div>
       </div>
     </div>

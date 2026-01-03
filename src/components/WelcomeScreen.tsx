@@ -115,12 +115,12 @@ export function WelcomeScreen({ onWalletCreated }: WelcomeScreenProps) {
                 <img 
                   src="/icons/octwa128x128.png" 
                   alt="OctWa Logo" 
-                  className="h-18 w-18"
-                  style={{ width: '72px', height: '72px' }}
+                  className="h-20 w-20"
+                  style={{ width: '82px', height: '82px' }}
                 />
               </div>
             </div>
-            <h1 className="text-2xl font-bold text-foreground">OctWa</h1>
+            <h1 className="text-3xl font-bold text-foreground">OctWa</h1>
             <p className="text-sm text-muted-foreground mt-1">Stay Encrypted</p>
           </div>
 

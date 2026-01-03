@@ -482,7 +482,7 @@ function App() {
   if (showSplash) {
     return (
       <ThemeProvider defaultTheme="dark" storageKey="octra-wallet-theme">
-        <SplashScreen onComplete={() => setShowSplash(false)} />
+        <SplashScreen onComplete={() => setShowSplash(false)} isPopupMode={false} />
       </ThemeProvider>
     );
   }
@@ -498,7 +498,8 @@ function App() {
             addWallet(pendingSetupWallet);
             setPendingSetupWallet(null);
           }} 
-          duration={3500} 
+          duration={3500}
+          isPopupMode={false}
         />
       </ThemeProvider>
     );
