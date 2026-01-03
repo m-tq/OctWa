@@ -272,7 +272,7 @@ export function UnifiedHistory({ wallet, transactions, onTransactionsUpdate, isL
           </Alert>
         ) : (
           <ScrollArea className={isPopupMode ? 'h-auto' : 'h-[calc(100vh-450px)] pr-3'}>
-            <div ref={historyListRef} className={`${isPopupMode ? 'space-y-2 mb-[110px]' : 'space-y-3 pr-1 pb-4'}`}>
+            <div ref={historyListRef} className={`${isPopupMode ? 'space-y-2 mb-[110px]' : 'space-y-3 pr-1 pb-1'}`}>
               {unifiedHistory.map((item) => (
                 <div key={item.id} className={`border  ${isPopupMode ? 'p-2' : 'p-3'} space-y-2`}>
                   {item.type === 'transfer' && item.transaction && (

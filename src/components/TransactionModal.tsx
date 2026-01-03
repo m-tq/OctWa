@@ -127,12 +127,12 @@ export function TransactionModal({
           {status === 'success' && (
             <>
               <div className="relative">
-                <div className={`${isPopupMode ? 'w-14 h-14' : 'w-20 h-20'} rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center animate-in zoom-in-50 duration-300`}>
-                  <CheckCircle className={`${isPopupMode ? 'w-8 h-8' : 'w-12 h-12'} text-green-600 dark:text-green-400`} />
+                <div className={`${isPopupMode ? 'w-14 h-14' : 'w-20 h-20'} rounded-full bg-[#0000db]/10 dark:bg-[#0000db]/20 flex items-center justify-center animate-in zoom-in-50 duration-300`}>
+                  <CheckCircle className={`${isPopupMode ? 'w-8 h-8' : 'w-12 h-12'} text-[#0000db]`} />
                 </div>
               </div>
               <div className="text-center space-y-1 animate-in fade-in-50 slide-in-from-bottom-2 duration-300">
-                <h3 className={`font-semibold text-green-600 dark:text-green-400 ${isPopupMode ? 'text-sm' : 'text-lg'}`}>Success!</h3>
+                <h3 className={`font-semibold text-[#0000db] ${isPopupMode ? 'text-sm' : 'text-lg'}`}>Success!</h3>
                 <p className={`text-muted-foreground ${isPopupMode ? 'text-xs' : 'text-sm'}`}>{getSuccessText()}</p>
               </div>
               
@@ -143,7 +143,7 @@ export function TransactionModal({
                   <div className={`flex items-center gap-1.5 bg-muted  ${isPopupMode ? 'p-2' : 'p-3'}`}>
                     <code className={`flex-1 font-mono break-all ${isPopupMode ? 'text-[10px]' : 'text-xs'}`}>{truncateHash(result.hash)}</code>
                     <Button variant="ghost" size="sm" className={isPopupMode ? "h-6 w-6 p-0" : "h-8 w-8 p-0"} onClick={() => copyToClipboard(result.hash!)}>
-                      {copied ? <Check className={`${isPopupMode ? "h-3 w-3" : "h-4 w-4"} text-green-500`} /> : <Copy className={isPopupMode ? "h-3 w-3" : "h-4 w-4"} />}
+                      {copied ? <Check className={`${isPopupMode ? "h-3 w-3" : "h-4 w-4"} text-[#0000db]`} /> : <Copy className={isPopupMode ? "h-3 w-3" : "h-4 w-4"} />}
                     </Button>
                     <Button variant="ghost" size="sm" className={isPopupMode ? "h-6 w-6 p-0" : "h-8 w-8 p-0"} asChild>
                       <a href={`https://octrascan.io/transactions/${result.hash}`} target="_blank" rel="noopener noreferrer">

@@ -510,7 +510,7 @@ export function MultiSend({ wallet, balance, onBalanceUpdate, onNonceUpdate, onT
                     className={`text-xs ${
                       recipient.address.trim() && recipient.addressValidation
                         ? recipient.addressValidation.isValid
-                          ? 'border-green-500 focus-visible:ring-green-500'
+                          ? 'border-[#0000db] focus-visible:ring-[#0000db]'
                           : 'border-red-500 focus-visible:ring-red-500'
                         : ''
                     }`}
@@ -607,8 +607,8 @@ export function MultiSend({ wallet, balance, onBalanceUpdate, onNonceUpdate, onT
                   <ScrollArea className="w-full max-h-32">
                     <div className="space-y-1 pr-3">
                       {results.map((result, idx) => (
-                        <div key={idx} className={`flex items-center gap-2 p-1.5 rounded text-xs ${result.success ? 'bg-green-50 dark:bg-green-950/50' : 'bg-red-50 dark:bg-red-950/50'}`}>
-                          {result.success ? <CheckCircle className="h-3 w-3 text-green-500 flex-shrink-0" /> : <XCircle className="h-3 w-3 text-red-500 flex-shrink-0" />}
+                        <div key={idx} className={`flex items-center gap-2 p-1.5 rounded text-xs ${result.success ? 'bg-[#0000db]/10 dark:bg-[#0000db]/20' : 'bg-red-50 dark:bg-red-950/50'}`}>
+                          {result.success ? <CheckCircle className="h-3 w-3 text-[#0000db] flex-shrink-0" /> : <XCircle className="h-3 w-3 text-red-500 flex-shrink-0" />}
                           <span className="font-mono truncate">oct...{result.recipient.slice(-10)}</span>
                           <span className="ml-auto">{result.amount} OCT</span>
                         </div>
@@ -631,11 +631,11 @@ export function MultiSend({ wallet, balance, onBalanceUpdate, onNonceUpdate, onT
             {/* Success State */}
             {txModalStatus === 'success' && (
               <>
-                <div className="w-16 h-16 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center animate-in zoom-in-50 duration-300">
-                  <CheckCircle className="w-10 h-10 text-green-600 dark:text-green-400" />
+                <div className="w-16 h-16 rounded-full bg-[#0000db]/10 dark:bg-[#0000db]/20 flex items-center justify-center animate-in zoom-in-50 duration-300">
+                  <CheckCircle className="w-10 h-10 text-[#0000db]" />
                 </div>
                 <div className="text-center space-y-1">
-                  <h3 className="text-base font-semibold text-green-600 dark:text-green-400">All Sent!</h3>
+                  <h3 className="text-base font-semibold text-[#0000db]">All Sent!</h3>
                   <p className="text-xs text-muted-foreground">
                     {results.length} transaction(s) completed
                   </p>
@@ -656,8 +656,8 @@ export function MultiSend({ wallet, balance, onBalanceUpdate, onNonceUpdate, onT
                 <ScrollArea className="w-full max-h-40">
                   <div className="space-y-1 pr-3">
                     {results.map((result, idx) => (
-                      <div key={idx} className="flex items-center gap-2 p-1.5 rounded text-xs bg-green-50 dark:bg-green-950/50">
-                        <CheckCircle className="h-3 w-3 text-green-500 flex-shrink-0" />
+                      <div key={idx} className="flex items-center gap-2 p-1.5 rounded text-xs bg-[#0000db]/10 dark:bg-[#0000db]/20">
+                        <CheckCircle className="h-3 w-3 text-[#0000db] flex-shrink-0" />
                         <span className="font-mono truncate">oct...{result.recipient.slice(-10)}</span>
                         <span className="ml-auto">{result.amount} OCT</span>
                       </div>
@@ -695,8 +695,8 @@ export function MultiSend({ wallet, balance, onBalanceUpdate, onNonceUpdate, onT
                 <ScrollArea className="w-full max-h-48">
                   <div className="space-y-1 pr-3">
                     {results.map((result, idx) => (
-                      <div key={idx} className={`flex items-center gap-2 p-1.5 rounded text-xs ${result.success ? 'bg-green-50 dark:bg-green-950/50' : 'bg-red-50 dark:bg-red-950/50'}`}>
-                        {result.success ? <CheckCircle className="h-3 w-3 text-green-500 flex-shrink-0" /> : <XCircle className="h-3 w-3 text-red-500 flex-shrink-0" />}
+                      <div key={idx} className={`flex items-center gap-2 p-1.5 rounded text-xs ${result.success ? 'bg-[#0000db]/10 dark:bg-[#0000db]/20' : 'bg-red-50 dark:bg-red-950/50'}`}>
+                        {result.success ? <CheckCircle className="h-3 w-3 text-[#0000db] flex-shrink-0" /> : <XCircle className="h-3 w-3 text-red-500 flex-shrink-0" />}
                         <span className="font-mono truncate">oct...{result.recipient.slice(-10)}</span>
                         <span className="ml-auto">{result.amount} OCT</span>
                         {!result.success && result.error && (

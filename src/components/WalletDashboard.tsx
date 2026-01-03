@@ -1290,9 +1290,23 @@ export function WalletDashboard({
                   />
                 </Avatar>
                 <div>
-                  <h1 className={`${isPopupMode ? 'text-sm' : 'text-xl'} font-semibold text-foreground`}>
-                    OctWa - Octra Wallet
-                  </h1>
+                  <div className="flex items-center gap-2">
+                    <h1 className={`${isPopupMode ? 'text-sm' : 'text-xl'} font-semibold text-foreground`}>
+                      OctWa - Octra Wallet
+                    </h1>
+                    {/* Mode Badge - Only show when inline modal is open, except for decrypt (has corner badge) */}
+                    {!isPopupMode && (expandedSendModal || expandedPrivateModal === 'encrypt') && (
+                      <Badge 
+                        className={`text-xs px-2 py-0.5 ${
+                          operationMode === 'private' 
+                            ? 'bg-[#0000db] text-white' 
+                            : 'bg-foreground/10 text-foreground border border-foreground/20'
+                        }`}
+                      >
+                        {operationMode === 'private' ? 'Private' : 'Public'}
+                      </Badge>
+                    )}
+                  </div>
                   <div className="flex items-center space-x-2">
                     {/* Wallet Selector - Sheet for popup mode, Dropdown for expanded */}
                     {isPopupMode ? (
@@ -1822,11 +1836,9 @@ export function WalletDashboard({
                 <DialogContent className={isPopupMode ? "w-[380px] max-h-[550px] overflow-hidden p-4" : "sm:max-w-lg max-h-[80vh] overflow-hidden"}>
                   <DialogHeader className={isPopupMode ? "pb-2" : ""}>
                     <DialogTitle className={isPopupMode ? "text-sm" : ""}>Address Book</DialogTitle>
-                    {!isPopupMode && (
-                      <DialogDescription>
-                        Manage your contacts and wallet labels. All data is stored locally and privately.
-                      </DialogDescription>
-                    )}
+                    <DialogDescription className={isPopupMode ? "sr-only" : ""}>
+                      Manage your contacts and wallet labels. All data is stored locally and privately.
+                    </DialogDescription>
                   </DialogHeader>
                   <AddressBook 
                     isPopupMode={isPopupMode}

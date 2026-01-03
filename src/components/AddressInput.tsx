@@ -94,7 +94,7 @@ export function AddressInput({
               onClick={() => onChange('')}
               className="absolute right-3 inset-y-0 flex items-center text-muted-foreground hover:text-foreground"
             >
-              <X className={isPopupMode || isCompact ? 'h-3 w-3' : 'h-3.5 w-3.5'} />
+              <X className={isPopupMode || isCompact ? 'h-3 w-3' : 'h-3.5 w-5 pr-1'} />
             </button>
           )}
         </div>
