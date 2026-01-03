@@ -117,6 +117,14 @@ export function WalletDashboard({
   const [showMobileMenu, setShowMobileMenu] = useState(false);
   const [showWalletSelector, setShowWalletSelector] = useState(false);
   const [showWalletSidebar, setShowWalletSidebar] = useState(true); // Sidebar toggle for expanded mode
+  const [sidebarWidth, setSidebarWidth] = useState(310); // Default 384px (w-96)
+  const [isResizing, setIsResizing] = useState(false);
+  const MIN_SIDEBAR_WIDTH = 280;
+  const MAX_SIDEBAR_WIDTH = 500;
+  const AUTO_HIDE_THRESHOLD = 200; // Auto hide when dragged below this width
+  
+  // Computed sidebar left position for all fixed elements
+  const sidebarLeftOffset = showWalletSidebar ? `${sidebarWidth}px` : '2px';
   // Popup mode fullscreen states
   const [popupScreen, setPopupScreen] = useState<'main' | 'encrypt' | 'decrypt' | 'send' | 'receive' | 'claim' | 'txDetail'>('main');
   const [showReceiveDialog, setShowReceiveDialog] = useState(false);
@@ -191,6 +199,41 @@ export function WalletDashboard({
       autoLabelWallets(wallets.map(w => ({ address: w.address, type: w.type })));
     }
   }, [wallets, autoLabelWallets]);
+
+  // Handle sidebar resize
+  useEffect(() => {
+    if (!isResizing) return;
+
+    const handleMouseMove = (e: MouseEvent) => {
+      const newWidth = e.clientX;
+      if (newWidth < AUTO_HIDE_THRESHOLD) {
+        // Auto hide when dragged too far left
+        setShowWalletSidebar(false);
+        setSidebarWidth(MIN_SIDEBAR_WIDTH);
+        setIsResizing(false);
+      } else if (newWidth >= MIN_SIDEBAR_WIDTH && newWidth <= MAX_SIDEBAR_WIDTH) {
+        setSidebarWidth(newWidth);
+      }
+    };
+
+    const handleMouseUp = () => {
+      setIsResizing(false);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    };
+
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    };
+  }, [isResizing]);
 
   // Determine if private mode is available (encrypted balance > 0 OR pending transfers > 0)
   const privateEnabled = isPrivateModeAvailable(encryptedBalance?.encrypted || 0, pendingTransfersCount);
@@ -1977,8 +2020,8 @@ export function WalletDashboard({
       {/* Sticky Mode Toggle - Only for expanded mode */}
       {!isPopupMode && (
         <div 
-          className="fixed top-[70px] sm:top-[85px] right-0 z-40 bg-background/95 backdrop-blur-sm py-3 transition-[left] duration-300 ease-out"
-          style={{ left: showWalletSidebar ? '384px' : '2px' }}
+          className={`fixed top-[70px] sm:top-[85px] right-0 z-40 bg-background/95 backdrop-blur-sm py-3 transition-[left] ${isResizing ? 'duration-0' : 'duration-300'} ease-out`}
+          style={{ left: sidebarLeftOffset }}
         >
           <div className="px-6 sm:px-8 lg:px-12 max-w-6xl mx-auto">
             <ModeToggle
@@ -1996,16 +2039,19 @@ export function WalletDashboard({
       {/* Wallet Sidebar - Only for expanded mode */}
       {!isPopupMode && (
         <>
-          <aside className={`fixed top-[70px] sm:top-[83px] left-0 bottom-0 z-30 bg-background border-r border-border transition-all duration-300 ${showWalletSidebar ? 'w-96' : 'w-0'} overflow-hidden`}>
-            <div className="h-full flex flex-col p-4 w-96">
+          <aside 
+            className={`fixed top-[70px] sm:top-[83px] left-0 bottom-0 z-30 bg-background border-r border-border transition-all ${isResizing ? 'duration-0' : 'duration-300'} ${showWalletSidebar ? '' : 'w-0'} overflow-hidden`}
+            style={{ width: showWalletSidebar ? `${sidebarWidth}px` : '0px' }}
+          >
+            <div className="h-full flex flex-col p-4 pr-6" style={{ width: `${sidebarWidth}px` }}>
               <div className="flex items-center justify-between mb-4">
                 <h3 className="font-semibold text-base flex items-center gap-2">
                   <WalletIcon className="h-5 w-5" />
                   Wallets ({wallets.length})
                 </h3>
               </div>
-              <ScrollArea className="flex-1 -mr-4 pr-4">
-                <div className="space-y-2">
+              <ScrollArea className="flex-1">
+                <div className="space-y-2 pr-2">
                   {wallets.map((w, i) => {
                     const isActive = w.address === wallet.address;
                     const shortAddress = `${w.address.slice(0, 6)}...${w.address.slice(-4)}`;
@@ -2090,29 +2136,39 @@ export function WalletDashboard({
                 <Button
                   variant="outline"
                   onClick={() => setShowAddWalletDialog(true)}
-                  className="w-full justify-center gap-2 h-10"
+                  className="w-full justify-center gap-2 h-12 text-base font-medium"
                 >
-                  <Plus className="h-4 w-4" />
+                  <Plus className="h-5 w-5" />
                   Add Wallet
                 </Button>
               </div>
             </div>
+            
+            {/* Resize Handle - positioned outside content area */}
+            <div
+              className="absolute top-0 right-0 w-2 h-full cursor-col-resize hover:bg-primary/20 active:bg-primary/40 transition-colors z-10"
+              onMouseDown={(e) => {
+                e.preventDefault();
+                setIsResizing(true);
+              }}
+            />
           </aside>
           
-          {/* Sidebar Toggle Button */}
+          {/* Sidebar Toggle Button - aligned with sidebar edge */}
           <button
             onClick={() => setShowWalletSidebar(!showWalletSidebar)}
-            className={`fixed top-1/2 -translate-y-1/2 z-[50] h-10 w-5 flex items-center justify-center bg-muted hover:bg-accent border border-l-0 border-border rounded-r-md transition-all duration-300 ${showWalletSidebar ? 'left-96' : 'left-0'}`}
+            className={`fixed top-1/2 -translate-y-1/2 z-[50] h-12 w-4 flex items-center justify-center bg-muted/80 hover:bg-accent border-y border-r border-border transition-all ${isResizing ? 'duration-0' : 'duration-300'}`}
+            style={{ left: showWalletSidebar ? `${sidebarWidth}px` : '0px' }}
           >
-            {showWalletSidebar ? <ChevronLeft className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+            {showWalletSidebar ? <ChevronLeft className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
           </button>
         </>
       )}
 
       {/* Main Content - Add padding-top for fixed header in expanded mode */}
       <div 
-        className={isPopupMode ? '' : 'transition-[padding-left] duration-300 ease-out'}
-        style={!isPopupMode ? { paddingLeft: showWalletSidebar ? '384px' : '0px' } : undefined}
+        className={isPopupMode ? '' : `transition-[padding-left] ${isResizing ? 'duration-0' : 'duration-300'} ease-out`}
+        style={!isPopupMode ? { paddingLeft: sidebarLeftOffset } : undefined}
       >
         <main className={isPopupMode ? 'octra-container pt-0 pb-0 px-3 flex flex-col h-[calc(100vh-50px)] overflow-hidden' : 'pt-[149px] sm:pt-[165px] pb-16 px-6 sm:px-8 lg:px-12 sm:pb-20 max-w-6xl mx-auto'}>
         {/* ============================================ */}
@@ -2553,12 +2609,12 @@ export function WalletDashboard({
       {/* Expanded Mode Send Modals */}
       {!isPopupMode && expandedSendModal && (
         <div 
-          className={`fixed z-[45] bg-background/95 backdrop-blur-sm flex flex-col transition-all duration-300 ease-out ${
+          className={`fixed z-[45] bg-background/95 backdrop-blur-sm flex flex-col transition-all ${isResizing ? 'duration-0' : 'duration-300'} ease-out ${
             sendModalAnimating ? 'animate-send-modal-enter' : ''
           } ${sendModalClosing ? 'animate-send-modal-exit' : ''}`}
           style={{ 
             top: '83px', 
-            left: showWalletSidebar ? '384px' : '0px',
+            left: sidebarLeftOffset,
             right: 0,
             bottom: '40px'
           }}
@@ -2664,12 +2720,12 @@ export function WalletDashboard({
       {/* Expanded Mode Private Modals (Encrypt/Decrypt) */}
       {!isPopupMode && expandedPrivateModal && (
         <div 
-          className={`fixed z-[45] bg-background/95 backdrop-blur-sm flex flex-col transition-all duration-300 ease-out ${
+          className={`fixed z-[45] bg-background/95 backdrop-blur-sm flex flex-col transition-all ${isResizing ? 'duration-0' : 'duration-300'} ease-out ${
             privateModalAnimating ? 'animate-send-modal-enter' : ''
           } ${privateModalClosing ? 'animate-send-modal-exit' : ''}`}
           style={{ 
             top: '83px', 
-            left: showWalletSidebar ? '384px' : '0px',
+            left: sidebarLeftOffset,
             right: 0,
             bottom: '40px'
           }}
@@ -2793,8 +2849,8 @@ export function WalletDashboard({
       {/* Footer Credit - Only for expanded mode */}
       {!isPopupMode && (
         <footer 
-          className="fixed bottom-0 right-0 py-2 px-4 text-xs text-muted-foreground bg-background/80 backdrop-blur-sm border-t border-border flex items-center justify-between transition-[left] duration-300 ease-out z-[46]"
-          style={{ left: showWalletSidebar ? '384px' : '0px' }}
+          className={`fixed bottom-0 right-0 py-2 px-4 text-xs text-muted-foreground bg-background/80 backdrop-blur-sm border-t border-border flex items-center justify-between transition-[left] ${isResizing ? 'duration-0' : 'duration-300'} ease-out z-[46]`}
+          style={{ left: sidebarLeftOffset }}
         >
           {/* Left: Connection Status */}
           <div className="flex items-center gap-1.5">

@@ -1363,10 +1363,10 @@ export function FileMultiSend({ wallet, balance, onBalanceUpdate, onNonceUpdate,
           {isSending ? (
             <>
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              Sending ({executionMode})...
+              <span className="text-xs">Sending ({executionMode})...</span>
             </>
           ) : (
-            <span className="text-sm">
+            <span className="text-xs">
               Send to {validRecipients.length} recipient{validRecipients.length !== 1 ? 's' : ''} - {totalAmount.toFixed(4)} OCT
             </span>
           )}
@@ -1579,7 +1579,7 @@ export function FileMultiSend({ wallet, balance, onBalanceUpdate, onNonceUpdate,
                     return (
                       <div
                         key={index}
-                        className="p-3 rounded text-xs bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800"
+                        className="p-3 rounded text-xs bg-blue-50 dark:bg-blue-950/30"
                       >
                         <div className="flex items-center gap-2 font-medium text-blue-700 dark:text-blue-300 mb-2">
                           <Clock className="h-4 w-4" />
@@ -1598,7 +1598,8 @@ export function FileMultiSend({ wallet, balance, onBalanceUpdate, onNonceUpdate,
                             <span>Total Batches:</span>
                             <span className="font-medium">{log.totalBatches}</span>
                           </div>
-                          <div className="flex justify-between border-t pt-1 mt-1">
+                          <div className="border-t border-border my-2" />
+                          <div className="flex justify-between">
                             <span>Total Time:</span>
                             <span className="font-mono font-medium">{timeStr}</span>
                           </div>

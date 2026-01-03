@@ -33,25 +33,25 @@
   }
   
   .dark {
-    /* Octra docs.octra.org inspired color scheme */
-    --background: 220 13% 9%;
+    /* Custom dark theme with #0B0E14 background */
+    --background: 220 31% 6%;
     --foreground: 220 9% 89%;
-    --card: 220 13% 11%;
+    --card: 220 28% 8%;
     --card-foreground: 220 9% 89%;
-    --popover: 220 13% 11%;
+    --popover: 220 28% 8%;
     --popover-foreground: 220 9% 89%;
     --primary: 240 100% 43%;
     --primary-foreground: 0 0% 100%;
-    --secondary: 220 13% 15%;
+    --secondary: 220 25% 12%;
     --secondary-foreground: 220 9% 89%;
-    --muted: 220 13% 15%;
+    --muted: 220 25% 12%;
     --muted-foreground: 220 9% 60%;
-    --accent: 220 13% 15%;
+    --accent: 220 25% 12%;
     --accent-foreground: 220 9% 89%;
     --destructive: 0 62.8% 30.6%;
     --destructive-foreground: 220 9% 89%;
-    --border: 220 13% 18%;
-    --input: 220 13% 18%;
+    --border: 220 20% 15%;
+    --input: 220 20% 15%;
     --ring: 220 91% 60%;
     --chart-1: 220 70% 50%;
     --chart-2: 160 60% 45%;
@@ -102,7 +102,7 @@
   
   body {
     @apply bg-background text-foreground font-sans antialiased;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-family: 'Fira Code', monospace;
     line-height: 1.6;
   }
   
