@@ -93,7 +93,7 @@ export function EncryptBalanceDialog({
   };
 
   const content = (
-    <div className={isPopupMode ? "space-y-3" : "space-y-4"}>
+    <div className={isPopupMode ? "space-y-3" : "space-y-4 pt-8"}>
       {/* Animated Icon - in inline mode */}
       {isInline && (
         <AnimatedIcon type="encrypt" size="sm" />
@@ -117,25 +117,23 @@ export function EncryptBalanceDialog({
         </div>
       )}
 
-      <div className={isPopupMode ? "space-y-1" : "space-y-2"}>
-        <Label className={isPopupMode ? "text-xs" : ""}>Current Public Balance</Label>
-        <div className={`bg-muted  font-mono ${isPopupMode ? 'p-2 text-xs' : 'p-3'}`}>
-          {publicBalance.toFixed(8)} OCT
+      <div className={isPopupMode ? "space-y-1 pt-4" : "space-y-2 pt-8"}>
+        <div className="flex items-center justify-between">
+          <Label htmlFor="encrypt-amount" className={isPopupMode ? "text-xs" : ""}>Amount to Encrypt</Label>
+          <div className={`flex items-center gap-2 ${isPopupMode ? 'text-xs' : 'text-sm'}`}>
+            <span className="text-muted-foreground">
+              Balance: <span className="font-mono">{maxEncryptable.toFixed(4)}</span>
+            </span>
+            <button
+              type="button"
+              onClick={() => setAmount(maxEncryptable.toFixed(8))}
+              className="text-[#0000db] hover:text-[#0000db]/80 font-medium hover:underline"
+              disabled={isEncrypting || maxEncryptable <= 0}
+            >
+              Max
+            </button>
+          </div>
         </div>
-      </div>
-
-      <div className={isPopupMode ? "space-y-1" : "space-y-2"}>
-        <Label className={isPopupMode ? "text-xs" : ""}>Maximum Encryptable</Label>
-        <div className={`bg-muted  font-mono ${isPopupMode ? 'p-2 text-xs' : 'p-3'}`}>
-          {maxEncryptable.toFixed(8)} OCT
-        </div>
-        <p className={`text-muted-foreground ${isPopupMode ? 'text-[10px]' : 'text-xs'}`}>
-          (0.001 OCT reserved for fees)
-        </p>
-      </div>
-
-      <div className={isPopupMode ? "space-y-1" : "space-y-2"}>
-        <Label htmlFor="encrypt-amount" className={isPopupMode ? "text-xs" : ""}>Amount to Encrypt</Label>
         <Input
           id="encrypt-amount"
           type="number"
@@ -148,6 +146,9 @@ export function EncryptBalanceDialog({
           disabled={isEncrypting}
           className={isPopupMode ? "h-9 text-sm" : ""}
         />
+        <p className={`text-muted-foreground ${isPopupMode ? 'text-[10px]' : 'text-xs'}`}>
+          (0.001 OCT reserved for fees)
+        </p>
       </div>
 
       <div className="flex gap-2 pt-2">
@@ -155,7 +156,7 @@ export function EncryptBalanceDialog({
           variant="outline"
           onClick={() => onOpenChange(false)}
           disabled={isEncrypting}
-          className={`flex-1 ${isPopupMode ? 'h-10 text-sm' : ''}`}
+          className={`flex-1 ${isPopupMode ? 'h-10 text-sm' : 'h-12 text-base'}`}
         >
           Cancel
         </Button>
@@ -166,7 +167,7 @@ export function EncryptBalanceDialog({
                 <Button
                   onClick={handleEncrypt}
                   disabled={isEncrypting || !amount || parseFloat(amount) <= 0 || parseFloat(amount) > maxEncryptable || maxEncryptable <= 0}
-                  className={`w-full ${isPopupMode ? 'h-10 text-sm' : ''}`}
+                  className={`w-full ${isPopupMode ? 'h-10 text-sm' : 'h-12 text-base'}`}
                 >
                   {isEncrypting ? (
                     <div className="flex items-center gap-2">

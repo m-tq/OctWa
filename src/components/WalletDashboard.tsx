@@ -109,6 +109,7 @@ export function WalletDashboard({
   const [isLoadingBalance, setIsLoadingBalance] = useState(true);
   const [isLoadingTransactions, setIsLoadingTransactions] = useState(true);
   const [nonce, setNonce] = useState(0);
+  const [walletNonces, setWalletNonces] = useState<Record<string, number | null>>({});
   const [showAddWalletDialog, setShowAddWalletDialog] = useState(false);
   const [showRPCManager, setShowRPCManager] = useState(false);
   const [showDAppsManager, setShowDAppsManager] = useState(false);
@@ -168,10 +169,14 @@ export function WalletDashboard({
   const [privateModalClosing, setPrivateModalClosing] = useState(false);
   // Expanded mode transaction details inline screen
   const [showExpandedTxDetails, setShowExpandedTxDetails] = useState(false);
+  const [txDetailsAnimating, setTxDetailsAnimating] = useState(false);
+  const [txDetailsClosing, setTxDetailsClosing] = useState(false);
   // Address Book state
   const [showAddressBook, setShowAddressBook] = useState(false);
   // Current epoch state
   const [currentEpoch, setCurrentEpoch] = useState<number>(0);
+  // Track history panel state before hiding for multi/bulk send
+  const [historyPanelWasOpen, setHistoryPanelWasOpen] = useState(false);
   const { autoLabelWallets, getWalletDisplayName } = useAddressBook();
   const { toast } = useToast();
 
@@ -179,12 +184,23 @@ export function WalletDashboard({
   const openSendModal = (type: 'standard' | 'multi' | 'bulk') => {
     setSendModalAnimating(true);
     setExpandedSendModal(type);
+    // Hide history panel for multi/bulk send, save previous state
+    if (type === 'multi' || type === 'bulk') {
+      setHistoryPanelWasOpen(showHistorySidebar);
+      setShowHistorySidebar(false);
+    }
     setTimeout(() => setSendModalAnimating(false), 300);
   };
 
   // Handle closing send modal with animation
   const closeSendModal = () => {
     setSendModalClosing(true);
+    // Restore history panel if it was open before multi/bulk send
+    if (expandedSendModal === 'multi' || expandedSendModal === 'bulk') {
+      if (historyPanelWasOpen) {
+        setShowHistorySidebar(true);
+      }
+    }
     setTimeout(() => {
       setExpandedSendModal(null);
       setSendModalClosing(false);
@@ -1018,7 +1034,10 @@ export function WalletDashboard({
     if (isPopupMode) {
       setPopupScreen('txDetail');
     } else {
+      // Add animation when opening
+      setTxDetailsAnimating(true);
       setShowExpandedTxDetails(true);
+      setTimeout(() => setTxDetailsAnimating(false), 300);
     }
     
     try {
@@ -1060,11 +1079,15 @@ export function WalletDashboard({
     }
   };
 
-  // Close expanded transaction details
+  // Close expanded transaction details with animation
   const closeExpandedTxDetails = () => {
-    setShowExpandedTxDetails(false);
-    setSelectedTxHash(null);
-    setSelectedTxDetails(null);
+    setTxDetailsClosing(true);
+    setTimeout(() => {
+      setShowExpandedTxDetails(false);
+      setSelectedTxHash(null);
+      setSelectedTxDetails(null);
+      setTxDetailsClosing(false);
+    }, 200);
   };
 
   return (
@@ -1391,7 +1414,7 @@ export function WalletDashboard({
 
       {/* Header - Fixed position for expanded mode */}
       <header className={`octra-header w-full ${isPopupMode ? 'sticky top-0' : 'fixed top-0 left-0 right-0'} z-50`}>
-        <div className={`w-full ${isPopupMode ? 'px-3' : 'px-14 sm:px-16 lg:px-20'}`}>
+        <div className={`w-full ${isPopupMode ? 'px-3' : 'px-4'}`}>
           <div className={`flex items-center justify-between ${isPopupMode ? 'py-1' : 'py-2 sm:py-4'}`}>
             <div className="flex items-center space-x-4">
               <div className={`flex items-center ${isPopupMode ? 'space-x-2' : 'space-x-3'}`}>
@@ -1708,7 +1731,7 @@ export function WalletDashboard({
                 <>
                   <ThemeToggle isPopupMode={false} />
                   {/* Desktop Menu Items */}
-                  <div className="hidden md:flex items-center space-x-2">
+                  <div className="hidden lg:flex items-center space-x-2">
                     {/* Buttons with caption: RPC, dApps, Address Book */}
                     <Button
                       variant="outline"
@@ -1768,8 +1791,8 @@ export function WalletDashboard({
                     </Button>
                   </div>
 
-                  {/* Mobile Hamburger Menu */}
-                  <div className="md:hidden">
+                  {/* Mobile/Tablet Hamburger Menu */}
+                  <div className="lg:hidden">
                     <Sheet open={showMobileMenu} onOpenChange={setShowMobileMenu}>
                       <SheetTrigger asChild>
                         <Button variant="outline" size="sm">
@@ -2130,17 +2153,33 @@ export function WalletDashboard({
                       : w.type === 'imported-private-key' ? 'Imported (Key)' 
                       : '';
                     
+                    // Get nonce for this wallet (active wallet uses main nonce state)
+                    const walletNonce = isActive ? nonce : walletNonces[w.address];
+                    
+                    // Fetch nonce on hover for non-active wallets
+                    const handleMouseEnter = async () => {
+                      if (!isActive && walletNonces[w.address] === undefined) {
+                        try {
+                          const balanceData = await fetchBalance(w.address);
+                          setWalletNonces(prev => ({ ...prev, [w.address]: balanceData.nonce }));
+                        } catch {
+                          setWalletNonces(prev => ({ ...prev, [w.address]: null }));
+                        }
+                      }
+                    };
+                    
                     return (
                       <div
                         key={w.address}
-                        className={`p-3 rounded-lg cursor-pointer transition-colors ${
+                        className={`group p-3 rounded-lg cursor-pointer transition-colors ${
                           isActive 
                             ? 'bg-[#0000db]/10 border border-[#0000db]/30' 
                             : 'hover:bg-accent border border-transparent'
                         }`}
                         onClick={() => onSwitchWallet(w)}
+                        onMouseEnter={handleMouseEnter}
                       >
-                        {/* Row 1: Number + Address + Actions */}
+                        {/* Row 1: Number + Address + Actions (hidden, show on hover) */}
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-2 min-w-0">
                             <span className={`text-xs font-medium px-1.5 py-0.5 rounded ${
@@ -2152,7 +2191,8 @@ export function WalletDashboard({
                               {shortAddress}
                             </span>
                           </div>
-                          <div className="flex items-center gap-1 flex-shrink-0">
+                          {/* Actions - hidden by default, show on hover */}
+                          <div className="flex items-center gap-1 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
                             <Button
                               variant="ghost"
                               size="sm"
@@ -2190,12 +2230,18 @@ export function WalletDashboard({
                           <WalletDisplayName address={w.address} />
                         </div>
                         
-                        {/* Row 3: Type + Nonce (for active) */}
+                        {/* Row 3: Type + Nonce (active always shows, non-active shows on hover) */}
                         <div className={`flex items-center justify-between mt-1 text-xs ${
                           isActive ? 'text-[#0000db]/70' : 'text-muted-foreground'
                         }`}>
                           <span>{walletType}</span>
-                          {isActive && <span>Nonce: {nonce}</span>}
+                          {isActive ? (
+                            <span>Nonce: {nonce}</span>
+                          ) : (
+                            <span className="opacity-0 group-hover:opacity-100 transition-opacity">
+                              Nonce: {walletNonce !== undefined ? (walletNonce ?? '-') : '...'}
+                            </span>
+                          )}
                         </div>
                       </div>
                     );
@@ -2475,7 +2521,7 @@ export function WalletDashboard({
         /* ============================================ */
         <div className="flex flex-col h-[calc(100vh-165px)] sm:h-[calc(100vh-180px)]">
           {/* Main Content Area */}
-          <div className="flex-1 flex flex-col items-center justify-start pt-8 pb-4 overflow-auto">
+          <div className="flex-1 flex flex-col items-center justify-start pt-20 pb-4 overflow-auto">
             {/* Mode Label */}
             <div className="text-sm text-muted-foreground mb-2">
               {operationMode === 'private' ? 'Private Balance' : 'Public Balance'}
@@ -2531,7 +2577,7 @@ export function WalletDashboard({
                   onClick={() => openSendModal('standard')}
                 >
                   <Send className="h-8 w-8" />
-                  <span className="text-sm font-medium">Standard</span>
+                  <span className="text-sm font-medium">Send</span>
                   <span className="text-[10px] text-muted-foreground">Single transfer</span>
                 </Button>
                 
@@ -2654,7 +2700,9 @@ export function WalletDashboard({
             <div className="h-full flex flex-col" style={{ width: `${historySidebarWidth}px` }}>
               {/* Transaction Details View */}
               {showExpandedTxDetails ? (
-                <div className="h-full flex flex-col">
+                <div className={`h-full flex flex-col transition-all duration-200 ${
+                  txDetailsAnimating ? 'animate-in slide-in-from-right-4 fade-in' : ''
+                } ${txDetailsClosing ? 'animate-out slide-out-to-right-4 fade-out' : ''}`}>
                   {/* Header */}
                   <div className="flex items-center gap-2 p-4 pl-6 border-b flex-shrink-0">
                     <Button 
@@ -2682,13 +2730,13 @@ export function WalletDashboard({
                         <div className="space-y-3">
                           {/* Status */}
                           <div className="bg-muted/50 rounded-lg p-3 flex items-center justify-between">
-                            <span className="text-xs text-muted-foreground">Status</span>
+                            <span className="text-sm text-muted-foreground">Status</span>
                             {'stage_status' in selectedTxDetails ? (
-                              <Badge variant="secondary" className="text-xs bg-yellow-500/20 text-yellow-600">
+                              <Badge variant="secondary" className="text-sm bg-yellow-500/20 text-yellow-600">
                                 {selectedTxDetails.stage_status || 'pending'}
                               </Badge>
                             ) : (
-                              <Badge variant="secondary" className="text-xs bg-[#0000db]/20 text-[#0000db]">
+                              <Badge variant="secondary" className="text-sm bg-[#0000db]/20 text-[#0000db]">
                                 confirmed
                               </Badge>
                             )}
@@ -2697,16 +2745,16 @@ export function WalletDashboard({
                           {/* Epoch - only for confirmed */}
                           {'epoch' in selectedTxDetails && (
                             <div className="bg-muted/50 rounded-lg p-3 flex items-center justify-between">
-                              <span className="text-xs text-muted-foreground">Epoch</span>
-                              <span className="font-mono text-sm">{selectedTxDetails.epoch}</span>
+                              <span className="text-sm text-muted-foreground">Epoch</span>
+                              <span className="font-mono text-base">{selectedTxDetails.epoch}</span>
                             </div>
                           )}
 
                           {/* Time */}
                           {('timestamp' in selectedTxDetails || 'parsed_tx' in selectedTxDetails) && (
                             <div className="bg-muted/50 rounded-lg p-3 flex items-center justify-between">
-                              <span className="text-xs text-muted-foreground">Time (UTC)</span>
-                              <span className="text-xs">
+                              <span className="text-sm text-muted-foreground">Time (UTC)</span>
+                              <span className="text-sm">
                                 {'timestamp' in selectedTxDetails 
                                   ? new Date(selectedTxDetails.timestamp * 1000).toLocaleString('en-US', { timeZone: 'UTC', hour12: false })
                                   : new Date(selectedTxDetails.parsed_tx.timestamp * 1000).toLocaleString('en-US', { timeZone: 'UTC', hour12: false })
@@ -2718,14 +2766,14 @@ export function WalletDashboard({
                           {/* Hash */}
                           <div className="bg-muted/50 rounded-lg p-3">
                             <div className="flex items-center justify-between mb-1">
-                              <span className="text-xs text-muted-foreground">Hash</span>
+                              <span className="text-sm text-muted-foreground">Hash</span>
                               <Button 
                                 variant="ghost" 
                                 size="sm" 
                                 className="h-6 w-6 p-0" 
                                 onClick={() => copyToClipboard('hash' in selectedTxDetails ? selectedTxDetails.hash : selectedTxDetails.tx_hash, 'txHash')}
                               >
-                                {copiedField === 'txHash' ? <Check className="h-3 w-3 text-green-500" /> : <Copy className="h-3 w-3" />}
+                                {copiedField === 'txHash' ? <Check className="h-3.5 w-3.5 text-green-500" /> : <Copy className="h-3.5 w-3.5" />}
                               </Button>
                             </div>
                             <p className="font-mono text-xs break-all leading-relaxed">
@@ -2737,17 +2785,17 @@ export function WalletDashboard({
                           {('from' in selectedTxDetails || 'parsed_tx' in selectedTxDetails) && (
                             <div className="bg-muted/50 rounded-lg p-3">
                               <div className="flex items-center justify-between mb-1">
-                                <span className="text-xs text-muted-foreground">From</span>
+                                <span className="text-sm text-muted-foreground">From</span>
                                 <Button 
                                   variant="ghost" 
                                   size="sm" 
                                   className="h-6 w-6 p-0" 
                                   onClick={() => copyToClipboard('from' in selectedTxDetails ? selectedTxDetails.from : selectedTxDetails.parsed_tx.from, 'txFrom')}
                                 >
-                                  {copiedField === 'txFrom' ? <Check className="h-3 w-3 text-green-500" /> : <Copy className="h-3 w-3" />}
+                                  {copiedField === 'txFrom' ? <Check className="h-3.5 w-3.5 text-green-500" /> : <Copy className="h-3.5 w-3.5" />}
                                 </Button>
                               </div>
-                              <p className="font-mono text-xs break-all leading-relaxed">
+                              <p className="font-mono text-sm break-all leading-relaxed">
                                 {'from' in selectedTxDetails ? selectedTxDetails.from : selectedTxDetails.parsed_tx.from}
                               </p>
                             </div>
@@ -2757,59 +2805,63 @@ export function WalletDashboard({
                           {('to' in selectedTxDetails || 'parsed_tx' in selectedTxDetails) && (
                             <div className="bg-muted/50 rounded-lg p-3">
                               <div className="flex items-center justify-between mb-1">
-                                <span className="text-xs text-muted-foreground">To</span>
+                                <span className="text-sm text-muted-foreground">To</span>
                                 <Button 
                                   variant="ghost" 
                                   size="sm" 
                                   className="h-6 w-6 p-0" 
                                   onClick={() => copyToClipboard('to' in selectedTxDetails ? selectedTxDetails.to : selectedTxDetails.parsed_tx.to, 'txTo')}
                                 >
-                                  {copiedField === 'txTo' ? <Check className="h-3 w-3 text-green-500" /> : <Copy className="h-3 w-3" />}
+                                  {copiedField === 'txTo' ? <Check className="h-3.5 w-3.5 text-green-500" /> : <Copy className="h-3.5 w-3.5" />}
                                 </Button>
                               </div>
-                              <p className="font-mono text-xs break-all leading-relaxed">
+                              <p className="font-mono text-sm break-all leading-relaxed">
                                 {'to' in selectedTxDetails ? selectedTxDetails.to : selectedTxDetails.parsed_tx.to}
                               </p>
                             </div>
                           )}
 
-                          {/* Amount, OU (Gas), Nonce */}
-                          <div className="grid grid-cols-3 gap-2">
-                            {('amount' in selectedTxDetails || 'parsed_tx' in selectedTxDetails) && (
-                              <div className="bg-muted/50 rounded-lg p-3">
-                                <span className="text-[10px] text-muted-foreground">Amount</span>
-                                <p className="font-mono text-xs mt-0.5">
-                                  {'amount' in selectedTxDetails ? selectedTxDetails.amount : selectedTxDetails.parsed_tx.amount} OCT
-                                </p>
-                              </div>
-                            )}
-                            {('ou' in selectedTxDetails || 'parsed_tx' in selectedTxDetails) && (() => {
-                              const ouValue = 'ou' in selectedTxDetails ? selectedTxDetails.ou : selectedTxDetails.parsed_tx.ou;
-                              const ouNum = parseInt(ouValue) || 0;
-                              const feeOct = (ouNum * 0.0000001).toFixed(7);
-                              return (
-                                <div className="bg-muted/50 rounded-lg p-3">
-                                  <span className="text-[10px] text-muted-foreground">OU (Gas)</span>
-                                  <p className="font-mono text-xs mt-0.5">{ouValue}</p>
-                                  <p className="text-[9px] text-muted-foreground">≈ {feeOct} OCT</p>
+                          {/* Amount */}
+                          {('amount' in selectedTxDetails || 'parsed_tx' in selectedTxDetails) && (
+                            <div className="bg-muted/50 rounded-lg p-3 flex items-center justify-between">
+                              <span className="text-sm text-muted-foreground">Amount</span>
+                              <span className="font-mono text-base font-medium">
+                                {'amount' in selectedTxDetails ? selectedTxDetails.amount : selectedTxDetails.parsed_tx.amount} OCT
+                              </span>
+                            </div>
+                          )}
+
+                          {/* OU (Gas) */}
+                          {('ou' in selectedTxDetails || 'parsed_tx' in selectedTxDetails) && (() => {
+                            const ouValue = 'ou' in selectedTxDetails ? selectedTxDetails.ou : selectedTxDetails.parsed_tx.ou;
+                            const ouNum = parseInt(ouValue) || 0;
+                            const feeOct = (ouNum * 0.0000001).toFixed(7);
+                            return (
+                              <div className="bg-muted/50 rounded-lg p-3 flex items-center justify-between">
+                                <span className="text-sm text-muted-foreground">OU (Gas)</span>
+                                <div className="text-right">
+                                  <span className="font-mono text-base">{ouValue}</span>
+                                  <p className="text-xs text-muted-foreground">≈ {feeOct} OCT</p>
                                 </div>
-                              );
-                            })()}
-                            {('nonce' in selectedTxDetails || 'parsed_tx' in selectedTxDetails) && (
-                              <div className="bg-muted/50 rounded-lg p-3">
-                                <span className="text-[10px] text-muted-foreground">Nonce</span>
-                                <p className="font-mono text-xs mt-0.5">
-                                  {'nonce' in selectedTxDetails ? selectedTxDetails.nonce : selectedTxDetails.parsed_tx.nonce}
-                                </p>
                               </div>
-                            )}
-                          </div>
+                            );
+                          })()}
+
+                          {/* Nonce */}
+                          {('nonce' in selectedTxDetails || 'parsed_tx' in selectedTxDetails) && (
+                            <div className="bg-muted/50 rounded-lg p-3 flex items-center justify-between">
+                              <span className="text-sm text-muted-foreground">Nonce</span>
+                              <span className="font-mono text-base">
+                                {'nonce' in selectedTxDetails ? selectedTxDetails.nonce : selectedTxDetails.parsed_tx.nonce}
+                              </span>
+                            </div>
+                          )}
 
                           {/* View on Explorer */}
                           {!('stage_status' in selectedTxDetails) && (
                             <Button
                               variant="outline"
-                              className="w-full h-9 text-xs"
+                              className="w-full h-10 text-sm"
                               asChild
                             >
                               <a 
@@ -2817,7 +2869,7 @@ export function WalletDashboard({
                                 target="_blank" 
                                 rel="noopener noreferrer"
                               >
-                                <ExternalLink className="h-3.5 w-3.5 mr-2" />
+                                <ExternalLink className="h-4 w-4 mr-2" />
                                 View on Explorer
                               </a>
                             </Button>
@@ -2833,7 +2885,9 @@ export function WalletDashboard({
                 </div>
               ) : (
                 /* History List View */
-                <div className="h-full flex flex-col p-4 pl-6 pb-6">
+                <div className={`h-full flex flex-col p-4 pl-6 pb-6 transition-all duration-200 ${
+                  txDetailsClosing ? 'animate-in slide-in-from-left-4 fade-in' : ''
+                }`}>
                   <div className="flex items-center justify-between mb-4 flex-shrink-0">
                     <h3 className={`font-semibold text-base flex items-center gap-2 ${operationMode === 'private' ? 'text-[#0000db]' : ''}`}>
                       <History className="h-5 w-5" />
@@ -2931,7 +2985,7 @@ export function WalletDashboard({
                 <h2 className={`text-lg font-semibold ${operationMode === 'private' ? 'text-[#0000db]' : ''}`}>
                   {operationMode === 'private' ? 'Private Transfer' : (
                     <>
-                      {expandedSendModal === 'standard' && 'Standard Send'}
+                      {expandedSendModal === 'standard' && 'Single Send'}
                       {expandedSendModal === 'multi' && 'Multi Send'}
                       {expandedSendModal === 'bulk' && 'Bulk Send'}
                     </>

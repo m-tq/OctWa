@@ -203,15 +203,15 @@ export function UnifiedHistory({ wallet, transactions, onTransactionsUpdate, isL
         <div className="flex flex-col gap-0.5">
           <CardTitle className={`flex items-center gap-2 ${isPopupMode ? 'text-sm' : isCompact ? 'text-sm' : ''}`}>
             {!isCompact && <History className={isPopupMode ? 'h-4 w-4' : 'h-5 w-5'} />}
-            {operationMode === 'private' ? 'Private History' : 'Public History'}
+            {/* {operationMode === 'private' ? 'Private History' : 'Public History'} */}
             {pendingCount > 0 && (
               <Badge variant="secondary" className={isPopupMode ? 'ml-1 text-[10px]' : 'ml-2'}>{pendingCount}</Badge>
             )}
           </CardTitle>
           <span className={`text-muted-foreground ${isPopupMode ? 'text-[10px]' : 'text-xs'}`}>
             {isPopupMode 
-              ? `${filteredTransactions.length} ${operationMode} tx` 
-              : `${filteredTransactions.length} ${operationMode} transactions`
+              ? `last ${filteredTransactions.length} ${operationMode} tx` 
+              : `last ${filteredTransactions.length} ${operationMode} transactions`
             }
           </span>
         </div>

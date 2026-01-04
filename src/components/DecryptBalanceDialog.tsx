@@ -90,7 +90,7 @@ export function DecryptBalanceDialog({
   };
 
   const content = (
-    <div className={isPopupMode ? "space-y-3" : "space-y-4"}>
+    <div className={isPopupMode ? "space-y-3" : "space-y-4 pt-8"}>
       {/* Animated Icon - in inline mode */}
       {isInline && (
         <AnimatedIcon type="decrypt" size="sm" />
@@ -114,15 +114,23 @@ export function DecryptBalanceDialog({
         </div>
       )}
 
-      <div className={isPopupMode ? "space-y-1" : "space-y-2"}>
-        <Label className={isPopupMode ? "text-xs" : ""}>Current Private Balance</Label>
-        <div className={`bg-[#0000db]/5 border border-[#0000db]/20  font-mono text-[#0000db] ${isPopupMode ? 'p-2 text-xs' : 'p-3'}`}>
-          {encryptedBalance.toFixed(8)} OCT
+      <div className={isPopupMode ? "space-y-1 pt-4" : "space-y-2 pt-8"}>
+        <div className="flex items-center justify-between">
+          <Label htmlFor="decrypt-amount" className={isPopupMode ? "text-xs" : ""}>Amount to Decrypt</Label>
+          <div className={`flex items-center gap-2 ${isPopupMode ? 'text-xs' : 'text-sm'}`}>
+            <span className="text-[#0000db]/70">
+              Balance: <span className="font-mono">{encryptedBalance.toFixed(4)}</span>
+            </span>
+            <button
+              type="button"
+              onClick={() => setAmount(encryptedBalance.toFixed(8))}
+              className="text-[#0000db] hover:text-[#0000db]/80 font-medium hover:underline"
+              disabled={isDecrypting || encryptedBalance <= 0}
+            >
+              Max
+            </button>
+          </div>
         </div>
-      </div>
-
-      <div className={isPopupMode ? "space-y-1" : "space-y-2"}>
-        <Label htmlFor="decrypt-amount" className={isPopupMode ? "text-xs" : ""}>Amount to Decrypt</Label>
         <Input
           id="decrypt-amount"
           type="number"
@@ -142,14 +150,14 @@ export function DecryptBalanceDialog({
           variant="outline"
           onClick={() => onOpenChange(false)}
           disabled={isDecrypting}
-          className={`flex-1 ${isPopupMode ? 'h-10 text-sm' : ''}`}
+          className={`flex-1 ${isPopupMode ? 'h-10 text-sm' : 'h-12 text-base'}`}
         >
           Cancel
         </Button>
         <Button
           onClick={handleDecrypt}
           disabled={isDecrypting || !amount || parseFloat(amount) <= 0 || parseFloat(amount) > encryptedBalance}
-          className={`flex-1 bg-[#0000db] hover:bg-[#0000db]/90 ${isPopupMode ? 'h-10 text-sm' : ''}`}
+          className={`flex-1 bg-[#0000db] hover:bg-[#0000db]/90 ${isPopupMode ? 'h-10 text-sm' : 'h-12 text-base'}`}
         >
           {isDecrypting ? (
             <div className="flex items-center gap-2">
