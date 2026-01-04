@@ -126,9 +126,9 @@ export function WalletDashboard({
   
   // History sidebar state (right side)
   const [showHistorySidebar, setShowHistorySidebar] = useState(true);
-  const [historySidebarWidth, setHistorySidebarWidth] = useState(530);
+  const [historySidebarWidth, setHistorySidebarWidth] = useState(500);
   const [isResizingHistory, setIsResizingHistory] = useState(false);
-  const MIN_HISTORY_WIDTH = 300;
+  const MIN_HISTORY_WIDTH = 350;
   const MAX_HISTORY_WIDTH = 600;
   const AUTO_HIDE_HISTORY_THRESHOLD = 200;
   
@@ -2339,7 +2339,7 @@ export function WalletDashboard({
                           : (balance || 0).toFixed(8)
                         }
                       </span>
-                      <Badge variant="outline" className={`text-lg font-bold px-2 py-0.5 ${operationMode === 'private' ? 'border-[#0000db]/30 text-[#0000db]' : ''}`}>
+                      <Badge variant="outline" className={`text-lg font-bold px-2 py-0.5 border-0 ${operationMode === 'private' ? 'text-[#0000db]' : ''}`}>
                         OCT
                       </Badge>
                     </div>

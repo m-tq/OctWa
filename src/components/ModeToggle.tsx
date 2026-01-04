@@ -72,7 +72,7 @@ export function ModeToggle({
   const iconSize = isCompact ? 'h-7 w-7' : 'h-8 w-8';
 
   return (
-    <div className="w-full">
+    <div className={`w-full ${isCompact ? 'pl-4' : ''}`}>
       <div className={`flex items-center justify-between ${isCompact ? 'gap-3' : 'gap-4'}`}>
         {/* Left: Animated Toggle Button */}
         <TooltipProvider>
@@ -89,10 +89,16 @@ export function ModeToggle({
                 >
                   {/* Outer glow/shadow */}
                   <div 
-                    className={`absolute inset-0 rounded-full transition-all duration-500 ${
+                    className={`absolute rounded-full transition-all duration-500 ${
+                      isCompact ? 'inset-1' : 'inset-0'
+                    } ${
                       isPrivate 
-                        ? 'shadow-[0_0_30px_8px_rgba(0,0,219,0.5)] bg-[#0000db]/10' 
-                        : 'shadow-[0_0_25px_6px_rgba(0,0,0,0.15)] dark:shadow-[0_0_25px_6px_rgba(255,255,255,0.15)] bg-muted/40'
+                        ? isCompact
+                          ? 'shadow-[0_0_12px_4px_rgba(0,0,219,0.4)] bg-[#0000db]/10'
+                          : 'shadow-[0_0_30px_8px_rgba(0,0,219,0.5)] bg-[#0000db]/10' 
+                        : isCompact
+                          ? 'shadow-[0_0_10px_3px_rgba(0,0,0,0.12)] dark:shadow-[0_0_10px_3px_rgba(255,255,255,0.12)] bg-muted/40'
+                          : 'shadow-[0_0_25px_6px_rgba(0,0,0,0.15)] dark:shadow-[0_0_25px_6px_rgba(255,255,255,0.15)] bg-muted/40'
                     }`}
                   />
 
