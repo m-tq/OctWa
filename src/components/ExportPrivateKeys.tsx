@@ -251,8 +251,8 @@ ${wallet.mnemonic}
               Enter your password to view and export your private keys
             </DialogDescription>
           </DialogHeader>
-          <ScrollArea className={isPopupMode ? "max-h-[calc(500px-60px)] px-3 pb-3" : "max-h-[calc(90vh-100px)] pr-2"}>
-            <div className={isPopupMode ? "" : "pr-2"}>
+          <ScrollArea className={isPopupMode ? "max-h-[calc(500px-60px)] px-3 pb-3" : "max-h-[calc(90vh-100px)]"}>
+            <div>
               {!isUnlocked ? (
                   <div className={isPopupMode ? "space-y-3" : "space-y-4"}>
                     <div className={`flex items-start ${isPopupMode ? 'space-x-2' : 'space-x-3'}`}>
@@ -540,8 +540,8 @@ ${wallet.mnemonic}
             Enter your password to view and export your private keys
           </DialogDescription>
         </DialogHeader>
-        <ScrollArea className="max-h-[calc(90vh-100px)] pr-2">
-          <div className="pr-2">
+        <ScrollArea className="max-h-[calc(90vh-100px)]">
+          <div>
             {!isUnlocked ? (
               <div className="space-y-4">
                 <div className="flex items-start space-x-3">

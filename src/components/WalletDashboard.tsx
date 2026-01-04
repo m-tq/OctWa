@@ -53,7 +53,6 @@ import { ClaimTransfers } from './ClaimTransfers';
 import { FileMultiSend } from './FileMultiSend';
 import { UnifiedHistory } from './UnifiedHistory';
 import { ModeToggle } from './ModeToggle';
-import { ModeIndicator } from './ModeIndicator';
 import { ThemeToggle } from './ThemeToggle';
 import { AddWalletPopup } from './AddWalletPopup';
 import { RPCProviderManager } from './RPCProviderManager';
@@ -72,6 +71,7 @@ import { OperationMode, saveOperationMode, loadOperationMode, isPrivateModeAvail
 import { verifyPassword } from '../utils/password';
 import { isPrivateTransfer } from '../utils/historyMerge';
 import { useAddressBook } from '../hooks/useAddressBook';
+import { addressBook } from '../utils/addressBook';
 
 interface Transaction {
   hash: string;
@@ -817,6 +817,21 @@ export function WalletDashboard({
       localStorage.removeItem('walletPasswordSalt');
       localStorage.removeItem('isWalletLocked');
       localStorage.removeItem('connectedDApps');
+      localStorage.removeItem('walletOperationMode');
+      localStorage.removeItem('walletRateLimitState');
+      localStorage.removeItem('walletCapabilities');
+
+      // Clear address book data
+      await addressBook.clearAll();
+
+      // Clear API cache from chrome.storage
+      if (typeof chrome !== 'undefined' && chrome.storage?.local) {
+        try {
+          await chrome.storage.local.remove('octwa_api_cache');
+        } catch (e) {
+          console.error('Failed to clear API cache:', e);
+        }
+      }
 
       // Clear session password
       WalletManager.clearSessionPassword();
@@ -3212,9 +3227,6 @@ export function WalletDashboard({
 
       {/* Footer Spacer - Only for expanded mode */}
       {!isPopupMode && <div className="h-10" />}
-
-      {/* Mode Indicator - Corner Badge - Only for expanded mode */}
-      {!isPopupMode && <ModeIndicator mode={operationMode} />}
 
       {/* Footer Credit - Only for expanded mode */}
       {!isPopupMode && (

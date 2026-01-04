@@ -271,6 +271,23 @@ class AddressBookManager {
       throw new Error('Failed to import address book: ' + (error as Error).message);
     }
   }
+
+  // Clear all data (for reset)
+  async clearAll(): Promise<void> {
+    this.data = { ...DEFAULT_ADDRESS_BOOK, lastUpdated: Date.now() };
+    
+    // Clear from localStorage
+    localStorage.removeItem(STORAGE_KEY);
+    
+    // Clear from chrome.storage
+    try {
+      await ExtensionStorageManager.remove(STORAGE_KEY);
+    } catch (error) {
+      console.error('Failed to clear from ExtensionStorage:', error);
+    }
+    
+    this.notifyListeners();
+  }
 }
 
 // Singleton instance
