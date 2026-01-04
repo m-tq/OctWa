@@ -556,9 +556,9 @@ function TransferItem({
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-1.5">
               {isPrivate ? (
-                <span className="text-[#0000db] font-medium text-xs">Private</span>
+                <span className="text-[#0000db] font-medium text-xs">{tx.type === 'sent' ? '-' : '+'}Private</span>
               ) : (
-                <span className="font-mono text-xs truncate">{tx.amount?.toFixed(4) || '0'} OCT</span>
+                <span className={`font-mono text-xs truncate ${tx.type === 'sent' ? 'text-red-500' : 'text-green-500'}`}>{tx.type === 'sent' ? '-' : '+'}{tx.amount?.toFixed(4) || '0'} OCT</span>
               )}
               {getStatusIcon(tx.status, true)}
             </div>
@@ -583,44 +583,59 @@ function TransferItem({
     );
   }
   
-  // Compact mode (sidebar): clickable item without eye/external link buttons
+  // Compact mode (sidebar): same style as popup mode
   if (isCompact) {
+    const txDate = new Date(tx.timestamp * 1000);
+    const timeStr = txDate.toLocaleTimeString('en-US', { 
+      hour: '2-digit', 
+      minute: '2-digit', 
+      second: '2-digit', 
+      hour12: false,
+      timeZone: 'UTC'
+    });
+    const dateStr = txDate.toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      timeZone: 'UTC'
+    });
+    
     return (
       <div 
-        className="cursor-pointer hover:bg-accent/50 transition-colors -m-2 p-2 rounded"
+        className="cursor-pointer hover:bg-muted/50 transition-colors -m-2 p-2 rounded"
         onClick={handleItemClick}
       >
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2 flex-1 min-w-0">
             {tx.type === 'sent' ? (
-              <ArrowUpRight className="h-4 w-4 text-red-500" />
+              <ArrowUpRight className="h-3.5 w-3.5 text-red-500 flex-shrink-0" />
             ) : (
-              <ArrowDownLeft className="h-4 w-4 text-green-500" />
+              <ArrowDownLeft className="h-3.5 w-3.5 text-green-500 flex-shrink-0" />
             )}
-            <span className="font-medium capitalize text-sm">{tx.type}</span>
-            {getStatusIcon(tx.status)}
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-1.5">
+                {isPrivate ? (
+                  <span className="text-[#0000db] font-medium text-xs">{tx.type === 'sent' ? '-' : '+'}Private</span>
+                ) : (
+                  <span className={`font-mono text-xs ${tx.type === 'sent' ? 'text-red-500' : 'text-green-500'}`}>{tx.type === 'sent' ? '-' : '+'}{tx.amount?.toFixed(4) || '0'} OCT</span>
+                )}
+                {tx.status === 'confirmed' ? (
+                  <div className="h-1.5 w-1.5 bg-[#0000db]" />
+                ) : tx.status === 'pending' ? (
+                  <div className="h-1.5 w-1.5 bg-yellow-500 animate-pulse" />
+                ) : (
+                  <div className="h-3 w-3 bg-red-500/20 flex items-center justify-center">
+                    <div className="h-1.5 w-1.5 bg-red-500" />
+                  </div>
+                )}
+              </div>
+              <div className="text-[10px] text-muted-foreground truncate">
+                {tx.type === 'sent' ? 'To: ' : 'From: '}{truncateAddress(tx.type === 'sent' ? tx.to : tx.from)}
+              </div>
+            </div>
           </div>
-        </div>
-        <div className="grid grid-cols-2 gap-2 text-xs mt-2">
-          <div>
-            <span className="text-muted-foreground">Amount: </span>
-            {isPrivate ? (
-              <span className="text-[#0000db] font-medium">private OCT</span>
-            ) : (
-              <span className="font-mono">{tx.amount?.toFixed(8) || '0'} OCT</span>
-            )}
-          </div>
-          <div>
-            <span className="text-muted-foreground">Hash: </span>
-            <span className="font-mono">{truncateHash(tx.hash || 'N/A')}</span>
-          </div>
-          <div>
-            <span className="text-muted-foreground">{tx.type === 'sent' ? 'To: ' : 'From: '}</span>
-            <span className="font-mono">{truncateAddress(tx.type === 'sent' ? tx.to : tx.from)}</span>
-          </div>
-          <div>
-            <span className="text-muted-foreground">Time: </span>
-            <span>{new Date(tx.timestamp * 1000).toLocaleString('en-US', { timeZone: 'UTC', hour12: false })} UTC</span>
+          <div className="text-[10px] text-muted-foreground flex-shrink-0 text-right">
+            <div>{dateStr}</div>
+            <div>{timeStr} UTC</div>
           </div>
         </div>
       </div>

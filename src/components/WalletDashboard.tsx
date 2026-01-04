@@ -41,7 +41,9 @@ import {
   PanelLeftClose,
   PanelLeft,
   Wallet as WalletIcon,
-  BookUser
+  BookUser,
+  Layers,
+  FileText
 } from 'lucide-react';
 import { ExtensionStorageManager } from '../utils/extensionStorage';
 import { PublicBalance } from './PublicBalance';
@@ -118,15 +120,16 @@ export function WalletDashboard({
   const [showMobileMenu, setShowMobileMenu] = useState(false);
   const [showWalletSelector, setShowWalletSelector] = useState(false);
   const [showWalletSidebar, setShowWalletSidebar] = useState(true); // Sidebar toggle for expanded mode
-  const [sidebarWidth, setSidebarWidth] = useState(310); // Default 384px (w-96)
+  const [showHistorySidebar, setShowHistorySidebar] = useState(true);
+  const [bothPanelsHidden, setBothPanelsHidden] = useState(false); // Toggle for hiding both panels
+  const [sidebarWidth, setSidebarWidth] = useState(350); // Default 350px
   const [isResizing, setIsResizing] = useState(false);
-  const MIN_SIDEBAR_WIDTH = 280;
+  const MIN_SIDEBAR_WIDTH = 310;
   const MAX_SIDEBAR_WIDTH = 500;
   const AUTO_HIDE_THRESHOLD = 200; // Auto hide when dragged below this width
   
   // History sidebar state (right side)
-  const [showHistorySidebar, setShowHistorySidebar] = useState(true);
-  const [historySidebarWidth, setHistorySidebarWidth] = useState(500);
+  const [historySidebarWidth, setHistorySidebarWidth] = useState(450);
   const [isResizingHistory, setIsResizingHistory] = useState(false);
   const MIN_HISTORY_WIDTH = 350;
   const MAX_HISTORY_WIDTH = 600;
@@ -136,6 +139,22 @@ export function WalletDashboard({
   const sidebarLeftOffset = showWalletSidebar ? `${sidebarWidth}px` : '2px';
   // Computed history sidebar right position
   const historySidebarRightOffset = showHistorySidebar ? `${historySidebarWidth}px` : '2px';
+  
+  // Toggle both panels function
+  const toggleBothPanels = () => {
+    if (bothPanelsHidden) {
+      // Show both panels
+      setShowWalletSidebar(true);
+      setShowHistorySidebar(true);
+      setBothPanelsHidden(false);
+    } else {
+      // Hide both panels
+      setShowWalletSidebar(false);
+      setShowHistorySidebar(false);
+      setBothPanelsHidden(true);
+    }
+  };
+  
   // Popup mode fullscreen states
   const [popupScreen, setPopupScreen] = useState<'main' | 'encrypt' | 'decrypt' | 'send' | 'receive' | 'claim' | 'txDetail'>('main');
   const [showReceiveDialog, setShowReceiveDialog] = useState(false);
@@ -166,7 +185,12 @@ export function WalletDashboard({
   // Expanded mode encrypt/decrypt modal states (for private mode)
   const [expandedPrivateModal, setExpandedPrivateModal] = useState<'encrypt' | 'decrypt' | null>(null);
   const [privateModalAnimating, setPrivateModalAnimating] = useState(false);
+  // Claim screen animation states
+  const [claimAnimating, setClaimAnimating] = useState(false);
+  const [claimClosing, setClaimClosing] = useState(false);
   const [privateModalClosing, setPrivateModalClosing] = useState(false);
+  // Toggle panels button initial visibility
+  const [togglePanelsVisible, setTogglePanelsVisible] = useState(true);
   // Expanded mode transaction details inline screen
   const [showExpandedTxDetails, setShowExpandedTxDetails] = useState(false);
   const [txDetailsAnimating, setTxDetailsAnimating] = useState(false);
@@ -207,6 +231,22 @@ export function WalletDashboard({
     }, 200);
   };
 
+  // Handle opening claim screen with animation
+  const openClaimScreen = () => {
+    setClaimAnimating(true);
+    setActiveTab('claim');
+    setTimeout(() => setClaimAnimating(false), 300);
+  };
+
+  // Handle closing claim screen with animation
+  const closeClaimScreen = () => {
+    setClaimClosing(true);
+    setTimeout(() => {
+      setActiveTab('balance');
+      setClaimClosing(false);
+    }, 200);
+  };
+
   // Handle opening private modal (encrypt/decrypt) with animation
   const openPrivateModal = (type: 'encrypt' | 'decrypt') => {
     setPrivateModalAnimating(true);
@@ -229,6 +269,16 @@ export function WalletDashboard({
       autoLabelWallets(wallets.map(w => ({ address: w.address, type: w.type })));
     }
   }, [wallets, autoLabelWallets]);
+
+  // Auto-hide toggle panels button after 3 seconds on initial load
+  useEffect(() => {
+    if (!isPopupMode && togglePanelsVisible) {
+      const timer = setTimeout(() => {
+        setTogglePanelsVisible(false);
+      }, 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [isPopupMode]);
 
   // Handle sidebar resize
   useEffect(() => {
@@ -488,15 +538,24 @@ export function WalletDashboard({
         // Fetch fresh transaction history
         const result = await getTransactionHistory(wallet.address, {}, true);
         if (Array.isArray(result.transactions)) {
-          // Only update if transaction count changed or latest tx hash is different
+          // Check if any transaction status changed (pending -> confirmed)
+          const hasPendingTx = transactions.some((tx) => tx.status === 'pending');
           const newLatestHash = result.transactions[0]?.hash;
           const currentLatestHash = transactions[0]?.hash;
+          
+          // Also check if any pending tx is now confirmed in new data
+          const pendingStatusChanged = hasPendingTx && result.transactions.some((newTx) => {
+            const oldTx = transactions.find((t) => t.hash === newTx.hash);
+            return oldTx && oldTx.status === 'pending' && newTx.status === 'confirmed';
+          });
+          
           if (
             result.transactions.length !== transactions.length ||
-            newLatestHash !== currentLatestHash
+            newLatestHash !== currentLatestHash ||
+            pendingStatusChanged
           ) {
             console.log(
-              `📜 Transactions changed: ${transactions.length} → ${result.transactions.length}`
+              `📜 Transactions changed: ${transactions.length} → ${result.transactions.length}${pendingStatusChanged ? ' (status updated)' : ''}`
             );
             const transformedTxs = result.transactions.map((tx) => ({
               ...tx,
@@ -565,6 +624,11 @@ export function WalletDashboard({
       // This ensures new/switched wallets start in public mode
       setEncryptedBalance(null);
       setOperationMode('public');
+      
+      // Reset transaction details view when wallet changes
+      setShowExpandedTxDetails(false);
+      setSelectedTxHash(null);
+      setSelectedTxDetails(null);
 
       try {
         // Fetch balance and nonce
@@ -1264,7 +1328,6 @@ export function WalletDashboard({
                   <ChevronDown className="h-4 w-4 rotate-90" />
                 </Button>
                 <div className="flex items-center gap-2">
-                  <Eye className="h-5 w-5" />
                   <h2 className="font-semibold">Transaction Details</h2>
                 </div>
               </div>
@@ -1429,7 +1492,7 @@ export function WalletDashboard({
 
       {/* Header - Fixed position for expanded mode */}
       <header className={`octra-header w-full ${isPopupMode ? 'sticky top-0' : 'fixed top-0 left-0 right-0'} z-50`}>
-        <div className={`w-full ${isPopupMode ? 'px-3' : 'px-4'}`}>
+        <div className={`w-full ${isPopupMode ? 'px-3' : 'px-6'}`}>
           <div className={`flex items-center justify-between ${isPopupMode ? 'py-1' : 'py-2 sm:py-4'}`}>
             <div className="flex items-center space-x-4">
               <div className={`flex items-center ${isPopupMode ? 'space-x-2' : 'space-x-3'}`}>
@@ -2287,7 +2350,12 @@ export function WalletDashboard({
           
           {/* Sidebar Toggle Button - aligned with sidebar edge */}
           <button
-            onClick={() => setShowWalletSidebar(!showWalletSidebar)}
+            onClick={() => {
+              setShowWalletSidebar(!showWalletSidebar);
+              // Update bothPanelsHidden state
+              if (!showWalletSidebar && showHistorySidebar) setBothPanelsHidden(false);
+              if (showWalletSidebar && !showHistorySidebar) setBothPanelsHidden(true);
+            }}
             className={`fixed top-1/2 -translate-y-1/2 z-[50] h-12 w-4 flex items-center justify-center bg-muted/80 hover:bg-accent border-y border-r border-border transition-all ${isResizing ? 'duration-0' : 'duration-300'}`}
             style={{ left: showWalletSidebar ? `${sidebarWidth}px` : '0px' }}
           >
@@ -2499,14 +2567,14 @@ export function WalletDashboard({
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center gap-1.5">
                                 {txIsPrivate ? (
-                                  <span className="text-[#0000db] font-medium text-xs">Private</span>
+                                  <span className="text-[#0000db] font-medium text-xs">{tx.type === 'sent' ? '-' : '+'}Private</span>
                                 ) : (
-                                  <span className="font-mono text-xs">{(tx.amount || 0).toFixed(4)} OCT</span>
+                                  <span className={`font-mono text-xs ${tx.type === 'sent' ? 'text-red-500' : 'text-green-500'}`}>{tx.type === 'sent' ? '-' : '+'}{(tx.amount || 0).toFixed(4)} OCT</span>
                                 )}
                                 {tx.status === 'confirmed' ? (
                                   <div className="h-1.5 w-1.5  bg-[#0000db]" />
                                 ) : tx.status === 'pending' ? (
-                                  <div className="h-3 w-3  border border-yellow-500 animate-pulse" />
+                                  <div className="h-1.5 w-1.5  bg-yellow-500 animate-pulse" />
                                 ) : (
                                   <div className="h-3 w-3  bg-red-500/20 flex items-center justify-center">
                                     <div className="h-1.5 w-1.5  bg-red-500" />
@@ -2562,7 +2630,7 @@ export function WalletDashboard({
             {operationMode === 'public' ? (
               <Button
                 variant="outline"
-                className="w-full max-w-lg h-12 mb-8 border border-border"
+                className="w-full max-w-lg h-12 mb-4 border border-border"
                 onClick={() => openPrivateModal('encrypt')}
                 disabled={!balance || balance <= 0.001}
               >
@@ -2572,7 +2640,7 @@ export function WalletDashboard({
             ) : (
               <Button
                 variant="outline"
-                className="w-full max-w-lg h-12 mb-8 border border-[#0000db]/30 text-[#0000db] hover:bg-[#0000db]/10"
+                className="w-full max-w-lg h-12 mb-4 border border-[#0000db]/30 text-[#0000db] hover:bg-[#0000db]/10"
                 onClick={() => openPrivateModal('decrypt')}
                 disabled={!encryptedBalance || encryptedBalance.encrypted <= 0}
               >
@@ -2602,9 +2670,7 @@ export function WalletDashboard({
                   className="flex flex-col items-center gap-3 h-auto py-6 border border-border hover:border-foreground/30 hover:bg-accent transition-all"
                   onClick={() => openSendModal('multi')}
                 >
-                  <svg className="h-8 w-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
-                  </svg>
+                  <Layers className="h-8 w-8" />
                   <span className="text-sm font-medium">Multi Send</span>
                   <span className="text-[10px] text-muted-foreground">Multiple recipients</span>
                 </Button>
@@ -2615,7 +2681,7 @@ export function WalletDashboard({
                   className="flex flex-col items-center gap-3 h-auto py-6 border border-border hover:border-foreground/30 hover:bg-accent transition-all"
                   onClick={() => openSendModal('bulk')}
                 >
-                  <Download className="h-8 w-8" />
+                  <FileText className="h-8 w-8" />
                   <span className="text-sm font-medium">Bulk Send</span>
                   <span className="text-[10px] text-muted-foreground">Import from file</span>
                 </Button>
@@ -2640,9 +2706,7 @@ export function WalletDashboard({
                   className="flex flex-col items-center gap-3 h-auto py-6 border border-[#0000db]/20 opacity-50 cursor-not-allowed"
                   disabled
                 >
-                  <svg className="h-8 w-8 text-[#0000db]/50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
-                  </svg>
+                  <Layers className="h-8 w-8 text-[#0000db]/50" />
                   <span className="text-sm font-medium text-[#0000db]/50">Multi Send</span>
                   <span className="text-[10px] text-[#0000db]/40">Coming soon</span>
                 </Button>
@@ -2651,7 +2715,7 @@ export function WalletDashboard({
                 <Button
                   variant="outline"
                   className="flex flex-col items-center gap-3 h-auto py-6 border border-[#0000db]/30 hover:border-[#0000db]/50 hover:bg-[#0000db]/5 transition-all text-[#0000db] relative"
-                  onClick={() => setActiveTab('claim')}
+                  onClick={openClaimScreen}
                 >
                   <Gift className="h-8 w-8" />
                   <span className="text-sm font-medium">Claim</span>
@@ -2668,18 +2732,23 @@ export function WalletDashboard({
 
           {/* Claim Inline Screen (Private Mode) */}
           {operationMode === 'private' && activeTab === 'claim' && (
-            <div className="fixed inset-0 z-[45] bg-background/95 backdrop-blur-sm flex flex-col" style={{ 
-              top: '83px', 
-              left: sidebarLeftOffset,
-              right: historySidebarRightOffset,
-              bottom: '40px'
-            }}>
+            <div 
+              className={`fixed inset-0 z-[45] bg-background/95 backdrop-blur-sm flex flex-col transition-all duration-200 ${
+                claimAnimating ? 'animate-in slide-in-from-right-4 fade-in' : ''
+              } ${claimClosing ? 'animate-out slide-out-to-right-4 fade-out' : ''}`}
+              style={{ 
+                top: '83px', 
+                left: sidebarLeftOffset,
+                right: historySidebarRightOffset,
+                bottom: '40px'
+              }}
+            >
               <div className="flex items-center justify-between px-6 pt-4 pb-2">
                 <div className="flex items-center gap-3">
                   <Button 
                     variant="ghost" 
                     size="sm" 
-                    onClick={() => setActiveTab('balance')} 
+                    onClick={closeClaimScreen} 
                     className="h-9 w-9 p-0"
                   >
                     <ChevronDown className="h-5 w-5 rotate-90" />
@@ -2729,7 +2798,6 @@ export function WalletDashboard({
                       <ChevronDown className="h-4 w-4 rotate-90" />
                     </Button>
                     <div className="flex items-center gap-2">
-                      <Eye className="h-4 w-4" />
                       <h3 className="font-semibold text-sm">Transaction Details</h3>
                     </div>
                   </div>
@@ -2950,7 +3018,12 @@ export function WalletDashboard({
           
           {/* History Sidebar Toggle Button */}
           <button
-            onClick={() => setShowHistorySidebar(!showHistorySidebar)}
+            onClick={() => {
+              setShowHistorySidebar(!showHistorySidebar);
+              // Update bothPanelsHidden state
+              if (showWalletSidebar && !showHistorySidebar) setBothPanelsHidden(false);
+              if (!showWalletSidebar && showHistorySidebar) setBothPanelsHidden(true);
+            }}
             className={`fixed top-1/2 -translate-y-1/2 z-[50] h-12 w-4 flex items-center justify-center bg-muted/80 hover:bg-accent border-y border-l border-border transition-all ${isResizingHistory ? 'duration-0' : 'duration-300'}`}
             style={{ right: showHistorySidebar ? `${historySidebarWidth}px` : '0px' }}
           >
@@ -2989,12 +3062,8 @@ export function WalletDashboard({
                 ) : (
                   <>
                     {expandedSendModal === 'standard' && <Send className="h-5 w-5" />}
-                    {expandedSendModal === 'multi' && (
-                      <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
-                      </svg>
-                    )}
-                    {expandedSendModal === 'bulk' && <Download className="h-5 w-5" />}
+                    {expandedSendModal === 'multi' && <Layers className="h-5 w-5" />}
+                    {expandedSendModal === 'bulk' && <FileText className="h-5 w-5" />}
                   </>
                 )}
                 <h2 className={`text-lg font-semibold ${operationMode === 'private' ? 'text-[#0000db]' : ''}`}>
@@ -3228,6 +3297,32 @@ export function WalletDashboard({
       {/* Footer Spacer - Only for expanded mode */}
       {!isPopupMode && <div className="h-10" />}
 
+      {/* Toggle Both Panels Button - Above Footer */}
+      {!isPopupMode && (
+        <div 
+          className={`fixed bottom-10 z-[47] flex justify-center transition-[left,right] ${isResizing || isResizingHistory ? 'duration-0' : 'duration-300'} ease-out group`}
+          style={{ left: sidebarLeftOffset, right: historySidebarRightOffset }}
+        >
+          <button
+            onClick={toggleBothPanels}
+            className={`h-6 px-3 flex items-center justify-center gap-1 bg-muted/80 hover:bg-accent border border-border rounded-full transition-all duration-300 text-xs text-muted-foreground hover:text-foreground ${togglePanelsVisible ? 'opacity-100' : 'opacity-0'} group-hover:opacity-100`}
+            title={bothPanelsHidden ? "Show panels" : "Hide panels"}
+          >
+            {bothPanelsHidden ? (
+              <>
+                <ChevronRight className="h-3 w-3" />
+                <ChevronLeft className="h-3 w-3" />
+              </>
+            ) : (
+              <>
+                <ChevronLeft className="h-3 w-3" />
+                <ChevronRight className="h-3 w-3" />
+              </>
+            )}
+          </button>
+        </div>
+      )}
+
       {/* Footer Credit - Only for expanded mode */}
       {!isPopupMode && (
         <footer 
@@ -3255,7 +3350,14 @@ export function WalletDashboard({
           {/* Center: Current Epoch */}
           <span className="flex items-center justify-center gap-1.5">
             <span className="text-muted-foreground">Epoch:</span>
-            <span className="font-mono text-[#0000db]">#{currentEpoch || '...'}</span>
+            <a 
+              href={currentEpoch ? `https://octrascan.io/epochs/${currentEpoch}` : '#'}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="font-mono text-[#0000db] hover:underline"
+            >
+              #{currentEpoch || '...'}
+            </a>
           </span>
           
           {/* Right: GitHub + Version */}

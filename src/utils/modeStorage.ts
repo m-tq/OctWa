@@ -22,7 +22,7 @@ export function saveOperationMode(mode: OperationMode): void {
 
 /**
  * Loads the operation mode from localStorage with fallback logic.
- * - If no mode is stored, defaults to 'public'
+ * - If no mode is stored, defaults to 'private' (privacy-first approach)
  * - If stored mode is 'private' but no encrypted balance and no pending transfers, falls back to 'public'
  * 
  * @param encryptedBalance - The current encrypted balance (used for fallback logic)
@@ -33,14 +33,18 @@ export function loadOperationMode(encryptedBalance: number, pendingTransfersCoun
   try {
     const storedMode = localStorage.getItem(STORAGE_KEY) as OperationMode | null;
     
-    // Default to 'public' if no mode is stored
+    // Default to 'private' if no mode is stored (privacy-first)
     if (!storedMode) {
-      return 'public';
+      // But fall back to public if no encrypted balance and no pending transfers
+      if (encryptedBalance <= 0 && pendingTransfersCount <= 0) {
+        return 'public';
+      }
+      return 'private';
     }
     
     // Validate stored mode
     if (storedMode !== 'public' && storedMode !== 'private') {
-      return 'public';
+      return 'private';
     }
     
     // Fall back to 'public' if stored mode is 'private' but no encrypted balance and no pending transfers
@@ -51,7 +55,7 @@ export function loadOperationMode(encryptedBalance: number, pendingTransfersCoun
     return storedMode;
   } catch (error) {
     console.error('Failed to load operation mode from localStorage:', error);
-    return 'public';
+    return 'private';
   }
 }
 

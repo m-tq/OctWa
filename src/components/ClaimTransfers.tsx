@@ -28,6 +28,7 @@ interface ClaimTransfersProps {
 export function ClaimTransfers({ wallet, onTransactionSuccess, isPopupMode = false, hideBorder = false }: ClaimTransfersProps) {
   const [transfers, setTransfers] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [claimingId, setClaimingId] = useState<string | null>(null);
   const [claimingAll, setClaimingAll] = useState(false);
   const [showTxModal, setShowTxModal] = useState(false);
@@ -35,9 +36,12 @@ export function ClaimTransfers({ wallet, onTransactionSuccess, isPopupMode = fal
   const [txModalResult, setTxModalResult] = useState<TransactionResult>({});
   const { toast } = useToast();
 
-  const fetchTransfers = async () => {
+  const fetchTransfers = async (showRefreshAnimation = false) => {
     if (!wallet) return;
     
+    if (showRefreshAnimation) {
+      setIsRefreshing(true);
+    }
     setIsLoading(true);
     try {
       const pendingTransfers = await getPendingPrivateTransfers(wallet.address, wallet.privateKey);
@@ -76,6 +80,10 @@ export function ClaimTransfers({ wallet, onTransactionSuccess, isPopupMode = fal
       });
     } finally {
       setIsLoading(false);
+      if (showRefreshAnimation) {
+        // Keep spinning for at least 500ms for visual feedback
+        setTimeout(() => setIsRefreshing(false), 500);
+      }
     }
   };
 
@@ -221,10 +229,10 @@ export function ClaimTransfers({ wallet, onTransactionSuccess, isPopupMode = fal
           <Button
             variant="outline"
             size="sm"
-            onClick={fetchTransfers}
-            disabled={isLoading}
+            onClick={() => fetchTransfers(true)}
+            disabled={isLoading || isRefreshing}
           >
-            <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
+            <RefreshCw className={`h-4 w-4 mr-2 ${isRefreshing ? 'animate-spin' : ''}`} />
             Refresh
           </Button>
         </CardHeader>
@@ -236,11 +244,11 @@ export function ClaimTransfers({ wallet, onTransactionSuccess, isPopupMode = fal
             <Button
               variant="outline"
               size="sm"
-              onClick={fetchTransfers}
-              disabled={isLoading}
+              onClick={() => fetchTransfers(true)}
+              disabled={isLoading || isRefreshing}
               className="h-7 px-2"
             >
-              <RefreshCw className={`h-3 w-3 ${isLoading ? 'animate-spin' : ''}`} />
+              <RefreshCw className={`h-3 w-3 ${isRefreshing ? 'animate-spin' : ''}`} />
             </Button>
           </div>
         )}

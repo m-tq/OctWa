@@ -29,6 +29,7 @@ export function AddressInput({
 }: AddressInputProps) {
   const [showDropdown, setShowDropdown] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [dropdownPosition, setDropdownPosition] = useState<'bottom' | 'top'>('bottom');
   const { contacts, walletLabels } = useAddressBook();
   const containerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -44,6 +45,23 @@ export function AddressInput({
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
+
+  // Calculate dropdown position when opening
+  useEffect(() => {
+    if (showDropdown && containerRef.current) {
+      const rect = containerRef.current.getBoundingClientRect();
+      const dropdownHeight = isPopupMode ? 180 : 240; // Approximate dropdown height
+      const spaceBelow = window.innerHeight - rect.bottom;
+      const spaceAbove = rect.top;
+      
+      // If not enough space below but enough above, open upward
+      if (spaceBelow < dropdownHeight && spaceAbove > dropdownHeight) {
+        setDropdownPosition('top');
+      } else {
+        setDropdownPosition('bottom');
+      }
+    }
+  }, [showDropdown, isPopupMode]);
 
   // Filter contacts and wallets based on search
   const filteredContacts = searchQuery
@@ -114,7 +132,9 @@ export function AddressInput({
       {/* Dropdown */}
       {showDropdown && (
         <div
-          className={`absolute z-50 mt-1 w-full bg-background border rounded-md shadow-lg overflow-hidden`}
+          className={`absolute z-50 w-full bg-background border rounded-md shadow-lg overflow-hidden ${
+            dropdownPosition === 'top' ? 'bottom-full mb-1' : 'top-full mt-1'
+          }`}
         >
           {/* Search */}
           <div className="p-2 border-b">

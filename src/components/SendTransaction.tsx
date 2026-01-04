@@ -62,6 +62,7 @@ export function SendTransaction({ wallet, balance, nonce, onBalanceUpdate, onNon
   const [ouOption, setOuOption] = useState<string>('auto');
   const [customOu, setCustomOu] = useState('');
   const [isSending, setIsSending] = useState(false);
+  const [showMessage, setShowMessage] = useState(false);
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
   const [showTxModal, setShowTxModal] = useState(false);
   const [txModalStatus, setTxModalStatus] = useState<TransactionStatus>('idle');
@@ -232,6 +233,7 @@ export function SendTransaction({ wallet, balance, nonce, onBalanceUpdate, onNon
         setRecipientAddress('');
         setAmount('');
         setMessage('');
+        setShowMessage(false);
 
         // Update nonce
         onNonceUpdate(currentNonce + 1);
@@ -552,19 +554,51 @@ export function SendTransaction({ wallet, balance, nonce, onBalanceUpdate, onNon
         />
       </div>
 
-      {/* Message Field */}
-      <div className="space-y-2">
-        <Label htmlFor="message">Message (Optional)</Label>
-        <Textarea
-          id="message"
-          placeholder="Enter an optional message (max 1024 characters)"
-          value={message}
-          onChange={(e) => setMessage(e.target.value)}
-          maxLength={1024}
-          rows={2}
-        />
-        <div className="text-xs text-muted-foreground text-right">{message.length}/1024</div>
-      </div>
+      {/* Message Toggle */}
+      {!showMessage ? (
+        <Button
+          type="button"
+          variant="ghost"
+          className="w-full justify-start text-muted-foreground hover:text-foreground"
+          onClick={() => setShowMessage(true)}
+        >
+          + Add Message
+        </Button>
+      ) : (
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <Label htmlFor="message">Message</Label>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setMessage('')}
+                className="text-xs text-muted-foreground hover:text-foreground"
+              >
+                Clear
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowMessage(false);
+                  setMessage('');
+                }}
+                className="text-xs text-muted-foreground hover:text-foreground"
+              >
+                Remove
+              </button>
+            </div>
+          </div>
+          <Textarea
+            id="message"
+            placeholder="Enter an optional message (max 1024 characters)"
+            value={message}
+            onChange={(e) => setMessage(e.target.value)}
+            maxLength={1024}
+            rows={2}
+          />
+          <div className="text-xs text-muted-foreground text-right">{message.length}/1024</div>
+        </div>
+      )}
 
       {/* OU (Gas) Settings */}
       <div className="space-y-2">
