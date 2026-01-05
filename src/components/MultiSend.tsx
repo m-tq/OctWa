@@ -397,7 +397,7 @@ export function MultiSend({ wallet, balance, onBalanceUpdate, onNonceUpdate, onT
               <ChevronDown className={`h-4 w-4 transition-transform ${showOuSettings ? 'rotate-180' : ''}`} />
             </Button>
           </CollapsibleTrigger>
-          <CollapsibleContent className="pt-2 space-y-2">
+          <CollapsibleContent className="pt-2 space-y-2 px-0.5">
             <Select value={ouOption} onValueChange={setOuOption}>
               <SelectTrigger className="text-sm">
                 <SelectValue placeholder="Auto" />
