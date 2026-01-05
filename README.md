@@ -99,6 +99,16 @@ OctWa implements industry-standard security practices to protect your assets:
   <em>Multi Wallet, Private Mode & Wallet Menu in Popup</em>
 </p>
 
+## Video Demo
+
+<p align="center">
+  <a href="https://www.youtube.com/watch?v=n7hdKntWBzA">
+    <img src="https://img.youtube.com/vi/n7hdKntWBzA/maxresdefault.jpg" alt="OctWa Demo Video" width="600">
+  </a>
+  <br>
+  <em>Click to watch the demo video on YouTube</em>
+</p>
+
 ## Features
 
 ### Wallet Management
