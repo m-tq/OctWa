@@ -152,8 +152,13 @@ OctWa implements industry-standard security practices to protect your assets:
 ### Performance & Caching
 - **Smart Data Caching** - Balance and wallet data cached locally to reduce RPC calls
 - **Epoch-Based Auto Update** - Automatic data refresh when blockchain epoch changes
+  - All wallets cache updated in parallel when epoch changes
+  - Active wallet UI reloaded from fresh cache immediately
+  - Background wallets cache pre-updated for instant switching
+  - Eliminates race conditions and stale data issues
 - **Optimized Loading** - Uses cached data for instant display, updates in background
 - **Reduced Network Load** - Minimizes redundant API calls with intelligent cache invalidation
+- **Multi-Wallet Cache Sync** - All wallets stay synchronized with latest blockchain state
 
 ### User Experience
 - **Dark/Light Theme** - Toggle between dark and light themes
@@ -163,12 +168,21 @@ OctWa implements industry-standard security practices to protect your assets:
 - **RPC Provider Manager** - Configure and switch between RPC endpoints
 - **Connection Status** - Real-time RPC connection status indicator
 - **Dynamic Version Display** - Version automatically synced from manifest.json
+- **Adaptive Scrollbars** - Smart scrollbar padding that appears only when needed
+  - Prevents layout shift when scrollbar appears/disappears
+  - Applied to wallet lists, transaction history, and multi-send panels
+  - Consistent spacing across all scrollable areas
 
 ### Address Book & Wallet Naming
 - **Address Book** - Store and manage contacts with labels, tags, and notes
 - **Contact Tags** - Categorize contacts (Public, Private, Encrypted, Service, Circle, Exchange, Personal)
 - **Preferred Send Mode** - Set preferred mode per contact with auto-warning on mode mismatch
+  - Warning displayed in both address book modal and contact dropdown
+  - Visual indicators (shield icon for private, globe icon for public)
+  - Alert icon and text when current mode doesn't match contact preference
 - **Wallet Naming** - Custom labels for your wallets (auto-labeled as Wallet 1, Wallet 2, etc.)
+  - Wallet label displayed as badge in header with truncated address
+  - Quick identification of active wallet in both popup and expanded modes
 - **Quick Address Selection** - Select recipient from contacts or wallets directly in send forms
 - **Search Contacts** - Quick search through contacts and wallets
 - **Local & Private** - All address book data stored locally, never sent to servers
