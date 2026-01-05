@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -7,10 +7,12 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Separator } from '@/components/ui/separator';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
-import { AlertTriangle, Wallet as WalletIcon, Plus, BookUser } from 'lucide-react';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { AlertTriangle, Wallet as WalletIcon, Plus, BookUser, Search, Shield, Globe } from 'lucide-react';
 import { Wallet } from '../types/wallet';
 import { fetchBalance, sendTransaction, createTransaction, invalidateCacheAfterTransaction } from '../utils/api';
 import { useToast } from '@/hooks/use-toast';
+import { useAddressBook } from '@/hooks/useAddressBook';
 import { TransactionModal, TransactionStatus, TransactionResult } from './TransactionModal';
 import { AnimatedIcon } from './AnimatedIcon';
 import { AddressInput } from './AddressInput';
@@ -69,7 +71,54 @@ export function SendTransaction({ wallet, balance, nonce, onBalanceUpdate, onNon
   const [txModalStatus, setTxModalStatus] = useState<TransactionStatus>('idle');
   const [txModalResult, setTxModalResult] = useState<TransactionResult>({});
   const [showAddressBookDropdown, setShowAddressBookDropdown] = useState(false);
+  const [addressBookSearch, setAddressBookSearch] = useState('');
+  const dropdownRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
+  const { contacts, walletLabels } = useAddressBook();
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setShowAddressBookDropdown(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  // Filter contacts and wallets
+  const filteredContacts = addressBookSearch
+    ? contacts.filter(c => 
+        c.label.toLowerCase().includes(addressBookSearch.toLowerCase()) ||
+        c.address.toLowerCase().includes(addressBookSearch.toLowerCase())
+      )
+    : contacts;
+
+  const filteredWallets = addressBookSearch
+    ? walletLabels.filter(w =>
+        w.address.toLowerCase() !== wallet?.address?.toLowerCase() &&
+        (w.name.toLowerCase().includes(addressBookSearch.toLowerCase()) ||
+        w.address.toLowerCase().includes(addressBookSearch.toLowerCase()))
+      )
+    : walletLabels.filter(w => w.address.toLowerCase() !== wallet?.address?.toLowerCase());
+
+  const handleSelectFromAddressBook = (address: string) => {
+    setRecipientAddress(address);
+    setShowAddressBookDropdown(false);
+    setAddressBookSearch('');
+  };
+
+  const truncateAddress = (addr: string) => `${addr.slice(0, 8)}...${addr.slice(-6)}`;
+
+  // Check if address is in address book
+  const isAddressInBook = (addr: string): boolean => {
+    const lowerAddr = addr.toLowerCase();
+    return (
+      contacts.some((c) => c.address.toLowerCase() === lowerAddr) ||
+      walletLabels.some((w) => w.address.toLowerCase() === lowerAddr)
+    );
+  };
 
   // Get OU value based on selection
   const getOuValue = (): number => {
@@ -292,19 +341,51 @@ export function SendTransaction({ wallet, balance, nonce, onBalanceUpdate, onNon
   // Compact mode for popup
   if (isCompact) {
     return (
-      <div className="space-y-3">
+      <div className="space-y-3" ref={dropdownRef}>
         {/* Animated Icon - Compact */}
         <AnimatedIcon type="send-public" size="xs" />
 
         {/* Recipient Address */}
-        <div className="space-y-1">
-          <Label htmlFor="recipient" className="text-xs">Recipient</Label>
+        <div className="space-y-1 relative">
+          <div className="flex items-center justify-between">
+            <Label htmlFor="recipient" className="text-xs">Recipient</Label>
+            {/* Action buttons - sejajar dengan label Recipient */}
+            <div className="flex gap-1">
+              {recipientAddress.trim() && 
+               /^oct[123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz]{44}$/.test(recipientAddress.trim()) &&
+               recipientAddress.trim().toLowerCase() !== wallet?.address?.toLowerCase() &&
+               !isAddressInBook(recipientAddress.trim()) &&
+               onAddToAddressBook && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  onClick={() => onAddToAddressBook?.(recipientAddress.trim())}
+                  className="h-7 w-7 flex-shrink-0 text-[#0000db] hover:text-[#0000db] hover:bg-[#0000db]/10 border-[#0000db]/30"
+                  title="Add to address book"
+                >
+                  <Plus className="h-3 w-3" />
+                </Button>
+              )}
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                onClick={() => setShowAddressBookDropdown(!showAddressBookDropdown)}
+                className="h-7 w-7 flex-shrink-0"
+                title="Select from contacts"
+              >
+                <BookUser className="h-3 w-3" />
+              </Button>
+            </div>
+          </div>
           <AddressInput
             id="recipient"
             value={recipientAddress}
             onChange={setRecipientAddress}
             isPopupMode={true}
             isCompact={true}
+            hideButtons={true}
             className="text-xs"
             activeWalletAddress={wallet?.address}
             onAddToAddressBook={onAddToAddressBook}
@@ -312,6 +393,70 @@ export function SendTransaction({ wallet, balance, nonce, onBalanceUpdate, onNon
           />
           {recipientAddress.trim() && addressValidation && !addressValidation.isValid && (
             <p className="text-[10px] text-red-600">{addressValidation.error}</p>
+          )}
+          
+          {/* Address Book Dropdown */}
+          {showAddressBookDropdown && (
+            <div className="absolute top-14 right-0 z-50 w-64 bg-background border rounded-md shadow-lg overflow-hidden">
+              <div className="p-2 border-b">
+                <div className="relative">
+                  <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground" />
+                  <Input
+                    placeholder="Search contacts..."
+                    value={addressBookSearch}
+                    onChange={(e) => setAddressBookSearch(e.target.value)}
+                    className="h-7 text-xs pl-7"
+                    autoFocus
+                  />
+                </div>
+              </div>
+              <ScrollArea className="h-[160px]">
+                {filteredContacts.length === 0 && filteredWallets.length === 0 ? (
+                  <div className="text-center py-4 text-muted-foreground text-xs">
+                    {addressBookSearch ? 'No results found' : 'No contacts or wallets'}
+                  </div>
+                ) : (
+                  <div className="p-1">
+                    {filteredContacts.length > 0 && (
+                      <div>
+                        <div className="px-2 py-1 text-muted-foreground font-medium text-[10px]">Contacts</div>
+                        {filteredContacts.map((contact) => (
+                          <button
+                            key={contact.id}
+                            type="button"
+                            onClick={() => handleSelectFromAddressBook(contact.address)}
+                            className="w-full text-left px-2 py-1.5 hover:bg-accent rounded-sm text-xs"
+                          >
+                            <div className="flex items-center gap-1.5">
+                              <span className="font-medium truncate">{contact.label}</span>
+                              {contact.preferredMode === 'private' && <Shield className="h-2.5 w-2.5 text-[#0000db]" />}
+                              {contact.preferredMode === 'public' && <Globe className="h-2.5 w-2.5 text-green-600" />}
+                            </div>
+                            <div className="font-mono text-[10px] text-muted-foreground">{truncateAddress(contact.address)}</div>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                    {filteredWallets.length > 0 && (
+                      <div className={filteredContacts.length > 0 ? 'mt-2 pt-2 border-t' : ''}>
+                        <div className="px-2 py-1 text-muted-foreground font-medium text-[10px]">My Wallets</div>
+                        {filteredWallets.map((w) => (
+                          <button
+                            key={w.address}
+                            type="button"
+                            onClick={() => handleSelectFromAddressBook(w.address)}
+                            className="w-full text-left px-2 py-1.5 hover:bg-accent rounded-sm text-xs"
+                          >
+                            <div className="font-medium truncate">{w.name}</div>
+                            <div className="font-mono text-[10px] text-muted-foreground">{truncateAddress(w.address)}</div>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </ScrollArea>
+            </div>
           )}
         </div>
 

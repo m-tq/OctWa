@@ -18,6 +18,82 @@ interface AddressInputProps {
   activeWalletAddress?: string; // Current active wallet address to exclude from selection
   onAddToAddressBook?: (address: string) => void; // Callback to open add contact modal
   currentMode?: OperationMode; // Current operation mode for mode mismatch warning
+  hideButtons?: boolean; // Hide inline buttons (for external button placement)
+  onOpenContacts?: () => void; // Callback when contacts button is clicked (for external control)
+}
+
+// Separate component for address action buttons (to be placed in header)
+interface AddressActionButtonsProps {
+  value: string;
+  onAddToAddressBook?: (address: string) => void;
+  onOpenContacts: () => void;
+  activeWalletAddress?: string;
+  isCompact?: boolean;
+  disabled?: boolean;
+  contacts: Array<{ id: string; address: string; label: string; preferredMode?: string }>;
+  walletLabels: Array<{ address: string; name: string }>;
+}
+
+export function AddressActionButtons({
+  value,
+  onAddToAddressBook,
+  onOpenContacts,
+  activeWalletAddress,
+  isCompact = false,
+  disabled = false,
+  contacts,
+  walletLabels,
+}: AddressActionButtonsProps) {
+  // Validate if address is valid OCT address
+  const isValidAddress = (addr: string): boolean => {
+    return /^oct[123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz]{44}$/.test(addr);
+  };
+
+  // Check if address exists in contacts or wallets
+  const isAddressInBook = (addr: string): boolean => {
+    const lowerAddr = addr.toLowerCase();
+    return (
+      contacts.some((c) => c.address.toLowerCase() === lowerAddr) ||
+      walletLabels.some((w) => w.address.toLowerCase() === lowerAddr)
+    );
+  };
+
+  // Show add button if: address is valid, not empty, not in address book, and not active wallet
+  const showAddButton =
+    value.trim() &&
+    isValidAddress(value.trim()) &&
+    !isAddressInBook(value.trim()) &&
+    value.trim().toLowerCase() !== activeWalletAddress?.toLowerCase() &&
+    onAddToAddressBook;
+
+  return (
+    <div className="flex gap-1">
+      {showAddButton && (
+        <Button
+          type="button"
+          variant="outline"
+          size="icon"
+          onClick={() => onAddToAddressBook?.(value.trim())}
+          disabled={disabled}
+          className={`${isCompact ? 'h-7 w-7' : 'h-8 w-8'} flex-shrink-0 text-[#0000db] hover:text-[#0000db] hover:bg-[#0000db]/10 border-[#0000db]/30`}
+          title="Add to address book"
+        >
+          <Plus className={isCompact ? 'h-3 w-3' : 'h-3.5 w-3.5'} />
+        </Button>
+      )}
+      <Button
+        type="button"
+        variant="outline"
+        size="icon"
+        onClick={onOpenContacts}
+        disabled={disabled}
+        className={`${isCompact ? 'h-7 w-7' : 'h-8 w-8'} flex-shrink-0`}
+        title="Select from contacts"
+      >
+        <BookUser className={isCompact ? 'h-3 w-3' : 'h-3.5 w-3.5'} />
+      </Button>
+    </div>
+  );
 }
 
 export function AddressInput({
@@ -32,6 +108,8 @@ export function AddressInput({
   activeWalletAddress,
   onAddToAddressBook,
   currentMode = 'public',
+  hideButtons = false,
+  onOpenContacts,
 }: AddressInputProps) {
   const [showDropdown, setShowDropdown] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -39,6 +117,16 @@ export function AddressInput({
   const { contacts, walletLabels } = useAddressBook();
   const containerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  // Expose method to open dropdown externally
+  const openDropdown = () => setShowDropdown(true);
+  
+  // Call onOpenContacts callback when dropdown opens (for external control)
+  useEffect(() => {
+    if (onOpenContacts && showDropdown) {
+      // This is handled internally now
+    }
+  }, [showDropdown, onOpenContacts]);
 
   // Validate if address is valid OCT address
   const isValidAddress = (addr: string): boolean => {
@@ -147,30 +235,34 @@ export function AddressInput({
             </button>
           )}
         </div>
-        {showAddButton && (
-          <Button
-            type="button"
-            variant="outline"
-            size="icon"
-            onClick={() => onAddToAddressBook?.(value.trim())}
-            disabled={disabled}
-            className={`${isCompact ? 'h-8 w-8' : 'h-9 w-9'} flex-shrink-0 text-[#0000db] hover:text-[#0000db] hover:bg-[#0000db]/10 border-[#0000db]/30`}
-            title="Add to address book"
-          >
-            <Plus className={isCompact ? 'h-3.5 w-3.5' : 'h-4 w-4'} />
-          </Button>
+        {!hideButtons && (
+          <>
+            {showAddButton && (
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                onClick={() => onAddToAddressBook?.(value.trim())}
+                disabled={disabled}
+                className={`${isCompact ? 'h-8 w-8' : 'h-9 w-9'} flex-shrink-0 text-[#0000db] hover:text-[#0000db] hover:bg-[#0000db]/10 border-[#0000db]/30`}
+                title="Add to address book"
+              >
+                <Plus className={isCompact ? 'h-3.5 w-3.5' : 'h-4 w-4'} />
+              </Button>
+            )}
+            <Button
+              type="button"
+              variant="outline"
+              size="icon"
+              onClick={() => setShowDropdown(!showDropdown)}
+              disabled={disabled}
+              className={isCompact ? 'h-8 w-8 flex-shrink-0' : 'h-9 w-9 flex-shrink-0'}
+              title="Select from contacts"
+            >
+              <BookUser className={isCompact ? 'h-3.5 w-3.5' : 'h-4 w-4'} />
+            </Button>
+          </>
         )}
-        <Button
-          type="button"
-          variant="outline"
-          size="icon"
-          onClick={() => setShowDropdown(!showDropdown)}
-          disabled={disabled}
-          className={isCompact ? 'h-8 w-8 flex-shrink-0' : 'h-9 w-9 flex-shrink-0'}
-          title="Select from contacts"
-        >
-          <BookUser className={isCompact ? 'h-3.5 w-3.5' : 'h-4 w-4'} />
-        </Button>
       </div>
 
       {/* Dropdown */}

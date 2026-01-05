@@ -204,8 +204,9 @@ export function UnifiedHistory({ wallet, transactions, onTransactionsUpdate, isL
           <CardTitle className={`flex items-center gap-2 ${isPopupMode ? 'text-sm' : isCompact ? 'text-sm' : ''}`}>
             {!isCompact && <History className={isPopupMode ? 'h-4 w-4' : 'h-5 w-5'} />}
             {/* {operationMode === 'private' ? 'Private History' : 'Public History'} */}
-            {pendingCount > 0 && (
-              <Badge variant="secondary" className={isPopupMode ? 'ml-1 text-[10px]' : 'ml-2'}>{pendingCount}</Badge>
+            {/* Pending badge only for popup mode - compact mode shows in filter row */}
+            {isPopupMode && pendingCount > 0 && (
+              <Badge variant="secondary" className="ml-1 text-[10px]">{pendingCount}</Badge>
             )}
           </CardTitle>
           <span className={`text-muted-foreground ${isPopupMode ? 'text-[10px]' : 'text-xs'}`}>
@@ -228,31 +229,39 @@ export function UnifiedHistory({ wallet, transactions, onTransactionsUpdate, isL
       </CardHeader>
       <CardContent className={`${isPopupMode ? 'px-3 pb-3 pt-0' : ''} ${isCompact ? 'flex-1 overflow-hidden flex flex-col px-0 pb-0' : ''}`}>
         {/* Filter Buttons */}
-        <div className={`flex flex-wrap ${isPopupMode ? 'gap-1 mb-2' : 'gap-2 mb-4'} ${isCompact ? 'flex-shrink-0' : ''}`}>
-          {(['all', 'sent', 'received'] as HistoryFilter[]).map((filter) => {
-            const sentCount = filteredTransactions.filter(tx => tx.type === 'sent').length;
-            const receivedCount = filteredTransactions.filter(tx => tx.type === 'received').length;
-            
-            return (
-              <Button
-                key={filter}
-                variant={activeFilter === filter ? 'default' : 'outline'}
-                size="sm"
-                onClick={() => setActiveFilter(filter)}
-                className={`capitalize ${isPopupMode ? 'h-6 px-2 text-[10px]' : ''} ${
-                  activeFilter === filter && operationMode === 'private' ? 'bg-[#0000db] hover:bg-[#0000db]/90' : ''
-                }`}
-              >
-                {filter}
-                {filter === 'sent' && sentCount > 0 && (
-                  <Badge variant="secondary" className={isPopupMode ? 'ml-1 text-[9px] px-1' : 'ml-1.5 text-xs'}>{sentCount}</Badge>
-                )}
-                {filter === 'received' && receivedCount > 0 && (
-                  <Badge variant="secondary" className={isPopupMode ? 'ml-1 text-[9px] px-1' : 'ml-1.5 text-xs'}>{receivedCount}</Badge>
-                )}
-              </Button>
-            );
-          })}
+        <div className={`flex ${isPopupMode ? 'flex-wrap gap-1 mb-2' : isCompact ? 'items-center justify-between gap-2 mb-4 flex-shrink-0' : 'items-center justify-between mb-4'}`}>
+          <div className={`flex flex-wrap gap-2`}>
+            {(['all', 'sent', 'received'] as HistoryFilter[]).map((filter) => {
+              const sentCount = filteredTransactions.filter(tx => tx.type === 'sent').length;
+              const receivedCount = filteredTransactions.filter(tx => tx.type === 'received').length;
+              
+              return (
+                <Button
+                  key={filter}
+                  variant={activeFilter === filter ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => setActiveFilter(filter)}
+                  className={`capitalize ${isPopupMode ? 'h-6 px-2 text-[10px]' : ''} ${
+                    activeFilter === filter && operationMode === 'private' ? 'bg-[#0000db] hover:bg-[#0000db]/90' : ''
+                  }`}
+                >
+                  {filter}
+                  {filter === 'sent' && sentCount > 0 && (
+                    <Badge variant="secondary" className={isPopupMode ? 'ml-1 text-[9px] px-1' : 'ml-1.5 text-xs'}>{sentCount}</Badge>
+                  )}
+                  {filter === 'received' && receivedCount > 0 && (
+                    <Badge variant="secondary" className={isPopupMode ? 'ml-1 text-[9px] px-1' : 'ml-1.5 text-xs'}>{receivedCount}</Badge>
+                  )}
+                </Button>
+              );
+            })}
+          </div>
+          {/* Pending badge - right aligned for expanded and compact mode */}
+          {!isPopupMode && pendingCount > 0 && (
+            <Badge variant="outline" className="text-xs px-2 py-1 border-yellow-500 text-yellow-600 dark:text-yellow-400">
+              {pendingCount}
+            </Badge>
+          )}
         </div>
 
         {/* History List */}

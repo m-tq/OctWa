@@ -129,9 +129,9 @@ export function WalletDashboard({
   const AUTO_HIDE_THRESHOLD = 200; // Auto hide when dragged below this width
   
   // History sidebar state (right side)
-  const [historySidebarWidth, setHistorySidebarWidth] = useState(375);
+  const [historySidebarWidth, setHistorySidebarWidth] = useState(385);
   const [isResizingHistory, setIsResizingHistory] = useState(false);
-  const MIN_HISTORY_WIDTH = 310;
+  const MIN_HISTORY_WIDTH = 350;
   const MAX_HISTORY_WIDTH = 450;
   const AUTO_HIDE_HISTORY_THRESHOLD = 200;
   
@@ -199,6 +199,7 @@ export function WalletDashboard({
   const [addressBookPrefilledAddress, setAddressBookPrefilledAddress] = useState<string>('');
   // Current epoch state
   const [currentEpoch, setCurrentEpoch] = useState<number>(0);
+  const [isUpdatingEpoch, setIsUpdatingEpoch] = useState(false);
   // Track history panel state before hiding for multi/bulk send
   const [historyPanelWasOpen, setHistoryPanelWasOpen] = useState(false);
   const { autoLabelWallets, getWalletDisplayName } = useAddressBook();
@@ -501,8 +502,8 @@ export function WalletDashboard({
         `🔄 Epoch changed (${oldEpoch} → ${newEpoch}), updating all wallets...`
       );
 
-      // Update current epoch state
-      setCurrentEpoch(newEpoch);
+      // Show updating indicator
+      setIsUpdatingEpoch(true);
 
       try {
         // 1. Update ALL wallets cache in parallel (wait for completion)
@@ -525,87 +526,62 @@ export function WalletDashboard({
         console.log('✅ All wallet caches updated');
 
         // 2. Reload UI for active wallet from fresh cache
+        // Update history FIRST (most visible to user for pending->confirmed status)
         console.log(`🔄 Reloading UI for active wallet...`);
         
-        const balanceData = await fetchBalance(wallet.address);
-
-        // Only update UI if balance or nonce changed
-        if (balanceData.balance !== balance || balanceData.nonce !== nonce) {
+        // 1. Fetch fresh transaction history FIRST
+        const result = await getTransactionHistory(wallet.address);
+        if (Array.isArray(result.transactions)) {
           console.log(
-            `💰 Balance changed: ${balance} → ${balanceData.balance}, nonce: ${nonce} → ${balanceData.nonce}`
+            `📜 Updating transactions: ${transactions.length} → ${result.transactions.length}`
           );
-          setBalance(balanceData.balance);
-          setNonce(balanceData.nonce);
+          const transformedTxs = result.transactions.map((tx) => ({
+            ...tx,
+            type:
+              tx.from?.toLowerCase() === wallet.address.toLowerCase()
+                ? 'sent'
+                : 'received',
+          })) as Transaction[];
+          setTransactions(transformedTxs);
         }
 
-        // Fetch fresh encrypted balance
+        // 2. Update balance and nonce
+        const balanceData = await fetchBalance(wallet.address);
+        console.log(
+          `💰 Balance: ${balance} → ${balanceData.balance}, nonce: ${nonce} → ${balanceData.nonce}`
+        );
+        setBalance(balanceData.balance);
+        setNonce(balanceData.nonce);
+
+        // 3. Update encrypted balance
         const encData = await fetchEncryptedBalance(
           wallet.address,
           wallet.privateKey
         );
         if (encData) {
-          // Only update if encrypted balance changed
-          const currentEncrypted = encryptedBalance?.encrypted || 0;
-          const currentPublic = encryptedBalance?.public || 0;
-          if (
-            encData.encrypted !== currentEncrypted ||
-            encData.public !== currentPublic
-          ) {
-            console.log(
-              `🔐 Encrypted balance changed: ${currentEncrypted} → ${encData.encrypted}`
-            );
-            setEncryptedBalance(encData);
-          }
+          console.log(
+            `🔐 Encrypted balance: ${encryptedBalance?.encrypted || 0} → ${encData.encrypted}`
+          );
+          setEncryptedBalance(encData);
         }
 
-        // Fetch fresh transaction history
-        const result = await getTransactionHistory(wallet.address);
-        if (Array.isArray(result.transactions)) {
-          // Check if any transaction status changed (pending -> confirmed)
-          const hasPendingTx = transactions.some((tx) => tx.status === 'pending');
-          const newLatestHash = result.transactions[0]?.hash;
-          const currentLatestHash = transactions[0]?.hash;
-          
-          // Also check if any pending tx is now confirmed in new data
-          const pendingStatusChanged = hasPendingTx && result.transactions.some((newTx) => {
-            const oldTx = transactions.find((t) => t.hash === newTx.hash);
-            return oldTx && oldTx.status === 'pending' && newTx.status === 'confirmed';
-          });
-          
-          if (
-            result.transactions.length !== transactions.length ||
-            newLatestHash !== currentLatestHash ||
-            pendingStatusChanged
-          ) {
-            console.log(
-              `📜 Transactions changed: ${transactions.length} → ${result.transactions.length}${pendingStatusChanged ? ' (status updated)' : ''}`
-            );
-            const transformedTxs = result.transactions.map((tx) => ({
-              ...tx,
-              type:
-                tx.from?.toLowerCase() === wallet.address.toLowerCase()
-                  ? 'sent'
-                  : 'received',
-            })) as Transaction[];
-            setTransactions(transformedTxs);
-          }
-        }
-
-        // Fetch pending transfers count
+        // 4. Fetch pending transfers count LAST
         const pending = await getPendingPrivateTransfers(
           wallet.address,
           wallet.privateKey
         );
-        if (pending.length !== pendingTransfersCount) {
-          console.log(
-            `🎁 Pending transfers changed: ${pendingTransfersCount} → ${pending.length}`
-          );
-          setPendingTransfersCount(pending.length);
-        }
+        console.log(
+          `🎁 Pending transfers: ${pendingTransfersCount} → ${pending.length}`
+        );
+        setPendingTransfersCount(pending.length);
 
         console.log('✅ UI reload complete');
       } catch (error) {
         console.error('Failed to check data after epoch change:', error);
+      } finally {
+        // Update epoch and hide updating indicator
+        setCurrentEpoch(newEpoch);
+        setIsUpdatingEpoch(false);
       }
     });
 
@@ -654,7 +630,7 @@ export function WalletDashboard({
       setSelectedTxDetails(null);
 
       try {
-        // Fetch balance and nonce
+        // Fetch balance and nonce (from cache, which is updated on epoch change)
         setIsLoadingBalance(true);
         const balanceData = await fetchBalance(wallet.address);
         setBalance(balanceData.balance);
@@ -665,6 +641,9 @@ export function WalletDashboard({
           const encData = await fetchEncryptedBalance(wallet.address, wallet.privateKey);
           if (encData) {
             setEncryptedBalance(encData);
+            // Load operation mode based on encrypted balance
+            const savedMode = loadOperationMode(encData.encrypted || 0, pendingTransfersCount);
+            setOperationMode(savedMode);
           } else {
             // Set default encrypted balance for new wallet
             setEncryptedBalance({
@@ -702,7 +681,7 @@ export function WalletDashboard({
       }
 
       try {
-        // Fetch transaction history
+        // Fetch transaction history (from cache, which is updated on epoch change)
         setIsLoadingTransactions(true);
         const result = await getTransactionHistory(wallet.address);
         
@@ -719,6 +698,15 @@ export function WalletDashboard({
         setTransactions([]);
       } finally {
         setIsLoadingTransactions(false);
+      }
+      
+      // Fetch pending transfers count
+      try {
+        const pending = await getPendingPrivateTransfers(wallet.address, wallet.privateKey);
+        setPendingTransfersCount(pending.length);
+      } catch (error) {
+        console.error('Failed to fetch pending transfers:', error);
+        setPendingTransfersCount(0);
       }
     };
 
@@ -2270,7 +2258,7 @@ export function WalletDashboard({
             }}
           >
             <div className="h-full flex flex-col p-4 pr-6" style={{ width: `${sidebarWidth}px` }}>
-              <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center justify-between mb-4 mt-2">
                 <h3 className="font-semibold text-base flex items-center gap-2">
                   <WalletIcon className="h-5 w-5" />
                   Wallets ({wallets.length})
@@ -3029,7 +3017,7 @@ export function WalletDashboard({
                 <div className={`h-full flex flex-col p-4 pl-6 pb-6 transition-all duration-200 ${
                   txDetailsClosing ? 'animate-in slide-in-from-left-4 fade-in' : ''
                 }`}>
-                  <div className="flex items-center justify-between mb-4 flex-shrink-0">
+                  <div className="flex items-center justify-between mb-4 mt-2 flex-shrink-0">
                     <h3 className={`font-semibold text-base flex items-center gap-2 ${operationMode === 'private' ? 'text-[#0000db]' : ''}`}>
                       <History className="h-5 w-5" />
                       Transaction History
@@ -3410,15 +3398,24 @@ export function WalletDashboard({
           
           {/* Center: Current Epoch */}
           <span className="flex items-center justify-center gap-1.5">
-            <span className="text-muted-foreground">Epoch:</span>
-            <a 
-              href={currentEpoch ? `https://octrascan.io/epochs/${currentEpoch}` : '#'}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="font-mono text-[#0000db] hover:underline"
-            >
-              #{currentEpoch || '...'}
-            </a>
+            {isUpdatingEpoch ? (
+              <>
+                <RotateCcw className="h-3 w-3 animate-spin text-[#0000db]" />
+                <span className="text-[#0000db]">updating data...</span>
+              </>
+            ) : (
+              <>
+                <span className="text-muted-foreground">Epoch:</span>
+                <a 
+                  href={currentEpoch ? `https://octrascan.io/epochs/${currentEpoch}` : '#'}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="font-mono text-[#0000db] hover:underline"
+                >
+                  #{currentEpoch || '...'}
+                </a>
+              </>
+            )}
           </span>
           
           {/* Right: GitHub + Version */}
