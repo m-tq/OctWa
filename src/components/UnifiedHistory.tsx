@@ -339,7 +339,6 @@ export function UnifiedHistory({ wallet, transactions, onTransactionsUpdate, isL
           <DialogContent className="w-[95vw] max-w-md sm:max-w-lg mx-auto max-h-[85vh] overflow-hidden flex flex-col">
             <DialogHeader className="pb-2">
               <DialogTitle className="flex items-center gap-2 text-base">
-                <Eye className="h-4 w-4" />
                 Transaction Details
               </DialogTitle>
               <DialogDescription className="sr-only">
@@ -607,16 +606,16 @@ function TransferItem({
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2 flex-1 min-w-0">
             {tx.type === 'sent' ? (
-              <ArrowUpRight className="h-3.5 w-3.5 text-red-500 flex-shrink-0" />
+              <ArrowUpRight className="h-4 w-4 text-red-500 flex-shrink-0" />
             ) : (
-              <ArrowDownLeft className="h-3.5 w-3.5 text-green-500 flex-shrink-0" />
+              <ArrowDownLeft className="h-4 w-4 text-green-500 flex-shrink-0" />
             )}
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-1.5">
                 {isPrivate ? (
-                  <span className="text-[#0000db] font-medium text-xs">{tx.type === 'sent' ? '-' : '+'}Private</span>
+                  <span className="text-[#0000db] font-medium text-sm">{tx.type === 'sent' ? '-' : '+'}Private</span>
                 ) : (
-                  <span className={`font-mono text-xs ${tx.type === 'sent' ? 'text-red-500' : 'text-green-500'}`}>{tx.type === 'sent' ? '-' : '+'}{tx.amount?.toFixed(4) || '0'} OCT</span>
+                  <span className={`font-mono text-sm ${tx.type === 'sent' ? 'text-red-500' : 'text-green-500'}`}>{tx.type === 'sent' ? '-' : '+'}{tx.amount?.toFixed(4) || '0'} OCT</span>
                 )}
                 {tx.status === 'confirmed' ? (
                   <div className="h-1.5 w-1.5 bg-[#0000db]" />
@@ -628,12 +627,12 @@ function TransferItem({
                   </div>
                 )}
               </div>
-              <div className="text-[10px] text-muted-foreground truncate">
+              <div className="text-xs text-muted-foreground truncate">
                 {tx.type === 'sent' ? 'To: ' : 'From: '}{truncateAddress(tx.type === 'sent' ? tx.to : tx.from)}
               </div>
             </div>
           </div>
-          <div className="text-[10px] text-muted-foreground flex-shrink-0 text-right">
+          <div className="text-xs text-muted-foreground flex-shrink-0 text-right">
             <div>{dateStr}</div>
             <div>{timeStr} UTC</div>
           </div>

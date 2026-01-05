@@ -4,7 +4,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Key, FileText, Loader2, AlertCircle } from 'lucide-react';
+import { Key, FileText, Loader2, AlertCircle, Eye, EyeOff } from 'lucide-react';
 import { Wallet } from '../types/wallet';
 import { importWalletFromPrivateKey, importWalletFromMnemonic } from '../utils/wallet';
 
@@ -21,6 +21,8 @@ export function ImportWallet({ onWalletImported, defaultTab = 'private-key', isC
   const [isImporting, setIsImporting] = useState(false);
   const [privateKeyError, setPrivateKeyError] = useState('');
   const [mnemonicError, setMnemonicError] = useState('');
+  const [showMnemonic, setShowMnemonic] = useState(false);
+  const [showPrivateKey, setShowPrivateKey] = useState(false);
 
   const handleImportFromPrivateKey = async () => {
     setPrivateKeyError('');
@@ -98,15 +100,43 @@ export function ImportWallet({ onWalletImported, defaultTab = 'private-key', isC
       return (
         <div className="space-y-3">
           <div>
-            <Label htmlFor="mnemonic" className="text-xs text-muted-foreground">Mnemonic Phrase</Label>
-            <Textarea
-              id="mnemonic"
-              placeholder="Enter 12 or 24 words"
-              value={mnemonic}
-              onChange={(e) => { setMnemonic(e.target.value); setMnemonicError(''); }}
-              rows={3}
-              className={`font-mono text-xs mt-1.5 ${mnemonicError ? 'border-destructive' : ''}`}
-            />
+            <div className="flex items-center justify-between">
+              <Label htmlFor="mnemonic" className="text-xs text-muted-foreground">Mnemonic Phrase</Label>
+              {mnemonic && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-6 px-2 text-xs text-muted-foreground hover:text-foreground"
+                  onClick={() => setShowMnemonic(!showMnemonic)}
+                >
+                  {showMnemonic ? <EyeOff className="h-3 w-3 mr-1" /> : <Eye className="h-3 w-3 mr-1" />}
+                  {showMnemonic ? 'Hide' : 'Show'}
+                </Button>
+              )}
+            </div>
+            <div className="relative">
+              <Textarea
+                id="mnemonic"
+                placeholder="Enter 12 or 24 words"
+                value={mnemonic}
+                onChange={(e) => { setMnemonic(e.target.value); setMnemonicError(''); }}
+                rows={3}
+                className={`font-mono text-xs mt-1.5 ${mnemonicError ? 'border-destructive' : ''} ${!showMnemonic && mnemonic ? 'text-transparent' : ''}`}
+                style={!showMnemonic && mnemonic ? { textShadow: '0 0 8px currentColor' } : undefined}
+              />
+              {!showMnemonic && mnemonic && (
+                <div 
+                  className="absolute inset-0 mt-1.5 flex items-center justify-center bg-muted/50 rounded-md cursor-pointer backdrop-blur-sm"
+                  onClick={() => setShowMnemonic(true)}
+                >
+                  <span className="text-xs text-muted-foreground flex items-center gap-1">
+                    <Eye className="h-3 w-3" />
+                    Click to reveal
+                  </span>
+                </div>
+              )}
+            </div>
             {mnemonicError && (
               <p className="text-xs text-destructive mt-1.5 flex items-center gap-1">
                 <AlertCircle className="h-3 w-3" />
@@ -138,15 +168,43 @@ export function ImportWallet({ onWalletImported, defaultTab = 'private-key', isC
         )}
         <CardContent className={`space-y-4 ${hideBorder ? 'p-0' : ''}`}>
           <div className="space-y-2">
-            <Label htmlFor="mnemonic">Mnemonic Phrase</Label>
-            <Textarea
-              id="mnemonic"
-              placeholder="Enter your 12 or 24 word mnemonic phrase"
-              value={mnemonic}
-              onChange={(e) => { setMnemonic(e.target.value); setMnemonicError(''); }}
-              rows={3}
-              className={`font-mono text-sm ${mnemonicError ? 'border-destructive' : ''}`}
-            />
+            <div className="flex items-center justify-between">
+              <Label htmlFor="mnemonic">Mnemonic Phrase</Label>
+              {mnemonic && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground"
+                  onClick={() => setShowMnemonic(!showMnemonic)}
+                >
+                  {showMnemonic ? <EyeOff className="h-3.5 w-3.5 mr-1" /> : <Eye className="h-3.5 w-3.5 mr-1" />}
+                  {showMnemonic ? 'Hide' : 'Show'}
+                </Button>
+              )}
+            </div>
+            <div className="relative">
+              <Textarea
+                id="mnemonic"
+                placeholder="Enter your 12 or 24 word mnemonic phrase"
+                value={mnemonic}
+                onChange={(e) => { setMnemonic(e.target.value); setMnemonicError(''); }}
+                rows={3}
+                className={`font-mono text-sm ${mnemonicError ? 'border-destructive' : ''} ${!showMnemonic && mnemonic ? 'text-transparent' : ''}`}
+                style={!showMnemonic && mnemonic ? { textShadow: '0 0 8px currentColor' } : undefined}
+              />
+              {!showMnemonic && mnemonic && (
+                <div 
+                  className="absolute inset-0 flex items-center justify-center bg-muted/50 rounded-md cursor-pointer backdrop-blur-sm"
+                  onClick={() => setShowMnemonic(true)}
+                >
+                  <span className="text-sm text-muted-foreground flex items-center gap-1.5">
+                    <Eye className="h-4 w-4" />
+                    Click to reveal
+                  </span>
+                </div>
+              )}
+            </div>
             {mnemonicError && (
               <p className="text-sm text-destructive mt-1.5 flex items-center gap-1">
                 <AlertCircle className="h-4 w-4" />
@@ -172,10 +230,24 @@ export function ImportWallet({ onWalletImported, defaultTab = 'private-key', isC
     return (
       <div className="space-y-3">
         <div>
-          <Label htmlFor="private-key" className="text-xs text-muted-foreground">Private Key</Label>
+          <div className="flex items-center justify-between">
+            <Label htmlFor="private-key" className="text-xs text-muted-foreground">Private Key</Label>
+            {privateKey && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="h-6 px-2 text-xs text-muted-foreground hover:text-foreground"
+                onClick={() => setShowPrivateKey(!showPrivateKey)}
+              >
+                {showPrivateKey ? <EyeOff className="h-3 w-3 mr-1" /> : <Eye className="h-3 w-3 mr-1" />}
+                {showPrivateKey ? 'Hide' : 'Show'}
+              </Button>
+            )}
+          </div>
           <Input
             id="private-key"
-            type="password"
+            type={showPrivateKey ? "text" : "password"}
             placeholder="Enter private key (Base64)"
             value={privateKey}
             onChange={(e) => { setPrivateKey(e.target.value); setPrivateKeyError(''); }}
@@ -212,10 +284,24 @@ export function ImportWallet({ onWalletImported, defaultTab = 'private-key', isC
       )}
       <CardContent className={`space-y-4 ${hideBorder ? 'p-0' : ''}`}>
         <div className="space-y-2">
-          <Label htmlFor="private-key">Private Key</Label>
+          <div className="flex items-center justify-between">
+            <Label htmlFor="private-key">Private Key</Label>
+            {privateKey && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground"
+                onClick={() => setShowPrivateKey(!showPrivateKey)}
+              >
+                {showPrivateKey ? <EyeOff className="h-3.5 w-3.5 mr-1" /> : <Eye className="h-3.5 w-3.5 mr-1" />}
+                {showPrivateKey ? 'Hide' : 'Show'}
+              </Button>
+            )}
+          </div>
           <Input
             id="private-key"
-            type="password"
+            type={showPrivateKey ? "text" : "password"}
             placeholder="Enter your private key (Base64)"
             value={privateKey}
             onChange={(e) => { setPrivateKey(e.target.value); setPrivateKeyError(''); }}

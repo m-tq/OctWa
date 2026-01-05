@@ -114,7 +114,7 @@ export function DecryptBalanceDialog({
         </div>
       )}
 
-      <div className={isPopupMode ? "space-y-1 pt-4" : "space-y-2 pt-8"}>
+      <div className={isPopupMode ? "space-y-1 pt-4" : "space-y-2 pt-10"}>
         <div className="flex items-center justify-between">
           <Label htmlFor="decrypt-amount" className={isPopupMode ? "text-xs" : ""}>Amount to Decrypt</Label>
           <div className={`flex items-center gap-2 ${isPopupMode ? 'text-xs' : 'text-sm'}`}>

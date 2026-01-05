@@ -183,16 +183,34 @@ export function ModeToggle({
         
         {/* Right: Status message - same for both compact and expanded */}
         {isProtected && (
-          <div className={`flex items-center gap-1 ${isCompact ? 'text-[10px]' : 'text-xs'} font-medium text-[#0000db]`}>
-            <Check className={`${isCompact ? 'h-3 w-3' : 'h-3.5 w-3.5'}`} />
-            <span>Encrypted.</span>
-          </div>
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <div className={`flex items-center gap-1 ${isCompact ? 'text-[10px]' : 'text-xs'} font-medium text-[#0000db] cursor-help`}>
+                  <Check className={`${isCompact ? 'h-3 w-3' : 'h-3.5 w-3.5'}`} />
+                  <span>Encrypted.</span>
+                </div>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">
+                <p className="text-xs">You're untraceable</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
         )}
         {isExposed && (
-          <div className={`flex items-center gap-1 ${isCompact ? 'text-[10px]' : 'text-xs'} font-medium text-orange-500`}>
-            <AlertTriangle className={`${isCompact ? 'h-3 w-3' : 'h-3.5 w-3.5'}`} />
-            <span>Exposed.</span>
-          </div>
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <div className={`flex items-center gap-1 ${isCompact ? 'text-[10px]' : 'text-xs'} font-medium text-orange-500 cursor-help`}>
+                  <AlertTriangle className={`${isCompact ? 'h-3 w-3' : 'h-3.5 w-3.5'}`} />
+                  <span>Exposed.</span>
+                </div>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">
+                <p className="text-xs">You're traceable</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
         )}
       </div>
     </div>

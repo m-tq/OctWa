@@ -6,7 +6,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger, SheetDescri
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Avatar } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
-import { ScrollArea } from '@/components/ui/scroll-area';
+import { ScrollArea, ScrollAreaContent } from '@/components/ui/scroll-area';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 
@@ -125,14 +125,14 @@ export function WalletDashboard({
   const [sidebarWidth, setSidebarWidth] = useState(350); // Default 350px
   const [isResizing, setIsResizing] = useState(false);
   const MIN_SIDEBAR_WIDTH = 310;
-  const MAX_SIDEBAR_WIDTH = 500;
+  const MAX_SIDEBAR_WIDTH = 450;
   const AUTO_HIDE_THRESHOLD = 200; // Auto hide when dragged below this width
   
   // History sidebar state (right side)
-  const [historySidebarWidth, setHistorySidebarWidth] = useState(450);
+  const [historySidebarWidth, setHistorySidebarWidth] = useState(375);
   const [isResizingHistory, setIsResizingHistory] = useState(false);
-  const MIN_HISTORY_WIDTH = 350;
-  const MAX_HISTORY_WIDTH = 600;
+  const MIN_HISTORY_WIDTH = 310;
+  const MAX_HISTORY_WIDTH = 450;
   const AUTO_HIDE_HISTORY_THRESHOLD = 200;
   
   // Computed sidebar left position for all fixed elements
@@ -189,12 +189,11 @@ export function WalletDashboard({
   const [claimAnimating, setClaimAnimating] = useState(false);
   const [claimClosing, setClaimClosing] = useState(false);
   const [privateModalClosing, setPrivateModalClosing] = useState(false);
-  // Toggle panels button initial visibility
-  const [togglePanelsVisible, setTogglePanelsVisible] = useState(true);
   // Expanded mode transaction details inline screen
   const [showExpandedTxDetails, setShowExpandedTxDetails] = useState(false);
   const [txDetailsAnimating, setTxDetailsAnimating] = useState(false);
   const [txDetailsClosing, setTxDetailsClosing] = useState(false);
+  const [prevHistoryWidth, setPrevHistoryWidth] = useState<number | null>(null);
   // Address Book state
   const [showAddressBook, setShowAddressBook] = useState(false);
   // Current epoch state
@@ -269,16 +268,6 @@ export function WalletDashboard({
       autoLabelWallets(wallets.map(w => ({ address: w.address, type: w.type })));
     }
   }, [wallets, autoLabelWallets]);
-
-  // Auto-hide toggle panels button after 3 seconds on initial load
-  useEffect(() => {
-    if (!isPopupMode && togglePanelsVisible) {
-      const timer = setTimeout(() => {
-        setTogglePanelsVisible(false);
-      }, 3000);
-      return () => clearTimeout(timer);
-    }
-  }, [isPopupMode]);
 
   // Handle sidebar resize
   useEffect(() => {
@@ -957,6 +946,13 @@ export function WalletDashboard({
     
     const addressToDelete = walletToDelete.address;
     
+    // Remove wallet label from address book
+    try {
+      await addressBook.removeWalletLabel(addressToDelete);
+    } catch (error) {
+      console.error('Failed to remove wallet label from address book:', error);
+    }
+    
     // Remove from encrypted wallets FIRST before calling onRemoveWallet
     // This ensures the wallet is removed from all storage locations
     try {
@@ -1116,6 +1112,11 @@ export function WalletDashboard({
       // Add animation when opening
       setTxDetailsAnimating(true);
       setShowExpandedTxDetails(true);
+      // Expand sidebar to MAX_HISTORY_WIDTH for better details view
+      if (historySidebarWidth < MAX_HISTORY_WIDTH) {
+        setPrevHistoryWidth(historySidebarWidth);
+        setHistorySidebarWidth(MAX_HISTORY_WIDTH);
+      }
       setTimeout(() => setTxDetailsAnimating(false), 300);
     }
     
@@ -1161,6 +1162,11 @@ export function WalletDashboard({
   // Close expanded transaction details with animation
   const closeExpandedTxDetails = () => {
     setTxDetailsClosing(true);
+    // Restore previous sidebar width if it was expanded
+    if (prevHistoryWidth !== null) {
+      setHistorySidebarWidth(prevHistoryWidth);
+      setPrevHistoryWidth(null);
+    }
     setTimeout(() => {
       setShowExpandedTxDetails(false);
       setSelectedTxHash(null);
@@ -1495,15 +1501,15 @@ export function WalletDashboard({
         <div className={`w-full ${isPopupMode ? 'px-3' : 'px-6'}`}>
           <div className={`flex items-center justify-between ${isPopupMode ? 'py-1' : 'py-2 sm:py-4'}`}>
             <div className="flex items-center space-x-4">
-              <div className={`flex items-center ${isPopupMode ? 'space-x-2' : 'space-x-3'}`}>
-                <Avatar className={`${isPopupMode ? 'h-6 w-6' : 'h-10 w-10'}`}>
+              <div className={`flex ${isPopupMode ? 'items-center space-x-2' : 'items-center space-x-3'}`}>
+                <Avatar className={`${isPopupMode ? 'h-6 w-6' : 'h-10 w-10'} flex-shrink-0`}>
                   <img 
                     src={isPopupMode ? "/icons/octwa32x32.png" : "/icons/octwa48x48.png"}
                     alt="OctWa Logo" 
                     className="h-full w-full object-contain"
                   />
                 </Avatar>
-                <div>
+                <div className={`flex flex-col ${!isPopupMode && showWalletSidebar ? 'justify-center' : ''}`}>
                   <div className="flex items-center gap-2">
                     <h1 className={`${isPopupMode ? 'text-sm' : 'text-xl'} font-semibold text-foreground`}>
                       OctWa - Octra Wallet
@@ -1521,143 +1527,148 @@ export function WalletDashboard({
                       </Badge>
                     )}
                   </div>
-                  <div className="flex items-center space-x-2">
-                    {/* Wallet Selector - Sheet for popup mode, Dropdown for expanded */}
-                    {isPopupMode ? (
-                      <Sheet open={showWalletSelector} onOpenChange={setShowWalletSelector}>
-                        <SheetTrigger asChild>
-                          <Button variant="ghost" className="h-auto p-0 hover:bg-transparent">
-                            <div className="flex items-center space-x-1">
-                              <p className="text-[10px] text-[#0000db] font-medium">
-                                {truncateAddress(wallet.address)}
-                              </p>
-                              <ChevronDown className="h-2.5 w-2.5 text-muted-foreground" />
-                            </div>
-                          </Button>
-                        </SheetTrigger>
-                        <SheetContent side="left" className="w-80 flex flex-col pb-14">
-                          <SheetHeader>
-                            <SheetTitle className="text-sm">Select Wallet ({wallets.length})</SheetTitle>
-                            <SheetDescription className="sr-only">Choose a wallet from your list</SheetDescription>
-                          </SheetHeader>
-                          <div className="flex-1 mt-3 overflow-hidden">
-                            <ScrollArea className="h-full max-h-[calc(100vh-200px)]">
-                              <div className="space-y-1.5 pr-2">
-                                {wallets.map((w, i) => {
-                                  const isActive = w.address === wallet.address;
-                                  const shortAddress = `${w.address.slice(0, 6)}...${w.address.slice(-4)}`;
-                                  const walletType = w.type === 'generated' ? 'Generated' 
-                                    : w.type === 'imported-mnemonic' ? 'Imported (Mnemonic)' 
-                                    : w.type === 'imported-private-key' ? 'Imported (Key)' 
-                                    : '';
-                                  return (
-                                    <div
-                                      key={w.address}
-                                      className={`p-2.5 rounded-lg cursor-pointer transition-colors ${
-                                        isActive 
-                                          ? 'bg-[#0000db]/10 border border-[#0000db]/30' 
-                                          : 'hover:bg-accent border border-transparent'
-                                      }`}
-                                      onClick={() => {
-                                        onSwitchWallet(w);
-                                        setShowWalletSelector(false);
-                                      }}
-                                    >
-                                      {/* Row 1: Number + Address + Actions */}
-                                      <div className="flex items-center justify-between">
-                                        <div className="flex items-center gap-1.5 min-w-0">
-                                          <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${
-                                            isActive ? 'bg-[#0000db] text-white' : 'bg-muted text-muted-foreground'
-                                          }`}>
-                                            {i + 1}
-                                          </span>
-                                          <span className={`font-mono text-xs truncate ${isActive ? 'text-[#0000db] font-semibold' : ''}`}>
-                                            {shortAddress}
-                                          </span>
-                                        </div>
-                                        <div className="flex items-center gap-0.5 flex-shrink-0">
-                                          <Button
-                                            variant="ghost"
-                                            size="sm"
-                                            onClick={(e) => {
-                                              e.stopPropagation();
-                                              copyToClipboard(w.address, `walletPopup-${w.address}`);
-                                            }}
-                                            className={`h-6 w-6 p-0 ${isActive ? 'text-[#0000db] hover:text-[#0000db]/80' : ''}`}
-                                            title="Copy address"
-                                          >
-                                            {copiedField === `walletPopup-${w.address}` ? <Check className="h-3 w-3 text-green-500" /> : <Copy className="h-3 w-3" />}
-                                          </Button>
-                                          <div onClick={(e) => e.stopPropagation()}>
-                                            <WalletLabelEditor address={w.address} isPopupMode={true} />
+                  {/* Address row - with transition for height */}
+                  <div className={`overflow-hidden transition-all duration-300 ${
+                    isPopupMode || !showWalletSidebar ? 'max-h-8 opacity-100 mt-0.5' : 'max-h-0 opacity-0'
+                  }`}>
+                    <div className="flex items-center space-x-2">
+                      {/* Wallet Selector - Sheet for popup mode, Dropdown for expanded */}
+                      {isPopupMode ? (
+                        <Sheet open={showWalletSelector} onOpenChange={setShowWalletSelector}>
+                          <SheetTrigger asChild>
+                            <Button variant="ghost" className="h-auto p-0 hover:bg-transparent">
+                              <div className="flex items-center space-x-1">
+                                <p className="text-[10px] text-[#0000db] font-medium">
+                                  {truncateAddress(wallet.address)}
+                                </p>
+                                <ChevronDown className="h-2.5 w-2.5 text-muted-foreground" />
+                              </div>
+                            </Button>
+                          </SheetTrigger>
+                          <SheetContent side="left" className="w-80 flex flex-col pb-14">
+                            <SheetHeader>
+                              <SheetTitle className="text-sm">Select Wallet ({wallets.length})</SheetTitle>
+                              <SheetDescription className="sr-only">Choose a wallet from your list</SheetDescription>
+                            </SheetHeader>
+                            <div className="flex-1 mt-3 overflow-hidden">
+                              <ScrollArea className="h-full max-h-[calc(100vh-200px)]" stabilizeGutter>
+                                <div className="space-y-1.5">
+                                  {wallets.map((w, i) => {
+                                    const isActive = w.address === wallet.address;
+                                    const shortAddress = `${w.address.slice(0, 6)}...${w.address.slice(-4)}`;
+                                    const walletType = w.type === 'generated' ? 'Generated' 
+                                      : w.type === 'imported-mnemonic' ? 'Imported (Mnemonic)' 
+                                      : w.type === 'imported-private-key' ? 'Imported (Key)' 
+                                      : '';
+                                    return (
+                                      <div
+                                        key={w.address}
+                                        className={`p-2.5 rounded-lg cursor-pointer transition-colors ${
+                                          isActive 
+                                            ? 'bg-[#0000db]/10 border border-[#0000db]/30' 
+                                            : 'hover:bg-accent border border-transparent'
+                                        }`}
+                                        onClick={() => {
+                                          onSwitchWallet(w);
+                                          setShowWalletSelector(false);
+                                        }}
+                                      >
+                                        {/* Row 1: Number + Address + Actions */}
+                                        <div className="flex items-center justify-between">
+                                          <div className="flex items-center gap-1.5 min-w-0">
+                                            <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${
+                                              isActive ? 'bg-[#0000db] text-white' : 'bg-muted text-muted-foreground'
+                                            }`}>
+                                              {i + 1}
+                                            </span>
+                                            <span className={`font-mono text-xs truncate ${isActive ? 'text-[#0000db] font-semibold' : ''}`}>
+                                              {shortAddress}
+                                            </span>
                                           </div>
-                                          {wallets.length > 1 && (
+                                          <div className="flex items-center gap-0.5 flex-shrink-0">
                                             <Button
                                               variant="ghost"
                                               size="sm"
                                               onClick={(e) => {
                                                 e.stopPropagation();
-                                                setWalletToDelete(w);
-                                                setShowWalletSelector(false);
+                                                copyToClipboard(w.address, `walletPopup-${w.address}`);
                                               }}
-                                              className="h-6 w-6 p-0 text-red-500 hover:text-red-700"
-                                              title="Remove wallet"
+                                              className={`h-6 w-6 p-0 ${isActive ? 'text-[#0000db] hover:text-[#0000db]/80' : ''}`}
+                                              title="Copy address"
                                             >
-                                              <Trash2 className="h-3 w-3" />
+                                              {copiedField === `walletPopup-${w.address}` ? <Check className="h-3 w-3 text-green-500" /> : <Copy className="h-3 w-3" />}
                                             </Button>
-                                          )}
+                                            <div onClick={(e) => e.stopPropagation()}>
+                                              <WalletLabelEditor address={w.address} isPopupMode={true} />
+                                            </div>
+                                            {wallets.length > 1 && (
+                                              <Button
+                                                variant="ghost"
+                                                size="sm"
+                                                onClick={(e) => {
+                                                  e.stopPropagation();
+                                                  setWalletToDelete(w);
+                                                  setShowWalletSelector(false);
+                                                }}
+                                                className="h-6 w-6 p-0 text-red-500 hover:text-red-700"
+                                                title="Remove wallet"
+                                              >
+                                                <Trash2 className="h-3 w-3" />
+                                              </Button>
+                                            )}
+                                          </div>
+                                        </div>
+                                        
+                                        {/* Row 2: Wallet Name */}
+                                        <div className={`mt-1 text-xs font-medium truncate ${isActive ? 'text-[#0000db]' : ''}`}>
+                                          <WalletDisplayName address={w.address} isPopupMode={true} />
+                                        </div>
+                                        
+                                        {/* Row 3: Type */}
+                                        <div className={`mt-0.5 text-[10px] ${
+                                          isActive ? 'text-[#0000db]/70' : 'text-muted-foreground'
+                                        }`}>
+                                          {walletType}
                                         </div>
                                       </div>
-                                      
-                                      {/* Row 2: Wallet Name */}
-                                      <div className={`mt-1 text-xs font-medium truncate ${isActive ? 'text-[#0000db]' : ''}`}>
-                                        <WalletDisplayName address={w.address} isPopupMode={true} />
-                                      </div>
-                                      
-                                      {/* Row 3: Type */}
-                                      <div className={`mt-0.5 text-[10px] ${
-                                        isActive ? 'text-[#0000db]/70' : 'text-muted-foreground'
-                                      }`}>
-                                        {walletType}
-                                      </div>
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                            </ScrollArea>
-                          </div>
-                          <div className="mt-3 flex-shrink-0">
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => {
-                                setShowAddWalletDialog(true);
-                                setShowWalletSelector(false);
-                              }}
-                              className="w-full justify-center gap-1.5 text-xs"
-                            >
-                              <Plus className="h-3.5 w-3.5" />
-                              Add Wallet
-                            </Button>
-                          </div>
-                        </SheetContent>
-                      </Sheet>
-                    ) : (
-                      /* Expanded mode - just show address, wallet list is in sidebar */
-                      <div className="flex items-center space-x-2">
-                        <p className="text-sm text-[#0000db] font-medium">
-                          {truncateAddress(wallet.address)}
-                        </p>
-                      </div>
-                    )}
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => copyToClipboard(wallet.address, 'headerAddress')}
-                      className="h-6 w-6 p-0"
-                    >
-                      {copiedField === 'headerAddress' ? <Check className="h-3 w-3 text-green-500" /> : <Copy className="h-3 w-3" />}
-                    </Button>
+                                    );
+                                  })}
+                                </div>
+                              </ScrollArea>
+                            </div>
+                            <div className="mt-3 flex-shrink-0">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => {
+                                  setShowAddWalletDialog(true);
+                                  setShowWalletSelector(false);
+                                }}
+                                className="w-full justify-center gap-1.5 text-xs"
+                              >
+                                <Plus className="h-3.5 w-3.5" />
+                                Add Wallet
+                              </Button>
+                            </div>
+                          </SheetContent>
+                        </Sheet>
+                      ) : (
+                        /* Expanded mode - show label + address only when wallet sidebar is hidden */
+                        <>
+                          <p className="text-sm text-[#0000db] font-medium whitespace-nowrap">
+                            {getWalletDisplayName(wallet.address)} - {truncateAddress(wallet.address)}
+                          </p>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => copyToClipboard(wallet.address, 'headerAddress')}
+                            className="h-6 w-6 p-0 flex-shrink-0"
+                          >
+                            {copiedField === 'headerAddress' ? <Check className="h-3 w-3 text-green-500" /> : <Copy className="h-3 w-3" />}
+                          </Button>
+                        </>
+                      )}
+                    </div>
                   </div>
                 </div>
               </div>
@@ -2191,10 +2202,14 @@ export function WalletDashboard({
       {/* Sticky Mode Toggle - Only for expanded mode */}
       {!isPopupMode && (
         <div 
-          className={`fixed top-[85px] sm:top-[100px] z-40 bg-background/95 backdrop-blur-sm py-3 transition-[left,right] ${isResizing || isResizingHistory ? 'duration-0' : 'duration-300'} ease-out`}
-          style={{ left: sidebarLeftOffset, right: historySidebarRightOffset }}
+          className={`fixed z-40 bg-background/95 backdrop-blur-sm py-3 transition-all ${isResizing || isResizingHistory ? 'duration-0' : 'duration-300'} ease-out`}
+          style={{ 
+            left: sidebarLeftOffset, 
+            right: historySidebarRightOffset,
+            top: showWalletSidebar ? '65px' : '85px'
+          }}
         >
-          <div className="px-6 sm:px-8 lg:px-12">
+          <div className="px-6 py-6 sm:px-8 lg:px-12">
             <ModeToggle
               currentMode={operationMode}
               onModeChange={handleModeChange}
@@ -2211,8 +2226,11 @@ export function WalletDashboard({
       {!isPopupMode && (
         <>
           <aside 
-            className={`fixed top-[70px] sm:top-[83px] left-0 bottom-0 z-30 bg-background border-r border-border transition-all ${isResizing ? 'duration-0' : 'duration-300'} ${showWalletSidebar ? '' : 'w-0'} overflow-hidden`}
-            style={{ width: showWalletSidebar ? `${sidebarWidth}px` : '0px' }}
+            className={`fixed left-0 bottom-0 z-30 bg-background border-r border-border transition-all ${isResizing ? 'duration-0' : 'duration-300'} ${showWalletSidebar ? '' : 'w-0'} overflow-hidden`}
+            style={{ 
+              width: showWalletSidebar ? `${sidebarWidth}px` : '0px',
+              top: showWalletSidebar ? '65px' : '85px'
+            }}
           >
             <div className="h-full flex flex-col p-4 pr-6" style={{ width: `${sidebarWidth}px` }}>
               <div className="flex items-center justify-between mb-4">
@@ -2221,8 +2239,8 @@ export function WalletDashboard({
                   Wallets ({wallets.length})
                 </h3>
               </div>
-              <ScrollArea className="flex-1">
-                <div className="space-y-2 pr-2">
+              <ScrollArea className="flex-1" stabilizeGutter>
+                <ScrollAreaContent className="space-y-2">
                   {wallets.map((w, i) => {
                     const isActive = w.address === wallet.address;
                     const shortAddress = `${w.address.slice(0, 6)}...${w.address.slice(-4)}`;
@@ -2324,7 +2342,7 @@ export function WalletDashboard({
                       </div>
                     );
                   })}
-                </div>
+                </ScrollAreaContent>
               </ScrollArea>
               <div className="mt-4">
                 <Button
@@ -2778,8 +2796,11 @@ export function WalletDashboard({
       {!isPopupMode && (
         <>
           <aside 
-            className={`fixed top-[70px] sm:top-[83px] right-0 bottom-0 z-30 bg-background border-l border-border transition-all ${isResizingHistory ? 'duration-0' : 'duration-300'} ${showHistorySidebar ? '' : 'w-0'} overflow-hidden`}
-            style={{ width: showHistorySidebar ? `${historySidebarWidth}px` : '0px' }}
+            className={`fixed right-0 bottom-0 z-30 bg-background border-l border-border transition-all ${isResizingHistory ? 'duration-0' : 'duration-300'} ${showHistorySidebar ? '' : 'w-0'} overflow-hidden`}
+            style={{ 
+              width: showHistorySidebar ? `${historySidebarWidth}px` : '0px',
+              top: showWalletSidebar ? '65px' : '85px'
+            }}
           >
             <div className="h-full flex flex-col" style={{ width: `${historySidebarWidth}px` }}>
               {/* Transaction Details View */}
@@ -3305,7 +3326,7 @@ export function WalletDashboard({
         >
           <button
             onClick={toggleBothPanels}
-            className={`h-6 px-3 flex items-center justify-center gap-1 bg-muted/80 hover:bg-accent border border-border rounded-full transition-all duration-300 text-xs text-muted-foreground hover:text-foreground ${togglePanelsVisible ? 'opacity-100' : 'opacity-0'} group-hover:opacity-100`}
+            className="h-6 px-3 flex items-center justify-center gap-1 bg-muted/80 hover:bg-accent border border-border rounded-full transition-all duration-300 text-xs text-muted-foreground hover:text-foreground"
             title={bothPanelsHidden ? "Show panels" : "Hide panels"}
           >
             {bothPanelsHidden ? (
