@@ -2,9 +2,9 @@ import { useState, useEffect, useRef } from 'react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { BookUser, Search, X } from 'lucide-react';
-import { CONTACT_TAGS } from '../types/addressBook';
+import { BookUser, Search, X, Plus, AlertTriangle, Shield, Globe } from 'lucide-react';
 import { useAddressBook } from '../hooks/useAddressBook';
+import { OperationMode } from '../utils/modeStorage';
 
 interface AddressInputProps {
   value: string;
@@ -15,6 +15,9 @@ interface AddressInputProps {
   isPopupMode?: boolean;
   isCompact?: boolean;
   id?: string;
+  activeWalletAddress?: string; // Current active wallet address to exclude from selection
+  onAddToAddressBook?: (address: string) => void; // Callback to open add contact modal
+  currentMode?: OperationMode; // Current operation mode for mode mismatch warning
 }
 
 export function AddressInput({
@@ -26,6 +29,9 @@ export function AddressInput({
   isPopupMode = false,
   isCompact = false,
   id,
+  activeWalletAddress,
+  onAddToAddressBook,
+  currentMode = 'public',
 }: AddressInputProps) {
   const [showDropdown, setShowDropdown] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -33,6 +39,28 @@ export function AddressInput({
   const { contacts, walletLabels } = useAddressBook();
   const containerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  // Validate if address is valid OCT address
+  const isValidAddress = (addr: string): boolean => {
+    return /^oct[123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz]{44}$/.test(addr);
+  };
+
+  // Check if address exists in contacts or wallets
+  const isAddressInBook = (addr: string): boolean => {
+    const lowerAddr = addr.toLowerCase();
+    return (
+      contacts.some((c) => c.address.toLowerCase() === lowerAddr) ||
+      walletLabels.some((w) => w.address.toLowerCase() === lowerAddr)
+    );
+  };
+
+  // Show add button if: address is valid, not empty, not in address book, and not active wallet
+  const showAddButton =
+    value.trim() &&
+    isValidAddress(value.trim()) &&
+    !isAddressInBook(value.trim()) &&
+    value.trim().toLowerCase() !== activeWalletAddress?.toLowerCase() &&
+    onAddToAddressBook;
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -75,10 +103,13 @@ export function AddressInput({
   const filteredWallets = searchQuery
     ? walletLabels.filter(
         (w) =>
-          w.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          w.address.toLowerCase().includes(searchQuery.toLowerCase())
+          w.address.toLowerCase() !== activeWalletAddress?.toLowerCase() &&
+          (w.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          w.address.toLowerCase().includes(searchQuery.toLowerCase()))
       )
-    : walletLabels;
+    : walletLabels.filter(
+        (w) => w.address.toLowerCase() !== activeWalletAddress?.toLowerCase()
+      );
 
   const hasResults = filteredContacts.length > 0 || filteredWallets.length > 0;
 
@@ -110,12 +141,25 @@ export function AddressInput({
             <button
               type="button"
               onClick={() => onChange('')}
-              className="absolute right-3 inset-y-0 flex items-center text-muted-foreground hover:text-foreground"
+              className="absolute right-2 inset-y-0 flex items-center text-muted-foreground hover:text-foreground"
             >
-              <X className={isPopupMode || isCompact ? 'h-3 w-3' : 'h-3.5 w-5 pr-1'} />
+              <X className={isPopupMode || isCompact ? 'h-3 w-3 mr-2' : 'h-3.5 w-3.5 mr-3'} />
             </button>
           )}
         </div>
+        {showAddButton && (
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            onClick={() => onAddToAddressBook?.(value.trim())}
+            disabled={disabled}
+            className={`${isCompact ? 'h-8 w-8' : 'h-9 w-9'} flex-shrink-0 text-[#0000db] hover:text-[#0000db] hover:bg-[#0000db]/10 border-[#0000db]/30`}
+            title="Add to address book"
+          >
+            <Plus className={isCompact ? 'h-3.5 w-3.5' : 'h-4 w-4'} />
+          </Button>
+        )}
         <Button
           type="button"
           variant="outline"
@@ -175,7 +219,10 @@ export function AddressInput({
                     >
                       Contacts
                     </div>
-                    {filteredContacts.map((contact) => (
+                    {filteredContacts.map((contact) => {
+                      const hasModeWarning = contact.preferredMode && contact.preferredMode !== currentMode;
+                      
+                      return (
                       <button
                         key={contact.id}
                         type="button"
@@ -184,12 +231,19 @@ export function AddressInput({
                           isPopupMode ? 'text-xs' : 'text-sm'
                         }`}
                       >
-                        <div className="flex items-center justify-between">
-                          <span className="font-medium truncate">{contact.label}</span>
-                          {contact.tags.length > 0 && (
-                            <span className="text-[10px] text-muted-foreground">
-                              {CONTACT_TAGS.find((t) => t.value === contact.tags[0])?.icon}
-                            </span>
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-1.5 flex-1 min-w-0">
+                            <span className="font-medium truncate">{contact.label}</span>
+                            {contact.preferredMode && (
+                              contact.preferredMode === 'private' ? (
+                                <Shield className={`text-[#0000db] flex-shrink-0 ${isPopupMode ? 'h-2.5 w-2.5' : 'h-3 w-3'}`} />
+                              ) : (
+                                <Globe className={`text-green-600 flex-shrink-0 ${isPopupMode ? 'h-2.5 w-2.5' : 'h-3 w-3'}`} />
+                              )
+                            )}
+                          </div>
+                          {hasModeWarning && (
+                            <AlertTriangle className={`text-yellow-600 flex-shrink-0 ${isPopupMode ? 'h-3 w-3' : 'h-3.5 w-3.5'}`} />
                           )}
                         </div>
                         <div
@@ -199,8 +253,14 @@ export function AddressInput({
                         >
                           {truncateAddress(contact.address)}
                         </div>
+                        {hasModeWarning && (
+                          <div className={`flex items-center gap-1 mt-0.5 text-yellow-700 ${isPopupMode ? 'text-[9px]' : 'text-[10px]'}`}>
+                            <span>Prefers {contact.preferredMode} mode (current: {currentMode})</span>
+                          </div>
+                        )}
                       </button>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
 

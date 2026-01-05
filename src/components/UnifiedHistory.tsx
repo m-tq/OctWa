@@ -5,7 +5,7 @@ import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
-import { ScrollArea } from '@/components/ui/scroll-area';
+import { ScrollArea, ScrollAreaContent } from '@/components/ui/scroll-area';
 import {
   History,
   ExternalLink,
@@ -270,9 +270,10 @@ export function UnifiedHistory({ wallet, transactions, onTransactionsUpdate, isL
             <AlertDescription>No history found for this filter.</AlertDescription>
           </Alert>
         ) : (
-          <ScrollArea className={isPopupMode ? 'h-auto' : isCompact ? 'flex-1 min-h-0' : 'h-[calc(100vh-450px)] pr-3'}>
-            <div ref={historyListRef} className={`${isPopupMode ? 'space-y-2 mb-[110px]' : 'space-y-3 pr-3 pb-1'}`}>
-              {unifiedHistory.map((item) => (
+          <ScrollArea className={isPopupMode ? 'h-auto' : isCompact ? 'flex-1 min-h-0' : 'h-[calc(100vh-450px)]'} stabilizeGutter>
+            <ScrollAreaContent>
+              <div ref={historyListRef} className={`${isPopupMode ? 'space-y-2 mb-[110px]' : 'space-y-3 pb-1'}`}>
+                {unifiedHistory.map((item) => (
                 <div key={item.id} className={`border ${isPopupMode ? 'p-2' : isCompact ? 'p-2' : 'p-3'} space-y-2 ${isCompact ? 'rounded-lg' : ''}`}>
                   {item.type === 'transfer' && item.transaction && (
                     <TransferItem 
@@ -298,7 +299,8 @@ export function UnifiedHistory({ wallet, transactions, onTransactionsUpdate, isL
                   )}
                 </div>
               ))}
-            </div>
+              </div>
+            </ScrollAreaContent>
           </ScrollArea>
         )}
 

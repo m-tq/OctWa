@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Shield, AlertTriangle, Wallet as WalletIcon, Loader2 } from 'lucide-react';
+import { Shield, AlertTriangle, Wallet as WalletIcon, Loader2, Plus, BookUser } from 'lucide-react';
 import { Wallet } from '../types/wallet';
 import { fetchEncryptedBalance, createPrivateTransfer, getAddressInfo, invalidateCacheAfterPrivateSend } from '../utils/api';
 import { useToast } from '@/hooks/use-toast';
@@ -21,6 +21,7 @@ interface PrivateTransferProps {
   onNonceUpdate: (newNonce: number) => void;
   onTransactionSuccess: () => void;
   isCompact?: boolean;
+  onAddToAddressBook?: (address: string) => void; // Callback to add address to address book
 }
 
 // Simple address validation function
@@ -56,7 +57,8 @@ export function PrivateTransfer({
   onBalanceUpdate,
   onNonceUpdate,
   onTransactionSuccess,
-  isCompact = false
+  isCompact = false,
+  onAddToAddressBook
 }: PrivateTransferProps) {
   const [recipientAddress, setRecipientAddress] = useState('');
   const [addressValidation, setAddressValidation] = useState<{ isValid: boolean; error?: string } | null>(null);
@@ -278,33 +280,37 @@ export function PrivateTransfer({
   // Compact mode for popup
   if (isCompact) {
     return (
-      <div className="space-y-4">
-        {/* Animated Icon */}
-        <AnimatedIcon type="send-private" size="sm" />
+      <div className="space-y-3">
+        {/* Animated Icon - Compact */}
+        <AnimatedIcon type="send-private" size="xs" />
 
         {/* Recipient */}
-        <div className="space-y-1.5">
-          <Label htmlFor="recipient" className="text-sm">Recipient</Label>
+        <div className="space-y-1">
+          <Label htmlFor="recipient" className="text-xs">Recipient</Label>
           <AddressInput
             id="recipient"
             value={recipientAddress}
             onChange={setRecipientAddress}
             isPopupMode={true}
-            className="text-sm h-9"
+            isCompact={true}
+            className="text-xs"
+            activeWalletAddress={wallet?.address}
+            onAddToAddressBook={onAddToAddressBook}
+            currentMode="private"
           />
           {recipientAddress.trim() && addressValidation && !addressValidation.isValid && (
-            <p className="text-xs text-red-600">{addressValidation.error}</p>
+            <p className="text-[10px] text-red-600">{addressValidation.error}</p>
           )}
           {recipientInfo && !recipientInfo.has_public_key && (
-            <p className="text-xs text-red-600">⚠️ Recipient needs a public key</p>
+            <p className="text-[10px] text-red-600">⚠️ Recipient needs a public key</p>
           )}
         </div>
 
         {/* Amount */}
-        <div className="space-y-1.5">
+        <div className="space-y-1">
           <div className="flex items-center justify-between">
-            <Label htmlFor="amount" className="text-sm">Amount (OCT)</Label>
-            <div className="flex items-center gap-1.5 text-xs">
+            <Label htmlFor="amount" className="text-xs">Amount (OCT)</Label>
+            <div className="flex items-center gap-1.5 text-[10px]">
               <span className="text-muted-foreground">
                 Balance: <span className="font-mono">{encryptedBalance.encrypted.toFixed(4)}</span>
               </span>
@@ -338,7 +344,7 @@ export function PrivateTransfer({
             step="0.1"
             min="0"
             max={encryptedBalance.encrypted}
-            className="text-sm h-9"
+            className="text-xs h-8"
           />
         </div>
 
@@ -354,11 +360,11 @@ export function PrivateTransfer({
             !recipientInfo.has_public_key ||
             parseFloat(amount) > encryptedBalance.encrypted
           }
-          className="w-full h-10 text-sm bg-[#0000db] hover:bg-[#0000db]/90"
+          className="w-full h-9 text-xs bg-[#0000db] hover:bg-[#0000db]/90"
         >
           {isSending ? (
             <div className="flex items-center gap-2">
-              <div className="relative w-4 h-4">
+              <div className="relative w-3.5 h-3.5">
                 <div className="absolute inset-0 rounded-full border-2 border-white/20" />
                 <div className="absolute inset-0 rounded-full border-2 border-transparent border-t-white animate-spin" />
               </div>
@@ -396,6 +402,9 @@ export function PrivateTransfer({
           value={recipientAddress}
           onChange={setRecipientAddress}
           isPopupMode={false}
+          activeWalletAddress={wallet?.address}
+          onAddToAddressBook={onAddToAddressBook}
+          currentMode="private"
         />
         {recipientAddress.trim() && addressValidation && !addressValidation.isValid && (
           <p className="text-sm text-red-600">{addressValidation.error}</p>

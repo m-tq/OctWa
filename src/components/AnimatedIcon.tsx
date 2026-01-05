@@ -2,17 +2,19 @@ import { Lock, Unlock, Send, Users } from 'lucide-react';
 
 interface AnimatedIconProps {
   type: 'encrypt' | 'decrypt' | 'send-public' | 'send-private' | 'multi-send';
-  size?: 'sm' | 'md' | 'lg';
+  size?: 'xs' | 'sm' | 'md' | 'lg';
 }
 
 export function AnimatedIcon({ type, size = 'md' }: AnimatedIconProps) {
   const sizeClasses = {
+    xs: 'w-16 h-16',
     sm: 'w-20 h-20',
     md: 'w-24 h-24',
     lg: 'w-32 h-32'
   };
 
   const iconSizes = {
+    xs: 'h-8 w-8',
     sm: 'h-10 w-10',
     md: 'h-12 w-12',
     lg: 'h-16 w-16'

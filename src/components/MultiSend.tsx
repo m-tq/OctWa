@@ -9,7 +9,7 @@ import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { VisuallyHidden } from '@/components/ui/visually-hidden';
-import { ScrollArea } from '@/components/ui/scroll-area';
+import { ScrollArea, ScrollAreaContent } from '@/components/ui/scroll-area';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Plus, Trash2, AlertTriangle, Wallet as WalletIcon, CheckCircle, MessageSquare, Loader2, Settings2, XCircle, ChevronDown, Clock } from 'lucide-react';
 import { Wallet } from '../types/wallet';
@@ -38,6 +38,7 @@ interface MultiSendProps {
   resetTrigger?: number;
   sidebarOpen?: boolean;
   historySidebarOpen?: boolean;
+  onAddToAddressBook?: (address: string) => void; // Callback to add address to address book
 }
 
 // Simple address validation function
@@ -65,7 +66,7 @@ function validateRecipientInput(input: string): { isValid: boolean; error?: stri
   };
 }
 
-export function MultiSend({ wallet, balance, onBalanceUpdate, onNonceUpdate, onTransactionSuccess, resetTrigger, sidebarOpen = true, historySidebarOpen = true }: MultiSendProps) {
+export function MultiSend({ wallet, balance, onBalanceUpdate, onNonceUpdate, onTransactionSuccess, resetTrigger, sidebarOpen = true, historySidebarOpen = true, onAddToAddressBook }: MultiSendProps) {
   const [recipients, setRecipients] = useState<Recipient[]>([
     { address: '', amount: '', message: '', showMessage: false }
   ]);
@@ -352,7 +353,7 @@ export function MultiSend({ wallet, balance, onBalanceUpdate, onNonceUpdate, onT
   const validRecipientCount = recipients.filter(r => r.address.trim() && r.addressValidation?.isValid && validateAmount(r.amount)).length;
 
   return (
-    <div className="h-full flex flex-col lg:flex-row gap-4 lg:gap-6 overflow-auto lg:overflow-hidden p-1">
+    <div className="h-full flex flex-col lg:flex-row gap-4 lg:gap-6 overflow-auto lg:overflow-hidden">
       {/* Left Panel - Wallet Info & Controls */}
       <div className="w-full lg:w-80 flex-shrink-0 space-y-4 lg:flex lg:flex-col lg:justify-center overflow-visible">
           {/* Animated Icon - Hidden on mobile */}
@@ -480,8 +481,8 @@ export function MultiSend({ wallet, balance, onBalanceUpdate, onNonceUpdate, onT
 
       {/* Right Panel - Recipients Grid with ScrollArea */}
       <div className="flex-1 lg:flex lg:flex-col lg:min-h-0">
-        <ScrollArea className="h-[400px] lg:flex-1 pr-4">
-          <div className={`grid grid-cols-1 gap-4 ${
+        <ScrollArea className="h-[400px] lg:flex-1" stabilizeGutter>
+          <ScrollAreaContent className={`grid grid-cols-1 gap-4 ${
             sidebarOpen && historySidebarOpen 
               ? '' 
               : sidebarOpen || historySidebarOpen 
@@ -514,6 +515,9 @@ export function MultiSend({ wallet, balance, onBalanceUpdate, onNonceUpdate, onT
                     onChange={(value) => validateAndUpdateRecipient(index, 'address', value)}
                     isPopupMode={true}
                     isCompact={true}
+                    activeWalletAddress={wallet?.address}
+                    onAddToAddressBook={onAddToAddressBook}
+                    currentMode="public"
                     className={`text-xs ${
                       recipient.address.trim() && recipient.addressValidation
                         ? recipient.addressValidation.isValid
@@ -579,7 +583,7 @@ export function MultiSend({ wallet, balance, onBalanceUpdate, onNonceUpdate, onT
                 )}
               </Card>
             ))}
-          </div>
+          </ScrollAreaContent>
         </ScrollArea>
       </div>
 

@@ -44,6 +44,7 @@ interface CacheStorage {
   encryptedBalance: Record<string, CacheEntry<EncryptedBalanceResponse>>;
   history: Record<string, CacheEntry<any>>;
   pendingTransfers: Record<string, CacheEntry<PendingPrivateTransfer[]>>;
+  transactionDetails: Record<string, CacheEntry<TransactionDetails>>; // Cache by tx hash
   currentEpoch: number;
   lastEpochCheck: number;
 }
@@ -62,6 +63,7 @@ class APICache {
     encryptedBalance: {},
     history: {},
     pendingTransfers: {},
+    transactionDetails: {},
     currentEpoch: 0,
     lastEpochCheck: 0
   };
@@ -302,12 +304,86 @@ class APICache {
     await this.saveToStorage();
   }
 
+  // Transaction details cache (by hash)
+  async getTransactionDetails(hash: string): Promise<TransactionDetails | null> {
+    const entry = this.memoryCache.transactionDetails[hash];
+    if (this.isValid(entry)) {
+      console.log(`📦 Cache hit: transaction details for ${hash.slice(0, 8)}`);
+      return entry!.data;
+    }
+    return null;
+  }
+
+  async setTransactionDetails(hash: string, data: TransactionDetails): Promise<void> {
+    const currentEpoch = await this.getCurrentEpoch();
+    this.memoryCache.transactionDetails[hash] = {
+      data,
+      epoch: currentEpoch,
+      timestamp: Date.now(),
+    };
+    console.log(`📦 Cache set: transaction details for ${hash.slice(0, 8)}`);
+    await this.saveToStorage();
+  }
+
+  async invalidateTransactionDetails(hash: string): Promise<void> {
+    delete this.memoryCache.transactionDetails[hash];
+    console.log(`📦 Cache invalidated: transaction details for ${hash.slice(0, 8)}`);
+    await this.saveToStorage();
+  }
+
+  // Background cache transaction details for confirmed transactions
+  async cacheTransactionDetailsInBackground(hashes: string[]): Promise<void> {
+    // Run in background without blocking
+    setTimeout(async () => {
+      console.log(`📦 Background caching ${hashes.length} transaction details...`);
+      for (const hash of hashes) {
+        try {
+          // Check if already cached
+          const cached = await this.getTransactionDetails(hash);
+          if (cached) {
+            continue; // Skip if already cached
+          }
+
+          // Fetch and cache
+          const details = await this.fetchTransactionDetailsForCache(hash);
+          if (details) {
+            await this.setTransactionDetails(hash, details);
+          }
+          
+          // Small delay between requests to avoid overwhelming the server
+          await new Promise(resolve => setTimeout(resolve, 100));
+        } catch (error) {
+          console.warn(`📦 Failed to cache transaction details for ${hash.slice(0, 8)}:`, error);
+        }
+      }
+      console.log(`📦 Background caching complete`);
+    }, 0);
+  }
+
+  // Helper method to fetch transaction details (used by background caching)
+  private async fetchTransactionDetailsForCache(hash: string): Promise<TransactionDetails | null> {
+    try {
+      const response = await makeAPIRequest(`/tx/${hash}`);
+      
+      if (!response.ok) {
+        return null;
+      }
+      
+      const data = await safeJsonParse(response);
+      return data;
+    } catch (error) {
+      return null;
+    }
+  }
+
   // Invalidate all cache for an address (call after transactions)
   async invalidateAll(address: string): Promise<void> {
     delete this.memoryCache.balance[address];
     delete this.memoryCache.encryptedBalance[address];
     delete this.memoryCache.history[address];
     delete this.memoryCache.pendingTransfers[address];
+    // Note: We don't clear transactionDetails here as they're indexed by hash, not address
+    // Transaction details remain cached as they're immutable once confirmed
     console.log(`📦 Cache invalidated: ALL for ${address.slice(0, 8)}`);
     await this.saveToStorage();
   }
@@ -319,6 +395,7 @@ class APICache {
       encryptedBalance: {},
       history: {},
       pendingTransfers: {},
+      transactionDetails: {},
       currentEpoch: this.currentEpoch,
       lastEpochCheck: this.lastEpochCheck
     };
@@ -718,7 +795,13 @@ export async function fetchTransactionHistory(
   }
 }
 
-export async function fetchTransactionDetails(hash: string): Promise<TransactionDetails> {
+export async function fetchTransactionDetails(hash: string, forceRefresh = false): Promise<TransactionDetails> {
+  // Check cache first (unless force refresh)
+  if (!forceRefresh) {
+    const cached = await apiCache.getTransactionDetails(hash);
+    if (cached) return cached;
+  }
+
   try {
     const response = await makeAPIRequest(`/tx/${hash}`);
     
@@ -729,6 +812,12 @@ export async function fetchTransactionDetails(hash: string): Promise<Transaction
     }
     
     const data = await safeJsonParse(response);
+    
+    // Cache the result (only if it's a confirmed transaction)
+    if (data && data.parsed_tx) {
+      await apiCache.setTransactionDetails(hash, data);
+    }
+    
     return data;
   } catch (error) {
     console.error('Error fetching transaction details:', error);
@@ -1324,6 +1413,16 @@ export async function getTransactionHistory(
     // Cache only first page results
     if (options.offset === 0 || options.offset === undefined) {
       await apiCache.setHistory(address, historyResult);
+      
+      // Background cache transaction details for confirmed transactions only
+      const confirmedHashes = historyResult.transactions
+        .filter(tx => tx.status === 'confirmed')
+        .map(tx => tx.hash);
+      
+      if (confirmedHashes.length > 0) {
+        // Start background caching (non-blocking)
+        apiCache.cacheTransactionDetailsInBackground(confirmedHashes);
+      }
     }
     
     return historyResult;

@@ -7,7 +7,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Separator } from '@/components/ui/separator';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
-import { AlertTriangle, Wallet as WalletIcon} from 'lucide-react';
+import { AlertTriangle, Wallet as WalletIcon, Plus, BookUser } from 'lucide-react';
 import { Wallet } from '../types/wallet';
 import { fetchBalance, sendTransaction, createTransaction, invalidateCacheAfterTransaction } from '../utils/api';
 import { useToast } from '@/hooks/use-toast';
@@ -27,6 +27,7 @@ interface SendTransactionProps {
   onTransactionSuccess: () => void;
   onModalClose?: () => void; // Called when transaction result modal is closed
   isCompact?: boolean;
+  onAddToAddressBook?: (address: string) => void; // Callback to add address to address book
 }
 
 // Simple address validation function
@@ -54,7 +55,7 @@ function validateRecipientInput(input: string): { isValid: boolean; error?: stri
   };
 }
 
-export function SendTransaction({ wallet, balance, nonce, onBalanceUpdate, onNonceUpdate, onTransactionSuccess, onModalClose, isCompact = false }: SendTransactionProps) {
+export function SendTransaction({ wallet, balance, nonce, onBalanceUpdate, onNonceUpdate, onTransactionSuccess, onModalClose, isCompact = false, onAddToAddressBook }: SendTransactionProps) {
   const [recipientAddress, setRecipientAddress] = useState('');
   const [addressValidation, setAddressValidation] = useState<{ isValid: boolean; error?: string } | null>(null);
   const [amount, setAmount] = useState('');
@@ -67,6 +68,7 @@ export function SendTransaction({ wallet, balance, nonce, onBalanceUpdate, onNon
   const [showTxModal, setShowTxModal] = useState(false);
   const [txModalStatus, setTxModalStatus] = useState<TransactionStatus>('idle');
   const [txModalResult, setTxModalResult] = useState<TransactionResult>({});
+  const [showAddressBookDropdown, setShowAddressBookDropdown] = useState(false);
   const { toast } = useToast();
 
   // Get OU value based on selection
@@ -290,30 +292,34 @@ export function SendTransaction({ wallet, balance, nonce, onBalanceUpdate, onNon
   // Compact mode for popup
   if (isCompact) {
     return (
-      <div className="space-y-4">
-        {/* Animated Icon */}
-        <AnimatedIcon type="send-public" size="sm" />
+      <div className="space-y-3">
+        {/* Animated Icon - Compact */}
+        <AnimatedIcon type="send-public" size="xs" />
 
         {/* Recipient Address */}
-        <div className="space-y-1.5">
-          <Label htmlFor="recipient" className="text-sm">Recipient</Label>
+        <div className="space-y-1">
+          <Label htmlFor="recipient" className="text-xs">Recipient</Label>
           <AddressInput
             id="recipient"
             value={recipientAddress}
             onChange={setRecipientAddress}
             isPopupMode={true}
-            className="text-sm h-9"
+            isCompact={true}
+            className="text-xs"
+            activeWalletAddress={wallet?.address}
+            onAddToAddressBook={onAddToAddressBook}
+            currentMode="public"
           />
           {recipientAddress.trim() && addressValidation && !addressValidation.isValid && (
-            <p className="text-xs text-red-600">{addressValidation.error}</p>
+            <p className="text-[10px] text-red-600">{addressValidation.error}</p>
           )}
         </div>
 
         {/* Amount */}
-        <div className="space-y-1.5">
+        <div className="space-y-1">
           <div className="flex items-center justify-between">
-            <Label htmlFor="amount" className="text-sm">Amount (OCT)</Label>
-            <div className="flex items-center gap-2 text-xs">
+            <Label htmlFor="amount" className="text-xs">Amount (OCT)</Label>
+            <div className="flex items-center gap-1.5 text-[10px]">
               <span className="text-muted-foreground">
                 Balance: <span className="font-mono">{currentBalance.toFixed(4)}</span>
               </span>
@@ -368,24 +374,24 @@ export function SendTransaction({ wallet, balance, nonce, onBalanceUpdate, onNon
             onChange={(e) => setAmount(e.target.value)}
             step="0.1"
             min="0"
-            className="text-sm h-9"
+            className="text-xs h-8"
           />
         </div>
 
         {/* OU (Gas) */}
-        <div className="space-y-1.5">
-          <Label className="text-sm">OU (Gas)</Label>
+        <div className="space-y-1">
+          <Label className="text-xs">OU (Gas)</Label>
           <Select value={ouOption} onValueChange={setOuOption}>
-            <SelectTrigger className="h-9 text-sm">
+            <SelectTrigger className="h-8 text-xs">
               <SelectValue placeholder="Auto" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="auto" className="text-sm">Auto</SelectItem>
-              <SelectItem value="10000" className="text-sm">10,000 OU</SelectItem>
-              <SelectItem value="30000" className="text-sm">30,000 OU</SelectItem>
-              <SelectItem value="50000" className="text-sm">50,000 OU</SelectItem>
-              <SelectItem value="100000" className="text-sm">100,000 OU</SelectItem>
-              <SelectItem value="custom" className="text-sm">Custom</SelectItem>
+              <SelectItem value="auto" className="text-xs">Auto</SelectItem>
+              <SelectItem value="10000" className="text-xs">10,000 OU</SelectItem>
+              <SelectItem value="30000" className="text-xs">30,000 OU</SelectItem>
+              <SelectItem value="50000" className="text-xs">50,000 OU</SelectItem>
+              <SelectItem value="100000" className="text-xs">100,000 OU</SelectItem>
+              <SelectItem value="custom" className="text-xs">Custom</SelectItem>
             </SelectContent>
           </Select>
           {ouOption === 'custom' && (
@@ -396,14 +402,14 @@ export function SendTransaction({ wallet, balance, nonce, onBalanceUpdate, onNon
               onChange={(e) => setCustomOu(e.target.value)}
               min="1000"
               step="1000"
-              className="h-9 text-sm"
+              className="h-8 text-xs"
             />
           )}
         </div>
 
         {/* Fee Summary - Compact */}
         {amount && validateAmount(amount) && (
-          <div className="p-2.5 bg-muted rounded text-xs space-y-1">
+          <div className="p-2 bg-muted rounded text-[10px] space-y-0.5">
             <div className="flex justify-between">
               <span>Amount:</span>
               <span className="font-mono">{amountNum.toFixed(4)} OCT</span>
@@ -412,7 +418,7 @@ export function SendTransaction({ wallet, balance, nonce, onBalanceUpdate, onNon
               <span>Fee:</span>
               <span className="font-mono">{fee.toFixed(4)} OCT</span>
             </div>
-            <div className="h-px bg-border my-1" />
+            <div className="h-px bg-border my-0.5" />
             <div className="flex justify-between font-medium">
               <span>Total:</span>
               <span className="font-mono">{totalCost.toFixed(4)} OCT</span>
@@ -428,11 +434,11 @@ export function SendTransaction({ wallet, balance, nonce, onBalanceUpdate, onNon
             !validateAmount(amount) ||
             totalCost > currentBalance
           }
-          className="w-full h-10 text-sm"
+          className="w-full h-9 text-xs"
         >
           {isSending ? (
             <div className="flex items-center gap-2">
-              <div className="relative w-4 h-4">
+              <div className="relative w-3.5 h-3.5">
                 <div className="absolute inset-0 rounded-full border-2 border-white/20" />
                 <div className="absolute inset-0 rounded-full border-2 border-transparent border-t-white animate-spin" />
               </div>
@@ -486,6 +492,9 @@ export function SendTransaction({ wallet, balance, nonce, onBalanceUpdate, onNon
           value={recipientAddress}
           onChange={setRecipientAddress}
           isPopupMode={false}
+          activeWalletAddress={wallet?.address}
+          onAddToAddressBook={onAddToAddressBook}
+          currentMode="public"
         />
         {recipientAddress.trim() && addressValidation && !addressValidation.isValid && (
           <p className="text-sm text-red-600">{addressValidation.error}</p>

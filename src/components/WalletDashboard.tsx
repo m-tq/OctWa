@@ -196,12 +196,26 @@ export function WalletDashboard({
   const [prevHistoryWidth, setPrevHistoryWidth] = useState<number | null>(null);
   // Address Book state
   const [showAddressBook, setShowAddressBook] = useState(false);
+  const [addressBookPrefilledAddress, setAddressBookPrefilledAddress] = useState<string>('');
   // Current epoch state
   const [currentEpoch, setCurrentEpoch] = useState<number>(0);
   // Track history panel state before hiding for multi/bulk send
   const [historyPanelWasOpen, setHistoryPanelWasOpen] = useState(false);
   const { autoLabelWallets, getWalletDisplayName } = useAddressBook();
   const { toast } = useToast();
+
+  // Handle add to address book from AddressInput
+  const handleAddToAddressBook = (address: string) => {
+    setAddressBookPrefilledAddress(address);
+    setShowAddressBook(true);
+  };
+
+  // Reset prefilled address when dialog closes
+  useEffect(() => {
+    if (!showAddressBook) {
+      setAddressBookPrefilledAddress('');
+    }
+  }, [showAddressBook]);
 
   // Handle opening send modal with animation
   const openSendModal = (type: 'standard' | 'multi' | 'bulk') => {
@@ -484,15 +498,36 @@ export function WalletDashboard({
     // Subscribe to epoch changes
     const unsubscribe = apiCache.onEpochChange(async (newEpoch, oldEpoch) => {
       console.log(
-        `🔄 Epoch changed (${oldEpoch} → ${newEpoch}), checking for data changes...`
+        `🔄 Epoch changed (${oldEpoch} → ${newEpoch}), updating all wallets...`
       );
 
       // Update current epoch state
       setCurrentEpoch(newEpoch);
 
       try {
-        // Fetch fresh balance data (cache was already invalidated by epoch change)
-        const balanceData = await fetchBalance(wallet.address, true);
+        // 1. Update ALL wallets cache in parallel (wait for completion)
+        console.log(`📍 Updating ${wallets.length} wallet(s) cache...`);
+        
+        await Promise.all(
+          wallets.map(async (w) => {
+            try {
+              await fetchBalance(w.address, true);
+              await fetchEncryptedBalance(w.address, w.privateKey, true);
+              await getTransactionHistory(w.address, {}, true);
+              await getPendingPrivateTransfers(w.address, w.privateKey, true);
+              console.log(`✓ Cache updated for ${w.address.slice(0, 10)}...`);
+            } catch (error) {
+              console.error(`✗ Cache update failed for ${w.address.slice(0, 10)}...`, error);
+            }
+          })
+        );
+        
+        console.log('✅ All wallet caches updated');
+
+        // 2. Reload UI for active wallet from fresh cache
+        console.log(`🔄 Reloading UI for active wallet...`);
+        
+        const balanceData = await fetchBalance(wallet.address);
 
         // Only update UI if balance or nonce changed
         if (balanceData.balance !== balance || balanceData.nonce !== nonce) {
@@ -506,8 +541,7 @@ export function WalletDashboard({
         // Fetch fresh encrypted balance
         const encData = await fetchEncryptedBalance(
           wallet.address,
-          wallet.privateKey,
-          true
+          wallet.privateKey
         );
         if (encData) {
           // Only update if encrypted balance changed
@@ -525,7 +559,7 @@ export function WalletDashboard({
         }
 
         // Fetch fresh transaction history
-        const result = await getTransactionHistory(wallet.address, {}, true);
+        const result = await getTransactionHistory(wallet.address);
         if (Array.isArray(result.transactions)) {
           // Check if any transaction status changed (pending -> confirmed)
           const hasPendingTx = transactions.some((tx) => tx.status === 'pending');
@@ -560,8 +594,7 @@ export function WalletDashboard({
         // Fetch pending transfers count
         const pending = await getPendingPrivateTransfers(
           wallet.address,
-          wallet.privateKey,
-          true
+          wallet.privateKey
         );
         if (pending.length !== pendingTransfersCount) {
           console.log(
@@ -570,7 +603,7 @@ export function WalletDashboard({
           setPendingTransfersCount(pending.length);
         }
 
-        console.log('✅ Epoch change check complete');
+        console.log('✅ UI reload complete');
       } catch (error) {
         console.error('Failed to check data after epoch change:', error);
       }
@@ -602,6 +635,7 @@ export function WalletDashboard({
     encryptedBalance,
     transactions,
     pendingTransfersCount,
+    wallets,
   ]);
 
   // Initial data fetch when wallet is connected
@@ -1273,6 +1307,7 @@ export function WalletDashboard({
                       onNonceUpdate={handleNonceUpdate}
                       onTransactionSuccess={handleTransactionSuccess}
                       isCompact={true}
+                      onAddToAddressBook={handleAddToAddressBook}
                     />
                   ) : (
                     <PrivateTransfer
@@ -1284,6 +1319,7 @@ export function WalletDashboard({
                       onNonceUpdate={handleNonceUpdate}
                       onTransactionSuccess={handleTransactionSuccess}
                       isCompact={true}
+                      onAddToAddressBook={handleAddToAddressBook}
                     />
                   )}
                 </div>
@@ -2058,9 +2094,9 @@ export function WalletDashboard({
 
               {/* Address Book Dialog */}
               <Dialog open={showAddressBook} onOpenChange={setShowAddressBook}>
-                <DialogContent className={isPopupMode ? "w-[380px] max-h-[550px] overflow-hidden p-4" : "sm:max-w-lg max-h-[80vh] overflow-hidden"}>
-                  <DialogHeader className={isPopupMode ? "pb-2" : ""}>
-                    <DialogTitle className={isPopupMode ? "text-sm" : ""}>Address Book</DialogTitle>
+                <DialogContent className={isPopupMode ? "w-[360px] max-h-[520px] overflow-hidden p-3" : "sm:max-w-lg max-h-[80vh] overflow-hidden"}>
+                  <DialogHeader className={isPopupMode ? "pb-1.5" : ""}>
+                    <DialogTitle className={isPopupMode ? "text-xs" : ""}>Address Book</DialogTitle>
                     <DialogDescription className={isPopupMode ? "sr-only" : ""}>
                       Manage your contacts and wallet labels. All data is stored locally and privately.
                     </DialogDescription>
@@ -2068,6 +2104,7 @@ export function WalletDashboard({
                   <AddressBook 
                     isPopupMode={isPopupMode}
                     currentMode={operationMode}
+                    prefilledAddress={addressBookPrefilledAddress}
                   />
                 </DialogContent>
               </Dialog>
@@ -3139,6 +3176,7 @@ export function WalletDashboard({
                     closeSendModal();
                   }}
                   isCompact={false}
+                  onAddToAddressBook={handleAddToAddressBook}
                 />
               </div>
             </ScrollArea>
@@ -3153,6 +3191,7 @@ export function WalletDashboard({
                   onNonceUpdate={handleNonceUpdate}
                   onTransactionSuccess={handleTransactionSuccess}
                   onModalClose={closeSendModal}
+                  onAddToAddressBook={handleAddToAddressBook}
                 />
               </div>
             </ScrollArea>
@@ -3171,6 +3210,7 @@ export function WalletDashboard({
                   resetTrigger={multiResetTrigger}
                   sidebarOpen={showWalletSidebar}
                   historySidebarOpen={showHistorySidebar}
+                  onAddToAddressBook={handleAddToAddressBook}
                 />
               )}
               {expandedSendModal === 'bulk' && (

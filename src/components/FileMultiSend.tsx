@@ -6,7 +6,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { ScrollArea } from '@/components/ui/scroll-area';
+import { ScrollArea, ScrollAreaContent } from '@/components/ui/scroll-area';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { 
@@ -1523,8 +1523,9 @@ export function FileMultiSend({ wallet, balance, onBalanceUpdate, onNonceUpdate,
             )}
           </div>
           
-          <ScrollArea className="h-[200px] xl:flex-1">
-            {recipients.length === 0 ? (
+          <ScrollArea className="h-[200px] xl:flex-1" stabilizeGutter>
+            <ScrollAreaContent>
+              {recipients.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-full min-h-[150px] text-muted-foreground">
                 <Upload className="h-8 w-8 mb-2 opacity-50" />
                 <p className="text-sm">No recipients loaded</p>
@@ -1570,6 +1571,7 @@ export function FileMultiSend({ wallet, balance, onBalanceUpdate, onNonceUpdate,
                 ))}
               </div>
             )}
+            </ScrollAreaContent>
           </ScrollArea>
         </div>
       </div>
@@ -1615,8 +1617,9 @@ export function FileMultiSend({ wallet, balance, onBalanceUpdate, onNonceUpdate,
             )}
           </div>
           
-          <ScrollArea className="h-[200px] xl:flex-1">
-            {txLogs.length === 0 ? (
+          <ScrollArea className="h-[200px] xl:flex-1" stabilizeGutter>
+            <ScrollAreaContent>
+              {txLogs.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-40 text-muted-foreground">
                 <Clock className="h-8 w-8 mb-2 opacity-50" />
                 <p className="text-sm">No transactions yet</p>
@@ -1729,6 +1732,7 @@ export function FileMultiSend({ wallet, balance, onBalanceUpdate, onNonceUpdate,
                 <div ref={txLogsEndRef} />
               </div>
             )}
+            </ScrollAreaContent>
           </ScrollArea>
         </div>
       </div>
