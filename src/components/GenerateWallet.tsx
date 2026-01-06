@@ -301,10 +301,10 @@ export function GenerateWallet({ onWalletGenerated, isCompact = false, hideBorde
         </div>
 
         {/* Backup checkbox */}
-        <div className="flex items-center gap-2 pt-1">
-          <input type="checkbox" id="backup-confirm-compact" checked={hasBackedUp} onChange={(e) => setHasBackedUp(e.target.checked)} className="h-3.5 w-3.5 rounded" />
-          <label htmlFor="backup-confirm-compact" className="text-xs">I have backed up my wallet</label>
-        </div>
+        <label htmlFor="backup-confirm-compact" className="flex items-center gap-2 pt-1 cursor-pointer select-none">
+          <input type="checkbox" id="backup-confirm-compact" checked={hasBackedUp} onChange={(e) => setHasBackedUp(e.target.checked)} className="h-3.5 w-3.5 rounded accent-primary" style={{ cursor: 'pointer' }} />
+          <span className="text-xs">I have backed up my wallet</span>
+        </label>
 
         {/* Buttons */}
         <div className="flex gap-2">
@@ -322,7 +322,7 @@ export function GenerateWallet({ onWalletGenerated, isCompact = false, hideBorde
     <>
       <Dialog open={showVerifyModal} onOpenChange={setShowVerifyModal}>
         <DialogContent className="sm:max-w-md z-[10001]" overlayClassName="z-[10000]">
-          <DialogHeader>
+          <DialogHeader className="pr-8">
             <DialogTitle className="flex items-center gap-2">
               <ShieldCheck className="h-5 w-5 text-primary" />
               Are you sure you have a backup?
@@ -331,7 +331,7 @@ export function GenerateWallet({ onWalletGenerated, isCompact = false, hideBorde
               Please enter the following words from your mnemonic phrase to verify your backup.
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4 py-4">
+          <div className="space-y-4 py-4 pr-8">
             {verifyIndices.map((idx) => (
               <div key={idx} className="space-y-2">
                 <Label htmlFor={`word-${idx}`}>Word {idx + 1}</Label>
@@ -351,9 +351,9 @@ export function GenerateWallet({ onWalletGenerated, isCompact = false, hideBorde
               </p>
             )}
           </div>
-          <div className="flex flex-col-reverse sm:flex-row gap-2">
-            <Button variant="outline" onClick={handleCancelVerify} className="flex-1">
-              Okay, I don't have a backup yet
+          <div className="flex flex-col-reverse sm:flex-row gap-2 pr-8">
+            <Button variant="outline" onClick={handleCancelVerify} className="flex-1 text-xs sm:text-sm">
+              I don't have a backup yet
             </Button>
             <Button onClick={handleVerifyBackup} className="flex-1">
               Verify Backup
@@ -432,10 +432,10 @@ export function GenerateWallet({ onWalletGenerated, isCompact = false, hideBorde
             )}
           </div>
         </div>
-        <div className="flex items-center gap-2 pt-2">
-          <input type="checkbox" id="backup-confirm" checked={hasBackedUp} onChange={(e) => setHasBackedUp(e.target.checked)} className="rounded" />
-          <label htmlFor="backup-confirm" className="text-sm">I have backed up my wallet</label>
-        </div>
+        <label htmlFor="backup-confirm" className="flex items-center gap-2 pt-2 cursor-pointer select-none">
+          <input type="checkbox" id="backup-confirm" checked={hasBackedUp} onChange={(e) => setHasBackedUp(e.target.checked)} className="rounded accent-primary" style={{ cursor: 'pointer' }} />
+          <span className="text-sm">I have backed up my wallet</span>
+        </label>
         <div className="flex gap-3">
           <Button variant="outline" onClick={handleRegenerate} className="flex-1">Generate Another</Button>
           <Button onClick={handleSaveWallet} disabled={!hasBackedUp} className="flex-1">Continue</Button>

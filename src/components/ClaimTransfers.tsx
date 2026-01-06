@@ -214,30 +214,7 @@ export function ClaimTransfers({ wallet, onTransactionSuccess, isPopupMode = fal
 
   return (
     <Card className={`${hideBorder || isPopupMode ? 'border-0 shadow-none' : 'border-[#0000db]/20'}`}>
-      {/* Hide header in popup mode since parent already has header */}
-      {!isPopupMode && (
-        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
-          <CardTitle className="flex items-center gap-2 text-[#0000db]">
-            <Gift className="h-5 w-5" />
-            Claim Private Transfers
-            {transfers.length > 0 && (
-              <Badge variant="secondary" className="ml-2">
-                {transfers.length}
-              </Badge>
-            )}
-          </CardTitle>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => fetchTransfers(true)}
-            disabled={isLoading || isRefreshing}
-          >
-            <RefreshCw className={`h-4 w-4 mr-2 ${isRefreshing ? 'animate-spin' : ''}`} />
-            Refresh
-          </Button>
-        </CardHeader>
-      )}
-      <CardContent className={isPopupMode ? 'px-0 pb-0 pt-0' : ''}>
+      <CardContent className={isPopupMode ? 'px-0 pb-0 pt-0' : 'pt-0'}>
         {/* Refresh button for popup mode */}
         {isPopupMode && (
           <div className="flex justify-end mb-2">

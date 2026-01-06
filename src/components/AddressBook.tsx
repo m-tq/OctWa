@@ -384,7 +384,7 @@ export function AddressBook({
               </div>
 
               {/* Note */}
-              <div className={isPopupMode ? 'space-y-1' : 'space-y-1.5'}>
+              <div className={isPopupMode ? 'space-y-1 pb-1' : 'space-y-1.5'}>
                 <Label className={isPopupMode ? 'text-[11px]' : 'text-sm'}>
                   Note (optional)
                 </Label>
@@ -399,7 +399,7 @@ export function AddressBook({
           </ScrollArea>
 
           {/* Actions - Fixed at bottom, more compact for popup */}
-          <div className={`flex gap-2 px-4 ${isPopupMode ? 'pb-3 pt-2' : 'pb-4 pt-2'}`}>
+          <div className={`flex gap-2 px-4 ${isPopupMode ? 'pb-3 pt-1' : 'pb-4 pt-1'}`}>
             <Button
               variant="outline"
               onClick={() => {

@@ -2780,7 +2780,7 @@ export function WalletDashboard({
                 claimAnimating ? 'animate-in slide-in-from-right-4 fade-in' : ''
               } ${claimClosing ? 'animate-out slide-out-to-right-4 fade-out' : ''}`}
               style={{ 
-                top: '83px', 
+                top: showWalletSidebar ? '65px' : '85px', 
                 left: sidebarLeftOffset,
                 right: historySidebarRightOffset,
                 bottom: '40px'
@@ -2799,6 +2799,11 @@ export function WalletDashboard({
                   <div className="flex items-center gap-2">
                     <Gift className="h-5 w-5 text-[#0000db]" />
                     <h2 className="text-lg font-semibold text-[#0000db]">Claim Transfers</h2>
+                    {pendingTransfersCount > 0 && (
+                      <Badge variant="secondary" className="ml-1 bg-[#0000db]/10 text-[#0000db]">
+                        {pendingTransfersCount}
+                      </Badge>
+                    )}
                   </div>
                 </div>
               </div>
@@ -3085,7 +3090,7 @@ export function WalletDashboard({
             sendModalAnimating ? 'animate-send-modal-enter' : ''
           } ${sendModalClosing ? 'animate-send-modal-exit' : ''}`}
           style={{ 
-            top: '83px', 
+            top: showWalletSidebar ? '65px' : '85px', 
             left: sidebarLeftOffset,
             right: historySidebarRightOffset,
             bottom: '40px'
@@ -3227,7 +3232,7 @@ export function WalletDashboard({
             privateModalAnimating ? 'animate-send-modal-enter' : ''
           } ${privateModalClosing ? 'animate-send-modal-exit' : ''}`}
           style={{ 
-            top: '83px', 
+            top: showWalletSidebar ? '65px' : '85px', 
             left: sidebarLeftOffset,
             right: historySidebarRightOffset,
             bottom: '40px'
