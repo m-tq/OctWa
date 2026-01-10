@@ -626,9 +626,6 @@ export function SendTransaction({ wallet, balance, nonce, onBalanceUpdate, onNon
   // Full mode (expanded view) - Simplified
   return (
     <div className="space-y-4">
-      {/* Animated Icon */}
-      <AnimatedIcon type="send-public" size="sm" />
-
       {/* Recipient Address */}
       <div className="space-y-2">
         <Label htmlFor="recipient">Recipient Address</Label>

@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger, SheetDescription } from '@/components/ui/sheet';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
@@ -46,8 +45,6 @@ import {
   FileText
 } from 'lucide-react';
 import { ExtensionStorageManager } from '../utils/extensionStorage';
-import { PublicBalance } from './PublicBalance';
-import { PrivateBalance } from './PrivateBalance';
 import { MultiSend } from './MultiSend';
 import { SendTransaction } from './SendTransaction';
 import { PrivateTransfer } from './PrivateTransfer';
@@ -1493,6 +1490,17 @@ export function WalletDashboard({
                       )}
                     </div>
 
+                    {/* Message */}
+                    {(('message' in selectedTxDetails && selectedTxDetails.message) || 
+                      ('parsed_tx' in selectedTxDetails && selectedTxDetails.parsed_tx.message)) && (
+                      <div className="bg-muted/50 rounded p-2 mt-2">
+                        <span className="text-[10px] text-muted-foreground">Message</span>
+                        <p className="text-xs mt-0.5 break-all">
+                          {'message' in selectedTxDetails ? selectedTxDetails.message : selectedTxDetails.parsed_tx.message}
+                        </p>
+                      </div>
+                    )}
+
                     {/* View on Explorer */}
                     <Button
                       variant="outline"
@@ -1670,7 +1678,7 @@ export function WalletDashboard({
                                 }}
                                 className="w-full justify-center gap-1.5 text-xs"
                               >
-                                <Plus className="h-3.5 w-3.5" />
+                                <Plus className="h-3 w-3" />
                                 Add Wallet
                               </Button>
                             </div>
@@ -2670,7 +2678,7 @@ export function WalletDashboard({
           <div className="flex-1 flex flex-col items-center justify-start pt-20 pb-4 overflow-auto">
             {/* Mode Label */}
             <div className="text-sm text-muted-foreground mb-2">
-              {operationMode === 'private' ? 'Private Balance' : 'Public Balance'}
+              {operationMode === 'private' ? 'Encrypted Balance' : 'Public Balance'}
             </div>
 
             {/* Balance Display */}
@@ -2875,13 +2883,13 @@ export function WalletDashboard({
                   
                   {/* Content */}
                   <ScrollArea className="flex-1">
-                    <div className="p-3 pb-4">
+                    <div className="p-3 pb-4 min-h-full flex flex-col">
                       {loadingTxDetails ? (
-                        <div className="flex items-center justify-center py-12">
+                        <div className="flex-1 flex items-center justify-center py-12">
                           <div className="w-6 h-6 rounded-full border-2 border-transparent animate-spin" style={{ borderTopColor: '#0000db' }} />
                         </div>
                       ) : selectedTxDetails ? (
-                        <div className="space-y-2">
+                        <div className="flex-1 flex flex-col space-y-2">
                           {/* Status */}
                           <div className="bg-muted/50 rounded-lg p-2.5 flex items-center justify-between">
                             <span className="text-xs text-muted-foreground">Status</span>
@@ -3011,11 +3019,25 @@ export function WalletDashboard({
                             </div>
                           )}
 
+                          {/* Message */}
+                          {(('message' in selectedTxDetails && selectedTxDetails.message) || 
+                            ('parsed_tx' in selectedTxDetails && selectedTxDetails.parsed_tx.message)) && (
+                            <div className="bg-muted/50 rounded-lg p-2.5">
+                              <span className="text-xs text-muted-foreground">Message</span>
+                              <p className="text-sm mt-1 break-all">
+                                {'message' in selectedTxDetails ? selectedTxDetails.message : selectedTxDetails.parsed_tx.message}
+                              </p>
+                            </div>
+                          )}
+
+                          {/* Spacer to push button to bottom */}
+                          <div className="flex-1" />
+
                           {/* View on Explorer */}
                           {!('stage_status' in selectedTxDetails) && (
                             <Button
                               variant="outline"
-                              className="w-full h-10 text-sm"
+                              className="w-full h-10 text-sm mt-auto"
                               asChild
                             >
                               <a 
@@ -3030,7 +3052,7 @@ export function WalletDashboard({
                           )}
                         </div>
                       ) : (
-                        <div className="text-center py-12 text-muted-foreground">
+                        <div className="flex-1 flex items-center justify-center text-muted-foreground">
                           <p className="text-sm">No transaction data available</p>
                         </div>
                       )}

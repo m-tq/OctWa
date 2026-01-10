@@ -347,7 +347,7 @@ export function UnlockWallet({
           <button
             type="submit"
             disabled={isLoading || isLocked}
-            className={`w-full ${isPopupMode ? 'py-1.5 px-3 text-sm' : 'py-3 px-6 text-lg font-medium'} bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50`}
+            className={`w-full ${isPopupMode ? 'py-1.5 text-sm' : 'py-3 px-6 text-lg font-medium'} bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50`}
           >
             {isLoading ? 'Unlocking...' : isLocked ? 'Locked' : 'Unlock'}
           </button>
