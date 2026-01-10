@@ -24,6 +24,8 @@ import {
   AlertTriangle,
   Globe,
   Shield,
+  Download,
+  Upload,
 } from 'lucide-react';
 import { Contact, ContactTag, CONTACT_TAGS } from '../types/addressBook';
 import { addressBook } from '../utils/addressBook';
@@ -167,6 +169,63 @@ export function AddressBook({
     onSelectContact?.(contact);
   };
 
+  const handleExport = () => {
+    const data = JSON.stringify(contacts, null, 2);
+    const blob = new Blob([data], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `address-book-${new Date().toISOString().split('T')[0]}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    toast({ title: 'Exported', description: `${contacts.length} contacts exported` });
+  };
+
+  const handleImport = () => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.json';
+    input.onchange = async (e) => {
+      const file = (e.target as HTMLInputElement).files?.[0];
+      if (!file) return;
+      
+      try {
+        const text = await file.text();
+        const importedContacts = JSON.parse(text) as Contact[];
+        
+        if (!Array.isArray(importedContacts)) {
+          throw new Error('Invalid format');
+        }
+        
+        let imported = 0;
+        for (const contact of importedContacts) {
+          if (contact.label && contact.address) {
+            try {
+              await addressBook.addContact({
+                label: contact.label,
+                address: contact.address,
+                tags: contact.tags || [],
+                note: contact.note,
+                preferredMode: contact.preferredMode,
+              });
+              imported++;
+            } catch {
+              // Skip duplicates or invalid contacts
+            }
+          }
+        }
+        
+        toast({ title: 'Imported', description: `${imported} contacts imported` });
+        loadContacts();
+      } catch {
+        toast({ title: 'Error', description: 'Failed to import contacts', variant: 'destructive' });
+      }
+    };
+    input.click();
+  };
+
   const toggleTag = (tag: ContactTag) => {
     setFormTags((prev) =>
       prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag]
@@ -191,17 +250,38 @@ export function AddressBook({
             {contacts.length}
           </Badge>
         </div>
-        <Button
-          size="sm"
-          onClick={() => {
-            resetForm();
-            setShowAddDialog(true);
-          }}
-          className={`bg-[#0000db] hover:bg-[#0000db]/90 ${isPopupMode ? 'h-6 text-[10px] px-2' : ''}`}
-        >
-          <Plus className={isPopupMode ? 'h-3 w-3 mr-0.5' : 'h-4 w-4 mr-1.5'} />
-          {isPopupMode ? 'Add' : 'Add'}
-        </Button>
+        <div className="flex items-center gap-1">
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={handleImport}
+            className={isPopupMode ? 'h-6 w-6 p-0' : 'h-8 w-8 p-0'}
+            title="Import contacts"
+          >
+            <Upload className={isPopupMode ? 'h-3 w-3' : 'h-4 w-4'} />
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={handleExport}
+            disabled={contacts.length === 0}
+            className={isPopupMode ? 'h-6 w-6 p-0' : 'h-8 w-8 p-0'}
+            title="Export contacts"
+          >
+            <Download className={isPopupMode ? 'h-3 w-3' : 'h-4 w-4'} />
+          </Button>
+          <Button
+            size="sm"
+            onClick={() => {
+              resetForm();
+              setShowAddDialog(true);
+            }}
+            className={`bg-[#0000db] hover:bg-[#0000db]/90 ${isPopupMode ? 'h-6 text-[10px] px-2' : ''}`}
+          >
+            <Plus className={isPopupMode ? 'h-3 w-3 mr-0.5' : 'h-4 w-4 mr-1.5'} />
+            {isPopupMode ? 'Add' : 'Add'}
+          </Button>
+        </div>
       </div>
 
       {/* Search - More compact for popup */}

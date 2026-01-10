@@ -1247,7 +1247,7 @@ export function FileMultiSend({ wallet, balance, onBalanceUpdate, onNonceUpdate,
   const oneSidebarOpen = sidebarOpen || historySidebarOpen;
 
   return (
-    <div className={`h-full flex flex-col gap-4 overflow-auto p-1 ${
+    <div className={`h-full flex flex-col gap-4 overflow-auto ${
       bothSidebarsOpen 
         ? 'lg:flex-col' 
         : oneSidebarOpen 
@@ -1311,7 +1311,7 @@ export function FileMultiSend({ wallet, balance, onBalanceUpdate, onNonceUpdate,
               <ChevronDown className={`h-4 w-4 transition-transform ${showOuSettings ? 'rotate-180' : ''}`} />
             </Button>
           </CollapsibleTrigger>
-          <CollapsibleContent className="pt-2 space-y-2">
+          <CollapsibleContent className="pt-2 px-0.5 space-y-2">
             <Select value={ouOption} onValueChange={setOuOption}>
               <SelectTrigger className="text-sm h-9">
                 <SelectValue placeholder="Auto" />
@@ -1411,8 +1411,8 @@ export function FileMultiSend({ wallet, balance, onBalanceUpdate, onNonceUpdate,
         bothSidebarsOpen 
           ? 'lg:w-full lg:flex lg:flex-col' 
           : oneSidebarOpen 
-            ? 'xl:w-[450px] xl:flex xl:flex-col' 
-            : 'xl:w-[450px] xl:flex xl:flex-col'
+            ? 'xl:flex-1 xl:flex xl:flex-col xl:min-w-[320px] xl:max-w-[450px]' 
+            : 'lg:flex-1 lg:flex lg:flex-col lg:min-w-[320px] lg:max-w-[500px]'
       }`}>
         {/* Upload Recipients File */}
         <TooltipProvider>
@@ -1577,7 +1577,7 @@ export function FileMultiSend({ wallet, balance, onBalanceUpdate, onNonceUpdate,
       </div>
 
       {/* Separator - Hidden on mobile */}
-      <div className={`hidden w-px bg-border ${
+      <div className={`hidden w-[0.5px] bg-border flex-shrink-0 ${
         bothSidebarsOpen 
           ? 'lg:hidden' 
           : oneSidebarOpen 
@@ -1590,8 +1590,8 @@ export function FileMultiSend({ wallet, balance, onBalanceUpdate, onNonceUpdate,
         bothSidebarsOpen 
           ? 'lg:flex-1 lg:flex lg:flex-col' 
           : oneSidebarOpen 
-            ? 'xl:flex-1 xl:flex xl:flex-col xl:min-w-[300px]' 
-            : 'lg:flex-1 lg:flex lg:flex-col lg:min-w-[300px]'
+            ? 'xl:flex-1 xl:flex xl:flex-col xl:min-w-[280px]' 
+            : 'lg:flex-1 lg:flex lg:flex-col lg:min-w-[280px]'
       }`}>
         <div className={`rounded-lg border overflow-hidden ${
           bothSidebarsOpen 
@@ -1711,7 +1711,9 @@ export function FileMultiSend({ wallet, balance, onBalanceUpdate, onNonceUpdate,
                         <span className="font-mono truncate flex-1">
                           {txLog.recipient.slice(0, 8)}...{txLog.recipient.slice(-6)}
                         </span>
-                        <span className="font-mono">{txLog.amount} OCT</span>
+                        <span className={`font-mono font-medium ${txLog.status === 'success' ? 'text-red-600' : ''}`}>
+                          {txLog.status === 'success' ? '- ' : ''}{txLog.amount} OCT
+                        </span>
                       </div>
                       {txLog.hash && (
                         <a 

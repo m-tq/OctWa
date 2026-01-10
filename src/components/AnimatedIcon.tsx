@@ -31,14 +31,6 @@ export function AnimatedIcon({ type, size = 'md' }: AnimatedIconProps) {
             : 'bg-muted/50 border-2 border-border'
         }`}
       >
-        {/* Pulse ring animation */}
-        <div 
-          className={`absolute inset-0 rounded-full animate-ping opacity-20 ${
-            isPrivate ? 'bg-[#0000db]' : 'bg-foreground'
-          }`}
-          style={{ animationDuration: '2s' }}
-        />
-        
         {/* Rotating ring */}
         <div 
           className={`absolute inset-0 rounded-full border-2 border-transparent animate-spin ${

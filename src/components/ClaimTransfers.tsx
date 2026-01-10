@@ -303,9 +303,9 @@ export function ClaimTransfers({ wallet, onTransactionSuccess, isPopupMode = fal
                     </div>
                     
                     <div className={`text-right ${isPopupMode ? 'space-y-0' : 'space-y-1'}`}>
-                      <div className={`font-mono font-bold text-green-600 ${isPopupMode ? 'text-xs' : ''}`}>
+                      <div className={`font-mono font-bold text-[#0000db] ${isPopupMode ? 'text-xs' : ''}`}>
                         {transfer.decryptedAmount !== null 
-                          ? `${transfer.decryptedAmount.toFixed(isPopupMode ? 4 : 8)} OCT`
+                          ? `+ ${transfer.decryptedAmount.toFixed(isPopupMode ? 4 : 8)} OCT`
                           : '[Encrypted]'
                         }
                       </div>

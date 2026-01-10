@@ -122,14 +122,14 @@ export function WalletDashboard({
   const [showWalletSidebar, setShowWalletSidebar] = useState(true); // Sidebar toggle for expanded mode
   const [showHistorySidebar, setShowHistorySidebar] = useState(true);
   const [bothPanelsHidden, setBothPanelsHidden] = useState(false); // Toggle for hiding both panels
-  const [sidebarWidth, setSidebarWidth] = useState(350); // Default 350px
+  const [sidebarWidth, setSidebarWidth] = useState(310); // Default 350px
   const [isResizing, setIsResizing] = useState(false);
   const MIN_SIDEBAR_WIDTH = 310;
   const MAX_SIDEBAR_WIDTH = 450;
   const AUTO_HIDE_THRESHOLD = 200; // Auto hide when dragged below this width
   
   // History sidebar state (right side)
-  const [historySidebarWidth, setHistorySidebarWidth] = useState(385);
+  const [historySidebarWidth, setHistorySidebarWidth] = useState(350);
   const [isResizingHistory, setIsResizingHistory] = useState(false);
   const MIN_HISTORY_WIDTH = 350;
   const MAX_HISTORY_WIDTH = 450;
@@ -1690,6 +1690,15 @@ export function WalletDashboard({
                           >
                             {copiedField === 'headerAddress' ? <Check className="h-3 w-3 text-green-500" /> : <Copy className="h-3 w-3" />}
                           </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setShowReceiveDialog(true)}
+                            className="h-6 w-6 p-0 flex-shrink-0"
+                            title="Show QR Code"
+                          >
+                            <QrCode className="h-3 w-3" />
+                          </Button>
                         </>
                       )}
                     </div>
@@ -1871,7 +1880,7 @@ export function WalletDashboard({
                       className="flex items-center gap-2"
                     >
                       <BookUser className="h-4 w-4" />
-                      Contacts
+                      Address Book
                     </Button>
                     
                     {/* Text buttons: Export Private Keys, Lock Wallet, Reset All */}
@@ -2086,7 +2095,7 @@ export function WalletDashboard({
                   <DialogHeader className={isPopupMode ? "pb-1.5" : ""}>
                     <DialogTitle className={isPopupMode ? "text-xs" : ""}>Address Book</DialogTitle>
                     <DialogDescription className={isPopupMode ? "sr-only" : ""}>
-                      Manage your contacts and wallet labels. All data is stored locally and privately.
+                      Manage your reusable recipients. All data is stored locally and privately.
                     </DialogDescription>
                   </DialogHeader>
                   <AddressBook 
@@ -2104,6 +2113,17 @@ export function WalletDashboard({
                 onOpenChange={setShowExportKeys}
                 isPopupMode={isPopupMode}
               />
+
+              {/* Receive QR Dialog for expanded mode */}
+              {!isPopupMode && (
+                <ReceiveDialog
+                  wallet={wallet}
+                  open={showReceiveDialog}
+                  onOpenChange={setShowReceiveDialog}
+                  isPopupMode={false}
+                  isFullscreen={false}
+                />
+              )}
               
               <AlertDialog open={showLockConfirm} onOpenChange={setShowLockConfirm}>
                 <AlertDialogContent className={isPopupMode ? "w-[340px] p-4" : ""}>
@@ -2146,7 +2166,7 @@ export function WalletDashboard({
                           <li>Your password protection</li>
                           <li>Connected dApps</li>
                           <li>All encrypted data</li>
-                          <li>Address book & contacts</li>
+                          <li>Address book</li>
                         </ul>
                         <p className={`font-semibold ${isPopupMode ? "mt-2 text-[11px]" : "mt-3"}`}>
                           {isPopupMode ? "Backup your keys before proceeding!" : "Make sure you have backed up your private keys or seed phrases before proceeding!"}
@@ -2399,7 +2419,7 @@ export function WalletDashboard({
               if (!showWalletSidebar && showHistorySidebar) setBothPanelsHidden(false);
               if (showWalletSidebar && !showHistorySidebar) setBothPanelsHidden(true);
             }}
-            className={`fixed top-1/2 -translate-y-1/2 z-[50] h-12 w-4 flex items-center justify-center bg-muted/80 hover:bg-accent border-y border-r border-border transition-all ${isResizing ? 'duration-0' : 'duration-300'}`}
+            className={`fixed top-1/2 -translate-y-1/2 z-[50] h-12 w-4 flex items-center justify-center bg-muted/80 hover:bg-accent border-y border-r border-border transition-all opacity-30 hover:opacity-100 ${isResizing ? 'duration-0' : 'duration-300'}`}
             style={{ left: showWalletSidebar ? `${sidebarWidth}px` : '0px' }}
           >
             {showWalletSidebar ? <ChevronLeft className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
@@ -2839,7 +2859,7 @@ export function WalletDashboard({
                   txDetailsAnimating ? 'animate-in slide-in-from-right-4 fade-in' : ''
                 } ${txDetailsClosing ? 'animate-out slide-out-to-right-4 fade-out' : ''}`}>
                   {/* Header */}
-                  <div className="flex items-center gap-2 p-4 pl-6 border-b flex-shrink-0">
+                  <div className="flex items-center gap-2 p-4 pl-6 flex-shrink-0">
                     <Button 
                       variant="ghost" 
                       size="sm" 
@@ -2855,22 +2875,22 @@ export function WalletDashboard({
                   
                   {/* Content */}
                   <ScrollArea className="flex-1">
-                    <div className="p-4 pl-6 pb-6">
+                    <div className="p-3 pb-4">
                       {loadingTxDetails ? (
                         <div className="flex items-center justify-center py-12">
                           <div className="w-6 h-6 rounded-full border-2 border-transparent animate-spin" style={{ borderTopColor: '#0000db' }} />
                         </div>
                       ) : selectedTxDetails ? (
-                        <div className="space-y-3">
+                        <div className="space-y-2">
                           {/* Status */}
-                          <div className="bg-muted/50 rounded-lg p-3 flex items-center justify-between">
-                            <span className="text-sm text-muted-foreground">Status</span>
+                          <div className="bg-muted/50 rounded-lg p-2.5 flex items-center justify-between">
+                            <span className="text-xs text-muted-foreground">Status</span>
                             {'stage_status' in selectedTxDetails ? (
-                              <Badge variant="secondary" className="text-sm bg-yellow-500/20 text-yellow-600">
+                              <Badge variant="secondary" className="text-xs bg-yellow-500/20 text-yellow-600">
                                 {selectedTxDetails.stage_status || 'pending'}
                               </Badge>
                             ) : (
-                              <Badge variant="secondary" className="text-sm bg-[#0000db]/20 text-[#0000db]">
+                              <Badge variant="secondary" className="text-xs bg-[#0000db]/20 text-[#0000db]">
                                 confirmed
                               </Badge>
                             )}
@@ -2878,17 +2898,17 @@ export function WalletDashboard({
 
                           {/* Epoch - only for confirmed */}
                           {'epoch' in selectedTxDetails && (
-                            <div className="bg-muted/50 rounded-lg p-3 flex items-center justify-between">
-                              <span className="text-sm text-muted-foreground">Epoch</span>
-                              <span className="font-mono text-base">{selectedTxDetails.epoch}</span>
+                            <div className="bg-muted/50 rounded-lg p-2.5 flex items-center justify-between">
+                              <span className="text-xs text-muted-foreground">Epoch</span>
+                              <span className="font-mono text-sm">{selectedTxDetails.epoch}</span>
                             </div>
                           )}
 
                           {/* Time */}
                           {('timestamp' in selectedTxDetails || 'parsed_tx' in selectedTxDetails) && (
-                            <div className="bg-muted/50 rounded-lg p-3 flex items-center justify-between">
-                              <span className="text-sm text-muted-foreground">Time (UTC)</span>
-                              <span className="text-sm">
+                            <div className="bg-muted/50 rounded-lg p-2.5 flex items-center justify-between">
+                              <span className="text-xs text-muted-foreground">Time (UTC)</span>
+                              <span className="text-xs">
                                 {'timestamp' in selectedTxDetails 
                                   ? new Date(selectedTxDetails.timestamp * 1000).toLocaleString('en-US', { timeZone: 'UTC', hour12: false })
                                   : new Date(selectedTxDetails.parsed_tx.timestamp * 1000).toLocaleString('en-US', { timeZone: 'UTC', hour12: false })
@@ -2898,38 +2918,38 @@ export function WalletDashboard({
                           )}
 
                           {/* Hash */}
-                          <div className="bg-muted/50 rounded-lg p-3">
+                          <div className="bg-muted/50 rounded-lg p-2.5">
                             <div className="flex items-center justify-between mb-1">
-                              <span className="text-sm text-muted-foreground">Hash</span>
+                              <span className="text-xs text-muted-foreground">Hash</span>
                               <Button 
                                 variant="ghost" 
                                 size="sm" 
-                                className="h-6 w-6 p-0" 
+                                className="h-5 w-5 p-0" 
                                 onClick={() => copyToClipboard('hash' in selectedTxDetails ? selectedTxDetails.hash : selectedTxDetails.tx_hash, 'txHash')}
                               >
-                                {copiedField === 'txHash' ? <Check className="h-3.5 w-3.5 text-green-500" /> : <Copy className="h-3.5 w-3.5" />}
+                                {copiedField === 'txHash' ? <Check className="h-3 w-3 text-green-500" /> : <Copy className="h-3 w-3" />}
                               </Button>
                             </div>
-                            <p className="font-mono text-xs break-all leading-relaxed">
+                            <p className="font-mono text-[11px] break-all leading-relaxed">
                               {'hash' in selectedTxDetails ? selectedTxDetails.hash : selectedTxDetails.tx_hash}
                             </p>
                           </div>
 
                           {/* From */}
                           {('from' in selectedTxDetails || 'parsed_tx' in selectedTxDetails) && (
-                            <div className="bg-muted/50 rounded-lg p-3">
+                            <div className="bg-muted/50 rounded-lg p-2.5">
                               <div className="flex items-center justify-between mb-1">
-                                <span className="text-sm text-muted-foreground">From</span>
+                                <span className="text-xs text-muted-foreground">From</span>
                                 <Button 
                                   variant="ghost" 
                                   size="sm" 
-                                  className="h-6 w-6 p-0" 
+                                  className="h-5 w-5 p-0" 
                                   onClick={() => copyToClipboard('from' in selectedTxDetails ? selectedTxDetails.from : selectedTxDetails.parsed_tx.from, 'txFrom')}
                                 >
-                                  {copiedField === 'txFrom' ? <Check className="h-3.5 w-3.5 text-green-500" /> : <Copy className="h-3.5 w-3.5" />}
+                                  {copiedField === 'txFrom' ? <Check className="h-3 w-3 text-green-500" /> : <Copy className="h-3 w-3" />}
                                 </Button>
                               </div>
-                              <p className="font-mono text-sm break-all leading-relaxed">
+                              <p className="font-mono text-xs break-all leading-relaxed">
                                 {'from' in selectedTxDetails ? selectedTxDetails.from : selectedTxDetails.parsed_tx.from}
                               </p>
                             </div>
@@ -2937,19 +2957,19 @@ export function WalletDashboard({
 
                           {/* To */}
                           {('to' in selectedTxDetails || 'parsed_tx' in selectedTxDetails) && (
-                            <div className="bg-muted/50 rounded-lg p-3">
+                            <div className="bg-muted/50 rounded-lg p-2.5">
                               <div className="flex items-center justify-between mb-1">
-                                <span className="text-sm text-muted-foreground">To</span>
+                                <span className="text-xs text-muted-foreground">To</span>
                                 <Button 
                                   variant="ghost" 
                                   size="sm" 
-                                  className="h-6 w-6 p-0" 
+                                  className="h-5 w-5 p-0" 
                                   onClick={() => copyToClipboard('to' in selectedTxDetails ? selectedTxDetails.to : selectedTxDetails.parsed_tx.to, 'txTo')}
                                 >
-                                  {copiedField === 'txTo' ? <Check className="h-3.5 w-3.5 text-green-500" /> : <Copy className="h-3.5 w-3.5" />}
+                                  {copiedField === 'txTo' ? <Check className="h-3 w-3 text-green-500" /> : <Copy className="h-3 w-3" />}
                                 </Button>
                               </div>
-                              <p className="font-mono text-sm break-all leading-relaxed">
+                              <p className="font-mono text-xs break-all leading-relaxed">
                                 {'to' in selectedTxDetails ? selectedTxDetails.to : selectedTxDetails.parsed_tx.to}
                               </p>
                             </div>
@@ -2957,9 +2977,9 @@ export function WalletDashboard({
 
                           {/* Amount */}
                           {('amount' in selectedTxDetails || 'parsed_tx' in selectedTxDetails) && (
-                            <div className="bg-muted/50 rounded-lg p-3 flex items-center justify-between">
-                              <span className="text-sm text-muted-foreground">Amount</span>
-                              <span className="font-mono text-base font-medium">
+                            <div className="bg-muted/50 rounded-lg p-2.5 flex items-center justify-between">
+                              <span className="text-xs text-muted-foreground">Amount</span>
+                              <span className="font-mono text-sm font-medium">
                                 {'amount' in selectedTxDetails ? selectedTxDetails.amount : selectedTxDetails.parsed_tx.amount} OCT
                               </span>
                             </div>
@@ -2971,11 +2991,11 @@ export function WalletDashboard({
                             const ouNum = parseInt(ouValue) || 0;
                             const feeOct = (ouNum * 0.0000001).toFixed(7);
                             return (
-                              <div className="bg-muted/50 rounded-lg p-3 flex items-center justify-between">
-                                <span className="text-sm text-muted-foreground">OU (Gas)</span>
+                              <div className="bg-muted/50 rounded-lg p-2.5 flex items-center justify-between">
+                                <span className="text-xs text-muted-foreground">OU (Gas)</span>
                                 <div className="text-right">
-                                  <span className="font-mono text-base">{ouValue}</span>
-                                  <p className="text-xs text-muted-foreground">≈ {feeOct} OCT</p>
+                                  <span className="font-mono text-sm">{ouValue}</span>
+                                  <p className="text-[10px] text-muted-foreground">≈ {feeOct} OCT</p>
                                 </div>
                               </div>
                             );
@@ -2983,9 +3003,9 @@ export function WalletDashboard({
 
                           {/* Nonce */}
                           {('nonce' in selectedTxDetails || 'parsed_tx' in selectedTxDetails) && (
-                            <div className="bg-muted/50 rounded-lg p-3 flex items-center justify-between">
-                              <span className="text-sm text-muted-foreground">Nonce</span>
-                              <span className="font-mono text-base">
+                            <div className="bg-muted/50 rounded-lg p-2.5 flex items-center justify-between">
+                              <span className="text-xs text-muted-foreground">Nonce</span>
+                              <span className="font-mono text-sm">
                                 {'nonce' in selectedTxDetails ? selectedTxDetails.nonce : selectedTxDetails.parsed_tx.nonce}
                               </span>
                             </div>
@@ -3075,7 +3095,7 @@ export function WalletDashboard({
               if (showWalletSidebar && !showHistorySidebar) setBothPanelsHidden(false);
               if (!showWalletSidebar && showHistorySidebar) setBothPanelsHidden(true);
             }}
-            className={`fixed top-1/2 -translate-y-1/2 z-[50] h-12 w-4 flex items-center justify-center bg-muted/80 hover:bg-accent border-y border-l border-border transition-all ${isResizingHistory ? 'duration-0' : 'duration-300'}`}
+            className={`fixed top-1/2 -translate-y-1/2 z-[50] h-12 w-4 flex items-center justify-center bg-muted/80 hover:bg-accent border-y border-l border-border transition-all opacity-30 hover:opacity-100 ${isResizingHistory ? 'duration-0' : 'duration-300'}`}
             style={{ right: showHistorySidebar ? `${historySidebarWidth}px` : '0px' }}
           >
             {showHistorySidebar ? <ChevronRight className="h-3 w-3" /> : <ChevronLeft className="h-3 w-3" />}
@@ -3359,7 +3379,7 @@ export function WalletDashboard({
         >
           <button
             onClick={toggleBothPanels}
-            className="h-6 px-3 flex items-center justify-center gap-1 bg-muted/80 hover:bg-accent border border-border rounded-full transition-all duration-300 text-xs text-muted-foreground hover:text-foreground"
+            className="h-6 px-3 flex items-center justify-center gap-1 bg-muted/80 hover:bg-accent border border-border rounded-full transition-all duration-300 text-xs text-muted-foreground hover:text-foreground opacity-30 hover:opacity-100"
             title={bothPanelsHidden ? "Show panels" : "Hide panels"}
           >
             {bothPanelsHidden ? (

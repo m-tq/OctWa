@@ -2,8 +2,7 @@ import { useState } from 'react';
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { VisuallyHidden } from '@/components/ui/visually-hidden';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { CheckCircle, XCircle, Loader2, Copy, ExternalLink, Check } from 'lucide-react';
+import { CheckCircle, XCircle, Copy, ExternalLink, Check } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
 export type TransactionStatus = 'idle' | 'sending' | 'success' | 'error';
@@ -13,6 +12,39 @@ export interface TransactionResult {
   amount?: string;
   error?: string;
 }
+
+interface TransactionModalProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  status: TransactionStatus;
+  result: TransactionResult;
+  type: 'send' | 'transfer' | 'claim' | 'encrypt' | 'decrypt';
+  onClose?: () => void;
+  isPopupMode?: boolean;
+}
+
+// Bouncing Logo Animation for loading state
+const BouncingLogo = ({ size = 80 }: { size?: number }) => (
+  <svg
+    width={size}
+    height={size}
+    viewBox="0 0 50 50"
+    fill="none"
+    xmlns="http://www.w3.org/2000/svg"
+    className="animate-bounce"
+    style={{ animationDuration: '0.8s' }}
+  >
+    <circle
+      cx="25"
+      cy="25"
+      r="21"
+      stroke="#0000db"
+      strokeWidth="8"
+      fill="none"
+    />
+    <circle cx="25" cy="25" r="9" fill="#0000db" />
+  </svg>
+);
 
 interface TransactionModalProps {
   open: boolean;
@@ -98,27 +130,10 @@ export function TransactionModal({
           {/* Loading State */}
           {status === 'sending' && (
             <>
-              <div className={`relative ${isPopupMode ? 'w-14 h-14' : 'w-20 h-20'}`}>
-                {/* Spinning circle border */}
-                <div className="absolute inset-0 rounded-full border-4 border-[#0000db]/20" />
-                <div className="absolute inset-0 rounded-full border-4 border-transparent border-t-[#0000db] animate-spin" />
-                {/* Center icon */}
-                <div className="absolute inset-0 flex items-center justify-center">
-                  <Loader2 className={`${isPopupMode ? 'w-6 h-6' : 'w-8 h-8'} text-[#0000db] animate-spin`} />
-                </div>
-              </div>
+              <BouncingLogo size={isPopupMode ? 56 : 80} />
               <div className="text-center space-y-1">
                 <h3 className={`font-semibold ${isPopupMode ? 'text-sm' : 'text-lg'}`}>{getTitle()}</h3>
                 <p className={`text-muted-foreground ${isPopupMode ? 'text-xs' : 'text-sm'}`}>{getLoadingText()}</p>
-              </div>
-              <div className="flex gap-1.5">
-                {[0, 1, 2].map((i) => (
-                  <div
-                    key={i}
-                    className="w-2 h-2 rounded-full bg-[#0000db] animate-bounce"
-                    style={{ animationDelay: `${i * 0.15}s` }}
-                  />
-                ))}
               </div>
             </>
           )}
@@ -157,9 +172,14 @@ export function TransactionModal({
               {/* Amount if available */}
               {result.amount && (
                 <div className="animate-in fade-in-50 slide-in-from-bottom-4 duration-500 delay-200">
-                  <Badge variant="secondary" className={isPopupMode ? "text-xs px-2 py-0.5" : "text-sm px-3 py-1"}>
+                  <div className={`font-bold ${isPopupMode ? 'text-lg' : 'text-2xl'} ${
+                    type === 'send' || type === 'transfer' || type === 'encrypt'
+                      ? 'text-red-600' 
+                      : 'text-[#0000db]'
+                  }`}>
+                    {type === 'send' || type === 'transfer' || type === 'encrypt' ? '- ' : '+ '}
                     {result.amount} OCT
-                  </Badge>
+                  </div>
                 </div>
               )}
 

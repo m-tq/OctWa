@@ -92,7 +92,7 @@ const ScrollAreaContent = React.forwardRef<
   return (
     <div
       ref={ref}
-      className={cn(className, hasOverflow && 'pr-3')}
+      className={cn(className, hasOverflow && 'pr-2')}
       {...props}
     />
   );

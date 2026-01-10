@@ -598,13 +598,18 @@ export function MultiSend({ wallet, balance, onBalanceUpdate, onNonceUpdate, onT
             {/* Sending State */}
             {txModalStatus === 'sending' && (
               <>
-                <div className="relative w-16 h-16">
-                  <div className="absolute inset-0 rounded-full border-4 border-[#0000db]/20" />
-                  <div className="absolute inset-0 rounded-full border-4 border-transparent border-t-[#0000db] animate-spin" />
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <Loader2 className="w-6 h-6 text-[#0000db] animate-spin" />
-                  </div>
-                </div>
+                <svg
+                  width={64}
+                  height={64}
+                  viewBox="0 0 50 50"
+                  fill="none"
+                  xmlns="http://www.w3.org/2000/svg"
+                  className="animate-bounce"
+                  style={{ animationDuration: '0.8s' }}
+                >
+                  <circle cx="25" cy="25" r="21" stroke="#0000db" strokeWidth="8" fill="none" />
+                  <circle cx="25" cy="25" r="9" fill="#0000db" />
+                </svg>
                 <div className="text-center space-y-1">
                   <h3 className="text-base font-semibold">Sending ({txProgress.current}/{txProgress.total})</h3>
                   {txProgress.currentRecipient && (
@@ -627,15 +632,6 @@ export function MultiSend({ wallet, balance, onBalanceUpdate, onNonceUpdate, onT
                     </div>
                   </ScrollArea>
                 )}
-                <div className="flex gap-1.5">
-                  {[0, 1, 2].map((i) => (
-                    <div
-                      key={i}
-                      className="w-2 h-2 rounded-full bg-[#0000db] animate-bounce"
-                      style={{ animationDelay: `${i * 0.15}s` }}
-                    />
-                  ))}
-                </div>
               </>
             )}
 
@@ -651,9 +647,9 @@ export function MultiSend({ wallet, balance, onBalanceUpdate, onNonceUpdate, onT
                     {results.length} transaction(s) completed
                   </p>
                 </div>
-                <Badge variant="secondary" className="text-sm px-3 py-1">
-                  {results.reduce((sum, r) => sum + (parseFloat(r.amount) || 0), 0).toFixed(8)} OCT Total
-                </Badge>
+                <div className="font-bold text-2xl text-red-600">
+                  - {results.reduce((sum, r) => sum + (parseFloat(r.amount) || 0), 0).toFixed(8)} OCT
+                </div>
                 {/* Elapsed Time */}
                 {elapsedTime > 0 && (
                   <div className="flex items-center gap-2 text-xs text-muted-foreground">
@@ -670,7 +666,7 @@ export function MultiSend({ wallet, balance, onBalanceUpdate, onNonceUpdate, onT
                       <div key={idx} className="flex items-center gap-2 p-1.5 rounded text-xs bg-[#0000db]/10 dark:bg-[#0000db]/20">
                         <CheckCircle className="h-3 w-3 text-[#0000db] flex-shrink-0" />
                         <span className="font-mono truncate">oct...{result.recipient.slice(-10)}</span>
-                        <span className="ml-auto">{result.amount} OCT</span>
+                        <span className="ml-auto text-red-600 font-medium">- {result.amount} OCT</span>
                       </div>
                     ))}
                   </div>
@@ -709,7 +705,9 @@ export function MultiSend({ wallet, balance, onBalanceUpdate, onNonceUpdate, onT
                       <div key={idx} className={`flex items-center gap-2 p-1.5 rounded text-xs ${result.success ? 'bg-[#0000db]/10 dark:bg-[#0000db]/20' : 'bg-red-50 dark:bg-red-950/50'}`}>
                         {result.success ? <CheckCircle className="h-3 w-3 text-[#0000db] flex-shrink-0" /> : <XCircle className="h-3 w-3 text-red-500 flex-shrink-0" />}
                         <span className="font-mono truncate">oct...{result.recipient.slice(-10)}</span>
-                        <span className="ml-auto">{result.amount} OCT</span>
+                        <span className={`ml-auto font-medium ${result.success ? 'text-red-600' : 'text-muted-foreground'}`}>
+                          {result.success ? `- ${result.amount}` : result.amount} OCT
+                        </span>
                         {!result.success && result.error && (
                           <span className="text-red-500 truncate max-w-[100px]" title={result.error}>!</span>
                         )}
