@@ -117,7 +117,7 @@ export function SplashScreen({
               fontSize: isPopupMode ? '1.75rem' : '2.5rem'
             }}
           >
-            OctWa
+            {__APP_NAME__.split(' ')[0]}
           </h1>
           <p 
             className="text-muted-foreground font-medium"

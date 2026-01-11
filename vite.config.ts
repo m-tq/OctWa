@@ -4,10 +4,12 @@ import { NodeGlobalsPolyfillPlugin } from '@esbuild-plugins/node-globals-polyfil
 import path from 'path';
 import fs from 'fs';
 
-// Read version from manifest.json
+// Read version and name from manifest.json
 const manifestPath = path.resolve(__dirname, 'extensionFiles/manifest.json');
 const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf-8'));
 const APP_VERSION = manifest.version;
+const APP_NAME = manifest.name;
+const APP_TITLE = manifest.action?.default_title || APP_NAME;
 
 // Plugin to exclude screenshot folder from public directory copy
 function excludeScreenshotPlugin(): Plugin {
@@ -23,12 +25,24 @@ function excludeScreenshotPlugin(): Plugin {
   };
 }
 
+// Plugin to inject app title from manifest into HTML
+function injectAppTitlePlugin(): Plugin {
+  return {
+    name: 'inject-app-title',
+    transformIndexHtml(html) {
+      return html.replace(/<title>.*<\/title>/, `<title>${APP_TITLE}</title>`);
+    }
+  };
+}
+
 // https://vitejs.dev/config/
 export default defineConfig({
-  plugins: [react(), excludeScreenshotPlugin()],
+  plugins: [react(), excludeScreenshotPlugin(), injectAppTitlePlugin()],
   base: './',
   define: {
     __APP_VERSION__: JSON.stringify(APP_VERSION),
+    __APP_NAME__: JSON.stringify(APP_NAME),
+    __APP_TITLE__: JSON.stringify(APP_TITLE),
   },
   build: {
     outDir: 'dist',

@@ -120,7 +120,7 @@ export function WelcomeScreen({ onWalletCreated }: WelcomeScreenProps) {
                 />
               </div>
             </div>
-            <h1 className="text-3xl font-bold text-foreground">OctWa</h1>
+            <h1 className="text-3xl font-bold text-foreground">{__APP_NAME__.split(' ')[0]}</h1>
             <p className="text-sm text-muted-foreground font-medium mt-1">Encrypted by Default</p>
             <p className="text-xs text-muted-foreground/60 mt-0.5">Powered by Octra HFHE</p>
           </div>

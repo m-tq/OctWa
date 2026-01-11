@@ -1570,7 +1570,7 @@ export function WalletDashboard({
                 <div className={`flex flex-col ${!isPopupMode && showWalletSidebar ? 'justify-center' : ''}`}>
                   <div className="flex items-center gap-2">
                     <h1 className={`${isPopupMode ? 'text-sm' : 'text-xl'} font-semibold text-foreground`}>
-                      OctWa - Octra Wallet
+                      {__APP_TITLE__}
                     </h1>
                     {/* Mode Badge - Only show when inline modal is open, except for decrypt (has corner badge) */}
                     {!isPopupMode && (expandedSendModal || expandedPrivateModal === 'encrypt') && (
@@ -3410,7 +3410,7 @@ export function WalletDashboard({
                 </svg>
               </a>
               <span className="text-muted-foreground/50">|</span>
-              <span className="text-[10px] text-muted-foreground">OctWa {__APP_VERSION__}</span>
+              <span className="text-[10px] text-muted-foreground">{__APP_NAME__.split(' ')[0]} {__APP_VERSION__}</span>
             </div>
           </div>
         </div>
@@ -3511,7 +3511,7 @@ export function WalletDashboard({
               </svg>
             </a>
             <span className="text-muted-foreground/50">|</span>
-            <span className="text-muted-foreground">OctWa {__APP_VERSION__}</span>
+            <span className="text-muted-foreground">{__APP_NAME__.split(' ')[0]} {__APP_VERSION__}</span>
           </div>
         </footer>
       )}
