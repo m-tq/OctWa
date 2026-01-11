@@ -120,10 +120,16 @@ export function SplashScreen({
             OctWa
           </h1>
           <p 
-            className="text-muted-foreground"
+            className="text-muted-foreground font-medium"
             style={{ fontSize: isPopupMode ? '0.875rem' : '1rem' }}
           >
-            Stay Encrypted
+            Encrypted by Default
+          </p>
+          <p 
+            className="text-muted-foreground/60 mt-1"
+            style={{ fontSize: isPopupMode ? '0.65rem' : '0.75rem' }}
+          >
+            Powered by Octra HFHE
           </p>
         </div>
       </div>

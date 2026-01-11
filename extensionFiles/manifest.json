@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "OctWa - Octra Wallet",
+  "name": "OctWa (Octra Wallet)",
   "version": "1.1.1",
-  "description": "Browser Based Octra Wallet by Community Member",
+  "description": "The Octra wallet for public and fully encrypted transactions. Powered by HFHE.",
   "permissions": [
     "storage",
     "activeTab"

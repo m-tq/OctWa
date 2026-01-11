@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Globe, Shield, Check, AlertTriangle } from 'lucide-react';
 import { OperationMode } from '../utils/modeStorage';
+import { ModeSwitchConfirmDialog, isModeSwitchReminderDisabled } from './ModeSwitchConfirmDialog';
+import { InfoTooltip } from './InfoTooltip';
 
 interface ModeToggleProps {
   currentMode: OperationMode;
@@ -10,6 +12,7 @@ interface ModeToggleProps {
   encryptedBalance?: number;
   pendingTransfersCount?: number;
   isCompact?: boolean;
+  showConfirmation?: boolean;
 }
 
 export function ModeToggle({
@@ -18,9 +21,12 @@ export function ModeToggle({
   privateEnabled,
   encryptedBalance = 0,
   pendingTransfersCount = 0,
-  isCompact = false
+  isCompact = false,
+  showConfirmation = true
 }: ModeToggleProps) {
   const [displayMode, setDisplayMode] = useState(currentMode);
+  const [showConfirmDialog, setShowConfirmDialog] = useState(false);
+  const [pendingMode, setPendingMode] = useState<OperationMode | null>(null);
 
   useEffect(() => {
     setDisplayMode(currentMode);
@@ -32,13 +38,7 @@ export function ModeToggle({
 
   const isPrivate = displayMode === 'private';
 
-  const handleToggle = () => {
-    const newMode = isPrivate ? 'public' : 'private';
-    
-    if (newMode === 'private' && !privateEnabled) {
-      return;
-    }
-
+  const executeToggle = (newMode: OperationMode) => {
     // Trigger page transition effect
     document.body.classList.add('mode-switching');
     if (newMode === 'private') {
@@ -59,6 +59,32 @@ export function ModeToggle({
     setTimeout(() => {
       document.body.classList.remove('mode-switching', 'to-private', 'to-public');
     }, 500);
+  };
+
+  const handleToggle = () => {
+    const newMode = isPrivate ? 'public' : 'private';
+    
+    if (newMode === 'private' && !privateEnabled) {
+      return;
+    }
+
+    // Show confirmation dialog only when leaving private mode (switching to public)
+    // Skip if user has disabled the reminder
+    if (showConfirmation && newMode === 'public' && isPrivate && !isModeSwitchReminderDisabled()) {
+      setPendingMode(newMode);
+      setShowConfirmDialog(true);
+      return;
+    }
+
+    executeToggle(newMode);
+  };
+
+  const handleConfirmSwitch = () => {
+    if (pendingMode) {
+      executeToggle(pendingMode);
+      setPendingMode(null);
+    }
+    setShowConfirmDialog(false);
   };
 
   // Tooltip text based on current state
@@ -198,21 +224,25 @@ export function ModeToggle({
           </TooltipProvider>
         )}
         {isExposed && (
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <div className={`flex items-center gap-1 ${isCompact ? 'text-[10px]' : 'text-xs'} font-medium text-orange-500 cursor-help`}>
-                  <AlertTriangle className={`${isCompact ? 'h-3 w-3' : 'h-3.5 w-3.5'}`} />
-                  <span>Exposed.</span>
-                </div>
-              </TooltipTrigger>
-              <TooltipContent side="bottom">
-                <p className="text-xs">You're traceable</p>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
+          <div className={`flex items-center gap-1 ${isCompact ? 'text-[10px]' : 'text-xs'} font-medium text-orange-500`}>
+            <AlertTriangle className={`${isCompact ? 'h-3 w-3' : 'h-3.5 w-3.5'}`} />
+            <span>Exposed.</span>
+            <InfoTooltip
+              content="Your transactions are publicly visible on the blockchain. Encrypt your balance to enable Private Mode."
+              side="bottom"
+              iconSize="sm"
+            />
+          </div>
         )}
       </div>
+
+      {/* Mode Switch Confirmation Dialog */}
+      <ModeSwitchConfirmDialog
+        open={showConfirmDialog}
+        onOpenChange={setShowConfirmDialog}
+        onConfirm={handleConfirmSwitch}
+        isCompact={isCompact}
+      />
     </div>
   );
 }

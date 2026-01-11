@@ -9,6 +9,7 @@ import { decryptBalance, invalidateCacheAfterDecrypt } from '../utils/api';
 import { useToast } from '@/hooks/use-toast';
 import { AnimatedIcon } from './AnimatedIcon';
 import { TransactionModal, TransactionStatus, TransactionResult } from './TransactionModal';
+import { InfoTooltip } from './InfoTooltip';
 
 interface DecryptBalanceDialogProps {
   open: boolean;
@@ -106,17 +107,28 @@ export function DecryptBalanceDialog({
           Convert private OCT back to public OCT.
         </p>
       ) : (
-        <div className={`flex items-center gap-2 ${isPopupMode ? "py-2" : "py-3"}`}>
-          <AlertTriangle className="h-4 w-4 flex-shrink-0 text-yellow-500" />
-          <span className={`text-muted-foreground ${isPopupMode ? "text-xs leading-normal" : "text-sm"}`}>
-            {isPopupMode ? "Convert private OCT back to public OCT." : "Decrypting balance converts private OCT back to public OCT."}
-          </span>
+        <div className={`flex items-start gap-2 p-3 bg-orange-50 dark:bg-orange-950/30 border border-orange-200 dark:border-orange-800 ${isPopupMode ? "py-2" : "py-3"}`}>
+          <AlertTriangle className="h-4 w-4 flex-shrink-0 text-orange-500 mt-0.5" />
+          <div className="flex-1">
+            <span className={`text-orange-800 dark:text-orange-200 ${isPopupMode ? "text-xs leading-normal" : "text-sm"}`}>
+              {isPopupMode ? "Convert private OCT back to public OCT." : "Decrypting balance converts private OCT back to public OCT."}
+            </span>
+            <p className={`text-orange-600 dark:text-orange-300 mt-1 ${isPopupMode ? "text-[10px]" : "text-xs"}`}>
+              Your decrypted balance will be visible on the blockchain.
+            </p>
+          </div>
         </div>
       )}
 
-      <div className={isPopupMode ? "space-y-1 pt-8" : "space-y-2 pt-10"}>
+      <div className={isPopupMode ? "space-y-1 pt-8" : "space-y-2 pt-6"}>
         <div className="flex items-center justify-between">
-          <Label htmlFor="decrypt-amount" className={isPopupMode ? "text-xs" : ""}>Amount to Decrypt</Label>
+          <div className="flex items-center gap-1">
+            <Label htmlFor="decrypt-amount" className={isPopupMode ? "text-xs" : ""}>Amount to Decrypt</Label>
+            <InfoTooltip 
+              content="The amount you decrypt will become publicly visible on the blockchain."
+              side="top"
+            />
+          </div>
           <div className={`flex items-center gap-2 ${isPopupMode ? 'text-xs' : 'text-sm'}`}>
             <span className="text-[#0000db]/70">
               Balance: <span className="font-mono">{encryptedBalance.toFixed(4)}</span>

@@ -11,6 +11,8 @@ import { useToast } from '@/hooks/use-toast';
 import { EncryptBalanceDialog } from './EncryptBalanceDialog';
 import { DecryptBalanceDialog } from './DecryptBalanceDialog';
 import { ExportPrivateKeys } from './ExportPrivateKeys';
+import { InfoTooltip } from './InfoTooltip';
+import { SensitiveActionButton } from './SensitiveActionButton';
 
 interface BalanceProps {
   wallet: WalletType | null;
@@ -225,6 +227,10 @@ export function Balance({ wallet, balance, encryptedBalance: propEncryptedBalanc
               <div className="flex items-center gap-2">
                 <Lock className="h-4 w-4 text-yellow-500" />
                 <span className="text-sm font-medium text-muted-foreground">Private Balance</span>
+                <InfoTooltip 
+                  content="Funds processed using fully homomorphic encryption. Visible only to you. Computable without decryption."
+                  side="top"
+                />
               </div>
               {isLoading ? (
                 <Skeleton className="h-8 w-32" />
@@ -266,27 +272,34 @@ export function Balance({ wallet, balance, encryptedBalance: propEncryptedBalanc
           )}
 
           {/* Balance Actions */}
-          <div className="flex flex-wrap justify-center gap-2 pt-5 border-t">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setShowEncryptDialog(true)}
-              disabled={!balance || balance <= 1}
-              className="flex items-center gap-2"
-            >
-              <Lock className="h-4 w-4" />
-              Encrypt Balance
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setShowDecryptDialog(true)}
-              disabled={!encryptedBalance || encryptedBalance.encrypted <= 0}
-              className="flex items-center gap-2"
-            >
-              <Unlock className="h-4 w-4" />
-              Decrypt Balance
-            </Button>
+          <div className="pt-5 border-t space-y-3">
+            {/* Primary Actions */}
+            <div className="flex flex-wrap justify-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowEncryptDialog(true)}
+                disabled={!balance || balance <= 1}
+                className="flex items-center gap-2"
+              >
+                <Lock className="h-4 w-4" />
+                Encrypt Balance
+              </Button>
+            </div>
+            
+            {/* Sensitive Actions - with subtle warning styling */}
+            <div className="flex flex-wrap justify-center gap-2 pt-2 border-t border-dashed border-orange-200 dark:border-orange-800/30">
+              <p className="w-full text-center text-[10px] text-orange-500/70 mb-1">Sensitive Actions</p>
+              <SensitiveActionButton
+                size="sm"
+                onClick={() => setShowDecryptDialog(true)}
+                disabled={!encryptedBalance || encryptedBalance.encrypted <= 0}
+                tooltipText="Converts private OCT back to public OCT. Your balance will become visible."
+              >
+                <Unlock className="h-4 w-4 mr-1.5" />
+                Decrypt
+              </SensitiveActionButton>
+            </div>
           </div>
         </CardContent>
       </Card>

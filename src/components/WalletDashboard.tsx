@@ -52,6 +52,7 @@ import { ClaimTransfers } from './ClaimTransfers';
 import { FileMultiSend } from './FileMultiSend';
 import { UnifiedHistory } from './UnifiedHistory';
 import { ModeToggle } from './ModeToggle';
+import { resetModeSwitchReminder } from './ModeSwitchConfirmDialog';
 import { ThemeToggle } from './ThemeToggle';
 import { AddWalletPopup } from './AddWalletPopup';
 import { RPCProviderManager } from './RPCProviderManager';
@@ -61,6 +62,7 @@ import { ReceiveDialog } from './ReceiveDialog';
 import { EncryptBalanceDialog } from './EncryptBalanceDialog';
 import { DecryptBalanceDialog } from './DecryptBalanceDialog';
 import { AddressBook } from './AddressBook';
+import { OnboardingOverlay, useOnboarding, resetOnboardingState } from './OnboardingOverlay';
 import { WalletLabelEditor, WalletDisplayName } from './WalletLabelEditor';
 import { Wallet } from '../types/wallet';
 import { WalletManager } from '../utils/walletManager';
@@ -200,7 +202,20 @@ export function WalletDashboard({
   // Track history panel state before hiding for multi/bulk send
   const [historyPanelWasOpen, setHistoryPanelWasOpen] = useState(false);
   const { autoLabelWallets, getWalletDisplayName } = useAddressBook();
+  const { shouldShow: shouldShowOnboarding } = useOnboarding();
+  const [showOnboarding, setShowOnboarding] = useState(false);
   const { toast } = useToast();
+
+  // Show onboarding after dashboard loads (only once)
+  useEffect(() => {
+    if (shouldShowOnboarding && !isPopupMode) {
+      // Small delay to let dashboard render first
+      const timer = setTimeout(() => {
+        setShowOnboarding(true);
+      }, 500);
+      return () => clearTimeout(timer);
+    }
+  }, [shouldShowOnboarding, isPopupMode]);
 
   // Handle add to address book from AddressInput
   const handleAddToAddressBook = (address: string) => {
@@ -896,6 +911,12 @@ export function WalletDashboard({
       // Clear address book data
       await addressBook.clearAll();
 
+      // Reset mode switch reminder preference
+      resetModeSwitchReminder();
+
+      // Reset onboarding state
+      resetOnboardingState();
+
       // Clear API cache from chrome.storage
       if (typeof chrome !== 'undefined' && chrome.storage?.local) {
         try {
@@ -1196,6 +1217,11 @@ export function WalletDashboard({
 
   return (
     <div className="h-screen overflow-hidden transition-all duration-300">
+      {/* Onboarding Overlay - shows only once after first wallet setup */}
+      {showOnboarding && !isPopupMode && (
+        <OnboardingOverlay onComplete={() => setShowOnboarding(false)} />
+      )}
+
       {/* ============================================ */}
       {/* POPUP MODE - NEW FULLSCREEN UI */}
       {/* ============================================ */}

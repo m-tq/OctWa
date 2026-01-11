@@ -3,6 +3,8 @@ import { WalletManager } from '../utils/walletManager';
 import { Wallet } from '../types/wallet';
 import { AlertTriangle, Clock, Eye, EyeOff } from 'lucide-react';
 import { ExtensionStorageManager } from '../utils/extensionStorage';
+import { resetModeSwitchReminder } from './ModeSwitchConfirmDialog';
+import { resetOnboardingState } from './OnboardingOverlay';
 
 interface UnlockWalletProps {
   onUnlock: (wallets: Wallet[]) => void;
@@ -145,6 +147,12 @@ export function UnlockWallet({
     await ExtensionStorageManager.remove('walletPasswordSalt');
     await ExtensionStorageManager.remove('isWalletLocked');
     await ExtensionStorageManager.remove('activeWalletId');
+
+    // Reset mode switch reminder preference
+    resetModeSwitchReminder();
+
+    // Reset onboarding state
+    resetOnboardingState();
 
     // Reload to show welcome screen
     window.location.reload();
