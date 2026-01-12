@@ -2,6 +2,8 @@
 
 A secure browser-based wallet for the Octra blockchain network. Available as both a web application and Chrome/Edge browser extension.
 
+**Encrypted by Default** — Powered by Octra HFHE
+
 ## Security Features
 
 OctWa implements industry-standard security practices to protect your assets:
@@ -34,6 +36,17 @@ OctWa implements industry-standard security practices to protect your assets:
 
 ## Screenshots
 
+### Onboarding Experience
+
+<p align="center">
+  <img src="public/screenshot/onboarding_first.png" alt="Onboarding First" width="400">
+  <img src="public/screenshot/onboarding_last.png" alt="Onboarding Last" width="400">
+  <br>
+  <em>Onboarding Flow - Learn about Public vs Private Mode, Encryption, and Octra's unique features</em>
+</p>
+
+### Getting Started
+
 <p align="center">
   <img src="public/screenshot/welcome.png" alt="Welcome Screen" width="400">
   <br>
@@ -45,6 +58,8 @@ OctWa implements industry-standard security practices to protect your assets:
   <br>
   <em>Password Setup - Secure your wallet</em>
 </p>
+
+### Dashboard & Wallet Management
 
 <p align="center">
   <img src="public/screenshot/dashboard.png" alt="Dashboard" width="400">
@@ -58,10 +73,18 @@ OctWa implements industry-standard security practices to protect your assets:
   <em>Multi Wallet - Manage multiple wallets</em>
 </p>
 
+### Privacy Features
+
+<p align="center">
+  <img src="public/screenshot/privacy_first.png" alt="Privacy First" width="400">
+  <br>
+  <em>Privacy First - Mode switch confirmation with educational warnings</em>
+</p>
+
 <p align="center">
   <img src="public/screenshot/private.png" alt="Private Mode" width="400">
   <br>
-  <em>Private Mode - Confidential transactions</em>
+  <em>Private Mode - Confidential transactions with FHE encryption</em>
 </p>
 
 ### Multi-Send & Bulk Send (Expanded Mode)
@@ -139,13 +162,30 @@ OctWa implements industry-standard security practices to protect your assets:
   - Reset functionality to clear all data
 - **Transaction History** - View complete transaction history with status tracking
 - **OU (Gas) Settings** - Configurable gas settings with auto mode
+- **Optional Message** - Add optional message to transactions (available in popup mode too)
 
 ### Privacy Features (Confidential Transactions)
 - **Public/Private Mode Toggle** - Switch between public and private operation modes
+- **Mode Switch Confirmation** - Educational warning dialog when leaving Private Mode
+  - Explains implications of switching to Public Mode
+  - "Don't remind me again" option for power users
+  - Compact mode for popup view
 - **Encrypt Balance** - Convert public balance to encrypted/private balance
-- **Decrypt Balance** - Convert encrypted balance back to public balance
+- **Decrypt Balance** - Convert encrypted balance back to public balance (with warning styling)
 - **Private Transfer** - Send confidential transactions with encrypted amounts
 - **Claim Transfers** - Claim incoming private transfers
+- **Sensitive Actions Zone** - Visual separation for risky operations (Decrypt, Export Keys)
+
+### Onboarding & Education
+- **3-Step Onboarding Flow** - First-time user education (dismissable)
+  - Step 1: Public vs Private Mode explanation
+  - Step 2: What "Encrypt" means (FHE explanation)
+  - Step 3: Why Octra is different
+- **Info Tooltips** - Contextual help icons throughout the UI
+  - Encrypted Balance explanation
+  - Exposed status warning
+  - Decrypt action implications
+- **Resets on Wallet Reset** - Onboarding shows again after wallet reset
 
 ### dApp Integration
 - **Web3 Provider** - Inject `window.octra` provider for dApp connectivity
@@ -177,7 +217,7 @@ OctWa implements industry-standard security practices to protect your assets:
 - **Animated Icons** - Visual feedback with animated icons for send operations
 - **RPC Provider Manager** - Configure and switch between RPC endpoints
 - **Connection Status** - Real-time RPC connection status indicator
-- **Dynamic Version Display** - Version automatically synced from manifest.json
+- **Dynamic App Name & Version** - Name and version automatically synced from manifest.json
 - **Adaptive Scrollbars** - Smart scrollbar padding that appears only when needed
   - Prevents layout shift when scrollbar appears/disappears
   - Applied to wallet lists, transaction history, and multi-send panels
@@ -261,16 +301,17 @@ npm install
   - `assets/popup.js`, `assets/expanded.js`, `assets/index.css` from Vite build.
 - Zip `dist/` and submit to Chrome Web Store / Edge Add-ons.
 
-## Version Management
+## Version & Name Management
 
-The app version is automatically read from `extensionFiles/manifest.json` during build time. To update the version:
+The app name and version are automatically read from `extensionFiles/manifest.json` during build time. To update:
 
-1. Edit `extensionFiles/manifest.json` and update the `version` field
+1. Edit `extensionFiles/manifest.json` and update the `name` and/or `version` field
 2. Run `npm run build:extension`
-3. The new version will be displayed in:
-   - Popup mode footer: `Mainnet | OctWa x.x.x`
-   - Expanded mode footer: `Mainnet | OctWa x.x.x`
-   - Wallet menu (popup): `OctWa x.x.x`
+3. The new values will be displayed in:
+   - HTML page title (from `action.default_title`)
+   - Header title in dashboard
+   - Footer version display
+   - Splash screen and welcome screen
 
 ## Nginx (web) configuration
 
@@ -330,7 +371,10 @@ server {
 - Multi-entry build: `vite.config.ts` defines inputs for `index.html` (web), `src/popup.tsx` (extension popup), and `src/expanded.tsx` (extension expanded view).
 - Extension popup HTML: `extensionFiles/popup.html` loads `assets/popup.js` and adds `#root`.
 - Background/content/provider scripts live in `extensionFiles/` and are copied to `dist` during `build:extension`.
-- Version injection: `vite.config.ts` reads version from `extensionFiles/manifest.json` and injects it as `__APP_VERSION__` global constant.
+- Build-time injection: `vite.config.ts` reads from `extensionFiles/manifest.json` and injects:
+  - `__APP_VERSION__` - Version string
+  - `__APP_NAME__` - Full app name
+  - `__APP_TITLE__` - Title from action.default_title
 
 ## Troubleshooting
 - `npm run deploy` references `./deploy.sh`, which is not present; use `npm run build:prod` and your own hosting steps.

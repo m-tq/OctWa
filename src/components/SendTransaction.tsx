@@ -342,9 +342,6 @@ export function SendTransaction({ wallet, balance, nonce, onBalanceUpdate, onNon
   if (isCompact) {
     return (
       <div className="space-y-3" ref={dropdownRef}>
-        {/* Animated Icon - Compact */}
-        <AnimatedIcon type="send-public" size="xs" />
-
         {/* Recipient Address */}
         <div className="space-y-1 relative">
           <div className="flex items-center justify-between">
@@ -551,6 +548,43 @@ export function SendTransaction({ wallet, balance, nonce, onBalanceUpdate, onNon
             />
           )}
         </div>
+
+        {/* Message Toggle - Compact */}
+        {!showMessage ? (
+          <button
+            type="button"
+            onClick={() => setShowMessage(true)}
+            className="w-full text-left text-[10px] text-muted-foreground hover:text-foreground py-1"
+          >
+            + Add Message
+          </button>
+        ) : (
+          <div className="space-y-1">
+            <div className="flex items-center justify-between">
+              <Label htmlFor="message-compact" className="text-xs">Message</Label>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowMessage(false);
+                  setMessage('');
+                }}
+                className="text-[10px] text-muted-foreground hover:text-foreground"
+              >
+                Remove
+              </button>
+            </div>
+            <Textarea
+              id="message-compact"
+              placeholder="Optional message (max 1024 chars)"
+              value={message}
+              onChange={(e) => setMessage(e.target.value)}
+              maxLength={1024}
+              rows={2}
+              className="text-xs min-h-[60px] resize-none"
+            />
+            <div className="text-[10px] text-muted-foreground text-right">{message.length}/1024</div>
+          </div>
+        )}
 
         {/* Fee Summary - Compact */}
         {amount && validateAmount(amount) && (
