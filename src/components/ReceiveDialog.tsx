@@ -107,7 +107,7 @@ export function ReceiveDialog({
           </Button>
           <div className="flex items-center gap-2">
             <QrCode className="h-5 w-5" />
-            <h2 className="font-semibold">Receive OCT</h2>
+            <h2 className="font-semibold text-sm">Receive OCT</h2>
           </div>
         </div>
         

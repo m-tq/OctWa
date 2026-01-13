@@ -148,7 +148,7 @@ OctWa implements industry-standard security practices to protect your assets:
 - **Password Strength Meter** - Visual indicator helps create strong passwords
 
 ### Transactions
-- **Standard Send** - Send OCT tokens to any address with animated UI feedback
+- **Standard Send** - Send OCT tokens to any address
 - **Multi-Send** - Send tokens to multiple recipients with individual amounts and optional messages
   - Add/remove recipients dynamically
   - Real-time address validation

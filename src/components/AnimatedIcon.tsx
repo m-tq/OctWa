@@ -20,10 +20,17 @@ export function AnimatedIcon({ type, size = 'md' }: AnimatedIconProps) {
     lg: 'h-16 w-16'
   };
 
+  const marginClasses = {
+    xs: 'mb-2',
+    sm: 'mb-4',
+    md: 'mb-4',
+    lg: 'mb-4'
+  };
+
   const isPrivate = type === 'decrypt' || type === 'send-private' || type === 'encrypt';
 
   return (
-    <div className="flex justify-center mb-4">
+    <div className={`flex justify-center ${marginClasses[size]}`}>
       <div 
         className={`${sizeClasses[size]} rounded-full flex items-center justify-center relative ${
           isPrivate 

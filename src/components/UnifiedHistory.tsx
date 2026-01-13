@@ -240,8 +240,8 @@ export function UnifiedHistory({ wallet, transactions, onTransactionsUpdate, isL
           </CardTitle>
           <span className={`text-muted-foreground ${isPopupMode ? 'text-[10px]' : 'text-xs'}`}>
             {isPopupMode 
-              ? `last ${filteredTransactions.length} ${operationMode} tx` 
-              : `recent ${filteredTransactions.length} data`
+              ? `Last ${filteredTransactions.length} ${operationMode} tx` 
+              : `Recent ${filteredTransactions.length} data`
             }
           </span>
         </div>
@@ -258,16 +258,16 @@ export function UnifiedHistory({ wallet, transactions, onTransactionsUpdate, isL
       </CardHeader>
       <CardContent className={`${isPopupMode ? 'px-3 pb-3 pt-0' : ''} ${isCompact ? 'flex-1 overflow-hidden flex flex-col px-0 pb-0' : ''}`}>
         {/* Filter Buttons */}
-        <div className={`flex ${isPopupMode ? 'flex-wrap gap-1 mb-2' : isCompact ? 'items-center justify-between gap-2 mb-4 flex-shrink-0' : 'items-center justify-between mb-4'}`}>
-          <div className={`flex flex-wrap gap-2`}>
+        <div className={`flex ${isPopupMode ? 'flex-wrap gap-1 mb-2' : isCompact ? 'items-center justify-between gap-2 mb-4 flex-shrink-0' : 'items-center justify-between mb-3'}`}>
+          <div className={`flex flex-wrap ${isPopupMode ? 'gap-2' : 'gap-1.5'}`}>
             {/* All filter */}
             <Button
               variant={activeFilter === 'all' ? 'default' : 'outline'}
               size="sm"
               onClick={() => setActiveFilter('all')}
-              className={`${isPopupMode ? 'h-6 px-2 text-[10px]' : ''} ${
-                activeFilter === 'all' && operationMode === 'private' 
-                  ? 'bg-[#0000db] hover:bg-[#0000db]/90' 
+              className={`${isPopupMode ? 'h-6 px-2 text-[10px]' : 'h-7 px-2.5 text-xs'} ${
+                activeFilter === 'all' && operationMode === 'private'
+                  ? 'bg-[#0000db] hover:bg-[#0000db]/90'
                   : ''
               }`}
             >
@@ -279,13 +279,13 @@ export function UnifiedHistory({ wallet, transactions, onTransactionsUpdate, isL
               variant={activeFilter === 'sent' ? 'default' : 'outline'}
               size="sm"
               onClick={() => setActiveFilter('sent')}
-              className={`${isPopupMode ? 'h-6 px-2 text-[10px]' : ''} ${
+              className={`${isPopupMode ? 'h-6 px-2 text-[10px]' : 'h-7 px-2.5 text-xs'} ${
                 activeFilter === 'sent'
                   ? 'bg-red-500 hover:bg-red-600 text-white border-red-500'
                   : 'border-red-300 text-red-600 hover:bg-red-50 hover:text-red-700 dark:border-red-800 dark:text-red-400 dark:hover:bg-red-950'
               }`}
             >
-              <ArrowUpRight className={`${isPopupMode ? 'h-3 w-3' : 'h-4 w-4'} ${sentCount > 0 ? 'mr-1' : ''}`} />
+              <ArrowUpRight className={`${isPopupMode ? 'h-3 w-3' : 'h-3.5 w-3.5'} ${sentCount > 0 ? 'mr-1' : ''}`} />
               {sentCount > 0 && <span>{sentCount}</span>}
             </Button>
 
@@ -294,13 +294,13 @@ export function UnifiedHistory({ wallet, transactions, onTransactionsUpdate, isL
               variant={activeFilter === 'received' ? 'default' : 'outline'}
               size="sm"
               onClick={() => setActiveFilter('received')}
-              className={`${isPopupMode ? 'h-6 px-2 text-[10px]' : ''} ${
+              className={`${isPopupMode ? 'h-6 px-2 text-[10px]' : 'h-7 px-2.5 text-xs'} ${
                 activeFilter === 'received'
                   ? 'bg-green-500 hover:bg-green-600 text-white border-green-500'
                   : 'border-green-300 text-green-600 hover:bg-green-50 hover:text-green-700 dark:border-green-800 dark:text-green-400 dark:hover:bg-green-950'
               }`}
             >
-              <ArrowDownLeft className={`${isPopupMode ? 'h-3 w-3' : 'h-4 w-4'} ${receivedCount > 0 ? 'mr-1' : ''}`} />
+              <ArrowDownLeft className={`${isPopupMode ? 'h-3 w-3' : 'h-3.5 w-3.5'} ${receivedCount > 0 ? 'mr-1' : ''}`} />
               {receivedCount > 0 && <span>{receivedCount}</span>}
             </Button>
 
@@ -310,20 +310,20 @@ export function UnifiedHistory({ wallet, transactions, onTransactionsUpdate, isL
                 variant={activeFilter === 'contract' ? 'default' : 'outline'}
                 size="sm"
                 onClick={() => setActiveFilter('contract')}
-                className={`${isPopupMode ? 'h-6 px-2 text-[10px]' : ''} ${
+                className={`${isPopupMode ? 'h-6 px-2 text-[10px]' : 'h-7 px-2.5 text-xs'} ${
                   activeFilter === 'contract'
                     ? 'bg-purple-500 hover:bg-purple-600 text-white border-purple-500'
                     : 'border-purple-300 text-purple-600 hover:bg-purple-50 hover:text-purple-700 dark:border-purple-800 dark:text-purple-400 dark:hover:bg-purple-950'
                 }`}
               >
-                <Code className={`${isPopupMode ? 'h-3 w-3' : 'h-4 w-4'} ${contractCallCount > 0 ? 'mr-1' : ''}`} />
+                <Code className={`${isPopupMode ? 'h-3 w-3' : 'h-3.5 w-3.5'} ${contractCallCount > 0 ? 'mr-1' : ''}`} />
                 {contractCallCount > 0 && <span>{contractCallCount}</span>}
               </Button>
             )}
           </div>
           {/* Pending badge - right aligned for expanded and compact mode */}
           {!isPopupMode && pendingCount > 0 && (
-            <Badge variant="outline" className="text-xs px-2 py-1 border-yellow-500 text-yellow-600 dark:text-yellow-400">
+            <Badge variant="outline" className="text-xs px-2 py-0.5 border-yellow-500 text-yellow-600 dark:text-yellow-400">
               {pendingCount}
             </Badge>
           )}

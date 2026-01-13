@@ -134,7 +134,7 @@ export function WalletDashboard({
   const [historySidebarWidth, setHistorySidebarWidth] = useState(350);
   const [isResizingHistory, setIsResizingHistory] = useState(false);
   const MIN_HISTORY_WIDTH = 350;
-  const MAX_HISTORY_WIDTH = 450;
+  const MAX_HISTORY_WIDTH = 350;
   const AUTO_HIDE_HISTORY_THRESHOLD = 200;
   
   // Computed sidebar left position for all fixed elements
@@ -167,7 +167,7 @@ export function WalletDashboard({
   const [loadingTxDetails, setLoadingTxDetails] = useState(false);
   const [isRefreshingData, setIsRefreshingData] = useState(false);
   const [encryptedBalance, setEncryptedBalance] = useState<any>(null);
-  const [rpcStatus, setRpcStatus] = useState<'connected' | 'disconnected' | 'checking'>('checking');
+  const [rpcStatus, setRpcStatus] = useState<'connected' | 'disconnected' | 'checking' | 'connecting'>('checking');
   const [operationMode, setOperationMode] = useState<OperationMode>('public');
   const [pendingTransfersCount, setPendingTransfersCount] = useState<number>(0);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
@@ -452,49 +452,65 @@ export function WalletDashboard({
   // Check RPC status every 1 minute using active RPC provider
   useEffect(() => {
     const checkRpcStatus = async () => {
-      try {
-        // Get active RPC provider from localStorage
-        let rpcUrl = 'https://octra.network';
-        try {
-          const providers = JSON.parse(localStorage.getItem('rpcProviders') || '[]');
-          const activeProvider = providers.find((p: any) => p.isActive);
-          if (activeProvider?.url) {
-            rpcUrl = activeProvider.url;
-          }
-        } catch (e) {
-          console.warn('Failed to get RPC provider:', e);
-        }
+      const MAX_RETRIES = 3;
+      const RETRY_DELAY = 7000; // 7 seconds
 
-        // Use the proxy in development mode
-        const isDevelopment = import.meta.env.DEV;
-        const isExtension = typeof chrome !== 'undefined' && 
-                            chrome.runtime && 
-                            typeof chrome.runtime.id === 'string' &&
-                            chrome.runtime.id.length > 0;
-        
-        let url: string;
-        const headers: Record<string, string> = {};
-        
-        if (isExtension) {
-          url = `${rpcUrl}/status`;
-        } else if (isDevelopment) {
-          url = '/api/status';
-          headers['X-RPC-URL'] = rpcUrl;
-        } else {
-          url = '/rpc-proxy/status';
-          headers['X-RPC-Target'] = rpcUrl;
+      // Get active RPC provider from localStorage
+      let rpcUrl = 'https://octra.network';
+      try {
+        const providers = JSON.parse(localStorage.getItem('rpcProviders') || '[]');
+        const activeProvider = providers.find((p: any) => p.isActive);
+        if (activeProvider?.url) {
+          rpcUrl = activeProvider.url;
         }
-        
-        const response = await fetch(url, {
-          method: 'GET',
-          headers,
-          signal: AbortSignal.timeout(10000) // 10 second timeout
-        });
-        
-        setRpcStatus(response.status === 200 ? 'connected' : 'disconnected');
-      } catch (error) {
-        console.error('RPC status check failed:', error);
-        setRpcStatus('disconnected');
+      } catch (e) {
+        console.warn('Failed to get RPC provider:', e);
+      }
+
+      // Use the proxy in development mode
+      const isDevelopment = import.meta.env.DEV;
+      const isExtension = typeof chrome !== 'undefined' && 
+                          chrome.runtime && 
+                          typeof chrome.runtime.id === 'string' &&
+                          chrome.runtime.id.length > 0;
+      
+      let url: string;
+      const headers: Record<string, string> = {};
+      
+      if (isExtension) {
+        url = `${rpcUrl}/status`;
+      } else if (isDevelopment) {
+        url = '/api/status';
+        headers['X-RPC-URL'] = rpcUrl;
+      } else {
+        url = '/rpc-proxy/status';
+        headers['X-RPC-Target'] = rpcUrl;
+      }
+
+      for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+        try {
+          const response = await fetch(url, {
+            method: 'GET',
+            headers,
+            signal: AbortSignal.timeout(10000) // 10 second timeout
+          });
+          
+          if (response.status === 200) {
+            setRpcStatus('connected');
+            return;
+          }
+          throw new Error(`HTTP ${response.status}`);
+        } catch (error) {
+          console.warn(`RPC status check attempt ${attempt}/${MAX_RETRIES} failed:`, error);
+          
+          if (attempt < MAX_RETRIES) {
+            setRpcStatus('connecting');
+            await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
+          } else {
+            console.error('RPC status check failed after all retries');
+            setRpcStatus('disconnected');
+          }
+        }
       }
     };
 
@@ -1239,7 +1255,7 @@ export function WalletDashboard({
                 </Button>
                 <div className="flex items-center gap-2">
                   <Lock className="h-5 w-5" />
-                  <h2 className="font-semibold">Encrypt OCT</h2>
+                  <h2 className="font-semibold text-sm">Encrypt OCT</h2>
                 </div>
               </div>
               <div className="flex-1 flex items-center justify-center overflow-y-auto p-4">
@@ -1270,9 +1286,9 @@ export function WalletDashboard({
                 <Button variant="ghost" size="sm" onClick={() => setPopupScreen('main')} className="h-8 w-8 p-0">
                   <ChevronDown className="h-4 w-4 rotate-90" />
                 </Button>
-                <div className="flex items-center gap-2">
-                  <Unlock className="h-5 w-5 text-[#0000db]" />
-                  <h2 className="font-semibold text-[#0000db]">Decrypt OCT</h2>
+                <div className="flex items-center gap-2 text-[#0000db]">
+                  <Unlock className="h-5 w-5" />
+                  <h2 className="font-semibold text-sm">Decrypt OCT</h2>
                 </div>
               </div>
               <div className="flex-1 flex items-center justify-center overflow-y-auto p-4">
@@ -1303,9 +1319,9 @@ export function WalletDashboard({
                 <Button variant="ghost" size="sm" onClick={() => setPopupScreen('main')} className="h-8 w-8 p-0">
                   <ChevronDown className="h-4 w-4 rotate-90" />
                 </Button>
-                <div className="flex items-center gap-2">
-                  <Send className={`h-5 w-5 ${operationMode === 'private' ? 'text-[#0000db]' : ''}`} />
-                  <h2 className={`font-semibold ${operationMode === 'private' ? 'text-[#0000db]' : ''}`}>
+                <div className={`flex items-center gap-2 ${operationMode === 'private' ? 'text-[#0000db]' : ''}`}>
+                  <Send className="h-5 w-5" />
+                  <h2 className="font-semibold text-sm">
                     {operationMode === 'private' ? 'Private Transfer' : 'Send OCT'}
                   </h2>
                 </div>
@@ -1356,13 +1372,13 @@ export function WalletDashboard({
           {/* Fullscreen Claim */}
           {popupScreen === 'claim' && (
             <div className="flex flex-col h-full pb-10">
-              <div className="flex items-center gap-3 p-4 border-b">
+              <div className="flex items-center gap-3 px-4 py-2 border-b">
                 <Button variant="ghost" size="sm" onClick={() => setPopupScreen('main')} className="h-8 w-8 p-0">
                   <ChevronDown className="h-4 w-4 rotate-90" />
                 </Button>
-                <div className="flex items-center gap-2">
-                  <Gift className="h-5 w-5 text-[#0000db]" />
-                  <h2 className="font-semibold text-[#0000db]">Claim Transfers</h2>
+                <div className="flex items-center gap-2 text-[#0000db]">
+                  <Gift className="h-5 w-5" />
+                  <h2 className="font-semibold text-sm">Claim Transfers</h2>
                 </div>
               </div>
               <div className="flex-1 overflow-y-auto p-4">
@@ -1393,9 +1409,10 @@ export function WalletDashboard({
                     <div className="w-6 h-6 rounded-full border-2 border-transparent animate-spin" style={{ borderTopColor: '#0000db' }} />
                   </div>
                 ) : selectedTxDetails ? (
-                  <div className="space-y-2">
+                  <>
+                  <div className="divide-y divide-dashed divide-border">
                     {/* Status with Epoch */}
-                    <div className="bg-muted/50  p-2 flex items-center justify-between">
+                    <div className="py-2 flex items-center justify-between">
                       <span className="text-[10px] text-muted-foreground">Status</span>
                       {'stage_status' in selectedTxDetails ? (
                         <Badge variant="secondary" className="text-[10px] bg-yellow-500/20 text-yellow-600 h-5">
@@ -1415,7 +1432,7 @@ export function WalletDashboard({
 
                     {/* Time */}
                     {('timestamp' in selectedTxDetails || 'parsed_tx' in selectedTxDetails) && (
-                      <div className="bg-muted/50  p-2 flex items-center justify-between">
+                      <div className="py-2 flex items-center justify-between">
                         <span className="text-[10px] text-muted-foreground">Time (UTC)</span>
                         <span className="text-xs">
                           {'timestamp' in selectedTxDetails 
@@ -1427,7 +1444,7 @@ export function WalletDashboard({
                     )}
 
                     {/* Hash */}
-                    <div className="bg-muted/50  p-2">
+                    <div className="py-2">
                       <div className="flex items-center justify-between mb-1">
                         <span className="text-[10px] text-muted-foreground">Hash</span>
                         <Button 
@@ -1446,7 +1463,7 @@ export function WalletDashboard({
 
                     {/* From - full address */}
                     {('from' in selectedTxDetails || 'parsed_tx' in selectedTxDetails) && (
-                      <div className="bg-muted/50  p-2">
+                      <div className="py-2">
                         <div className="flex items-center justify-between mb-1">
                           <span className="text-[10px] text-muted-foreground">From</span>
                           <Button 
@@ -1466,7 +1483,7 @@ export function WalletDashboard({
 
                     {/* To - full address */}
                     {('to' in selectedTxDetails || 'parsed_tx' in selectedTxDetails) && (
-                      <div className="bg-muted/50  p-2">
+                      <div className="py-2">
                         <div className="flex items-center justify-between mb-1">
                           <span className="text-[10px] text-muted-foreground">To</span>
                           <Button 
@@ -1485,9 +1502,9 @@ export function WalletDashboard({
                     )}
 
                     {/* Amount, OU (Gas), Nonce */}
-                    <div className="grid grid-cols-3 gap-2">
+                    <div className="grid grid-cols-3 gap-0 py-2">
                       {('amount' in selectedTxDetails || 'parsed_tx' in selectedTxDetails) && (
-                        <div className="bg-muted/50  p-2">
+                        <div className="pr-2">
                           <span className="text-[10px] text-muted-foreground">Amount</span>
                           <p className="font-mono text-xs mt-0.5">
                             {'amount' in selectedTxDetails ? selectedTxDetails.amount : selectedTxDetails.parsed_tx.amount} OCT
@@ -1499,7 +1516,7 @@ export function WalletDashboard({
                         const ouNum = parseInt(ouValue) || 0;
                         const feeOct = (ouNum * 0.0000001).toFixed(7);
                         return (
-                          <div className="bg-muted/50  p-2">
+                          <div className="px-2">
                             <span className="text-[10px] text-muted-foreground">OU (Gas)</span>
                             <p className="font-mono text-[10px] mt-0.5">{ouValue}</p>
                             <p className="text-[9px] text-muted-foreground">≈ {feeOct} OCT</p>
@@ -1507,7 +1524,7 @@ export function WalletDashboard({
                         );
                       })()}
                       {('nonce' in selectedTxDetails || 'parsed_tx' in selectedTxDetails) && (
-                        <div className="bg-muted/50  p-2">
+                        <div className="pl-2">
                           <span className="text-[10px] text-muted-foreground">Nonce</span>
                           <p className="font-mono text-xs mt-0.5">
                             {'nonce' in selectedTxDetails ? selectedTxDetails.nonce : selectedTxDetails.parsed_tx.nonce}
@@ -1519,30 +1536,31 @@ export function WalletDashboard({
                     {/* Message */}
                     {(('message' in selectedTxDetails && selectedTxDetails.message) || 
                       ('parsed_tx' in selectedTxDetails && selectedTxDetails.parsed_tx.message)) && (
-                      <div className="bg-muted/50 rounded p-2 mt-2">
+                      <div className="py-2">
                         <span className="text-[10px] text-muted-foreground">Message</span>
                         <p className="text-xs mt-0.5 break-all">
                           {'message' in selectedTxDetails ? selectedTxDetails.message : selectedTxDetails.parsed_tx.message}
                         </p>
                       </div>
                     )}
-
-                    {/* View on Explorer */}
-                    <Button
-                      variant="outline"
-                      className="w-full h-10"
-                      asChild
-                    >
-                      <a 
-                        href={`https://octrascan.io/transactions/${selectedTxHash}`} 
-                        target="_blank" 
-                        rel="noopener noreferrer"
-                      >
-                        <ExternalLink className="h-4 w-4 mr-2" />
-                        View on Explorer
-                      </a>
-                    </Button>
                   </div>
+
+                  {/* View on Explorer - outside divide container */}
+                  <Button
+                    variant="outline"
+                    className="w-full h-10 mt-4"
+                    asChild
+                  >
+                    <a 
+                      href={`https://octrascan.io/transactions/${selectedTxHash}`} 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                    >
+                      <ExternalLink className="h-4 w-4 mr-2" />
+                      View on Explorer
+                    </a>
+                  </Button>
+                </>
                 ) : (
                   <div className="text-center py-12 text-muted-foreground">
                     <p className="text-sm">No transaction data available</p>
@@ -1592,45 +1610,51 @@ export function WalletDashboard({
                     <div className="flex items-center space-x-2">
                       {/* Wallet Selector - Sheet for popup mode, Dropdown for expanded */}
                       {isPopupMode ? (
-                        <Sheet open={showWalletSelector} onOpenChange={setShowWalletSelector}>
-                          <SheetTrigger asChild>
-                            <Button variant="ghost" className="h-auto p-0 hover:bg-transparent">
-                              <div className="flex items-center space-x-1">
-                                <p className="text-xs text-[#0000db] font-medium">
-                                  {truncateAddress(wallet.address)}
-                                </p>
-                                <ChevronDown className="h-2.5 w-2.5 text-muted-foreground" />
-                              </div>
-                            </Button>
-                          </SheetTrigger>
-                          <SheetContent side="left" className="w-80 flex flex-col pb-14">
-                            <SheetHeader>
-                              <SheetTitle className="text-sm">Select Wallet ({wallets.length})</SheetTitle>
-                              <SheetDescription className="sr-only">Choose a wallet from your list</SheetDescription>
-                            </SheetHeader>
-                            <div className="flex-1 mt-3 overflow-hidden">
-                              <ScrollArea className="h-full max-h-[calc(100vh-200px)]" stabilizeGutter>
-                                <div className="space-y-1.5">
-                                  {wallets.map((w, i) => {
-                                    const isActive = w.address === wallet.address;
-                                    const shortAddress = `${w.address.slice(0, 6)}...${w.address.slice(-4)}`;
-                                    const walletType = w.type === 'generated' ? 'Generated' 
-                                      : w.type === 'imported-mnemonic' ? 'Imported (Mnemonic)' 
-                                      : w.type === 'imported-private-key' ? 'Imported (Key)' 
-                                      : '';
+                        <>
+                          <Sheet open={showWalletSelector} onOpenChange={setShowWalletSelector}>
+                            <SheetTrigger asChild>
+                              <Button variant="ghost" className="h-auto p-0 hover:bg-transparent">
+                                <div className="flex items-center space-x-1">
+                                  <p className="text-xs text-[#0000db] font-medium">
+                                    {truncateAddress(wallet.address)}
+                                  </p>
+                                  <ChevronDown className="h-2.5 w-2.5 text-muted-foreground" />
+                                </div>
+                              </Button>
+                            </SheetTrigger>
+                            <SheetContent side="left" className="w-80 flex flex-col pb-14">
+                              <SheetHeader>
+                                <SheetTitle className="text-sm">Select Wallet ({wallets.length})</SheetTitle>
+                                <SheetDescription className="sr-only">Choose a wallet from your list</SheetDescription>
+                              </SheetHeader>
+                              <div className="flex-1 mt-3 overflow-hidden">
+                                <ScrollArea className="h-full max-h-[calc(100vh-200px)]" stabilizeGutter>
+                                  <div className="divide-y divide-dashed divide-border">
+                                    {wallets.map((w, i) => {
+                                      const isActive = w.address === wallet.address;
+                                      const shortAddress = `${w.address.slice(0, 6)}...${w.address.slice(-4)}`;
+                                      const walletType = w.type === 'generated' ? 'Generated' 
+                                        : w.type === 'imported-mnemonic' ? 'Imported (Mnemonic)' 
+                                        : w.type === 'imported-private-key' ? 'Imported (Key)' 
+                                        : '';
                                     return (
                                       <div
                                         key={w.address}
-                                        className={`p-2.5 rounded-lg cursor-pointer transition-colors ${
+                                        className={`relative py-2.5 pl-3 cursor-pointer transition-all duration-200 ${
                                           isActive 
-                                            ? 'bg-[#0000db]/10 border border-[#0000db]/30' 
-                                            : 'hover:bg-accent border border-transparent'
+                                            ? '' 
+                                            : 'hover:bg-accent/50'
                                         }`}
                                         onClick={() => {
                                           onSwitchWallet(w);
                                           setShowWalletSelector(false);
                                         }}
                                       >
+                                        {/* Active indicator bar - left side */}
+                                        <div className={`absolute left-0 top-1/2 -translate-y-1/2 w-1 rounded-r-full bg-[#0000db] transition-all duration-200 ${
+                                          isActive ? 'h-8 opacity-100' : 'h-0 opacity-0'
+                                        }`} />
+                                        
                                         {/* Row 1: Number + Address + Actions */}
                                         <div className="flex items-center justify-between">
                                           <div className="flex items-center gap-1.5 min-w-0">
@@ -1710,6 +1734,19 @@ export function WalletDashboard({
                             </div>
                           </SheetContent>
                         </Sheet>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-5 w-5 p-0 hover:bg-transparent"
+                            onClick={() => copyToClipboard(wallet.address, 'headerAddress')}
+                          >
+                            {copiedField === 'headerAddress' ? (
+                              <Check className="h-3 w-3 text-green-500" />
+                            ) : (
+                              <Copy className="h-3 w-3 text-muted-foreground hover:text-foreground" />
+                            )}
+                          </Button>
+                        </>
                       ) : (
                         /* Expanded mode - show label + address only when wallet sidebar is hidden */
                         <>
@@ -2319,7 +2356,7 @@ export function WalletDashboard({
                 </h3>
               </div>
               <ScrollArea className="flex-1" stabilizeGutter>
-                <ScrollAreaContent className="space-y-2">
+                <ScrollAreaContent className="divide-y divide-dashed divide-border">
                   {wallets.map((w, i) => {
                     const isActive = w.address === wallet.address;
                     const shortAddress = `${w.address.slice(0, 6)}...${w.address.slice(-4)}`;
@@ -2346,14 +2383,19 @@ export function WalletDashboard({
                     return (
                       <div
                         key={w.address}
-                        className={`group p-3 rounded-lg cursor-pointer transition-colors ${
+                        className={`group relative py-3 pl-4 cursor-pointer transition-all duration-200 ${
                           isActive 
-                            ? 'bg-[#0000db]/10 border border-[#0000db]/30' 
-                            : 'hover:bg-accent border border-transparent'
+                            ? '' 
+                            : 'hover:bg-accent/50'
                         }`}
                         onClick={() => onSwitchWallet(w)}
                         onMouseEnter={handleMouseEnter}
                       >
+                        {/* Active indicator bar - left side */}
+                        <div className={`absolute left-0 top-1/2 -translate-y-1/2 w-1 rounded-r-full bg-[#0000db] transition-all duration-200 ${
+                          isActive ? 'h-10 opacity-100' : 'h-0 opacity-0'
+                        }`} />
+                        
                         {/* Row 1: Number + Address + Actions (hidden, show on hover) */}
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-2 min-w-0">
@@ -2423,13 +2465,17 @@ export function WalletDashboard({
                   })}
                 </ScrollAreaContent>
               </ScrollArea>
-              <div className="mt-4">
+              
+              {/* Spacer to push button to bottom */}
+              <div className="flex-1" />
+              
+              <div className="pt-4">
                 <Button
                   variant="outline"
                   onClick={() => setShowAddWalletDialog(true)}
-                  className="w-full justify-center gap-2 h-12 text-base font-medium"
+                  className="w-full h-10 text-sm justify-center gap-2"
                 >
-                  <Plus className="h-5 w-5" />
+                  <Plus className="h-4 w-4" />
                   Add Wallet
                 </Button>
               </div>
@@ -2896,12 +2942,12 @@ export function WalletDashboard({
                   txDetailsAnimating ? 'animate-in slide-in-from-right-4 fade-in' : ''
                 } ${txDetailsClosing ? 'animate-out slide-out-to-right-4 fade-out' : ''}`}>
                   {/* Header */}
-                  <div className="flex items-center gap-2 p-4 pl-6 flex-shrink-0">
+                  <div className="flex items-center gap-2 py-3 flex-shrink-0 mt-3">
                     <Button 
                       variant="ghost" 
                       size="sm" 
                       onClick={closeExpandedTxDetails} 
-                      className="h-8 w-8 p-0"
+                      className="h-8 w-8 p-0 ml-2"
                     >
                       <ChevronDown className="h-4 w-4 rotate-90" />
                     </Button>
@@ -2918,9 +2964,10 @@ export function WalletDashboard({
                           <div className="w-6 h-6 rounded-full border-2 border-transparent animate-spin" style={{ borderTopColor: '#0000db' }} />
                         </div>
                       ) : selectedTxDetails ? (
-                        <div className="flex-1 flex flex-col space-y-2">
+                        <>
+                        <div className="flex-1 flex flex-col divide-y divide-dashed divide-border">
                           {/* Status */}
-                          <div className="bg-muted/50 rounded-lg p-2.5 flex items-center justify-between">
+                          <div className="py-2.5 flex items-center justify-between">
                             <span className="text-xs text-muted-foreground">Status</span>
                             {'stage_status' in selectedTxDetails ? (
                               <Badge variant="secondary" className="text-xs bg-yellow-500/20 text-yellow-600">
@@ -2935,7 +2982,7 @@ export function WalletDashboard({
 
                           {/* Epoch - only for confirmed */}
                           {'epoch' in selectedTxDetails && (
-                            <div className="bg-muted/50 rounded-lg p-2.5 flex items-center justify-between">
+                            <div className="py-2.5 flex items-center justify-between">
                               <span className="text-xs text-muted-foreground">Epoch</span>
                               <span className="font-mono text-sm">{selectedTxDetails.epoch}</span>
                             </div>
@@ -2943,7 +2990,7 @@ export function WalletDashboard({
 
                           {/* Time */}
                           {('timestamp' in selectedTxDetails || 'parsed_tx' in selectedTxDetails) && (
-                            <div className="bg-muted/50 rounded-lg p-2.5 flex items-center justify-between">
+                            <div className="py-2.5 flex items-center justify-between">
                               <span className="text-xs text-muted-foreground">Time (UTC)</span>
                               <span className="text-xs">
                                 {'timestamp' in selectedTxDetails 
@@ -2955,7 +3002,7 @@ export function WalletDashboard({
                           )}
 
                           {/* Hash */}
-                          <div className="bg-muted/50 rounded-lg p-2.5">
+                          <div className="py-2.5">
                             <div className="flex items-center justify-between mb-1">
                               <span className="text-xs text-muted-foreground">Hash</span>
                               <Button 
@@ -2974,7 +3021,7 @@ export function WalletDashboard({
 
                           {/* From */}
                           {('from' in selectedTxDetails || 'parsed_tx' in selectedTxDetails) && (
-                            <div className="bg-muted/50 rounded-lg p-2.5">
+                            <div className="py-2.5">
                               <div className="flex items-center justify-between mb-1">
                                 <span className="text-xs text-muted-foreground">From</span>
                                 <Button 
@@ -2994,7 +3041,7 @@ export function WalletDashboard({
 
                           {/* To */}
                           {('to' in selectedTxDetails || 'parsed_tx' in selectedTxDetails) && (
-                            <div className="bg-muted/50 rounded-lg p-2.5">
+                            <div className="py-2.5">
                               <div className="flex items-center justify-between mb-1">
                                 <span className="text-xs text-muted-foreground">To</span>
                                 <Button 
@@ -3014,7 +3061,7 @@ export function WalletDashboard({
 
                           {/* Amount */}
                           {('amount' in selectedTxDetails || 'parsed_tx' in selectedTxDetails) && (
-                            <div className="bg-muted/50 rounded-lg p-2.5 flex items-center justify-between">
+                            <div className="py-2.5 flex items-center justify-between">
                               <span className="text-xs text-muted-foreground">Amount</span>
                               <span className="font-mono text-sm font-medium">
                                 {'amount' in selectedTxDetails ? selectedTxDetails.amount : selectedTxDetails.parsed_tx.amount} OCT
@@ -3028,7 +3075,7 @@ export function WalletDashboard({
                             const ouNum = parseInt(ouValue) || 0;
                             const feeOct = (ouNum * 0.0000001).toFixed(7);
                             return (
-                              <div className="bg-muted/50 rounded-lg p-2.5 flex items-center justify-between">
+                              <div className="py-2.5 flex items-center justify-between">
                                 <span className="text-xs text-muted-foreground">OU (Gas)</span>
                                 <div className="text-right">
                                   <span className="font-mono text-sm">{ouValue}</span>
@@ -3040,7 +3087,7 @@ export function WalletDashboard({
 
                           {/* Nonce */}
                           {('nonce' in selectedTxDetails || 'parsed_tx' in selectedTxDetails) && (
-                            <div className="bg-muted/50 rounded-lg p-2.5 flex items-center justify-between">
+                            <div className="py-2.5 flex items-center justify-between">
                               <span className="text-xs text-muted-foreground">Nonce</span>
                               <span className="font-mono text-sm">
                                 {'nonce' in selectedTxDetails ? selectedTxDetails.nonce : selectedTxDetails.parsed_tx.nonce}
@@ -3051,35 +3098,36 @@ export function WalletDashboard({
                           {/* Message */}
                           {(('message' in selectedTxDetails && selectedTxDetails.message) || 
                             ('parsed_tx' in selectedTxDetails && selectedTxDetails.parsed_tx.message)) && (
-                            <div className="bg-muted/50 rounded-lg p-2.5">
+                            <div className="py-2.5">
                               <span className="text-xs text-muted-foreground">Message</span>
                               <p className="text-sm mt-1 break-all">
                                 {'message' in selectedTxDetails ? selectedTxDetails.message : selectedTxDetails.parsed_tx.message}
                               </p>
                             </div>
                           )}
-
-                          {/* Spacer to push button to bottom */}
-                          <div className="flex-1" />
-
-                          {/* View on Explorer */}
-                          {!('stage_status' in selectedTxDetails) && (
-                            <Button
-                              variant="outline"
-                              className="w-full h-10 text-sm mt-auto"
-                              asChild
-                            >
-                              <a 
-                                href={`https://octrascan.io/transactions/${selectedTxHash}`} 
-                                target="_blank" 
-                                rel="noopener noreferrer"
-                              >
-                                <ExternalLink className="h-4 w-4 mr-2" />
-                                View on Explorer
-                              </a>
-                            </Button>
-                          )}
                         </div>
+
+                        {/* Spacer to push button to bottom */}
+                        <div className="flex-1" />
+
+                        {/* View on Explorer - outside divide container */}
+                        {!('stage_status' in selectedTxDetails) && (
+                          <Button
+                            variant="outline"
+                            className="w-full h-10 text-sm mt-4"
+                            asChild
+                          >
+                            <a 
+                              href={`https://octrascan.io/transactions/${selectedTxHash}`} 
+                              target="_blank" 
+                              rel="noopener noreferrer"
+                            >
+                              <ExternalLink className="h-4 w-4 mr-2" />
+                              View on Explorer
+                            </a>
+                          </Button>
+                        )}
+                      </>
                       ) : (
                         <div className="flex-1 flex items-center justify-center text-muted-foreground">
                           <p className="text-sm">No transaction data available</p>
@@ -3090,10 +3138,10 @@ export function WalletDashboard({
                 </div>
               ) : (
                 /* History List View */
-                <div className={`h-full flex flex-col p-4 pl-6 pb-6 transition-all duration-200 ${
+                <div className={`h-full flex flex-col p-3 pl-5 pb-6 transition-all duration-200 ${
                   txDetailsClosing ? 'animate-in slide-in-from-left-4 fade-in' : ''
                 }`}>
-                  <div className="flex items-center justify-between mb-4 mt-2 flex-shrink-0">
+                  <div className="flex items-center justify-between mb-4 mt-2 mr-2 flex-shrink-0">
                     <h3 className={`font-semibold text-base flex items-center gap-2 ${operationMode === 'private' ? 'text-[#0000db]' : ''}`}>
                       <History className="h-5 w-5" />
                       {operationMode === 'private' ? 'Encrypted Activity' : 'Public Activity'}

@@ -353,7 +353,7 @@ export function MultiSend({ wallet, balance, onBalanceUpdate, onNonceUpdate, onT
   const validRecipientCount = recipients.filter(r => r.address.trim() && r.addressValidation?.isValid && validateAmount(r.amount)).length;
 
   return (
-    <div className="h-full flex flex-col lg:flex-row gap-4 lg:gap-6 overflow-auto lg:overflow-hidden">
+    <div className="h-full flex flex-col lg:flex-row gap-2 lg:gap-4 overflow-auto lg:overflow-hidden">
       {/* Left Panel - Wallet Info & Controls */}
       <div className="w-full lg:w-80 flex-shrink-0 space-y-4 lg:flex lg:flex-col lg:justify-center overflow-visible">
           {/* Animated Icon - Hidden on mobile */}
@@ -477,7 +477,7 @@ export function MultiSend({ wallet, balance, onBalanceUpdate, onNonceUpdate, onT
       </div>
 
       {/* Separator - Hidden on mobile */}
-      <div className="hidden lg:block w-px bg-border flex-shrink-0" />
+      <div className="hidden lg:block w-px border-l border-dashed border-border flex-shrink-0" />
 
       {/* Right Panel - Recipients Grid with ScrollArea */}
       <div className="flex-1 lg:flex lg:flex-col lg:min-h-0">

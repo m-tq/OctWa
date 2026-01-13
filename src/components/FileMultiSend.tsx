@@ -1247,12 +1247,12 @@ export function FileMultiSend({ wallet, balance, onBalanceUpdate, onNonceUpdate,
   const oneSidebarOpen = sidebarOpen || historySidebarOpen;
 
   return (
-    <div className={`h-full flex flex-col gap-4 overflow-auto ${
+    <div className={`h-full flex flex-col gap-2 overflow-auto ${
       bothSidebarsOpen 
         ? 'lg:flex-col' 
         : oneSidebarOpen 
-          ? 'xl:flex-row xl:gap-6 xl:overflow-hidden' 
-          : 'lg:flex-row lg:gap-6 lg:overflow-hidden'
+          ? 'xl:flex-row xl:gap-4 xl:overflow-hidden' 
+          : 'lg:flex-row lg:gap-4 lg:overflow-hidden'
     }`}>
       {/* Left Panel - Wallet Info & Controls */}
       <div className={`w-full flex-shrink-0 space-y-4 overflow-visible ${
@@ -1398,7 +1398,7 @@ export function FileMultiSend({ wallet, balance, onBalanceUpdate, onNonceUpdate,
       </div>
 
       {/* Separator - Hidden on mobile */}
-      <div className={`hidden w-px bg-border flex-shrink-0 ${
+      <div className={`hidden w-px border-l border-dashed border-border flex-shrink-0 ${
         bothSidebarsOpen 
           ? 'lg:hidden' 
           : oneSidebarOpen 
@@ -1577,7 +1577,7 @@ export function FileMultiSend({ wallet, balance, onBalanceUpdate, onNonceUpdate,
       </div>
 
       {/* Separator - Hidden on mobile */}
-      <div className={`hidden w-[0.5px] bg-border flex-shrink-0 ${
+      <div className={`hidden w-px border-l border-dashed border-border flex-shrink-0 ${
         bothSidebarsOpen 
           ? 'lg:hidden' 
           : oneSidebarOpen 

@@ -218,21 +218,25 @@ export function ModeToggle({
                 </div>
               </TooltipTrigger>
               <TooltipContent side="bottom">
-                <p className="text-xs">You're untraceable</p>
+                <p className="text-xs">{isCompact ? "Untraceable" : "You're untraceable"}</p>
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
         )}
         {isExposed && (
-          <div className={`flex items-center gap-1 ${isCompact ? 'text-[10px]' : 'text-xs'} font-medium text-orange-500`}>
-            <AlertTriangle className={`${isCompact ? 'h-3 w-3' : 'h-3.5 w-3.5'}`} />
-            <span>Exposed.</span>
-            <InfoTooltip
-              content="Your transactions are publicly visible on the blockchain. Encrypt your balance to enable Private Mode."
-              side="bottom"
-              iconSize="sm"
-            />
-          </div>
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <div className={`flex items-center gap-1 ${isCompact ? 'text-[10px]' : 'text-xs'} font-medium text-orange-500 cursor-help`}>
+                  <AlertTriangle className={`${isCompact ? 'h-3 w-3' : 'h-3.5 w-3.5'}`} />
+                  <span>Exposed.</span>
+                </div>
+              </TooltipTrigger>
+              <TooltipContent side="bottom" className="max-w-[200px]">
+                <p className="text-xs">{isCompact ? "Transactions visible" : "Your transactions are publicly visible on the blockchain. Encrypt your balance to enable Private Mode."}</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
         )}
       </div>
 
