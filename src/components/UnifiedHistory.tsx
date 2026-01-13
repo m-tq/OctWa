@@ -22,6 +22,7 @@ import {
   Zap,
   ChevronLeft,
   ChevronRight,
+  MessageSquare,
 } from 'lucide-react';
 import { Wallet } from '../types/wallet';
 import { getTransactionHistory, fetchTransactionDetails, fetchPendingTransactionByHash } from '../utils/api';
@@ -32,7 +33,8 @@ import {
   ContractInteraction, 
   HistoryFilter,
   getUnifiedHistory,
-  isPrivateTransfer
+  isPrivateTransfer,
+  isContractCall
 } from '../utils/historyMerge';
 import { OperationMode } from '../utils/modeStorage';
 
@@ -62,14 +64,25 @@ export function UnifiedHistory({ wallet, transactions, onTransactionsUpdate, isL
   const historyListRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
 
-  // Filter transactions based on operationMode
+  // Filter transactions based on operationMode and activeFilter
   const filteredTransactions = transactions.filter(tx => {
     if (operationMode === 'private') {
+      // Private mode: only show private transfers (op_type === 'private')
       return isPrivateTransfer(tx);
     } else {
+      // Public mode: show non-private transfers, contract calls handled separately by filter
       return !isPrivateTransfer(tx);
     }
   });
+
+  // Count contract calls for public mode filter
+  const contractCallCount = operationMode === 'public' 
+    ? filteredTransactions.filter(tx => isContractCall(tx)).length 
+    : 0;
+
+  // Count sent/received (excluding contract calls in public mode)
+  const sentCount = filteredTransactions.filter(tx => tx.type === 'sent' && !isContractCall(tx)).length;
+  const receivedCount = filteredTransactions.filter(tx => tx.type === 'received' && !isContractCall(tx)).length;
 
   // Load contract history when wallet changes
   useEffect(() => {
@@ -193,8 +206,22 @@ export function UnifiedHistory({ wallet, transactions, onTransactionsUpdate, isL
   }
 
   // Get unified history using filtered transactions (based on operationMode)
-  // Don't include contract history in the unified view
-  const unifiedHistory = getUnifiedHistory(filteredTransactions, [], activeFilter);
+  // Apply additional filter for contract calls in public mode
+  const getFilteredHistory = () => {
+    let txsToShow = filteredTransactions;
+    
+    // In public mode, apply contract filter
+    if (operationMode === 'public' && activeFilter === 'contract') {
+      txsToShow = filteredTransactions.filter(tx => isContractCall(tx));
+    } else if (operationMode === 'public' && activeFilter !== 'all') {
+      // For sent/received in public mode, exclude contract calls
+      txsToShow = filteredTransactions.filter(tx => !isContractCall(tx));
+    }
+    
+    return getUnifiedHistory(txsToShow, [], activeFilter === 'contract' ? 'all' : activeFilter);
+  };
+  
+  const unifiedHistory = getFilteredHistory();
   const pendingCount = filteredTransactions.filter(tx => tx.status === 'pending').length;
 
   return (
@@ -203,7 +230,9 @@ export function UnifiedHistory({ wallet, transactions, onTransactionsUpdate, isL
         <div className="flex flex-col gap-0.5">
           <CardTitle className={`flex items-center gap-2 ${isPopupMode ? 'text-sm' : isCompact ? 'text-sm' : ''}`}>
             {!isCompact && <History className={isPopupMode ? 'h-4 w-4' : 'h-5 w-5'} />}
-            {/* {operationMode === 'private' ? 'Private History' : 'Public History'} */}
+            {!isPopupMode && !isCompact && (
+              <span>{operationMode === 'private' ? 'Encrypted Activity' : 'Public Activity'}</span>
+            )}
             {/* Pending badge only for popup mode - compact mode shows in filter row */}
             {isPopupMode && pendingCount > 0 && (
               <Badge variant="secondary" className="ml-1 text-[10px]">{pendingCount}</Badge>
@@ -212,7 +241,7 @@ export function UnifiedHistory({ wallet, transactions, onTransactionsUpdate, isL
           <span className={`text-muted-foreground ${isPopupMode ? 'text-[10px]' : 'text-xs'}`}>
             {isPopupMode 
               ? `last ${filteredTransactions.length} ${operationMode} tx` 
-              : `last ${filteredTransactions.length} ${operationMode} transactions`
+              : `recent ${filteredTransactions.length} data`
             }
           </span>
         </div>
@@ -231,30 +260,66 @@ export function UnifiedHistory({ wallet, transactions, onTransactionsUpdate, isL
         {/* Filter Buttons */}
         <div className={`flex ${isPopupMode ? 'flex-wrap gap-1 mb-2' : isCompact ? 'items-center justify-between gap-2 mb-4 flex-shrink-0' : 'items-center justify-between mb-4'}`}>
           <div className={`flex flex-wrap gap-2`}>
-            {(['all', 'sent', 'received'] as HistoryFilter[]).map((filter) => {
-              const sentCount = filteredTransactions.filter(tx => tx.type === 'sent').length;
-              const receivedCount = filteredTransactions.filter(tx => tx.type === 'received').length;
-              
-              return (
-                <Button
-                  key={filter}
-                  variant={activeFilter === filter ? 'default' : 'outline'}
-                  size="sm"
-                  onClick={() => setActiveFilter(filter)}
-                  className={`capitalize ${isPopupMode ? 'h-6 px-2 text-[10px]' : ''} ${
-                    activeFilter === filter && operationMode === 'private' ? 'bg-[#0000db] hover:bg-[#0000db]/90' : ''
-                  }`}
-                >
-                  {filter}
-                  {filter === 'sent' && sentCount > 0 && (
-                    <Badge variant="secondary" className={isPopupMode ? 'ml-1 text-[9px] px-1' : 'ml-1.5 text-xs'}>{sentCount}</Badge>
-                  )}
-                  {filter === 'received' && receivedCount > 0 && (
-                    <Badge variant="secondary" className={isPopupMode ? 'ml-1 text-[9px] px-1' : 'ml-1.5 text-xs'}>{receivedCount}</Badge>
-                  )}
-                </Button>
-              );
-            })}
+            {/* All filter */}
+            <Button
+              variant={activeFilter === 'all' ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => setActiveFilter('all')}
+              className={`${isPopupMode ? 'h-6 px-2 text-[10px]' : ''} ${
+                activeFilter === 'all' && operationMode === 'private' 
+                  ? 'bg-[#0000db] hover:bg-[#0000db]/90' 
+                  : ''
+              }`}
+            >
+              All
+            </Button>
+
+            {/* Sent filter with icon - red theme */}
+            <Button
+              variant={activeFilter === 'sent' ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => setActiveFilter('sent')}
+              className={`${isPopupMode ? 'h-6 px-2 text-[10px]' : ''} ${
+                activeFilter === 'sent'
+                  ? 'bg-red-500 hover:bg-red-600 text-white border-red-500'
+                  : 'border-red-300 text-red-600 hover:bg-red-50 hover:text-red-700 dark:border-red-800 dark:text-red-400 dark:hover:bg-red-950'
+              }`}
+            >
+              <ArrowUpRight className={`${isPopupMode ? 'h-3 w-3' : 'h-4 w-4'} ${sentCount > 0 ? 'mr-1' : ''}`} />
+              {sentCount > 0 && <span>{sentCount}</span>}
+            </Button>
+
+            {/* Received filter with icon - green theme */}
+            <Button
+              variant={activeFilter === 'received' ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => setActiveFilter('received')}
+              className={`${isPopupMode ? 'h-6 px-2 text-[10px]' : ''} ${
+                activeFilter === 'received'
+                  ? 'bg-green-500 hover:bg-green-600 text-white border-green-500'
+                  : 'border-green-300 text-green-600 hover:bg-green-50 hover:text-green-700 dark:border-green-800 dark:text-green-400 dark:hover:bg-green-950'
+              }`}
+            >
+              <ArrowDownLeft className={`${isPopupMode ? 'h-3 w-3' : 'h-4 w-4'} ${receivedCount > 0 ? 'mr-1' : ''}`} />
+              {receivedCount > 0 && <span>{receivedCount}</span>}
+            </Button>
+
+            {/* Contract filter - only for public mode - purple theme */}
+            {operationMode === 'public' && (
+              <Button
+                variant={activeFilter === 'contract' ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => setActiveFilter('contract')}
+                className={`${isPopupMode ? 'h-6 px-2 text-[10px]' : ''} ${
+                  activeFilter === 'contract'
+                    ? 'bg-purple-500 hover:bg-purple-600 text-white border-purple-500'
+                    : 'border-purple-300 text-purple-600 hover:bg-purple-50 hover:text-purple-700 dark:border-purple-800 dark:text-purple-400 dark:hover:bg-purple-950'
+                }`}
+              >
+                <Code className={`${isPopupMode ? 'h-3 w-3' : 'h-4 w-4'} ${contractCallCount > 0 ? 'mr-1' : ''}`} />
+                {contractCallCount > 0 && <span>{contractCallCount}</span>}
+              </Button>
+            )}
           </div>
           {/* Pending badge - right aligned for expanded and compact mode */}
           {!isPopupMode && pendingCount > 0 && (
@@ -545,6 +610,7 @@ function TransferItem({
   onItemClick
 }: TransferItemProps) {
   const isPrivate = isPrivateTransfer(tx);
+  const isContract = isContractCall(tx);
   
   // Handle item click for compact mode
   const handleItemClick = () => {
@@ -555,25 +621,33 @@ function TransferItem({
   
   // Popup mode: simplified compact view
   if (isPopupMode) {
+    const hasMessage = tx.message && tx.message !== 'PRIVATE_TRANSFER' && tx.message !== '505249564154455f5452414e53464552';
     return (
       <div className="relative flex items-center justify-between gap-2">
         <div className="flex items-center gap-2 flex-1 min-w-0">
-          {tx.type === 'sent' ? (
+          {isContract ? (
+            <Code className="h-3.5 w-3.5 text-purple-500 flex-shrink-0" />
+          ) : tx.type === 'sent' ? (
             <ArrowUpRight className="h-3.5 w-3.5 text-red-500 flex-shrink-0" />
           ) : (
             <ArrowDownLeft className="h-3.5 w-3.5 text-green-500 flex-shrink-0" />
           )}
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-1.5">
-              {isPrivate ? (
+              {isContract ? (
+                <span className="text-purple-500 font-medium text-xs">Contract Call</span>
+              ) : isPrivate ? (
                 <span className="text-[#0000db] font-medium text-xs">{tx.type === 'sent' ? '-' : '+'}Private</span>
               ) : (
                 <span className={`font-mono text-xs truncate ${tx.type === 'sent' ? 'text-red-500' : 'text-green-500'}`}>{tx.type === 'sent' ? '-' : '+'}{tx.amount?.toFixed(4) || '0'} OCT</span>
               )}
               {getStatusIcon(tx.status, true)}
+              {hasMessage && !isContract && (
+                <MessageSquare className="h-3 w-3 text-muted-foreground flex-shrink-0" />
+              )}
             </div>
             <div className="text-[10px] text-muted-foreground truncate">
-              {tx.type === 'sent' ? 'To: ' : 'From: '}{truncateAddress(tx.type === 'sent' ? tx.to : tx.from)}
+              {isContract ? 'To: ' : tx.type === 'sent' ? 'To: ' : 'From: '}{truncateAddress(isContract ? tx.to : (tx.type === 'sent' ? tx.to : tx.from))}
             </div>
           </div>
         </div>
@@ -595,6 +669,7 @@ function TransferItem({
   
   // Compact mode (sidebar): same style as popup mode
   if (isCompact) {
+    const hasMessage = tx.message && tx.message !== 'PRIVATE_TRANSFER' && tx.message !== '505249564154455f5452414e53464552';
     const txDate = new Date(tx.timestamp * 1000);
     const timeStr = txDate.toLocaleTimeString('en-US', { 
       hour: '2-digit', 
@@ -616,14 +691,18 @@ function TransferItem({
       >
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2 flex-1 min-w-0">
-            {tx.type === 'sent' ? (
+            {isContract ? (
+              <Code className="h-4 w-4 text-purple-500 flex-shrink-0" />
+            ) : tx.type === 'sent' ? (
               <ArrowUpRight className="h-4 w-4 text-red-500 flex-shrink-0" />
             ) : (
               <ArrowDownLeft className="h-4 w-4 text-green-500 flex-shrink-0" />
             )}
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-1.5">
-                {isPrivate ? (
+                {isContract ? (
+                  <span className="text-purple-500 font-medium text-sm">Contract Call</span>
+                ) : isPrivate ? (
                   <span className="text-[#0000db] font-medium text-sm">{tx.type === 'sent' ? '-' : '+'}Private</span>
                 ) : (
                   <span className={`font-mono text-sm ${tx.type === 'sent' ? 'text-red-500' : 'text-green-500'}`}>{tx.type === 'sent' ? '-' : '+'}{tx.amount?.toFixed(4) || '0'} OCT</span>
@@ -637,9 +716,12 @@ function TransferItem({
                     <div className="h-1.5 w-1.5 bg-red-500" />
                   </div>
                 )}
+                {hasMessage && !isContract && (
+                  <MessageSquare className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
+                )}
               </div>
               <div className="text-xs text-muted-foreground truncate">
-                {tx.type === 'sent' ? 'To: ' : 'From: '}{truncateAddress(tx.type === 'sent' ? tx.to : tx.from)}
+                {isContract ? 'To: ' : tx.type === 'sent' ? 'To: ' : 'From: '}{truncateAddress(isContract ? tx.to : (tx.type === 'sent' ? tx.to : tx.from))}
               </div>
             </div>
           </div>
@@ -653,17 +735,25 @@ function TransferItem({
   }
   
   // Expanded mode: full view
+  const hasMessage = tx.message && tx.message !== 'PRIVATE_TRANSFER' && tx.message !== '505249564154455f5452414e53464552';
   return (
     <div>
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          {tx.type === 'sent' ? (
+          {isContract ? (
+            <Code className="h-4 w-4 text-purple-500" />
+          ) : tx.type === 'sent' ? (
             <ArrowUpRight className="h-4 w-4 text-red-500" />
           ) : (
             <ArrowDownLeft className="h-4 w-4 text-green-500" />
           )}
-          <span className="font-medium capitalize text-sm">{tx.type}</span>
+          <span className="font-medium capitalize text-sm">
+            {isContract ? 'Contract Call' : tx.type}
+          </span>
           {getStatusIcon(tx.status)}
+          {hasMessage && !isContract && (
+            <MessageSquare className="h-4 w-4 text-muted-foreground" />
+          )}
         </div>
         <div className="flex items-center gap-1">
           <Button variant="ghost" size="sm" onClick={() => onViewDetails(tx.hash, tx.status === 'pending')}>
@@ -680,8 +770,10 @@ function TransferItem({
       </div>
       <div className="grid grid-cols-2 gap-2 text-xs mt-2">
         <div>
-          <span className="text-muted-foreground">Amount: </span>
-          {isPrivate ? (
+          <span className="text-muted-foreground">{isContract ? 'Contract: ' : 'Amount: '}</span>
+          {isContract ? (
+            <span className="font-mono">{truncateAddress(tx.to)}</span>
+          ) : isPrivate ? (
             <span className="text-[#0000db] font-medium">private OCT</span>
           ) : (
             <span className="font-mono">{tx.amount?.toFixed(8) || '0'} OCT</span>
@@ -692,8 +784,8 @@ function TransferItem({
           <span className="font-mono">{truncateHash(tx.hash || 'N/A')}</span>
         </div>
         <div>
-          <span className="text-muted-foreground">{tx.type === 'sent' ? 'To: ' : 'From: '}</span>
-          <span className="font-mono">{truncateAddress(tx.type === 'sent' ? tx.to : tx.from)}</span>
+          <span className="text-muted-foreground">{isContract ? 'From: ' : tx.type === 'sent' ? 'To: ' : 'From: '}</span>
+          <span className="font-mono">{truncateAddress(isContract ? tx.from : (tx.type === 'sent' ? tx.to : tx.from))}</span>
         </div>
         <div>
           <span className="text-muted-foreground">Time: </span>

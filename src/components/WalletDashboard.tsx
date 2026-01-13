@@ -9,9 +9,9 @@ import { ScrollArea, ScrollAreaContent } from '@/components/ui/scroll-area';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 
-import { 
-  Send, 
-  History, 
+import {
+  Send,
+  History,
   Lock,
   Copy,
   PieChart,
@@ -42,7 +42,8 @@ import {
   Wallet as WalletIcon,
   BookUser,
   Layers,
-  FileText
+  FileText,
+  MessageSquare,
 } from 'lucide-react';
 import { ExtensionStorageManager } from '../utils/extensionStorage';
 import { MultiSend } from './MultiSend';
@@ -82,6 +83,8 @@ interface Transaction {
   timestamp: number;
   status: 'confirmed' | 'pending' | 'failed';
   type: 'sent' | 'received';
+  message?: string;
+  op_type?: string;
 }
 
 interface WalletDashboardProps {
@@ -1391,7 +1394,7 @@ export function WalletDashboard({
                   </div>
                 ) : selectedTxDetails ? (
                   <div className="space-y-2">
-                    {/* Status */}
+                    {/* Status with Epoch */}
                     <div className="bg-muted/50  p-2 flex items-center justify-between">
                       <span className="text-[10px] text-muted-foreground">Status</span>
                       {'stage_status' in selectedTxDetails ? (
@@ -1399,19 +1402,16 @@ export function WalletDashboard({
                           {selectedTxDetails.stage_status || 'pending'}
                         </Badge>
                       ) : (
-                        <Badge variant="secondary" className="text-[10px] bg-[#0000db]/20 text-[#0000db] h-5">
-                          confirmed
-                        </Badge>
+                        <div className="flex items-center gap-1.5">
+                          <Badge variant="secondary" className="text-[10px] bg-[#0000db]/20 text-[#0000db] h-5">
+                            confirmed
+                          </Badge>
+                          {'epoch' in selectedTxDetails && (
+                            <span className="text-[10px] text-muted-foreground font-mono">#{selectedTxDetails.epoch}</span>
+                          )}
+                        </div>
                       )}
                     </div>
-
-                    {/* Epoch - only for confirmed */}
-                    {'epoch' in selectedTxDetails && (
-                      <div className="bg-muted/50  p-2 flex items-center justify-between">
-                        <span className="text-[10px] text-muted-foreground">Epoch</span>
-                        <span className="font-mono text-xs">{selectedTxDetails.epoch}</span>
-                      </div>
-                    )}
 
                     {/* Time */}
                     {('timestamp' in selectedTxDetails || 'parsed_tx' in selectedTxDetails) && (
@@ -1596,7 +1596,7 @@ export function WalletDashboard({
                           <SheetTrigger asChild>
                             <Button variant="ghost" className="h-auto p-0 hover:bg-transparent">
                               <div className="flex items-center space-x-1">
-                                <p className="text-[10px] text-[#0000db] font-medium">
+                                <p className="text-xs text-[#0000db] font-medium">
                                   {truncateAddress(wallet.address)}
                                 </p>
                                 <ChevronDown className="h-2.5 w-2.5 text-muted-foreground" />
@@ -2606,8 +2606,8 @@ export function WalletDashboard({
             </div>
 
             {/* Transaction List - Scrollable area */}
-            <ScrollArea className="flex-1 min-h-0">
-              <div className="space-y-1.5 pr-4 pb-6">
+            <ScrollArea className="flex-1 min-h-0" stabilizeGutter>
+              <ScrollAreaContent className="space-y-1.5 pb-6">
                 {isLoadingTransactions ? (
                   <div className="flex items-center justify-center py-4">
                     <div className="w-4 h-4 rounded-full border-2 border-transparent animate-spin" style={{ borderTopColor: '#0000db' }} />
@@ -2677,6 +2677,9 @@ export function WalletDashboard({
                                     <div className="h-1.5 w-1.5  bg-red-500" />
                                   </div>
                                 )}
+                                {tx.message && tx.message !== 'PRIVATE_TRANSFER' && tx.message !== '505249564154455f5452414e53464552' && (
+                                  <MessageSquare className="h-3 w-3 text-muted-foreground" />
+                                )}
                               </div>
                               <div className="text-[10px] text-muted-foreground truncate">
                                 {tx.type === 'sent' ? 'To: ' : 'From: '}{truncateAddress(tx.type === 'sent' ? tx.to : tx.from)}
@@ -2692,7 +2695,7 @@ export function WalletDashboard({
                     );
                   });
                 })()}
-              </div>
+              </ScrollAreaContent>
             </ScrollArea>
           </div>
         ) : (
@@ -3093,7 +3096,7 @@ export function WalletDashboard({
                   <div className="flex items-center justify-between mb-4 mt-2 flex-shrink-0">
                     <h3 className={`font-semibold text-base flex items-center gap-2 ${operationMode === 'private' ? 'text-[#0000db]' : ''}`}>
                       <History className="h-5 w-5" />
-                      Transaction History
+                      {operationMode === 'private' ? 'Encrypted Activity' : 'Public Activity'}
                     </h3>
                     <div className="flex items-center gap-1">
                       <Button 

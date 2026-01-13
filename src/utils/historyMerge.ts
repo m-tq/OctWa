@@ -168,3 +168,13 @@ export function isPrivateTransfer(tx: Transaction): boolean {
     (tx.amount === 0 && !!tx.message)
   );
 }
+
+/**
+ * Checks if a transaction is a contract call based on its op_type.
+ * 
+ * @param tx - Transaction to check
+ * @returns true if the transaction is a contract call
+ */
+export function isContractCall(tx: Transaction): boolean {
+  return tx.op_type === 'call';
+}
