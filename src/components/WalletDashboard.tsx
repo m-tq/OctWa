@@ -2466,10 +2466,7 @@ export function WalletDashboard({
                 </ScrollAreaContent>
               </ScrollArea>
               
-              {/* Spacer to push button to bottom */}
-              <div className="flex-1" />
-              
-              <div className="pt-4">
+              <div className="pt-4 mt-auto">
                 <Button
                   variant="outline"
                   onClick={() => setShowAddWalletDialog(true)}
