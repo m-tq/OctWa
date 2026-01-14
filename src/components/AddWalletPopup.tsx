@@ -61,10 +61,11 @@ export function AddWalletPopup({
   if (isPopupMode) {
     return (
       <Dialog open={open} onOpenChange={handleOpenChange}>
-        <DialogContent 
-          className="w-[360px] max-h-[500px] overflow-hidden p-0" 
+        <DialogContent
+          className="w-[360px] max-h-[500px] overflow-hidden p-0"
           aria-describedby={screen === 'menu' ? undefined : undefined}
           hideCloseButton={screen !== 'menu'}
+          preventCloseOnOutsideClick
         >
           {screen === 'menu' && (
             <PageTransition key={`menu-${transitionKey}`} variant="fade-slide" duration={200}>
@@ -155,9 +156,10 @@ export function AddWalletPopup({
   // Expanded mode: larger dialog with centered text
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent 
+      <DialogContent
         className="sm:max-w-lg max-h-[85vh] overflow-hidden p-0"
         hideCloseButton={screen !== 'menu'}
+        preventCloseOnOutsideClick
       >
         {screen === 'menu' && (
           <PageTransition key={`menu-${transitionKey}`} variant="fade-slide" duration={250}>

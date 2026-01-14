@@ -2383,7 +2383,7 @@ export function WalletDashboard({
                     return (
                       <div
                         key={w.address}
-                        className={`group relative py-3 pl-4 cursor-pointer transition-all duration-200 ${
+                        className={`group relative py-3 cursor-pointer transition-all duration-200 ${
                           isActive 
                             ? '' 
                             : 'hover:bg-accent/50'
@@ -2396,69 +2396,72 @@ export function WalletDashboard({
                           isActive ? 'h-10 opacity-100' : 'h-0 opacity-0'
                         }`} />
                         
-                        {/* Row 1: Number + Address + Actions (hidden, show on hover) */}
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2 min-w-0">
-                            <span className={`text-xs font-medium px-1.5 py-0.5 rounded ${
-                              isActive ? 'bg-[#0000db] text-white' : 'bg-muted text-muted-foreground'
-                            }`}>
-                              {i + 1}
-                            </span>
-                            <span className={`font-mono text-sm truncate ${isActive ? 'text-[#0000db] font-semibold' : ''}`}>
-                              {shortAddress}
-                            </span>
-                          </div>
-                          {/* Actions - hidden by default, show on hover */}
-                          <div className="flex items-center gap-1 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                copyToClipboard(w.address, `sidebarWallet-${w.address}`);
-                              }}
-                              className={`h-6 w-6 p-0 ${isActive ? 'text-[#0000db] hover:text-[#0000db]/80' : ''}`}
-                              title="Copy address"
-                            >
-                              {copiedField === `sidebarWallet-${w.address}` ? <Check className="h-3 w-3 text-green-500" /> : <Copy className="h-3 w-3" />}
-                            </Button>
-                            <div onClick={(e) => e.stopPropagation()}>
-                              <WalletLabelEditor address={w.address} isPopupMode={false} />
+                        {/* Content wrapper with left padding */}
+                        <div className="pl-4 pr-2">
+                          {/* Row 1: Number + Address + Actions (hidden, show on hover) */}
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2 min-w-0">
+                              <span className={`text-xs font-medium px-1.5 py-0.5 rounded ${
+                                isActive ? 'bg-[#0000db] text-white' : 'bg-muted text-muted-foreground'
+                              }`}>
+                                {i + 1}
+                              </span>
+                              <span className={`font-mono text-sm truncate ${isActive ? 'text-[#0000db] font-semibold' : ''}`}>
+                                {shortAddress}
+                              </span>
                             </div>
-                            {wallets.length > 1 && (
+                            {/* Actions - hidden by default, show on hover */}
+                            <div className="flex items-center gap-1 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
                               <Button
                                 variant="ghost"
                                 size="sm"
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  setWalletToDelete(w);
+                                  copyToClipboard(w.address, `sidebarWallet-${w.address}`);
                                 }}
-                                className="h-6 w-6 p-0 text-red-500 hover:text-red-700"
-                                title="Remove wallet"
+                                className={`h-6 w-6 p-0 ${isActive ? 'text-[#0000db] hover:text-[#0000db]/80' : ''}`}
+                                title="Copy address"
                               >
-                                <Trash2 className="h-3 w-3" />
+                                {copiedField === `sidebarWallet-${w.address}` ? <Check className="h-3 w-3 text-green-500" /> : <Copy className="h-3 w-3" />}
                               </Button>
+                              <div onClick={(e) => e.stopPropagation()}>
+                                <WalletLabelEditor address={w.address} isPopupMode={false} />
+                              </div>
+                              {wallets.length > 1 && (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setWalletToDelete(w);
+                                  }}
+                                  className="h-6 w-6 p-0 text-red-500 hover:text-red-700"
+                                  title="Remove wallet"
+                                >
+                                  <Trash2 className="h-3 w-3" />
+                                </Button>
+                              )}
+                            </div>
+                          </div>
+                          
+                          {/* Row 2: Wallet Name */}
+                          <div className={`mt-1 text-sm font-medium truncate ${isActive ? 'text-[#0000db]' : ''}`}>
+                            <WalletDisplayName address={w.address} />
+                          </div>
+                          
+                          {/* Row 3: Type + Nonce (active always shows, non-active shows on hover) */}
+                          <div className={`flex items-center justify-between mt-1 text-xs ${
+                            isActive ? 'text-[#0000db]/70' : 'text-muted-foreground'
+                          }`}>
+                            <span>{walletType}</span>
+                            {isActive ? (
+                              <span>Nonce: {nonce}</span>
+                            ) : (
+                              <span className="opacity-0 group-hover:opacity-100 transition-opacity">
+                                Nonce: {walletNonce !== undefined ? (walletNonce ?? '-') : '...'}
+                              </span>
                             )}
                           </div>
-                        </div>
-                        
-                        {/* Row 2: Wallet Name */}
-                        <div className={`mt-1 text-sm font-medium truncate ${isActive ? 'text-[#0000db]' : ''}`}>
-                          <WalletDisplayName address={w.address} />
-                        </div>
-                        
-                        {/* Row 3: Type + Nonce (active always shows, non-active shows on hover) */}
-                        <div className={`flex items-center justify-between mt-1 text-xs ${
-                          isActive ? 'text-[#0000db]/70' : 'text-muted-foreground'
-                        }`}>
-                          <span>{walletType}</span>
-                          {isActive ? (
-                            <span>Nonce: {nonce}</span>
-                          ) : (
-                            <span className="opacity-0 group-hover:opacity-100 transition-opacity">
-                              Nonce: {walletNonce !== undefined ? (walletNonce ?? '-') : '...'}
-                            </span>
-                          )}
                         </div>
                       </div>
                     );
