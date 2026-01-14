@@ -199,10 +199,34 @@
   font-size: 14px;
   height: 600px;
   width: 400px;
-  overflow: hidden; /* Prevent any overflow that could cause sizing issues */
-  border: none !important;
+  overflow: hidden !important;
+  border: 1px solid hsl(var(--border)) !important;
   outline: none !important;
   box-shadow: none !important;
+  box-sizing: border-box !important;
+  position: relative;
+}
+
+/* Force hide ALL scrollbars in popup to prevent border overlap */
+.popup-view,
+.popup-view *,
+.popup-container,
+.popup-container * {
+  scrollbar-width: none !important; /* Firefox */
+  -ms-overflow-style: none !important; /* IE 10+ */
+}
+
+.popup-view::-webkit-scrollbar,
+.popup-view *::-webkit-scrollbar,
+.popup-container::-webkit-scrollbar,
+.popup-container *::-webkit-scrollbar {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+}
+
+.popup-view > * {
+  max-width: 100% !important;
 }
 
 .popup-view * {
@@ -210,22 +234,20 @@
 }
 
 .popup-container {
-  height: 600px;
-  max-height: 600px;
-  overflow: hidden;
-  scrollbar-width: none; /* Firefox */
-  -ms-overflow-style: none; /* IE 10+ */
+  height: 100%;
+  max-height: 100%;
+  width: 100%;
+  overflow-x: hidden !important;
+  overflow-y: auto;
   border: none !important;
   outline: none !important;
-}
-
-.popup-container::-webkit-scrollbar {
-  display: none; /* Chrome, Safari, Edge */
+  box-sizing: border-box !important;
 }
 
 /* Hide scrollbar for popup-view overflow-y-auto elements */
 .popup-view *::-webkit-scrollbar {
-  width: 4px;
+  width: 0 !important;
+  display: none !important;
 }
 
 .popup-view *::-webkit-scrollbar-track {
@@ -442,12 +464,12 @@ input:-webkit-autofill:active {
   color: hsl(var(--foreground)) !important;
 }
 
-/* Dark theme input styling */
+/* Dark theme input styling - use background color instead of transparent */
 .dark input:hover,
 .dark textarea:hover,
 .dark input:focus,
 .dark textarea:focus {
-  background-color: transparent !important;
+  background-color: hsl(var(--background)) !important;
   caret-color: hsl(var(--foreground)) !important;
   color: hsl(var(--foreground)) !important;
 }

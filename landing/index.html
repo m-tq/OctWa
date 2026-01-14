@@ -12,6 +12,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
   <style>
     :root {
       --background: #1a1a1a;
@@ -51,6 +52,7 @@
       height: 100vh;
       overflow: hidden;
       position: relative;
+      z-index: 1;
     }
 
     .slides-wrapper {
@@ -211,13 +213,14 @@
     }
 
     .btn-secondary {
-      background-color: transparent;
+      background-color: var(--card);
       color: var(--foreground);
       border-color: var(--border);
     }
 
     .btn-secondary:hover {
       background-color: var(--muted);
+      border-color: var(--muted-foreground);
     }
 
     .cta-group {
@@ -386,6 +389,155 @@
       font-size: 0.875rem;
       color: var(--muted-foreground);
       margin-top: 3rem;
+    }
+
+    /* Screenshots Grid */
+    .screenshots-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 1.5rem;
+      margin-top: 2rem;
+    }
+
+    .screenshot-item {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.75rem;
+    }
+
+    .screenshot-item img {
+      width: 100%;
+      max-width: 200px;
+      height: auto;
+      border: 1px solid var(--border);
+      transition: transform 0.3s ease, border-color 0.3s ease;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    }
+
+    .screenshot-item img:hover {
+      transform: scale(1.05);
+      border-color: var(--primary);
+      cursor: pointer;
+    }
+
+    .screenshot-item span {
+      font-size: 0.8rem;
+      color: var(--muted-foreground);
+    }
+
+    /* Lightbox */
+    .lightbox {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.95);
+      z-index: 1000;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .lightbox.active {
+      display: flex;
+    }
+
+    .lightbox-content {
+      position: relative;
+      max-width: 90vw;
+      max-height: 90vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    .lightbox-img {
+      max-width: 100%;
+      max-height: 80vh;
+      border: 1px solid var(--border);
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+    }
+
+    .lightbox-caption {
+      margin-top: 1rem;
+      font-size: 1rem;
+      color: var(--foreground);
+    }
+
+    .lightbox-close {
+      position: absolute;
+      top: -40px;
+      right: 0;
+      background: none;
+      border: none;
+      color: var(--foreground);
+      font-size: 2rem;
+      cursor: pointer;
+      padding: 0.5rem;
+      line-height: 1;
+      transition: color 0.2s ease;
+    }
+
+    .lightbox-close:hover {
+      color: var(--primary);
+    }
+
+    .lightbox-nav {
+      position: absolute;
+      top: 50%;
+      transform: translateY(-50%);
+      background: var(--card);
+      border: 1px solid var(--border);
+      color: var(--foreground);
+      width: 48px;
+      height: 48px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .lightbox-nav:hover {
+      background: var(--primary);
+      border-color: var(--primary);
+    }
+
+    .lightbox-prev {
+      left: -70px;
+    }
+
+    .lightbox-next {
+      right: -70px;
+    }
+
+    .lightbox-counter {
+      position: absolute;
+      bottom: -40px;
+      font-size: 0.875rem;
+      color: var(--muted-foreground);
+    }
+
+    @media (max-width: 768px) {
+      .lightbox-nav {
+        width: 40px;
+        height: 40px;
+      }
+
+      .lightbox-prev {
+        left: 10px;
+      }
+
+      .lightbox-next {
+        right: 10px;
+      }
+
+      .lightbox-close {
+        top: -35px;
+        font-size: 1.5rem;
+      }
     }
 
     /* Slide Counter */
@@ -562,6 +714,20 @@
         margin-top: 2rem;
       }
 
+      /* Screenshots responsive */
+      .screenshots-grid {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 1rem;
+      }
+
+      .screenshot-item img {
+        max-width: 150px;
+      }
+
+      .screenshot-item span {
+        font-size: 0.7rem;
+      }
+
       /* Slide 2 description text */
       .slide[data-slide="1"] p:last-child {
         font-size: 0.8rem !important;
@@ -586,6 +752,15 @@
       .security-item {
         padding: 1rem;
       }
+
+      .screenshots-grid {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 0.75rem;
+      }
+
+      .screenshot-item img {
+        max-width: 120px;
+      }
     }
 
     /* Landscape mobile */
@@ -607,6 +782,9 @@
   </style>
 </head>
 <body>
+  <!-- Octra Background Canvas -->
+  <div id="octraBackground" style="position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; overflow: hidden; pointer-events: none; z-index: 0;"></div>
+
   <div class="slides-container">
     <div class="slides-wrapper" id="slidesWrapper">
 
@@ -780,8 +958,42 @@
         </div>
       </section>
 
-      <!-- Slide 6: Open Source & Footer -->
+      <!-- Slide 6: Screenshots -->
       <section class="slide" data-slide="5">
+        <div class="slide-content">
+          <h2 class="slide-title">Screenshots</h2>
+          <p class="slide-subtitle">See OctWa in action. Click to view full size.</p>
+          <div class="screenshots-grid">
+            <div class="screenshot-item" onclick="openLightbox(0)">
+              <img src="dashboard.png" alt="Dashboard" loading="lazy">
+              <span>Dashboard</span>
+            </div>
+            <div class="screenshot-item" onclick="openLightbox(1)">
+              <img src="private.png" alt="Private Mode" loading="lazy">
+              <span>Private Mode</span>
+            </div>
+            <div class="screenshot-item" onclick="openLightbox(2)">
+              <img src="multisend.png" alt="Multi-Send" loading="lazy">
+              <span>Multi-Send</span>
+            </div>
+            <div class="screenshot-item" onclick="openLightbox(3)">
+              <img src="multiwallet.png" alt="Multi-Wallet" loading="lazy">
+              <span>Multi-Wallet</span>
+            </div>
+            <div class="screenshot-item" onclick="openLightbox(4)">
+              <img src="bulksend.png" alt="Bulk Send" loading="lazy">
+              <span>Bulk Send</span>
+            </div>
+            <div class="screenshot-item" onclick="openLightbox(5)">
+              <img src="welcome.png" alt="Welcome" loading="lazy">
+              <span>Welcome</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Slide 7: Open Source & Footer -->
+      <section class="slide" data-slide="6">
         <div class="slide-content">
           <a href="https://github.com/m-tq/OctWa" target="_blank" rel="noopener">
             <svg class="opensource-icon" viewBox="0 0 24 24" fill="var(--foreground)">
@@ -821,7 +1033,8 @@
     <button class="nav-dot" data-slide="2" data-label="Features" aria-label="Go to slide 3"></button>
     <button class="nav-dot" data-slide="3" data-label="How It Works" aria-label="Go to slide 4"></button>
     <button class="nav-dot" data-slide="4" data-label="Security" aria-label="Go to slide 5"></button>
-    <button class="nav-dot" data-slide="5" data-label="Open Source" aria-label="Go to slide 6"></button>
+    <button class="nav-dot" data-slide="5" data-label="Screenshots" aria-label="Go to slide 6"></button>
+    <button class="nav-dot" data-slide="6" data-label="Open Source" aria-label="Go to slide 7"></button>
   </nav>
 
   <!-- Scroll Indicator -->
@@ -833,7 +1046,27 @@
   </div>
 
   <!-- Slide Counter -->
-  <div class="slide-counter" id="slideCounter">1 / 6</div>
+  <div class="slide-counter" id="slideCounter">1 / 7</div>
+
+  <!-- Lightbox -->
+  <div class="lightbox" id="lightbox">
+    <div class="lightbox-content">
+      <button class="lightbox-close" onclick="closeLightbox()">&times;</button>
+      <button class="lightbox-nav lightbox-prev" onclick="prevImage()">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M15 18l-6-6 6-6"/>
+        </svg>
+      </button>
+      <img class="lightbox-img" id="lightboxImg" src="" alt="">
+      <button class="lightbox-nav lightbox-next" onclick="nextImage()">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M9 18l6-6-6-6"/>
+        </svg>
+      </button>
+      <div class="lightbox-caption" id="lightboxCaption"></div>
+      <div class="lightbox-counter" id="lightboxCounter"></div>
+    </div>
+  </div>
 
   <script>
     const slidesWrapper = document.getElementById('slidesWrapper');
@@ -954,6 +1187,338 @@
         wasMobile = nowMobile;
       }
     });
+  </script>
+
+  <!-- Lightbox Script -->
+  <script>
+    const screenshots = [
+      { src: 'dashboard.png', caption: 'Dashboard' },
+      { src: 'private.png', caption: 'Private Mode' },
+      { src: 'multisend.png', caption: 'Multi-Send' },
+      { src: 'multiwallet.png', caption: 'Multi-Wallet' },
+      { src: 'bulksend.png', caption: 'Bulk Send' },
+      { src: 'welcome.png', caption: 'Welcome' }
+    ];
+    
+    let currentImageIndex = 0;
+    const lightbox = document.getElementById('lightbox');
+    const lightboxImg = document.getElementById('lightboxImg');
+    const lightboxCaption = document.getElementById('lightboxCaption');
+    const lightboxCounter = document.getElementById('lightboxCounter');
+
+    function openLightbox(index) {
+      currentImageIndex = index;
+      updateLightboxImage();
+      lightbox.classList.add('active');
+      document.body.style.overflow = 'hidden';
+    }
+
+    function closeLightbox() {
+      lightbox.classList.remove('active');
+      document.body.style.overflow = '';
+    }
+
+    function updateLightboxImage() {
+      const img = screenshots[currentImageIndex];
+      lightboxImg.src = img.src;
+      lightboxImg.alt = img.caption;
+      lightboxCaption.textContent = img.caption;
+      lightboxCounter.textContent = `${currentImageIndex + 1} / ${screenshots.length}`;
+    }
+
+    function nextImage() {
+      currentImageIndex = (currentImageIndex + 1) % screenshots.length;
+      updateLightboxImage();
+    }
+
+    function prevImage() {
+      currentImageIndex = (currentImageIndex - 1 + screenshots.length) % screenshots.length;
+      updateLightboxImage();
+    }
+
+    // Close on background click
+    lightbox.addEventListener('click', (e) => {
+      if (e.target === lightbox) {
+        closeLightbox();
+      }
+    });
+
+    // Keyboard navigation for lightbox
+    document.addEventListener('keydown', (e) => {
+      if (!lightbox.classList.contains('active')) return;
+      
+      if (e.key === 'Escape') {
+        closeLightbox();
+      } else if (e.key === 'ArrowRight') {
+        nextImage();
+      } else if (e.key === 'ArrowLeft') {
+        prevImage();
+      }
+    });
+  </script>
+
+  <!-- Octra Background Script -->
+  <script>
+    (function() {
+      const container = document.getElementById('octraBackground');
+      if (!container || typeof THREE === 'undefined') return;
+
+      const NODE_COUNT = 800;
+      const CLUSTER_CENTERS = [
+        [-0.5, 0.6], [0.5, 0.6],
+        [-0.7, 0.0], [0.7, 0.0],
+        [-0.4, -0.6], [0.4, -0.6]
+      ];
+
+      // Vertex Shader
+      const vertexShader = `
+        attribute float seed;
+        attribute float clusterId;
+        
+        uniform float uTime;
+        uniform vec2 uResolution;
+        
+        varying float vSeed;
+        varying float vClusterId;
+        varying float vDepth;
+        
+        float hash(float n) {
+          return fract(sin(n) * 43758.5453123);
+        }
+        
+        float noise(vec3 x) {
+          vec3 p = floor(x);
+          vec3 f = fract(x);
+          f = f * f * (3.0 - 2.0 * f);
+          float n = p.x + p.y * 57.0 + 113.0 * p.z;
+          return mix(
+            mix(mix(hash(n), hash(n + 1.0), f.x),
+                mix(hash(n + 57.0), hash(n + 58.0), f.x), f.y),
+            mix(mix(hash(n + 113.0), hash(n + 114.0), f.x),
+                mix(hash(n + 170.0), hash(n + 171.0), f.x), f.y), f.z);
+        }
+        
+        void main() {
+          vSeed = seed;
+          vClusterId = clusterId;
+          
+          vec3 pos = position;
+          
+          float t1 = uTime * 0.3 + seed * 10.0;
+          float t2 = uTime * 0.5 + seed * 20.0;
+          
+          float orbitRadius = 0.1 + seed * 0.15;
+          float orbitSpeed = 0.3 + clusterId * 0.1;
+          pos.x += sin(t1 * orbitSpeed) * orbitRadius;
+          pos.y += cos(t1 * orbitSpeed * 1.3) * orbitRadius;
+          
+          float noiseScale = 0.5;
+          float nx = noise(vec3(pos.xy * noiseScale, t2 * 0.1)) - 0.5;
+          float ny = noise(vec3(pos.yx * noiseScale, t2 * 0.1 + 100.0)) - 0.5;
+          pos.x += nx * 0.2;
+          pos.y += ny * 0.2;
+          
+          vDepth = 0.5 + 0.5 * sin(seed * 6.28);
+          
+          float baseSize = 2.5 + seed * 3.0;
+          float depthScale = 0.7 + vDepth * 0.6;
+          gl_PointSize = baseSize * depthScale;
+          
+          float aspect = uResolution.x / uResolution.y;
+          pos.x /= aspect;
+          
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
+        }
+      `;
+
+      // Fragment Shader
+      const fragmentShader = `
+        varying float vSeed;
+        varying float vClusterId;
+        varying float vDepth;
+        
+        uniform float uTime;
+        
+        void main() {
+          vec2 center = gl_PointCoord - vec2(0.5);
+          float dist = length(center);
+          
+          float core = 1.0 - smoothstep(0.0, 0.15, dist);
+          float glow = 1.0 - smoothstep(0.0, 0.5, dist);
+          float alpha = core * 0.8 + glow * 0.4;
+          
+          float colorShift = sin(uTime * 0.2 + vClusterId * 1.5) * 0.5 + 0.5;
+          
+          vec3 color1 = vec3(0.0, 0.0, 0.86);
+          vec3 color2 = vec3(0.27, 0.27, 1.0);
+          vec3 color3 = vec3(0.53, 0.53, 1.0);
+          vec3 color4 = vec3(0.4, 0.2, 1.0);
+          
+          vec3 baseColor = mix(color1, color2, vSeed);
+          baseColor = mix(baseColor, color3, vDepth * 0.3);
+          baseColor = mix(baseColor, color4, colorShift * 0.2);
+          
+          float brightness = 0.9;
+          alpha *= brightness * (0.6 + vDepth * 0.4);
+          
+          if (alpha < 0.01) discard;
+          
+          gl_FragColor = vec4(baseColor * brightness, alpha);
+        }
+      `;
+
+      // Line Shaders
+      const lineVertexShader = `
+        attribute float opacity;
+        uniform vec2 uResolution;
+        varying float vOpacity;
+        
+        void main() {
+          vOpacity = opacity;
+          vec3 pos = position;
+          float aspect = uResolution.x / uResolution.y;
+          pos.x /= aspect;
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
+        }
+      `;
+
+      const lineFragmentShader = `
+        varying float vOpacity;
+        
+        void main() {
+          vec3 color = vec3(0.0, 0.0, 0.86);
+          float alpha = vOpacity * 0.25;
+          gl_FragColor = vec4(color, alpha);
+        }
+      `;
+
+      // Setup
+      const width = window.innerWidth;
+      const height = window.innerHeight;
+
+      const scene = new THREE.Scene();
+      const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 10);
+      camera.position.z = 1;
+
+      const renderer = new THREE.WebGLRenderer({
+        antialias: true,
+        alpha: true,
+        powerPreference: 'high-performance'
+      });
+      renderer.setSize(width, height);
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+      renderer.setClearColor(0x000000, 0);
+      container.appendChild(renderer.domElement);
+
+      // Create points
+      const geometry = new THREE.BufferGeometry();
+      const positions = new Float32Array(NODE_COUNT * 3);
+      const seeds = new Float32Array(NODE_COUNT);
+      const clusterIds = new Float32Array(NODE_COUNT);
+      const numClusters = CLUSTER_CENTERS.length;
+
+      for (let i = 0; i < NODE_COUNT; i++) {
+        const clusterId = i % numClusters;
+        const [cx, cy] = CLUSTER_CENTERS[clusterId];
+        const angle = Math.random() * Math.PI * 2;
+        const radius = Math.random() * 0.4 + Math.random() * 0.3;
+        
+        positions[i * 3] = cx + Math.cos(angle) * radius;
+        positions[i * 3 + 1] = cy + Math.sin(angle) * radius;
+        positions[i * 3 + 2] = 0;
+        
+        seeds[i] = Math.random();
+        clusterIds[i] = clusterId;
+      }
+
+      geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+      geometry.setAttribute('seed', new THREE.BufferAttribute(seeds, 1));
+      geometry.setAttribute('clusterId', new THREE.BufferAttribute(clusterIds, 1));
+
+      const uniforms = {
+        uTime: { value: 0 },
+        uResolution: { value: new THREE.Vector2(width, height) }
+      };
+
+      const material = new THREE.ShaderMaterial({
+        uniforms,
+        vertexShader,
+        fragmentShader,
+        transparent: true,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        depthTest: false
+      });
+
+      const points = new THREE.Points(geometry, material);
+      scene.add(points);
+
+      // Create lines
+      const linePositions = [];
+      const lineOpacities = [];
+      const connectionThreshold = 0.25;
+
+      for (let i = 0; i < NODE_COUNT; i++) {
+        for (let j = i + 1; j < NODE_COUNT; j++) {
+          if (clusterIds[i] !== clusterIds[j]) continue;
+          
+          const dx = positions[i * 3] - positions[j * 3];
+          const dy = positions[i * 3 + 1] - positions[j * 3 + 1];
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          
+          if (dist < connectionThreshold) {
+            linePositions.push(
+              positions[i * 3], positions[i * 3 + 1], 0,
+              positions[j * 3], positions[j * 3 + 1], 0
+            );
+            const opacity = 1.0 - (dist / connectionThreshold);
+            lineOpacities.push(opacity, opacity);
+          }
+        }
+      }
+
+      const lineGeometry = new THREE.BufferGeometry();
+      lineGeometry.setAttribute('position', new THREE.Float32BufferAttribute(linePositions, 3));
+      lineGeometry.setAttribute('opacity', new THREE.Float32BufferAttribute(lineOpacities, 1));
+
+      const lineUniforms = {
+        uTime: { value: 0 },
+        uResolution: { value: new THREE.Vector2(width, height) }
+      };
+
+      const lineMaterial = new THREE.ShaderMaterial({
+        uniforms: lineUniforms,
+        vertexShader: lineVertexShader,
+        fragmentShader: lineFragmentShader,
+        transparent: true,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false
+      });
+
+      const lines = new THREE.LineSegments(lineGeometry, lineMaterial);
+      scene.add(lines);
+
+      // Animation
+      const startTime = performance.now();
+      
+      function animate() {
+        const elapsed = (performance.now() - startTime) / 1000;
+        uniforms.uTime.value = elapsed;
+        lineUniforms.uTime.value = elapsed;
+        renderer.render(scene, camera);
+        requestAnimationFrame(animate);
+      }
+      animate();
+
+      // Resize
+      window.addEventListener('resize', () => {
+        const w = window.innerWidth;
+        const h = window.innerHeight;
+        renderer.setSize(w, h);
+        uniforms.uResolution.value.set(w, h);
+        lineUniforms.uResolution.value.set(w, h);
+      });
+    })();
   </script>
 </body>
 </html>

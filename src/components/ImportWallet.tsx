@@ -157,7 +157,7 @@ export function ImportWallet({ onWalletImported, defaultTab = 'private-key', isC
     }
 
     return (
-      <Card className={`bg-card/95 backdrop-blur-sm ${hideBorder ? 'border-0 shadow-none' : ''}`}>
+      <Card className={`${hideBorder ? 'bg-transparent border-0 shadow-none' : 'bg-card/95 backdrop-blur-sm'}`}>
         {!hideBorder && (
           <CardHeader className="pb-4">
             <CardTitle className="flex items-center gap-2 text-lg">
@@ -273,7 +273,7 @@ export function ImportWallet({ onWalletImported, defaultTab = 'private-key', isC
   }
 
   return (
-    <Card className={`bg-card/95 backdrop-blur-sm ${hideBorder ? 'border-0 shadow-none' : ''}`}>
+    <Card className={`${hideBorder ? 'bg-transparent border-0 shadow-none' : 'bg-card/95 backdrop-blur-sm'}`}>
       {!hideBorder && (
         <CardHeader className="pb-4">
           <CardTitle className="flex items-center gap-2 text-lg">

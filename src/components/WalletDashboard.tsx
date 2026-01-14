@@ -469,16 +469,61 @@ export function WalletDashboard({
         setActiveNetwork(data.network);
       });
       
-      // Check every 3 minutes (force refresh)
+      // Check every 3 minutes (force refresh) when connected
       const interval = setInterval(async () => {
         const freshStatus = await checkRPCStatus(true);
         setRpcStatus(freshStatus.status);
         setActiveNetwork(freshStatus.network);
       }, 3 * 60 * 1000);
       
+      // Auto-retry every 7 seconds when disconnected
+      let retryInterval: ReturnType<typeof setInterval> | null = null;
+      
+      const startRetryLoop = () => {
+        if (retryInterval) return; // Already running
+        console.log('🔄 Starting auto-retry for RPC connection...');
+        retryInterval = setInterval(async () => {
+          console.log('🔄 Retrying RPC connection...');
+          const freshStatus = await checkRPCStatus(true);
+          setRpcStatus(freshStatus.status);
+          setActiveNetwork(freshStatus.network);
+          
+          if (freshStatus.status === 'connected') {
+            console.log('✅ RPC reconnected, stopping retry loop');
+            if (retryInterval) {
+              clearInterval(retryInterval);
+              retryInterval = null;
+            }
+          }
+        }, 7000);
+      };
+      
+      const stopRetryLoop = () => {
+        if (retryInterval) {
+          clearInterval(retryInterval);
+          retryInterval = null;
+        }
+      };
+      
+      // Start retry loop if initially disconnected
+      if (status.status === 'disconnected') {
+        startRetryLoop();
+      }
+      
+      // Listen for status changes to start/stop retry loop
+      const unsubscribeRetry = onRPCStatusChange((data) => {
+        if (data.status === 'disconnected') {
+          startRetryLoop();
+        } else if (data.status === 'connected') {
+          stopRetryLoop();
+        }
+      });
+      
       return () => {
         unsubscribe();
+        unsubscribeRetry();
         clearInterval(interval);
+        stopRetryLoop();
       };
     };
     
@@ -1210,7 +1255,7 @@ export function WalletDashboard({
       {/* POPUP MODE - NEW FULLSCREEN UI */}
       {/* ============================================ */}
       {isPopupMode && popupScreen !== 'main' && (
-        <div className="fixed inset-0 z-[100] bg-background flex flex-col">
+        <div className="fixed inset-[1px] z-[100] bg-background flex flex-col">
           {/* Fullscreen Encrypt */}
           {popupScreen === 'encrypt' && (
             <div className="flex flex-col h-full pb-10">
@@ -3401,7 +3446,7 @@ export function WalletDashboard({
 
       {/* Fixed Bottom Footer - Popup Mode Only - visible on all screens */}
       {isPopupMode && (
-        <div className="fixed bottom-0 left-0 right-0 z-[200] bg-background border-t border-border">
+        <div className="fixed bottom-[1px] left-[1px] right-[1px] z-[200] bg-background border-t border-border">
           {/* Network Status Footer */}
           <div className="flex items-center justify-between px-3 py-1.5">
             {/* Left: Connection Status */}

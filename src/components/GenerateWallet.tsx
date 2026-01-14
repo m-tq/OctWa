@@ -249,7 +249,7 @@ export function GenerateWallet({ onWalletGenerated, isCompact = false, hideBorde
             <span className="text-xs text-muted-foreground">Address</span>
             <CopyButton field="address-compact" text={generatedWallet.address} />
           </div>
-          <div className="p-2 bg-muted rounded text-xs font-mono break-all">{generatedWallet.address}</div>
+          <div className="p-2 border border-border rounded text-xs font-mono break-all">{generatedWallet.address}</div>
         </div>
 
         {/* Mnemonic */}
@@ -266,7 +266,7 @@ export function GenerateWallet({ onWalletGenerated, isCompact = false, hideBorde
                 </Button>
               </div>
             </div>
-            <div className="p-2 bg-muted rounded">
+            <div className="p-2 border border-border rounded">
               {showMnemonic ? (
                 <div className="grid grid-cols-4 gap-1">
                   {generatedWallet.mnemonic.split(' ').map((word, i) => (
@@ -295,7 +295,7 @@ export function GenerateWallet({ onWalletGenerated, isCompact = false, hideBorde
               </Button>
             </div>
           </div>
-          <div className="p-2 bg-muted rounded text-xs font-mono break-all">
+          <div className="p-2 border border-border rounded text-xs font-mono break-all">
             {showPrivateKey ? generatedWallet.privateKey : maskText(generatedWallet.privateKey)}
           </div>
         </div>
@@ -361,7 +361,7 @@ export function GenerateWallet({ onWalletGenerated, isCompact = false, hideBorde
           </div>
         </DialogContent>
       </Dialog>
-      <Card className={`bg-card/95 backdrop-blur-sm ${hideBorder ? 'border-0 shadow-none' : ''}`}>
+      <Card className={`${hideBorder ? 'bg-transparent border-0 shadow-none' : 'bg-card/95 backdrop-blur-sm'}`}>
       {!hideBorder && (
         <CardHeader className="pb-4">
           <CardTitle className="text-lg">Backup Your Wallet</CardTitle>
@@ -371,7 +371,7 @@ export function GenerateWallet({ onWalletGenerated, isCompact = false, hideBorde
         <div className="space-y-2">
           <label className="text-sm font-medium">Address</label>
           <div className="flex items-center gap-2">
-            <div className="flex-1 p-2 bg-muted rounded text-xs font-mono break-all">{generatedWallet.address}</div>
+            <div className="flex-1 p-2 border border-border rounded text-xs font-mono break-all">{generatedWallet.address}</div>
             <CopyButton field="address" text={generatedWallet.address} size="default" />
           </div>
         </div>
@@ -384,7 +384,7 @@ export function GenerateWallet({ onWalletGenerated, isCompact = false, hideBorde
                 <span className="ml-1 text-xs">{showMnemonic ? 'Hide' : 'Show'}</span>
               </Button>
             </div>
-            <div className="p-3 bg-muted rounded">
+            <div className="p-3 border border-border rounded">
               {showMnemonic ? (
                 <div className="grid grid-cols-3 gap-2">
                   {generatedWallet.mnemonic.split(' ').map((word, i) => (
@@ -424,7 +424,7 @@ export function GenerateWallet({ onWalletGenerated, isCompact = false, hideBorde
             </Button>
           </div>
           <div className="flex items-center gap-2">
-            <div className="flex-1 p-2 bg-muted rounded text-xs font-mono break-all">
+            <div className="flex-1 p-2 border border-border rounded text-xs font-mono break-all">
               {showPrivateKey ? generatedWallet.privateKey : maskText(generatedWallet.privateKey)}
             </div>
             {showPrivateKey && (
