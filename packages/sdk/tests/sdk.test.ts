@@ -5,6 +5,8 @@ import {
   NotConnectedError,
   UserRejectedError,
   ValidationError,
+  CapabilityError,
+  ScopeViolationError,
 } from '../src/errors';
 import { createMockProvider, injectMockProvider, clearMockProvider } from './mocks/provider';
 
@@ -23,139 +25,117 @@ describe('OctraSDK', () => {
       injectMockProvider(mockProvider);
 
       const sdk = await OctraSDK.init({ timeout: 100 });
-      
+
       expect(sdk.isInstalled()).toBe(true);
     });
 
     it('should initialize without provider when not available', async () => {
       const sdk = await OctraSDK.init({ timeout: 100 });
-      
-      expect(sdk.isInstalled()).toBe(false);
-    });
-  });
 
-  describe('isInstalled', () => {
-    it('should return true when provider exists', async () => {
-      const mockProvider = createMockProvider();
-      injectMockProvider(mockProvider);
-
-      const sdk = await OctraSDK.init({ timeout: 100 });
-      
-      expect(sdk.isInstalled()).toBe(true);
-    });
-
-    it('should return false when provider does not exist', async () => {
-      const sdk = await OctraSDK.init({ timeout: 100 });
-      
       expect(sdk.isInstalled()).toBe(false);
     });
   });
 
   describe('connect', () => {
-    it('should connect successfully', async () => {
+    it('should connect successfully without signing', async () => {
       const mockProvider = createMockProvider();
       injectMockProvider(mockProvider);
 
       const sdk = await OctraSDK.init({ timeout: 100 });
-      const result = await sdk.connect();
+      const result = await sdk.connect({
+        circle: 'test-circle',
+        appOrigin: 'https://example.com',
+      });
 
-      expect(result.address).toBe('oct1mock_address_123');
-      expect(sdk.isConnected()).toBe(true);
+      expect(result.circle).toBe('test-circle');
+      expect(result.sessionId).toBeDefined();
+      expect(result.walletPubKey).toBeDefined();
+      expect(result.network).toBe('testnet');
     });
 
     it('should throw NotInstalledError when provider not available', async () => {
       const sdk = await OctraSDK.init({ timeout: 100 });
 
-      await expect(sdk.connect()).rejects.toThrow(NotInstalledError);
+      await expect(
+        sdk.connect({ circle: 'test-circle', appOrigin: 'https://example.com' })
+      ).rejects.toThrow(NotInstalledError);
     });
 
-    it('should throw UserRejectedError when user rejects', async () => {
-      const mockProvider = createMockProvider({ shouldReject: true });
+    it('should throw ValidationError for empty circle ID', async () => {
+      const mockProvider = createMockProvider();
       injectMockProvider(mockProvider);
 
       const sdk = await OctraSDK.init({ timeout: 100 });
 
-      await expect(sdk.connect()).rejects.toThrow(UserRejectedError);
+      await expect(
+        sdk.connect({ circle: '', appOrigin: 'https://example.com' })
+      ).rejects.toThrow(ValidationError);
+    });
+
+    it('should throw ValidationError for empty appOrigin', async () => {
+      const mockProvider = createMockProvider();
+      injectMockProvider(mockProvider);
+
+      const sdk = await OctraSDK.init({ timeout: 100 });
+
+      await expect(
+        sdk.connect({ circle: 'test-circle', appOrigin: '' })
+      ).rejects.toThrow(ValidationError);
+    });
+
+    it('should throw UserRejectedError when user rejects', async () => {
+      const mockProvider = createMockProvider({ shouldRejectConnect: true });
+      injectMockProvider(mockProvider);
+
+      const sdk = await OctraSDK.init({ timeout: 100 });
+
+      await expect(
+        sdk.connect({ circle: 'test-circle', appOrigin: 'https://example.com' })
+      ).rejects.toThrow(UserRejectedError);
     });
   });
 
   describe('disconnect', () => {
-    it('should disconnect successfully', async () => {
+    it('should disconnect and clear state', async () => {
       const mockProvider = createMockProvider();
       injectMockProvider(mockProvider);
 
       const sdk = await OctraSDK.init({ timeout: 100 });
-      await sdk.connect();
-      
-      expect(sdk.isConnected()).toBe(true);
-      
+      await sdk.connect({ circle: 'test-circle', appOrigin: 'https://example.com' });
+
+      const stateBefore = sdk.getSessionState();
+      expect(stateBefore.connected).toBe(true);
+
       await sdk.disconnect();
-      
-      expect(sdk.isConnected()).toBe(false);
+
+      const stateAfter = sdk.getSessionState();
+      expect(stateAfter.connected).toBe(false);
+      expect(stateAfter.activeCapabilities).toHaveLength(0);
     });
   });
 
-  describe('getAccount', () => {
-    it('should return address when connected', async () => {
+
+  describe('requestCapability', () => {
+    it('should request capability successfully', async () => {
       const mockProvider = createMockProvider();
       injectMockProvider(mockProvider);
 
       const sdk = await OctraSDK.init({ timeout: 100 });
-      await sdk.connect();
+      await sdk.connect({ circle: 'test-circle', appOrigin: 'https://example.com' });
 
-      expect(sdk.getAccount()).toBe('oct1mock_address_123');
-    });
-
-    it('should throw NotConnectedError when not connected', async () => {
-      const mockProvider = createMockProvider();
-      injectMockProvider(mockProvider);
-
-      const sdk = await OctraSDK.init({ timeout: 100 });
-
-      expect(() => sdk.getAccount()).toThrow(NotConnectedError);
-    });
-  });
-
-  describe('sendTransaction', () => {
-    it('should send transaction successfully', async () => {
-      const mockProvider = createMockProvider();
-      injectMockProvider(mockProvider);
-
-      const sdk = await OctraSDK.init({ timeout: 100 });
-      await sdk.connect();
-
-      const result = await sdk.sendTransaction({
-        to: 'oct1recipient',
-        amount: '1000',
+      const capability = await sdk.requestCapability({
+        circle: 'test-circle',
+        methods: ['getData', 'setData'],
+        scope: 'write',
+        encrypted: false,
       });
 
-      expect(result.hash).toMatch(/^tx_mock_hash_/);
-    });
-
-    it('should throw ValidationError for missing to address', async () => {
-      const mockProvider = createMockProvider();
-      injectMockProvider(mockProvider);
-
-      const sdk = await OctraSDK.init({ timeout: 100 });
-      await sdk.connect();
-
-      await expect(sdk.sendTransaction({
-        to: '',
-        amount: '1000',
-      })).rejects.toThrow(ValidationError);
-    });
-
-    it('should throw ValidationError for invalid amount', async () => {
-      const mockProvider = createMockProvider();
-      injectMockProvider(mockProvider);
-
-      const sdk = await OctraSDK.init({ timeout: 100 });
-      await sdk.connect();
-
-      await expect(sdk.sendTransaction({
-        to: 'oct1recipient',
-        amount: 'invalid',
-      })).rejects.toThrow(ValidationError);
+      expect(capability.id).toBeDefined();
+      expect(capability.circle).toBe('test-circle');
+      expect(capability.methods).toEqual(['getData', 'setData']);
+      expect(capability.scope).toBe('write');
+      expect(capability.encrypted).toBe(false);
+      expect(capability.signature).toBeDefined();
     });
 
     it('should throw NotConnectedError when not connected', async () => {
@@ -164,73 +144,202 @@ describe('OctraSDK', () => {
 
       const sdk = await OctraSDK.init({ timeout: 100 });
 
-      await expect(sdk.sendTransaction({
-        to: 'oct1recipient',
-        amount: '1000',
-      })).rejects.toThrow(NotConnectedError);
+      await expect(
+        sdk.requestCapability({
+          circle: 'test-circle',
+          methods: ['getData'],
+          scope: 'read',
+          encrypted: false,
+        })
+      ).rejects.toThrow(NotConnectedError);
+    });
+
+    it('should throw ValidationError for empty methods', async () => {
+      const mockProvider = createMockProvider();
+      injectMockProvider(mockProvider);
+
+      const sdk = await OctraSDK.init({ timeout: 100 });
+      await sdk.connect({ circle: 'test-circle', appOrigin: 'https://example.com' });
+
+      await expect(
+        sdk.requestCapability({
+          circle: 'test-circle',
+          methods: [],
+          scope: 'read',
+          encrypted: false,
+        })
+      ).rejects.toThrow(ValidationError);
+    });
+
+    it('should throw ValidationError for invalid scope', async () => {
+      const mockProvider = createMockProvider();
+      injectMockProvider(mockProvider);
+
+      const sdk = await OctraSDK.init({ timeout: 100 });
+      await sdk.connect({ circle: 'test-circle', appOrigin: 'https://example.com' });
+
+      await expect(
+        sdk.requestCapability({
+          circle: 'test-circle',
+          methods: ['getData'],
+          scope: 'invalid' as 'read',
+          encrypted: false,
+        })
+      ).rejects.toThrow(ValidationError);
+    });
+
+    it('should throw UserRejectedError when user rejects', async () => {
+      const mockProvider = createMockProvider({ shouldRejectCapability: true });
+      injectMockProvider(mockProvider);
+
+      const sdk = await OctraSDK.init({ timeout: 100 });
+      await sdk.connect({ circle: 'test-circle', appOrigin: 'https://example.com' });
+
+      await expect(
+        sdk.requestCapability({
+          circle: 'test-circle',
+          methods: ['getData'],
+          scope: 'read',
+          encrypted: false,
+        })
+      ).rejects.toThrow(UserRejectedError);
     });
   });
 
-  describe('signMessage', () => {
-    it('should sign message successfully', async () => {
+  describe('invoke', () => {
+    it('should invoke method successfully', async () => {
       const mockProvider = createMockProvider();
       injectMockProvider(mockProvider);
 
       const sdk = await OctraSDK.init({ timeout: 100 });
-      await sdk.connect();
+      await sdk.connect({ circle: 'test-circle', appOrigin: 'https://example.com' });
 
-      const result = await sdk.signMessage('Hello World');
+      const capability = await sdk.requestCapability({
+        circle: 'test-circle',
+        methods: ['getData'],
+        scope: 'read',
+        encrypted: false,
+      });
 
-      expect(result.signature).toMatch(/^sig_mock_/);
-      expect(result.message).toBe('Hello World');
+      const result = await sdk.invoke({
+        capabilityId: capability.id,
+        method: 'getData',
+      });
+
+      expect(result.success).toBe(true);
     });
 
-    it('should throw ValidationError for empty message', async () => {
+    it('should throw CapabilityError for invalid capability', async () => {
       const mockProvider = createMockProvider();
       injectMockProvider(mockProvider);
 
       const sdk = await OctraSDK.init({ timeout: 100 });
-      await sdk.connect();
+      await sdk.connect({ circle: 'test-circle', appOrigin: 'https://example.com' });
 
-      await expect(sdk.signMessage('')).rejects.toThrow(ValidationError);
+      await expect(
+        sdk.invoke({
+          capabilityId: 'non-existent-cap',
+          method: 'getData',
+        })
+      ).rejects.toThrow(CapabilityError);
+    });
+
+    it('should throw ScopeViolationError for method not in scope', async () => {
+      const mockProvider = createMockProvider();
+      injectMockProvider(mockProvider);
+
+      const sdk = await OctraSDK.init({ timeout: 100 });
+      await sdk.connect({ circle: 'test-circle', appOrigin: 'https://example.com' });
+
+      const capability = await sdk.requestCapability({
+        circle: 'test-circle',
+        methods: ['getData'],
+        scope: 'read',
+        encrypted: false,
+      });
+
+      await expect(
+        sdk.invoke({
+          capabilityId: capability.id,
+          method: 'setData', // Not in allowed methods
+        })
+      ).rejects.toThrow(ScopeViolationError);
+    });
+
+    it('should pass EncryptedBlob payload verbatim', async () => {
+      const mockProvider = createMockProvider();
+      injectMockProvider(mockProvider);
+
+      const sdk = await OctraSDK.init({ timeout: 100 });
+      await sdk.connect({ circle: 'test-circle', appOrigin: 'https://example.com' });
+
+      const capability = await sdk.requestCapability({
+        circle: 'test-circle',
+        methods: ['processData'],
+        scope: 'compute',
+        encrypted: true,
+      });
+
+      const encryptedPayload = {
+        scheme: 'HFHE' as const,
+        data: new Uint8Array([1, 2, 3, 4, 5]),
+        metadata: new Uint8Array([10, 20]),
+      };
+
+      const result = await sdk.invoke({
+        capabilityId: capability.id,
+        method: 'processData',
+        payload: encryptedPayload,
+      });
+
+      expect(result.success).toBe(true);
     });
   });
 
-  describe('callContract', () => {
-    it('should call contract view method', async () => {
+  describe('getSessionState', () => {
+    it('should return correct state when not connected', async () => {
       const mockProvider = createMockProvider();
       injectMockProvider(mockProvider);
 
       const sdk = await OctraSDK.init({ timeout: 100 });
-      await sdk.connect();
+      const state = sdk.getSessionState();
 
-      const result = await sdk.callContract('oct1contract', 'getBalance', { account: 'oct1user' });
-
-      expect(result).toHaveProperty('result', 'mock_view_result');
+      expect(state.connected).toBe(false);
+      expect(state.circle).toBeUndefined();
+      expect(state.activeCapabilities).toHaveLength(0);
     });
 
-    it('should throw ValidationError for empty contract address', async () => {
+    it('should return correct state when connected', async () => {
       const mockProvider = createMockProvider();
       injectMockProvider(mockProvider);
 
       const sdk = await OctraSDK.init({ timeout: 100 });
-      await sdk.connect();
+      await sdk.connect({ circle: 'test-circle', appOrigin: 'https://example.com' });
 
-      await expect(sdk.callContract('', 'getBalance')).rejects.toThrow(ValidationError);
+      const state = sdk.getSessionState();
+
+      expect(state.connected).toBe(true);
+      expect(state.circle).toBe('test-circle');
     });
-  });
 
-  describe('invokeContract', () => {
-    it('should invoke contract method', async () => {
+    it('should include active capabilities', async () => {
       const mockProvider = createMockProvider();
       injectMockProvider(mockProvider);
 
       const sdk = await OctraSDK.init({ timeout: 100 });
-      await sdk.connect();
+      await sdk.connect({ circle: 'test-circle', appOrigin: 'https://example.com' });
 
-      const result = await sdk.invokeContract('oct1contract', 'transfer', { to: 'oct1recipient', amount: '100' });
+      await sdk.requestCapability({
+        circle: 'test-circle',
+        methods: ['getData'],
+        scope: 'read',
+        encrypted: false,
+      });
 
-      expect(result.hash).toMatch(/^contract_tx_/);
+      const state = sdk.getSessionState();
+
+      expect(state.activeCapabilities).toHaveLength(1);
+      expect(state.activeCapabilities[0].methods).toEqual(['getData']);
     });
   });
 
@@ -240,15 +349,16 @@ describe('OctraSDK', () => {
       injectMockProvider(mockProvider);
 
       const sdk = await OctraSDK.init({ timeout: 100 });
-      
-      let emittedAddress: string | null = null;
-      sdk.on('connect', ({ address }) => {
-        emittedAddress = address;
+
+      let emittedConnection: unknown = null;
+      sdk.on('connect', ({ connection }) => {
+        emittedConnection = connection;
       });
 
-      await sdk.connect();
+      await sdk.connect({ circle: 'test-circle', appOrigin: 'https://example.com' });
 
-      expect(emittedAddress).toBe('oct1mock_address_123');
+      expect(emittedConnection).not.toBeNull();
+      expect((emittedConnection as { circle: string }).circle).toBe('test-circle');
     });
 
     it('should emit disconnect event on disconnect', async () => {
@@ -256,8 +366,8 @@ describe('OctraSDK', () => {
       injectMockProvider(mockProvider);
 
       const sdk = await OctraSDK.init({ timeout: 100 });
-      await sdk.connect();
-      
+      await sdk.connect({ circle: 'test-circle', appOrigin: 'https://example.com' });
+
       let disconnected = false;
       sdk.on('disconnect', () => {
         disconnected = true;
@@ -268,26 +378,70 @@ describe('OctraSDK', () => {
       expect(disconnected).toBe(true);
     });
 
+    it('should emit capabilityGranted event', async () => {
+      const mockProvider = createMockProvider();
+      injectMockProvider(mockProvider);
+
+      const sdk = await OctraSDK.init({ timeout: 100 });
+      await sdk.connect({ circle: 'test-circle', appOrigin: 'https://example.com' });
+
+      let grantedCapability: unknown = null;
+      sdk.on('capabilityGranted', ({ capability }) => {
+        grantedCapability = capability;
+      });
+
+      await sdk.requestCapability({
+        circle: 'test-circle',
+        methods: ['getData'],
+        scope: 'read',
+        encrypted: false,
+      });
+
+      expect(grantedCapability).not.toBeNull();
+    });
+
     it('should unsubscribe with returned function', async () => {
       const mockProvider = createMockProvider();
       injectMockProvider(mockProvider);
 
       const sdk = await OctraSDK.init({ timeout: 100 });
-      
+
       let callCount = 0;
       const unsubscribe = sdk.on('connect', () => {
         callCount++;
       });
 
-      await sdk.connect();
+      await sdk.connect({ circle: 'test-circle', appOrigin: 'https://example.com' });
       expect(callCount).toBe(1);
 
       unsubscribe();
       await sdk.disconnect();
-      await sdk.connect();
-      
+      await sdk.connect({ circle: 'test-circle', appOrigin: 'https://example.com' });
+
       // Should still be 1 because we unsubscribed
       expect(callCount).toBe(1);
+    });
+  });
+
+  describe('no signMessage API', () => {
+    it('should NOT have signMessage method', async () => {
+      const mockProvider = createMockProvider();
+      injectMockProvider(mockProvider);
+
+      const sdk = await OctraSDK.init({ timeout: 100 });
+
+      // Verify signMessage does not exist
+      expect((sdk as unknown as Record<string, unknown>).signMessage).toBeUndefined();
+    });
+
+    it('should NOT have signRaw method', async () => {
+      const mockProvider = createMockProvider();
+      injectMockProvider(mockProvider);
+
+      const sdk = await OctraSDK.init({ timeout: 100 });
+
+      // Verify signRaw does not exist
+      expect((sdk as unknown as Record<string, unknown>).signRaw).toBeUndefined();
     });
   });
 });

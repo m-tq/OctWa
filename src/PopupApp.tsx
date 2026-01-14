@@ -2,7 +2,6 @@ import { useState, useEffect } from 'react';
 import { WelcomeScreen } from './components/WelcomeScreen';
 import { WalletDashboard } from './components/WalletDashboard';
 import { UnlockWallet } from './components/UnlockWallet';
-import { DAppConnection } from './components/DAppConnection';
 import { DAppRequestHandler } from './components/DAppRequestHandler';
 import { ThemeProvider } from './components/ThemeProvider';
 import { SplashScreen } from './components/SplashScreen';
@@ -21,6 +20,8 @@ function PopupApp() {
   const [isPopupMode, setIsPopupMode] = useState(true);
   const [connectionRequest, setConnectionRequest] = useState<DAppConnectionRequest | null>(null);
   const [contractRequest, setContractRequest] = useState<any>(null);
+  const [capabilityRequest, setCapabilityRequest] = useState<any>(null);
+  const [invokeRequest, setInvokeRequest] = useState<any>(null);
 
   // ONLY load data once on mount - NO dependencies to prevent loops
   useEffect(() => {
@@ -100,6 +101,36 @@ function PopupApp() {
           } catch (error) {
             console.error('Failed to parse contract request:', error);
             await ExtensionStorageManager.remove('pendingContractRequest');
+          }
+        }
+        
+        // Check for pending capability request
+        const pendingCapabilityRequest = await ExtensionStorageManager.get('pendingCapabilityRequest');
+        if (pendingCapabilityRequest) {
+          try {
+            const capabilityReq = typeof pendingCapabilityRequest === 'string' 
+              ? JSON.parse(pendingCapabilityRequest) 
+              : pendingCapabilityRequest;
+            setCapabilityRequest(capabilityReq);
+            console.log('🔐 PopupApp: Found pending capability request:', capabilityReq);
+          } catch (error) {
+            console.error('Failed to parse capability request:', error);
+            await ExtensionStorageManager.remove('pendingCapabilityRequest');
+          }
+        }
+        
+        // Check for pending invoke request
+        const pendingInvokeRequest = await ExtensionStorageManager.get('pendingInvokeRequest');
+        if (pendingInvokeRequest) {
+          try {
+            const invokeReq = typeof pendingInvokeRequest === 'string' 
+              ? JSON.parse(pendingInvokeRequest) 
+              : pendingInvokeRequest;
+            setInvokeRequest(invokeReq);
+            console.log('⚡ PopupApp: Found pending invoke request:', invokeReq);
+          } catch (error) {
+            console.error('Failed to parse invoke request:', error);
+            await ExtensionStorageManager.remove('pendingInvokeRequest');
           }
         }
         
@@ -711,14 +742,7 @@ function PopupApp() {
         <div className="w-[400px] h-[600px] bg-background popup-view overflow-hidden">
           <div className="popup-container h-full overflow-y-auto">
             <PageTransition variant="scale">
-              <DAppConnection
-                connectionRequest={connectionRequest}
-                wallets={wallets}
-                selectedWallet={wallet}
-                onWalletSelect={setWallet}
-                onApprove={handleConnectionApprove}
-                onReject={handleConnectionReject}
-              />
+              <DAppRequestHandler wallets={wallets} />
             </PageTransition>
           </div>
           <Toaster />
@@ -729,24 +753,44 @@ function PopupApp() {
 
   // Handle contract request - Show contract interaction interface
   if (contractRequest) {
-    // Find the wallet that is connected to this dApp
-    const connectedWallet = contractRequest.connectedAddress 
-      ? wallets.find(w => w.address === contractRequest.connectedAddress)
-      : null;
-    
     return (
       <ThemeProvider defaultTheme="dark" storageKey="octra-wallet-theme">
         <div className="w-[400px] h-[600px] bg-background popup-view overflow-hidden">
           <div className="popup-container h-full overflow-y-auto">
             <PageTransition variant="scale">
-              <DAppRequestHandler 
-                wallets={wallets}
-                contractRequest={contractRequest}
-                selectedWallet={connectedWallet || wallet}
-                onWalletSelect={setWallet}
-                onApprove={handleContractApprove}
-                onReject={handleContractReject}
-              />
+              <DAppRequestHandler wallets={wallets} />
+            </PageTransition>
+          </div>
+          <Toaster />
+        </div>
+      </ThemeProvider>
+    );
+  }
+
+  // Handle capability request - Show capability approval interface
+  if (capabilityRequest) {
+    return (
+      <ThemeProvider defaultTheme="dark" storageKey="octra-wallet-theme">
+        <div className="w-[400px] h-[600px] bg-background popup-view overflow-hidden">
+          <div className="popup-container h-full overflow-y-auto">
+            <PageTransition variant="scale">
+              <DAppRequestHandler wallets={wallets} />
+            </PageTransition>
+          </div>
+          <Toaster />
+        </div>
+      </ThemeProvider>
+    );
+  }
+
+  // Handle invoke request - Show invoke approval interface
+  if (invokeRequest) {
+    return (
+      <ThemeProvider defaultTheme="dark" storageKey="octra-wallet-theme">
+        <div className="w-[400px] h-[600px] bg-background popup-view overflow-hidden">
+          <div className="popup-container h-full overflow-y-auto">
+            <PageTransition variant="scale">
+              <DAppRequestHandler wallets={wallets} />
             </PageTransition>
           </div>
           <Toaster />

@@ -361,7 +361,7 @@ export function GenerateWallet({ onWalletGenerated, isCompact = false, hideBorde
           </div>
         </DialogContent>
       </Dialog>
-      <Card className={hideBorder ? 'border-0 shadow-none' : ''}>
+      <Card className={`bg-card/95 backdrop-blur-sm ${hideBorder ? 'border-0 shadow-none' : ''}`}>
       {!hideBorder && (
         <CardHeader className="pb-4">
           <CardTitle className="text-lg">Backup Your Wallet</CardTitle>

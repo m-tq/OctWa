@@ -1,4 +1,4 @@
-import type { OctraProvider } from './types';
+import type { OctraProvider, CapabilityScope } from './types';
 
 const DEFAULT_DETECTION_TIMEOUT = 3000;
 const POLLING_INTERVAL = 100;
@@ -10,12 +10,12 @@ export function getProvider(): OctraProvider | null {
   if (typeof window === 'undefined') {
     return null;
   }
-  
+
   const provider = window.octra;
   if (provider && provider.isOctra === true) {
-    return provider;
+    return provider as OctraProvider;
   }
-  
+
   return null;
 }
 
@@ -28,27 +28,22 @@ export function isProviderInstalled(): boolean {
 
 /**
  * Wait for the provider to be injected into window
- * @param timeout - Maximum time to wait in milliseconds
- * @returns Promise that resolves with provider or null
  */
 export function detectProvider(timeout = DEFAULT_DETECTION_TIMEOUT): Promise<OctraProvider | null> {
   return new Promise((resolve) => {
-    // Check if already available
     const existing = getProvider();
     if (existing) {
       resolve(existing);
       return;
     }
-    
-    // If no window (SSR), resolve immediately with null
+
     if (typeof window === 'undefined') {
       resolve(null);
       return;
     }
-    
+
     let resolved = false;
-    
-    // Listen for the octraLoaded event
+
     const handleLoaded = () => {
       if (resolved) return;
       const provider = getProvider();
@@ -58,10 +53,9 @@ export function detectProvider(timeout = DEFAULT_DETECTION_TIMEOUT): Promise<Oct
         resolve(provider);
       }
     };
-    
+
     window.addEventListener('octraLoaded', handleLoaded);
-    
-    // Also poll in case event was missed
+
     const pollInterval = setInterval(() => {
       if (resolved) return;
       const provider = getProvider();
@@ -71,16 +65,14 @@ export function detectProvider(timeout = DEFAULT_DETECTION_TIMEOUT): Promise<Oct
         resolve(provider);
       }
     }, POLLING_INTERVAL);
-    
-    // Timeout handler
+
     const timeoutId = setTimeout(() => {
       if (resolved) return;
       resolved = true;
       cleanup();
       resolve(null);
     }, timeout);
-    
-    // Cleanup function
+
     const cleanup = () => {
       window.removeEventListener('octraLoaded', handleLoaded);
       clearInterval(pollInterval);
@@ -97,22 +89,27 @@ export function isNonEmptyString(value: unknown): value is string {
 }
 
 /**
- * Validate that a value is a valid amount (positive number or numeric string)
+ * Validate that a scope is valid
  */
-export function isValidAmount(value: unknown): boolean {
-  if (typeof value === 'number') {
-    return !isNaN(value) && value >= 0;
-  }
-  if (typeof value === 'string') {
-    const num = parseFloat(value);
-    return !isNaN(num) && num >= 0;
-  }
-  return false;
+export function isValidScope(scope: unknown): scope is CapabilityScope {
+  return scope === 'read' || scope === 'write' || scope === 'compute';
 }
 
 /**
- * Convert amount to string format
+ * Validate Circle ID format
  */
-export function normalizeAmount(amount: string | number): string {
-  return String(amount);
+export function isValidCircleId(circleId: unknown): circleId is string {
+  return isNonEmptyString(circleId);
+}
+
+/**
+ * Check if a value is an EncryptedBlob
+ */
+export function isEncryptedBlob(value: unknown): boolean {
+  if (!value || typeof value !== 'object') return false;
+  const blob = value as Record<string, unknown>;
+  return (
+    blob.scheme === 'HFHE' &&
+    blob.data instanceof Uint8Array
+  );
 }

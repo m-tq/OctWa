@@ -146,7 +146,7 @@ export function PasswordSetup({ wallet, onPasswordSet, onBack }: PasswordSetupPr
 
   return (
     <div className="w-full max-w-sm mx-auto">
-      <Card>
+      <Card className="bg-card/95 backdrop-blur-sm">
         <CardHeader className="pb-4">
           <CardTitle className="flex items-center gap-2 text-lg">
             <Shield className="h-5 w-5" />

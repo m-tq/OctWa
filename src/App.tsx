@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { WelcomeScreen } from './components/WelcomeScreen';
 import { WalletDashboard } from './components/WalletDashboard';
 import { UnlockWallet } from './components/UnlockWallet';
-import { ConnectionApproval } from './components/ConnectionApproval';
+import { DAppRequestHandler } from './components/DAppRequestHandler';
 import { ThemeProvider } from './components/ThemeProvider';
 import { SplashScreen } from './components/SplashScreen';
 import { PageTransition } from './components/PageTransition';
@@ -20,6 +20,8 @@ function App() {
   const [showSetupSplash, setShowSetupSplash] = useState(false);
   const [pendingSetupWallet, setPendingSetupWallet] = useState<Wallet | null>(null);
   const [connectionRequest, setConnectionRequest] = useState<any>(null);
+  const [capabilityRequest, setCapabilityRequest] = useState<any>(null);
+  const [invokeRequest, setInvokeRequest] = useState<any>(null);
 
   // Check for connection request in URL parameters
   useEffect(() => {
@@ -41,6 +43,56 @@ function App() {
         });
       }
     }
+    
+    // Check for capability request
+    if (action === 'capability') {
+      const circle = urlParams.get('circle');
+      const methods = urlParams.get('methods');
+      const scope = urlParams.get('scope');
+      if (circle && methods && scope) {
+        setCapabilityRequest({
+          circle: decodeURIComponent(circle),
+          methods: JSON.parse(decodeURIComponent(methods)),
+          scope: decodeURIComponent(scope),
+          encrypted: urlParams.get('encrypted') === 'true',
+          appOrigin: urlParams.get('appOrigin') ? decodeURIComponent(urlParams.get('appOrigin')!) : window.location.origin
+        });
+      }
+    }
+    
+    // Check for invoke request
+    if (action === 'invoke') {
+      const capabilityId = urlParams.get('capabilityId');
+      const method = urlParams.get('method');
+      if (capabilityId && method) {
+        setInvokeRequest({
+          capabilityId: decodeURIComponent(capabilityId),
+          method: decodeURIComponent(method)
+        });
+      }
+    }
+    
+    // Also check chrome.storage for pending requests
+    const checkPendingRequests = async () => {
+      if (typeof chrome !== 'undefined' && chrome.storage?.local) {
+        const pending = await chrome.storage.local.get([
+          'pendingCapabilityRequest',
+          'pendingInvokeRequest'
+        ]);
+        
+        if (pending.pendingCapabilityRequest) {
+          console.log('🔐 App.tsx: Found pending capability request');
+          setCapabilityRequest(pending.pendingCapabilityRequest);
+        }
+        
+        if (pending.pendingInvokeRequest) {
+          console.log('⚡ App.tsx: Found pending invoke request');
+          setInvokeRequest(pending.pendingInvokeRequest);
+        }
+      }
+    };
+    
+    checkPendingRequests();
   }, []);
 
   // ONLY load data once on mount - THIS MUST RUN FIRST
@@ -528,22 +580,35 @@ function App() {
       <ThemeProvider defaultTheme="dark" storageKey="octra-wallet-theme">
         <div className="min-h-screen bg-background overflow-hidden">
           <PageTransition variant="scale">
-            <ConnectionApproval 
-              request={connectionRequest}
-              wallets={wallets}
-              onApprove={(approved: boolean, selectedAddress?: string) => {
-                // Send response to background script
-                chrome.runtime.sendMessage({
-                  type: 'CONNECTION_RESULT',
-                  origin: connectionRequest.origin,
-                  approved,
-                  address: selectedAddress
-                });
-                
-                // Close the tab
-                window.close();
-            }}
-          />
+            <DAppRequestHandler wallets={wallets} />
+          </PageTransition>
+          <Toaster />
+        </div>
+      </ThemeProvider>
+    );
+  }
+
+  // Show capability approval if there's a capability request
+  if (capabilityRequest && wallets.length > 0 && !isLocked) {
+    return (
+      <ThemeProvider defaultTheme="dark" storageKey="octra-wallet-theme">
+        <div className="min-h-screen bg-background overflow-hidden">
+          <PageTransition variant="scale">
+            <DAppRequestHandler wallets={wallets} />
+          </PageTransition>
+          <Toaster />
+        </div>
+      </ThemeProvider>
+    );
+  }
+
+  // Show invoke approval if there's an invoke request
+  if (invokeRequest && wallets.length > 0 && !isLocked) {
+    return (
+      <ThemeProvider defaultTheme="dark" storageKey="octra-wallet-theme">
+        <div className="min-h-screen bg-background overflow-hidden">
+          <PageTransition variant="scale">
+            <DAppRequestHandler wallets={wallets} />
           </PageTransition>
           <Toaster />
         </div>

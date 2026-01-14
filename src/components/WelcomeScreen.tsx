@@ -4,6 +4,7 @@ import { GenerateWallet } from './GenerateWallet';
 import { ImportWallet } from './ImportWallet';
 import { PasswordSetup } from './PasswordSetup';
 import { PageTransition } from './PageTransition';
+import { OctraBackground } from './OctraBackground';
 import { Plus, FileText, Key, ArrowLeft } from 'lucide-react';
 import { Wallet } from '../types/wallet';
 
@@ -38,8 +39,9 @@ export function WelcomeScreen({ onWalletCreated }: WelcomeScreenProps) {
   // Password Setup Screen
   if (screen === 'password' && pendingWallet) {
     return (
-      <div className="min-h-screen flex items-center justify-center p-4 overflow-hidden">
-        <div className="w-full max-w-md">
+      <div className="min-h-screen flex items-center justify-center p-4 overflow-hidden relative">
+        <OctraBackground />
+        <div className="w-full max-w-md relative z-10">
           <PageTransition key={`password-${transitionKey}`} variant="slide-left" duration={250}>
             <PasswordSetup
               wallet={pendingWallet}
@@ -55,8 +57,9 @@ export function WelcomeScreen({ onWalletCreated }: WelcomeScreenProps) {
   // Create Wallet Screen
   if (screen === 'create') {
     return (
-      <div className="min-h-screen flex items-center justify-center p-4 overflow-hidden">
-        <div className="w-full max-w-md sm:max-w-lg">
+      <div className="min-h-screen flex items-center justify-center p-4 overflow-hidden relative">
+        <OctraBackground />
+        <div className="w-full max-w-md sm:max-w-lg relative z-10">
           <PageTransition key={`create-${transitionKey}`} variant="slide-left" duration={250}>
             <Button variant="ghost" size="sm" onClick={handleBack} className="mb-4">
               <ArrowLeft className="h-4 w-4 mr-2" />
@@ -72,8 +75,9 @@ export function WelcomeScreen({ onWalletCreated }: WelcomeScreenProps) {
   // Import from Mnemonic Screen
   if (screen === 'import-mnemonic') {
     return (
-      <div className="min-h-screen flex items-center justify-center p-4 overflow-hidden">
-        <div className="w-full max-w-md">
+      <div className="min-h-screen flex items-center justify-center p-4 overflow-hidden relative">
+        <OctraBackground />
+        <div className="w-full max-w-md relative z-10">
           <PageTransition key={`mnemonic-${transitionKey}`} variant="slide-left" duration={250}>
             <Button variant="ghost" size="sm" onClick={handleBack} className="mb-4">
               <ArrowLeft className="h-4 w-4 mr-2" />
@@ -89,8 +93,9 @@ export function WelcomeScreen({ onWalletCreated }: WelcomeScreenProps) {
   // Import from Private Key Screen
   if (screen === 'import-privatekey') {
     return (
-      <div className="min-h-screen flex items-center justify-center p-4 overflow-hidden">
-        <div className="w-full max-w-md">
+      <div className="min-h-screen flex items-center justify-center p-4 overflow-hidden relative">
+        <OctraBackground />
+        <div className="w-full max-w-md relative z-10">
           <PageTransition key={`privatekey-${transitionKey}`} variant="slide-left" duration={250}>
             <Button variant="ghost" size="sm" onClick={handleBack} className="mb-4">
               <ArrowLeft className="h-4 w-4 mr-2" />
@@ -105,9 +110,10 @@ export function WelcomeScreen({ onWalletCreated }: WelcomeScreenProps) {
 
   // Main Menu Screen
   return (
-    <div className="min-h-screen flex items-center justify-center p-4 overflow-hidden">
+    <div className="min-h-screen flex items-center justify-center p-4 overflow-hidden relative">
+      <OctraBackground />
       <PageTransition key={`menu-${transitionKey}`} variant="fade-slide" duration={300}>
-        <div className="w-full max-w-sm">
+        <div className="w-full max-w-sm relative" style={{ zIndex: 10 }}>
           {/* Logo & Title */}
           <div className="text-center mb-8">
             <div className="flex items-center justify-center mb-4">

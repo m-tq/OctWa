@@ -1,77 +1,75 @@
 import type {
   InitOptions,
-  Permission,
-  ConnectResult,
-  TransactionRequest,
-  TransactionResult,
-  ContractParams,
-  InvokeOptions,
-  ContractResult,
-  BalanceResult,
-  NetworkInfo,
-  SignatureResult,
+  ConnectRequest,
+  Connection,
+  CapabilityRequest,
+  Capability,
+  InvocationRequest,
+  InvocationResult,
+  SessionState,
+  SignedInvocation,
+  OctraProvider,
   EventName,
   EventCallback,
-  OctraProvider,
+  CapabilityScope,
 } from './types';
 
 import {
-  OctraError,
   NotInstalledError,
   NotConnectedError,
-  UserRejectedError,
   ValidationError,
-  ContractError,
+  CapabilityError,
+  ScopeViolationError,
   wrapProviderError,
 } from './errors';
 
-import {
-  detectProvider,
-  getProvider,
-  isProviderInstalled,
-  isNonEmptyString,
-  isValidAmount,
-  normalizeAmount,
-} from './utils';
+import { SessionManager } from './session-manager';
+import { CapabilityManager } from './capability-manager';
+import { detectProvider, isNonEmptyString, isValidScope } from './utils';
 
 type EventListeners = {
   [E in EventName]?: Set<EventCallback<E>>;
 };
 
 /**
- * Main SDK class for interacting with Octra Wallet
+ * Octra Web Wallet SDK
+ * 
+ * Implements capability-based authorization model.
+ * Does NOT follow EVM/MetaMask patterns.
+ * 
+ * Public API (5 methods only):
+ * - connect(request): Establish connection to a Circle
+ * - disconnect(): End connection and clear state
+ * - requestCapability(req): Request scoped authorization
+ * - invoke(call): Execute method with capability
+ * - getSessionState(): Get current session state
  */
 export class OctraSDK {
   private provider: OctraProvider | null = null;
-  private _isConnected = false;
-  private _address: string | null = null;
+  private sessionManager: SessionManager;
+  private capabilityManager: CapabilityManager;
   private listeners: EventListeners = {};
   private providerListeners: Map<string, (...args: unknown[]) => void> = new Map();
 
-  private constructor() {}
+  private constructor() {
+    this.sessionManager = new SessionManager();
+    this.capabilityManager = new CapabilityManager();
+  }
 
   /**
    * Initialize the SDK and wait for provider detection
-   * @param options - Initialization options
-   * @returns Initialized SDK instance
    */
   static async init(options: InitOptions = {}): Promise<OctraSDK> {
     const sdk = new OctraSDK();
     const timeout = options.timeout ?? 3000;
-    
+
     sdk.provider = await detectProvider(timeout);
-    
+
     if (sdk.provider) {
       sdk.setupProviderListeners();
       sdk.emit('extensionReady');
-      
-      // Sync connection state from provider
-      if (sdk.provider.isConnected && sdk.provider.selectedAddress) {
-        sdk._isConnected = true;
-        sdk._address = sdk.provider.selectedAddress;
-      }
     }
-    
+
     return sdk;
   }
 
@@ -82,229 +80,164 @@ export class OctraSDK {
     return this.provider !== null && this.provider.isOctra === true;
   }
 
-  /**
-   * Check if wallet is currently connected
-   */
-  isConnected(): boolean {
-    return this._isConnected;
-  }
+
+  // ==========================================================================
+  // PUBLIC API - 5 Methods Only
+  // ==========================================================================
 
   /**
-   * Connect to the wallet
-   * @param permissions - Permissions to request
-   * @returns Connection result with address and permissions
+   * Connect to a Circle (NO signing popup)
+   * Creates connection context without granting any authority
    */
-  async connect(permissions: Permission[] = ['view_address', 'view_balance']): Promise<ConnectResult> {
+  async connect(request: ConnectRequest): Promise<Connection> {
     this.ensureInstalled();
-    
+
+    // Validate circle ID
+    if (!isNonEmptyString(request.circle)) {
+      throw new ValidationError('Circle ID is required');
+    }
+
+    // Validate appOrigin
+    if (!isNonEmptyString(request.appOrigin)) {
+      throw new ValidationError('App origin is required');
+    }
+
     try {
-      const result = await this.provider!.connect(permissions);
-      
-      this._isConnected = true;
-      this._address = result.address;
-      
-      this.emit('connect', { address: result.address });
-      
-      return {
-        address: result.address,
-        permissions: result.permissions as Permission[],
-      };
+      const connection = await this.provider!.connect(request);
+
+      this.sessionManager.setConnection(connection);
+      this.emit('connect', { connection });
+
+      return connection;
     } catch (error) {
       throw wrapProviderError(error);
     }
   }
 
   /**
-   * Disconnect from the wallet
+   * Disconnect from the Circle
+   * Clears all session state and capabilities
    */
   async disconnect(): Promise<void> {
-    if (!this._isConnected) {
+    if (!this.sessionManager.isConnected()) {
       return;
     }
-    
+
     try {
       await this.provider?.disconnect();
     } catch {
       // Ignore disconnect errors
     }
-    
-    this._isConnected = false;
-    this._address = null;
-    
+
+    this.sessionManager.clearConnection();
+    this.capabilityManager.clearAll();
+
     this.emit('disconnect');
   }
 
   /**
-   * Get the currently connected account address
-   * @throws NotConnectedError if not connected
+   * Request a capability from the user
+   * Returns scoped, signed authorization
    */
-  getAccount(): string {
-    this.ensureConnected();
-    return this._address!;
-  }
-
-  /**
-   * Get account balance
-   * @param address - Optional address to query (defaults to connected account)
-   */
-  async getBalance(address?: string): Promise<BalanceResult> {
+  async requestCapability(req: CapabilityRequest): Promise<Capability> {
     this.ensureInstalled();
     this.ensureConnected();
-    
+
+    // Validate request
+    if (!isNonEmptyString(req.circle)) {
+      throw new ValidationError('Circle ID is required');
+    }
+
+    if (!req.methods || req.methods.length === 0) {
+      throw new ValidationError('At least one method is required');
+    }
+
+    if (!isValidScope(req.scope)) {
+      throw new ValidationError("Scope must be 'read', 'write', or 'compute'");
+    }
+
     try {
-      const result = await this.provider!.getBalance(address ?? this._address!);
-      return {
-        balance: result.balance,
-        address: result.address,
-      };
+      const capability = await this.provider!.requestCapability(req);
+
+      this.capabilityManager.addCapability(capability);
+      this.emit('capabilityGranted', { capability });
+
+      return capability;
     } catch (error) {
       throw wrapProviderError(error);
     }
   }
 
   /**
-   * Get network information
+   * Invoke a method using a capability
+   * Creates signed invocation with nonce and timestamp
    */
-  async getNetwork(): Promise<NetworkInfo> {
+  async invoke(call: InvocationRequest): Promise<InvocationResult> {
     this.ensureInstalled();
-    
+    this.ensureConnected();
+
+    // Validate capability exists and is valid
+    if (!this.capabilityManager.isCapabilityValid(call.capabilityId)) {
+      throw new CapabilityError(`Capability '${call.capabilityId}' is invalid or expired`);
+    }
+
+    // Validate method is in scope
+    if (!this.capabilityManager.isMethodAllowed(call.capabilityId, call.method)) {
+      throw new ScopeViolationError(call.method, call.capabilityId);
+    }
+
+    // Build signed invocation
+    const signedInvocation: SignedInvocation = {
+      capabilityId: call.capabilityId,
+      method: call.method,
+      payload: call.payload,
+      nonce: this.capabilityManager.getNextNonce(call.capabilityId),
+      timestamp: Date.now(),
+    };
+
     try {
-      return await this.provider!.getNetwork();
+      return await this.provider!.invoke(signedInvocation);
     } catch (error) {
       throw wrapProviderError(error);
     }
   }
 
   /**
-   * Send a transaction
-   * @param tx - Transaction request
-   * @returns Transaction result with hash
+   * Get current session state
+   * Returns connection status and active capabilities
    */
-  async sendTransaction(tx: TransactionRequest): Promise<TransactionResult> {
-    this.ensureInstalled();
-    this.ensureConnected();
-    this.validateTransaction(tx);
-    
-    try {
-      const result = await this.provider!.sendTransaction({
-        to: tx.to,
-        amount: normalizeAmount(tx.amount),
-        message: tx.message,
-      });
-      
-      this.emit('transaction', { hash: result.hash });
-      
-      return { hash: result.hash };
-    } catch (error) {
-      throw wrapProviderError(error);
-    }
+  getSessionState(): SessionState {
+    // Cleanup expired capabilities first
+    this.capabilityManager.cleanupExpired();
+
+    return {
+      connected: this.sessionManager.isConnected(),
+      circle: this.sessionManager.getCircle(),
+      activeCapabilities: this.capabilityManager.getActiveCapabilities(),
+    };
   }
 
-  /**
-   * Sign a message
-   * @param message - Message to sign
-   * @returns Signature result
-   */
-  async signMessage(message: string): Promise<SignatureResult> {
-    this.ensureInstalled();
-    this.ensureConnected();
-    
-    if (!isNonEmptyString(message)) {
-      throw new ValidationError('Message cannot be empty');
-    }
-    
-    try {
-      const result = await this.provider!.signMessage(message);
-      return {
-        signature: result.signature,
-        message,
-      };
-    } catch (error) {
-      throw wrapProviderError(error);
-    }
-  }
-
-  /**
-   * Call a contract view method (no transaction, no approval needed)
-   * @param address - Contract address
-   * @param method - Method name
-   * @param params - Method parameters
-   */
-  async callContract(address: string, method: string, params?: ContractParams): Promise<unknown> {
-    this.ensureInstalled();
-    this.ensureConnected();
-    
-    if (!isNonEmptyString(address)) {
-      throw new ValidationError('Contract address is required');
-    }
-    if (!isNonEmptyString(method)) {
-      throw new ValidationError('Method name is required');
-    }
-    
-    try {
-      return await this.provider!.callContract(address, method, params);
-    } catch (error) {
-      throw wrapProviderError(error);
-    }
-  }
-
-  /**
-   * Invoke a contract method (creates transaction, requires approval)
-   * @param address - Contract address
-   * @param method - Method name
-   * @param params - Method parameters
-   * @param options - Transaction options
-   */
-  async invokeContract(
-    address: string,
-    method: string,
-    params?: ContractParams,
-    options?: InvokeOptions
-  ): Promise<ContractResult> {
-    this.ensureInstalled();
-    this.ensureConnected();
-    
-    if (!isNonEmptyString(address)) {
-      throw new ValidationError('Contract address is required');
-    }
-    if (!isNonEmptyString(method)) {
-      throw new ValidationError('Method name is required');
-    }
-    
-    try {
-      const result = await this.provider!.invokeContract(address, method, params, options);
-      
-      this.emit('transaction', { hash: result.hash });
-      
-      return {
-        hash: result.hash,
-        result: result.result,
-      };
-    } catch (error) {
-      throw wrapProviderError(error);
-    }
-  }
+  // ==========================================================================
+  // Event Handling
+  // ==========================================================================
 
   /**
    * Subscribe to an event
-   * @param event - Event name
-   * @param callback - Event callback
-   * @returns Unsubscribe function
    */
   on<E extends EventName>(event: E, callback: EventCallback<E>): () => void {
     if (!this.listeners[event]) {
-      this.listeners[event] = new Set();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      this.listeners[event] = new Set() as any;
     }
-    
-    (this.listeners[event] as Set<EventCallback<E>>).add(callback);
-    
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (this.listeners[event] as Set<any>).add(callback);
+
     return () => this.off(event, callback);
   }
 
   /**
    * Unsubscribe from an event
-   * @param event - Event name
-   * @param callback - Event callback to remove
    */
   off<E extends EventName>(event: E, callback: EventCallback<E>): void {
     const eventListeners = this.listeners[event] as Set<EventCallback<E>> | undefined;
@@ -313,7 +246,9 @@ export class OctraSDK {
     }
   }
 
-  // Private methods
+  // ==========================================================================
+  // Private Methods
+  // ==========================================================================
 
   private emit<E extends EventName>(event: E, data?: Parameters<EventCallback<E>>[0]): void {
     const eventListeners = this.listeners[event];
@@ -339,47 +274,20 @@ export class OctraSDK {
   }
 
   private ensureConnected(): void {
-    if (!this._isConnected) {
+    if (!this.sessionManager.isConnected()) {
       throw new NotConnectedError();
-    }
-  }
-
-  private validateTransaction(tx: TransactionRequest): void {
-    if (!isNonEmptyString(tx.to)) {
-      throw new ValidationError('Transaction recipient (to) is required');
-    }
-    if (!isValidAmount(tx.amount)) {
-      throw new ValidationError('Transaction amount must be a valid positive number');
     }
   }
 
   private setupProviderListeners(): void {
     if (!this.provider) return;
-    
-    // Forward connect event
-    const onConnect = (data: { address: string }) => {
-      this._isConnected = true;
-      this._address = data.address;
-      this.emit('connect', data);
-    };
-    this.provider.on('connect', onConnect);
-    this.providerListeners.set('connect', onConnect);
-    
-    // Forward disconnect event
+
     const onDisconnect = () => {
-      this._isConnected = false;
-      this._address = null;
+      this.sessionManager.clearConnection();
+      this.capabilityManager.clearAll();
       this.emit('disconnect');
     };
     this.provider.on('disconnect', onDisconnect);
     this.providerListeners.set('disconnect', onDisconnect);
-    
-    // Forward account changed event
-    const onAccountChanged = (data: { address: string }) => {
-      this._address = data.address;
-      this.emit('accountChanged', data);
-    };
-    this.provider.on('accountChanged', onAccountChanged);
-    this.providerListeners.set('accountChanged', onAccountChanged);
   }
 }

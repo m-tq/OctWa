@@ -6,6 +6,7 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription } from '@/components/ui/dialog';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Wifi, Plus, MoreVertical, Trash2, Star, Settings } from 'lucide-react';
 import { RPCProvider } from '../types/wallet';
 import { useToast } from '@/hooks/use-toast';
@@ -27,7 +28,8 @@ export function RPCProviderManager({ onClose, onRPCChange, isPopupMode = false }
     name: '',
     url: '',
     headers: {} as Record<string, string>,
-    priority: 1
+    priority: 1,
+    network: 'mainnet' as 'mainnet' | 'testnet'
   });
   const [newHeaderKey, setNewHeaderKey] = useState('');
   const [newHeaderValue, setNewHeaderValue] = useState('');
@@ -47,6 +49,11 @@ export function RPCProviderManager({ onClose, onRPCChange, isPopupMode = false }
         chrome.storage.local.set({ rpcProviders: savedProviders }).catch(err => {
           console.warn('Failed to sync rpcProviders to chrome.storage:', err);
         });
+        
+        // Also sync the active network
+        const activeProvider = parsed.find((p: RPCProvider) => p.isActive);
+        const selectedNetwork = activeProvider?.network || 'mainnet';
+        syncSelectedNetwork(selectedNetwork);
       }
     } else {
       // Initialize with default provider
@@ -57,7 +64,8 @@ export function RPCProviderManager({ onClose, onRPCChange, isPopupMode = false }
         headers: {},
         priority: 1,
         isActive: true,
-        createdAt: Date.now()
+        createdAt: Date.now(),
+        network: 'mainnet'
       };
       setProviders([defaultProvider]);
       const providersJson = JSON.stringify([defaultProvider]);
@@ -65,7 +73,10 @@ export function RPCProviderManager({ onClose, onRPCChange, isPopupMode = false }
       
       // Also save to chrome.storage.local for background script access
       if (typeof chrome !== 'undefined' && chrome.storage?.local) {
-        chrome.storage.local.set({ rpcProviders: providersJson }).catch(err => {
+        chrome.storage.local.set({ 
+          rpcProviders: providersJson,
+          selectedNetwork: 'mainnet'
+        }).catch(err => {
           console.warn('Failed to save rpcProviders to chrome.storage:', err);
         });
       }
@@ -85,12 +96,23 @@ export function RPCProviderManager({ onClose, onRPCChange, isPopupMode = false }
     }
   };
 
+  // Sync selected network to chrome.storage.local (for SDK/dApp access)
+  const syncSelectedNetwork = (network: 'mainnet' | 'testnet') => {
+    if (typeof chrome !== 'undefined' && chrome.storage?.local) {
+      chrome.storage.local.set({ selectedNetwork: network }).catch(err => {
+        console.warn('Failed to save selectedNetwork to chrome.storage:', err);
+      });
+    }
+    console.log('[RPCProviderManager] Network synced:', network);
+  };
+
   const resetForm = () => {
     setFormData({
       name: '',
       url: '',
       headers: {},
-      priority: providers.length + 1
+      priority: providers.length + 1,
+      network: 'mainnet'
     });
     setNewHeaderKey('');
     setNewHeaderValue('');
@@ -146,6 +168,12 @@ export function RPCProviderManager({ onClose, onRPCChange, isPopupMode = false }
           : p
       );
       saveProviders(updatedProviders);
+      
+      // If editing the active provider, update selectedNetwork
+      if (editingProvider.isActive) {
+        syncSelectedNetwork(formData.network);
+      }
+      
       toast({
         title: "Provider Updated",
         description: "RPC provider has been updated successfully",
@@ -175,7 +203,8 @@ export function RPCProviderManager({ onClose, onRPCChange, isPopupMode = false }
       name: provider.name,
       url: provider.url,
       headers: provider.headers,
-      priority: provider.priority
+      priority: provider.priority,
+      network: provider.network || 'mainnet'
     });
     setShowAddDialog(true);
   };
@@ -205,13 +234,17 @@ export function RPCProviderManager({ onClose, onRPCChange, isPopupMode = false }
     }));
     saveProviders(updatedProviders);
     
-    // Log the change for debugging
+    // Get the new active provider
     const newActiveProvider = updatedProviders.find(p => p.isActive);
-    console.log('RPC provider changed to:', newActiveProvider?.name, newActiveProvider?.url);
+    console.log('RPC provider changed to:', newActiveProvider?.name, newActiveProvider?.url, 'network:', newActiveProvider?.network);
+    
+    // Sync selected network to chrome.storage.local for SDK/dApp access
+    const selectedNetwork = newActiveProvider?.network || 'mainnet';
+    syncSelectedNetwork(selectedNetwork);
     
     toast({
       title: "Primary Provider Set",
-      description: "RPC provider has been set as primary",
+      description: `RPC provider set to ${newActiveProvider?.name} (${selectedNetwork})`,
     });
     
     // Trigger reload of wallet data with new RPC
@@ -277,6 +310,22 @@ export function RPCProviderManager({ onClose, onRPCChange, isPopupMode = false }
                     onChange={(e) => setFormData({ ...formData, priority: parseInt(e.target.value) || 1 })}
                     className={isPopupMode ? "h-8 text-xs" : ""}
                   />
+                </div>
+
+                <div className={isPopupMode ? "space-y-1" : "space-y-2"}>
+                  <Label htmlFor="provider-network" className={isPopupMode ? "text-xs" : ""}>Network</Label>
+                  <Select
+                    value={formData.network}
+                    onValueChange={(value: 'mainnet' | 'testnet') => setFormData({ ...formData, network: value })}
+                  >
+                    <SelectTrigger className={isPopupMode ? "h-8 text-xs" : ""}>
+                      <SelectValue placeholder="Select network" />
+                    </SelectTrigger>
+                    <SelectContent className="z-[10002]">
+                      <SelectItem value="mainnet">Mainnet</SelectItem>
+                      <SelectItem value="testnet">Testnet</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
 
                 {!isPopupMode && (
@@ -356,6 +405,12 @@ export function RPCProviderManager({ onClose, onRPCChange, isPopupMode = false }
                         Primary
                       </Badge>
                     )}
+                    <Badge 
+                      variant={provider.network === 'mainnet' ? 'secondary' : 'outline'} 
+                      className={isPopupMode ? "text-[10px] px-1 py-0" : "text-xs"}
+                    >
+                      {provider.network || 'mainnet'}
+                    </Badge>
                   </div>
                   <div className={`text-muted-foreground font-mono truncate ${isPopupMode ? "text-[10px]" : "text-sm"}`}>
                     {provider.url}

@@ -1,69 +1,44 @@
-// Background script for Chrome extension
-chrome.runtime.onInstalled.addListener((details) => {
-  if (details.reason === 'install') {
-    // Open expanded view when extension is first installed
-    chrome.tabs.create({
-      url: chrome.runtime.getURL('index.html')
-    });
-  }
+/**
+ * Octra Wallet Background Script
+ * 
+ * Handles capability-based authorization model.
+ */
+
+// Lock wallet on browser startup
+chrome.runtime.onStartup.addListener(async () => {
+  console.log('[Background] Browser started, locking wallet...');
+  await lockWallet();
 });
 
-// Lock wallet when browser is closing (all windows closed)
+// Lock wallet when all windows closed
 chrome.windows.onRemoved.addListener(async (windowId) => {
-  // Check if there are any remaining windows
   const windows = await chrome.windows.getAll();
-  
   if (windows.length === 0) {
-    // All windows closed - lock the wallet
     console.log('[Background] All windows closed, locking wallet...');
     await lockWallet();
   }
 });
 
-// CRITICAL: Lock on browser startup to ensure clean state
-// This is the main mechanism for auto-lock on browser close
-chrome.runtime.onStartup.addListener(async () => {
-  console.log('[Background] Browser started, ensuring wallet is locked...');
-  await lockWallet();
+// Open expanded view on install
+chrome.runtime.onInstalled.addListener((details) => {
+  if (details.reason === 'install') {
+    chrome.tabs.create({ url: chrome.runtime.getURL('index.html') });
+  }
 });
 
-// Function to lock wallet - MUST clear session storage
-async function lockWallet() {
-  try {
-    // CRITICAL: Clear chrome.storage.session first
-    // This is what actually locks the wallet by removing decrypted data
-    if (chrome.storage.session) {
-      await chrome.storage.session.clear();
-      console.log('[Background] Cleared chrome.storage.session');
-    }
-    
-    // Set wallet as locked in storage
-    await setStorageData('isWalletLocked', 'true');
-    
-    // Clear session-related data but keep encrypted wallets AND activeWalletId
-    // activeWalletId should be preserved so user returns to their last active wallet
-    await chrome.storage.local.remove(['wallets']);
-    
-    console.log('[Background] Wallet locked successfully');
-  } catch (error) {
-    console.error('[Background] Failed to lock wallet:', error);
-  }
-}
-
-// Handle messages between popup and expanded views, plus dApp communication
+// Message handler
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  // Handle existing message types
   if (message.type === 'SYNC_STATE') {
     chrome.runtime.sendMessage(message).catch(() => {});
     return true;
-  } else if (message.type === 'OPEN_EXPANDED') {
-    chrome.tabs.create({
-      url: chrome.runtime.getURL('index.html')
-    });
+  }
+
+  if (message.type === 'OPEN_EXPANDED') {
+    chrome.tabs.create({ url: chrome.runtime.getURL('index.html') });
     return true;
   }
 
-  // Handle dApp communication requests
+  // Handle dApp requests
   if (message.source === 'octra-content-script') {
     handleDAppRequest(message, sender)
       .then(response => sendResponse(response))
@@ -72,122 +47,122 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         success: false,
         error: error.message || 'Unknown error'
       }));
-    return true; // Indicates async response
+    return true;
   }
 
   return true;
 });
 
-// Handle dApp requests
+// =============================================================================
+// Request Handlers
+// =============================================================================
+
 async function handleDAppRequest(message, sender) {
   const { type, requestId, data } = message;
-  
+
   try {
     switch (type) {
       case 'CONNECTION_REQUEST':
         return await handleConnectionRequest(data, sender);
-        
-      case 'TRANSACTION_REQUEST':
-        return await handleTransactionRequest(data, sender);
-        
-      case 'CONTRACT_REQUEST':
-        return await handleContractRequest(data, sender);
-        
-      case 'GET_BALANCE':
-        return await handleBalanceRequest(data, sender);
-        
-      case 'SIGN_MESSAGE':
-        return await handleSignMessageRequest(data, sender);
-        
+
+      case 'CAPABILITY_REQUEST':
+        return await handleCapabilityRequest(data, sender);
+
+      case 'INVOKE_REQUEST':
+        return await handleInvokeRequest(data, sender);
+
       case 'DISCONNECT_REQUEST':
         return await handleDisconnectRequest(data, sender);
-        
+
       default:
         throw new Error(`Unknown request type: ${type}`);
     }
   } catch (error) {
-    console.error('dApp request error:', error);
+    console.error('[Background] Request error:', error);
     throw error;
   }
 }
 
-// Handle connection request
+// Handle connection request (NO signing)
 async function handleConnectionRequest(data, sender) {
-  const { origin, appName, appIcon, permissions } = data;
-  
-  // Check if already connected
-  const connectionsData = await getStorageData('connectedDApps');
-  const connections = Array.isArray(connectionsData) ? connectionsData : [];
-  const existingConnection = connections.find(conn => conn.origin === origin);
-  
-  // FIXED: Always show connection approval to allow wallet selection
-  // Remove automatic return of existing connection
-  console.log('Connection request from:', origin, existingConnection ? '(existing connection found)' : '(new connection)');
-  
-  // Store connection request data for popup to access
+  const { circle, appOrigin, appName, appIcon, requestedCapabilities } = data;
+
+  console.log('[Background] Connection request:', { circle, appOrigin, appName });
+
+  // Store pending request
   await setStorageData('pendingConnectionRequest', {
-    origin,
-    appName: appName || origin,
+    circle,
+    appOrigin,
+    appName: appName || appOrigin,
     appIcon: appIcon || null,
-    permissions,
-    timestamp: Date.now(),
-    existingConnection: existingConnection // Pass existing connection info to UI
+    requestedCapabilities: requestedCapabilities || [],
+    timestamp: Date.now()
   });
-  
-  // Try to open popup first
+
+  // Try popup first, fallback to tab
   try {
     await chrome.action.openPopup();
   } catch (error) {
-    // If popup fails (e.g., user interaction required), fall back to tab
-    console.log('Popup failed, opening tab:', error);
-    const connectionUrl = chrome.runtime.getURL(`index.html?action=connect&origin=${encodeURIComponent(origin)}&appName=${encodeURIComponent(appName || '')}&appIcon=${encodeURIComponent(appIcon || '')}&permissions=${encodeURIComponent(JSON.stringify(permissions))}`);
-    
-    await chrome.tabs.create({
-      url: connectionUrl,
-      active: true
-    });
+    const url = chrome.runtime.getURL(
+      `index.html?action=connect&circle=${encodeURIComponent(circle)}&appOrigin=${encodeURIComponent(appOrigin)}&appName=${encodeURIComponent(appName || '')}`
+    );
+    await chrome.tabs.create({ url, active: true });
   }
-  
-  // Wait for user approval/rejection
+
+  // Wait for user response
   return new Promise((resolve) => {
-    const messageListener = (msg) => {
-      if (msg.type === 'CONNECTION_RESULT' && msg.origin === origin) {
-        chrome.runtime.onMessage.removeListener(messageListener);
-        
+    const listener = (msg) => {
+      console.log('[Background] Received message:', msg.type, msg);
+      
+      // Handle both old format (origin) and new format (appOrigin)
+      const msgOrigin = msg.appOrigin || msg.origin;
+      
+      if (msg.type === 'CONNECTION_RESULT' && msgOrigin === appOrigin) {
+        chrome.runtime.onMessage.removeListener(listener);
+
         if (msg.approved) {
-          // FIXED: Store/update connection with the user-selected address
-          const newConnection = {
-            origin,
-            selectedAddress: msg.address, // Use the user-selected wallet address
-            permissions,
-            connectedAt: Date.now()
-          };
+          // Get wallet address from either walletPubKey or address field
+          const walletAddress = msg.walletPubKey || msg.address || 'unknown';
+          const network = msg.network || 'mainnet';
           
-          getStorageData('connectedDApps').then(connectionsData => {
-            const connections = Array.isArray(connectionsData) ? connectionsData : [];
-            // Remove existing connection for this origin first
-            const filteredConnections = connections.filter(conn => conn.origin !== origin);
-            // Add the new/updated connection with selected address
-            const updatedConnections = [...filteredConnections, newConnection];
-            setStorageData('connectedDApps', updatedConnections);
-            console.log('Connection updated for', origin, 'with wallet:', msg.address);
+          console.log('[Background] Connection approved:', { walletAddress, network });
+
+          // Store connection
+          saveConnection({
+            circle,
+            appOrigin,
+            appName,
+            walletPubKey: walletAddress,
+            network: network,
+            connectedAt: Date.now()
+          });
+
+          resolve({
+            type: 'CONNECTION_RESPONSE',
+            success: true,
+            result: {
+              circle,
+              sessionId: `session-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+              walletPubKey: walletAddress,
+              network: network
+            }
+          });
+        } else {
+          console.log('[Background] Connection rejected');
+          resolve({
+            type: 'CONNECTION_RESPONSE',
+            success: false,
+            error: 'User rejected request'
           });
         }
-        
-        resolve({
-          type: 'CONNECTION_RESPONSE',
-          success: msg.approved,
-          result: msg.approved ? { address: msg.address, permissions } : null,
-          error: msg.approved ? null : 'User rejected request'
-        });
       }
     };
-    
-    chrome.runtime.onMessage.addListener(messageListener);
-    
-    // Cleanup timeout after 60 seconds
+
+    chrome.runtime.onMessage.addListener(listener);
+
+    // Timeout after 60 seconds
     setTimeout(() => {
-      chrome.runtime.onMessage.removeListener(messageListener);
+      chrome.runtime.onMessage.removeListener(listener);
       chrome.storage.local.remove('pendingConnectionRequest');
       resolve({
         type: 'CONNECTION_RESPONSE',
@@ -198,276 +173,184 @@ async function handleConnectionRequest(data, sender) {
   });
 }
 
-// Handle transaction request
-async function handleTransactionRequest(data, sender) {
-  const { origin, appName, appIcon, to, amount, message } = data;
-  
-  // Check if dApp is connected
-  const connectionsData = await getStorageData('connectedDApps');
-  const connections = Array.isArray(connectionsData) ? connectionsData : [];
-  const connection = connections.find(conn => conn.origin === origin);
-  
-  if (!connection) {
-    throw new Error('dApp not connected');
-  }
-  
-  // Open transaction approval popup
-  const approvalUrl = chrome.runtime.getURL(`index.html?action=transaction&origin=${encodeURIComponent(origin)}&appName=${encodeURIComponent(appName || '')}&appIcon=${encodeURIComponent(appIcon || '')}&to=${encodeURIComponent(to)}&amount=${encodeURIComponent(amount)}&message=${encodeURIComponent(message || '')}&connectedAddress=${encodeURIComponent(connection.selectedAddress)}`);
-  
-  const tab = await chrome.tabs.create({
-    url: approvalUrl,
-    active: true
-  });
-  
-  // Wait for user approval/rejection
-  return new Promise((resolve) => {
-    const messageListener = (msg) => {
-      if (msg.type === 'TRANSACTION_RESULT' && msg.origin === origin) {
-        chrome.runtime.onMessage.removeListener(messageListener);
-        resolve({
-          type: 'TRANSACTION_RESPONSE',
-          success: msg.approved,
-          result: msg.approved ? { hash: msg.txHash } : null,
-          error: msg.approved ? null : (msg.error || 'User rejected request')
-        });
-      }
-    };
-    
-    chrome.runtime.onMessage.addListener(messageListener);
-    
-    // Cleanup jika tab ditutup tanpa response
-    chrome.tabs.onRemoved.addListener(function tabRemovedListener(tabId) {
-      if (tabId === tab.id) {
-        chrome.tabs.onRemoved.removeListener(tabRemovedListener);
-        chrome.runtime.onMessage.removeListener(messageListener);
-        resolve({
-          type: 'TRANSACTION_RESPONSE',
-          success: false,
-          error: 'User closed popup'
-        });
-      }
-    });
-  });
-}
+// Handle capability request
+async function handleCapabilityRequest(data, sender) {
+  const { circle, methods, scope, encrypted, ttlSeconds, appOrigin, appName, appIcon } = data;
 
-// Handle contract request
-async function handleContractRequest(data, sender) {
-  const { 
-    origin, 
-    appName, 
-    appIcon, 
-    contractAddress, 
-    methodName, 
-    methodType, 
-    params, 
-    gasLimit, 
-    gasPrice, 
-    value, 
-    description 
-  } = data;
-  
-  // Check if dApp is connected
-  const connectionsData = await getStorageData('connectedDApps');
-  const connections = Array.isArray(connectionsData) ? connectionsData : [];
-  const connection = connections.find(conn => conn.origin === origin);
-  
+  // Check if connected
+  const connection = await getConnection(appOrigin);
   if (!connection) {
-    throw new Error('dApp not connected');
+    throw new Error('Not connected to wallet');
   }
-  
-  // Store contract request data for popup to access
-  await setStorageData('pendingContractRequest', {
-    origin,
-    appName: appName || origin,
-    appIcon: appIcon || null,
-    contractAddress,
-    methodName,
-    methodType,
-    params,
-    gasLimit,
-    gasPrice,
-    value,
-    description,
-    connectedAddress: connection.selectedAddress,
+
+  // Store pending request
+  await setStorageData('pendingCapabilityRequest', {
+    circle,
+    methods,
+    scope,
+    encrypted,
+    ttlSeconds,
+    appOrigin,
+    appName: appName || appOrigin,
+    appIcon,
     timestamp: Date.now()
   });
-  
-  // Try to open popup first
+
+  // Open approval UI
   try {
     await chrome.action.openPopup();
   } catch (error) {
-    // If popup fails, fall back to tab
-    console.log('Popup failed for contract request, opening tab:', error);
-    
-    // Build URL parameters for contract request
-    const urlParams = new URLSearchParams({
-      action: 'contract',
-      origin: encodeURIComponent(origin),
-      contractAddress: encodeURIComponent(contractAddress),
-      methodName: encodeURIComponent(methodName),
-      methodType: encodeURIComponent(methodType),
-      connectedAddress: encodeURIComponent(connection.selectedAddress)
-    });
-    
-    // Add optional parameters
-    if (appName) urlParams.set('appName', encodeURIComponent(appName));
-    if (appIcon) urlParams.set('appIcon', encodeURIComponent(appIcon));
-    if (params && params.length > 0) urlParams.set('params', encodeURIComponent(JSON.stringify(params)));
-    if (gasLimit) urlParams.set('gasLimit', encodeURIComponent(gasLimit.toString()));
-    if (gasPrice) urlParams.set('gasPrice', encodeURIComponent(gasPrice.toString()));
-    if (value) urlParams.set('value', encodeURIComponent(value));
-    if (description) urlParams.set('description', encodeURIComponent(description));
-    
-    const approvalUrl = chrome.runtime.getURL(`index.html?${urlParams.toString()}`);
-    
-    await chrome.tabs.create({
-      url: approvalUrl,
-      active: true
-    });
+    const url = chrome.runtime.getURL(
+      `index.html?action=capability&circle=${encodeURIComponent(circle)}&methods=${encodeURIComponent(JSON.stringify(methods))}&scope=${encodeURIComponent(scope)}&encrypted=${encrypted}`
+    );
+    await chrome.tabs.create({ url, active: true });
   }
-  
-  // Wait for user approval/rejection
+
+  // Wait for user response
   return new Promise((resolve) => {
-    const messageListener = (msg) => {
-      if (msg.type === 'CONTRACT_RESULT' && msg.origin === origin) {
-        chrome.runtime.onMessage.removeListener(messageListener);
-        resolve({
-          type: 'CONTRACT_RESPONSE',
-          success: msg.approved,
-          result: msg.approved ? msg.result : null,
-          error: msg.approved ? null : (msg.error || 'User rejected contract call')
-        });
+    const listener = (msg) => {
+      if (msg.type === 'CAPABILITY_RESULT' && msg.appOrigin === appOrigin) {
+        chrome.runtime.onMessage.removeListener(listener);
+
+        if (msg.approved) {
+          // Use the signed capability from DAppRequestHandler
+          const signedCapability = msg.signedCapability;
+          const capabilityId = msg.capabilityId;
+          
+          const capability = {
+            id: capabilityId,
+            ...signedCapability
+          };
+
+          console.log('[Background] Capability approved:', {
+            id: capability.id,
+            circle: capability.circle,
+            methods: capability.methods,
+            scope: capability.scope,
+            issuerPubKey: capability.issuerPubKey?.slice(0, 16) + '...'
+          });
+
+          // Store capability
+          saveCapability(appOrigin, capability);
+
+          resolve({
+            type: 'CAPABILITY_RESPONSE',
+            success: true,
+            result: capability
+          });
+        } else {
+          resolve({
+            type: 'CAPABILITY_RESPONSE',
+            success: false,
+            error: 'User rejected request'
+          });
+        }
       }
     };
-    
-    chrome.runtime.onMessage.addListener(messageListener);
-    
-    // Cleanup timeout after 5 minutes for contract calls
+
+    chrome.runtime.onMessage.addListener(listener);
+
+    // Timeout after 5 minutes
     setTimeout(() => {
-      chrome.runtime.onMessage.removeListener(messageListener);
-      chrome.storage.local.remove('pendingContractRequest');
+      chrome.runtime.onMessage.removeListener(listener);
+      chrome.storage.local.remove('pendingCapabilityRequest');
       resolve({
-        type: 'CONTRACT_RESPONSE',
+        type: 'CAPABILITY_RESPONSE',
         success: false,
-        error: 'Contract call request timeout'
+        error: 'Capability request timeout'
       });
-    }, 300000); // 5 minutes
+    }, 300000);
   });
 }
 
-// Get active RPC URL from storage
-async function getActiveRPCUrl() {
-  try {
-    const rpcProvidersData = await getStorageData('rpcProviders');
-    if (rpcProvidersData) {
-      const providers = typeof rpcProvidersData === 'string' 
-        ? JSON.parse(rpcProvidersData) 
-        : rpcProvidersData;
-      const activeProvider = providers.find(p => p.isActive);
-      if (activeProvider?.url) {
-        return activeProvider.url;
-      }
-    }
-  } catch (error) {
-    console.error('[Background] Failed to get RPC provider:', error);
-  }
-  return 'https://octra.network'; // Default fallback
-}
+// Handle invoke request
+async function handleInvokeRequest(data, sender) {
+  const { capabilityId, method, payload, nonce, timestamp, appOrigin } = data;
 
-// Handle balance request
-async function handleBalanceRequest(data, sender) {
-  const { address } = data;
-  
+  // Get capability
+  const capability = await getCapability(appOrigin, capabilityId);
+  if (!capability) {
+    throw new Error('Capability not found');
+  }
+
+  // Check expiry
+  if (capability.expiresAt && capability.expiresAt < Date.now()) {
+    throw new Error('Capability expired');
+  }
+
+  // Check method is allowed
+  if (!capability.methods.includes(method)) {
+    throw new Error(`Method '${method}' not allowed by capability`);
+  }
+
+  // Store pending request
+  await setStorageData('pendingInvokeRequest', {
+    capabilityId,
+    method,
+    payload,
+    nonce,
+    timestamp,
+    appOrigin,
+    capability,
+    requestTimestamp: Date.now()
+  });
+
+  // Open approval UI
   try {
-    // Get active RPC URL from chrome.storage.local
-    const apiUrl = await getActiveRPCUrl();
-    
-    // Fetch balance from API
-    const response = await fetch(`${apiUrl}/balance/${address}`);
-    
-    if (!response.ok) {
-      // For 404 or other errors, return 0 balance (new address)
-      if (response.status === 404) {
-        return {
-          type: 'BALANCE_RESPONSE',
-          success: true,
-          result: {
-            balance: 0,
-            address: address
-          }
-        };
-      }
-      throw new Error(`API returned ${response.status}`);
-    }
-    
-    const responseText = await response.text();
-    
-    if (!responseText.trim()) {
-      return {
-        type: 'BALANCE_RESPONSE',
-        success: true,
-        result: {
-          balance: 0,
-          address: address
+    await chrome.action.openPopup();
+  } catch (error) {
+    const url = chrome.runtime.getURL(
+      `index.html?action=invoke&capabilityId=${encodeURIComponent(capabilityId)}&method=${encodeURIComponent(method)}`
+    );
+    await chrome.tabs.create({ url, active: true });
+  }
+
+  // Wait for user response
+  return new Promise((resolve) => {
+    const listener = (msg) => {
+      if (msg.type === 'INVOKE_RESULT' && msg.appOrigin === appOrigin) {
+        chrome.runtime.onMessage.removeListener(listener);
+
+        if (msg.approved) {
+          resolve({
+            type: 'INVOKE_RESPONSE',
+            success: true,
+            result: {
+              success: true,
+              data: msg.data
+            }
+          });
+        } else {
+          resolve({
+            type: 'INVOKE_RESPONSE',
+            success: false,
+            error: msg.error || 'User rejected request'
+          });
         }
-      };
-    }
-    
-    const responseData = JSON.parse(responseText);
-    
-    const balance = typeof responseData.balance === 'string' 
-      ? parseFloat(responseData.balance) 
-      : (responseData.balance || 0);
-    
-    return {
-      type: 'BALANCE_RESPONSE',
-      success: true,
-      result: {
-        balance: balance,
-        address: address
       }
     };
-  } catch (error) {
-    console.error('[Background] Failed to fetch balance:', error);
-    // Return 0 balance on error
-    return {
-      type: 'BALANCE_RESPONSE',
-      success: true,
-      result: {
-        balance: 0,
-        address: address
-      }
-    };
-  }
-}
 
-// Handle sign message request
-async function handleSignMessageRequest(data, sender) {
-  const { message, origin } = data;
-  
-  // Check if dApp is connected
-  const connectionsData = await getStorageData('connectedDApps');
-  const connections = Array.isArray(connectionsData) ? connectionsData : [];
-  const connection = connections.find(conn => conn.origin === origin);
-  
-  if (!connection) {
-    throw new Error('dApp not connected');
-  }
-  
-  // For now, return not implemented
-  throw new Error('Message signing not yet implemented');
+    chrome.runtime.onMessage.addListener(listener);
+
+    // Timeout after 5 minutes
+    setTimeout(() => {
+      chrome.runtime.onMessage.removeListener(listener);
+      chrome.storage.local.remove('pendingInvokeRequest');
+      resolve({
+        type: 'INVOKE_RESPONSE',
+        success: false,
+        error: 'Invocation request timeout'
+      });
+    }, 300000);
+  });
 }
 
 // Handle disconnect request
 async function handleDisconnectRequest(data, sender) {
-  const { origin } = data;
-  
+  const { appOrigin } = data;
+
   try {
-    const connectionsData = await getStorageData('connectedDApps');
-    const connections = Array.isArray(connectionsData) ? connectionsData : [];
-    const updatedConnections = connections.filter(conn => conn.origin !== origin);
-    await setStorageData('connectedDApps', updatedConnections);
-    
+    await removeConnection(appOrigin);
     return {
       type: 'DISCONNECT_RESPONSE',
       success: true,
@@ -478,32 +361,79 @@ async function handleDisconnectRequest(data, sender) {
   }
 }
 
-// Storage helper functions
+// =============================================================================
+// Storage Helpers
+// =============================================================================
+
+async function lockWallet() {
+  try {
+    if (chrome.storage.session) {
+      await chrome.storage.session.clear();
+    }
+    await setStorageData('isWalletLocked', 'true');
+    await chrome.storage.local.remove(['wallets']);
+    console.log('[Background] Wallet locked');
+  } catch (error) {
+    console.error('[Background] Lock failed:', error);
+  }
+}
+
 async function getStorageData(key) {
   return new Promise((resolve) => {
-    chrome.storage.local.get([key], (result) => {
-      resolve(result[key]);
-    });
+    chrome.storage.local.get([key], (result) => resolve(result[key]));
   });
 }
 
 async function setStorageData(key, value) {
   return new Promise((resolve) => {
-    chrome.storage.local.set({ [key]: value }, () => {
-      resolve();
-    });
+    chrome.storage.local.set({ [key]: value }, resolve);
   });
 }
 
-// Sync storage changes across all extension pages
+async function getConnection(appOrigin) {
+  const connections = await getStorageData('connectedDApps') || [];
+  return connections.find(c => c.appOrigin === appOrigin);
+}
+
+async function saveConnection(connection) {
+  const connections = await getStorageData('connectedDApps') || [];
+  const filtered = connections.filter(c => c.appOrigin !== connection.appOrigin);
+  filtered.push(connection);
+  await setStorageData('connectedDApps', filtered);
+}
+
+async function removeConnection(appOrigin) {
+  const connections = await getStorageData('connectedDApps') || [];
+  const filtered = connections.filter(c => c.appOrigin !== appOrigin);
+  await setStorageData('connectedDApps', filtered);
+
+  // Also remove capabilities for this origin
+  const capabilities = await getStorageData('capabilities') || {};
+  delete capabilities[appOrigin];
+  await setStorageData('capabilities', capabilities);
+}
+
+async function getCapability(appOrigin, capabilityId) {
+  const capabilities = await getStorageData('capabilities') || {};
+  const originCaps = capabilities[appOrigin] || [];
+  return originCaps.find(c => c.id === capabilityId);
+}
+
+async function saveCapability(appOrigin, capability) {
+  const capabilities = await getStorageData('capabilities') || {};
+  if (!capabilities[appOrigin]) {
+    capabilities[appOrigin] = [];
+  }
+  capabilities[appOrigin].push(capability);
+  await setStorageData('capabilities', capabilities);
+}
+
+// Sync storage changes
 chrome.storage.onChanged.addListener((changes, namespace) => {
   if (namespace === 'local') {
-    // Broadcast storage changes to all extension pages
     chrome.runtime.sendMessage({
       type: 'STORAGE_CHANGED',
-      changes: changes
-    }).catch(() => {
-      // Ignore errors if no listeners
-    });
+      changes
+    }).catch(() => {});
   }
 });

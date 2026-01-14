@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { QRCodeSVG } from 'qrcode.react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Copy, Check, QrCode, ArrowLeft } from 'lucide-react';
@@ -46,17 +47,16 @@ export function ReceiveDialog({
     }
   };
 
-  // Generate QR code URL using a public API
-  const qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(wallet.address)}&bgcolor=ffffff&color=000000`;
-
   const content = (
     <div className="flex flex-col items-center py-4">
-      {/* QR Code */}
-      <div className="bg-white p-4  shadow-sm border">
-        <img 
-          src={qrCodeUrl} 
-          alt="Wallet QR Code" 
-          className="w-48 h-48"
+      {/* QR Code - Generated offline */}
+      <div className="bg-white p-4 shadow-sm border">
+        <QRCodeSVG 
+          value={wallet.address}
+          size={192}
+          bgColor="#ffffff"
+          fgColor="#000000"
+          level="M"
         />
       </div>
 

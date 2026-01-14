@@ -157,9 +157,10 @@ export interface RPCProvider {
   priority: number;
   isActive: boolean;
   createdAt: number;
+  network?: 'mainnet' | 'testnet'; // Network this provider connects to
 }
 
-// DApp connection types
+// DApp connection types (Legacy - kept for backward compatibility)
 export interface DAppConnectionRequest {
   origin: string;
   permissions: string[];
@@ -184,4 +185,82 @@ export interface ConnectedDApp {
   connectedAt: number;
   permissions: string[];
   selectedAddress: string;
+}
+
+// =============================================================================
+// Octra Capability-Based Model Types
+// =============================================================================
+
+/** Capability scope - defines the level of access */
+export type CapabilityScope = 'read' | 'write' | 'compute';
+
+/** Connection to a Circle (no authority granted) */
+export interface CircleConnection {
+  circle: string;
+  appOrigin: string;
+  appName: string;
+  walletPubKey: string;
+  network: 'testnet' | 'mainnet';
+  connectedAt: number;
+}
+
+/** Capability - scoped, signed authorization */
+export interface Capability {
+  id: string;
+  circle: string;
+  methods: string[];
+  scope: CapabilityScope;
+  encrypted: boolean;
+  issuedAt: number;
+  expiresAt?: number;
+  issuerPubKey: string;
+  signature: string;
+}
+
+/** Request to connect to a Circle */
+export interface CircleConnectRequest {
+  circle: string;
+  appOrigin: string;
+  appName?: string;
+  appIcon?: string;
+  requestedCapabilities?: {
+    methods: string[];
+    scope: CapabilityScope;
+    encrypted: boolean;
+  }[];
+}
+
+/** Request for a capability */
+export interface CapabilityRequest {
+  circle: string;
+  methods: string[];
+  scope: CapabilityScope;
+  encrypted: boolean;
+  ttlSeconds?: number;
+  appOrigin: string;
+  appName?: string;
+  appIcon?: string;
+}
+
+/** Request to invoke a method */
+export interface InvokeRequest {
+  capabilityId: string;
+  method: string;
+  payload?: Uint8Array | EncryptedBlob;
+  nonce: number;
+  timestamp: number;
+}
+
+/** Encrypted data blob */
+export interface EncryptedBlob {
+  scheme: 'HFHE';
+  data: Uint8Array;
+  metadata?: Uint8Array;
+}
+
+/** Result from an invocation */
+export interface InvocationResult {
+  success: boolean;
+  data?: Uint8Array | EncryptedBlob;
+  error?: string;
 }

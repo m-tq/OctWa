@@ -449,78 +449,43 @@ export function WalletDashboard({
     };
   }, [isPopupMode, activeTab, transactions.length]);
 
-  // Check RPC status every 1 minute using active RPC provider
+  // Check RPC status with shared cache (prevents duplicate fetching between popup/expanded)
+  const [activeNetwork, setActiveNetwork] = useState<string>('mainnet');
+  
   useEffect(() => {
-    const checkRpcStatus = async () => {
-      const MAX_RETRIES = 3;
-      const RETRY_DELAY = 7000; // 7 seconds
-
-      // Get active RPC provider from localStorage
-      let rpcUrl = 'https://octra.network';
-      try {
-        const providers = JSON.parse(localStorage.getItem('rpcProviders') || '[]');
-        const activeProvider = providers.find((p: any) => p.isActive);
-        if (activeProvider?.url) {
-          rpcUrl = activeProvider.url;
-        }
-      } catch (e) {
-        console.warn('Failed to get RPC provider:', e);
-      }
-
-      // Use the proxy in development mode
-      const isDevelopment = import.meta.env.DEV;
-      const isExtension = typeof chrome !== 'undefined' && 
-                          chrome.runtime && 
-                          typeof chrome.runtime.id === 'string' &&
-                          chrome.runtime.id.length > 0;
+    // Import dynamically to avoid circular deps
+    const initRPCStatus = async () => {
+      const { checkRPCStatus, onRPCStatusChange, getActiveRPCProvider } = await import('../utils/rpcStatus');
       
-      let url: string;
-      const headers: Record<string, string> = {};
+      // Get initial status (uses cache if available)
+      const status = await checkRPCStatus();
+      setRpcStatus(status.status);
+      setActiveNetwork(status.network);
       
-      if (isExtension) {
-        url = `${rpcUrl}/status`;
-      } else if (isDevelopment) {
-        url = '/api/status';
-        headers['X-RPC-URL'] = rpcUrl;
-      } else {
-        url = '/rpc-proxy/status';
-        headers['X-RPC-Target'] = rpcUrl;
-      }
-
-      for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
-        try {
-          const response = await fetch(url, {
-            method: 'GET',
-            headers,
-            signal: AbortSignal.timeout(10000) // 10 second timeout
-          });
-          
-          if (response.status === 200) {
-            setRpcStatus('connected');
-            return;
-          }
-          throw new Error(`HTTP ${response.status}`);
-        } catch (error) {
-          console.warn(`RPC status check attempt ${attempt}/${MAX_RETRIES} failed:`, error);
-          
-          if (attempt < MAX_RETRIES) {
-            setRpcStatus('connecting');
-            await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
-          } else {
-            console.error('RPC status check failed after all retries');
-            setRpcStatus('disconnected');
-          }
-        }
-      }
+      // Listen for status changes from other contexts (popup <-> expanded)
+      const unsubscribe = onRPCStatusChange((data) => {
+        console.log('📡 RPC status updated from other context:', data.status, data.network);
+        setRpcStatus(data.status);
+        setActiveNetwork(data.network);
+      });
+      
+      // Check every 3 minutes (force refresh)
+      const interval = setInterval(async () => {
+        const freshStatus = await checkRPCStatus(true);
+        setRpcStatus(freshStatus.status);
+        setActiveNetwork(freshStatus.network);
+      }, 3 * 60 * 1000);
+      
+      return () => {
+        unsubscribe();
+        clearInterval(interval);
+      };
     };
-
-    // Check immediately on mount
-    checkRpcStatus();
-
-    // Check every 1 minute
-    const interval = setInterval(checkRpcStatus, 60000);
-
-    return () => clearInterval(interval);
+    
+    let cleanup: (() => void) | undefined;
+    initRPCStatus().then(fn => { cleanup = fn; });
+    
+    return () => { cleanup?.(); };
   }, []);
 
   // Epoch-based auto-refresh: Poll for epoch changes and refresh data when epoch changes
@@ -1156,7 +1121,7 @@ export function WalletDashboard({
   };
 
   const truncateAddress = (address: string) => {
-    return `${address.slice(0, 8)}...${address.slice(-6)}`;
+    return `${address.slice(0, 8)}...${address.slice(-5)}`;
   };
 
   // Handler for viewing transaction details
@@ -1593,7 +1558,7 @@ export function WalletDashboard({
                     {/* Mode Badge - Only show when inline modal is open, except for decrypt (has corner badge) */}
                     {!isPopupMode && (expandedSendModal || expandedPrivateModal === 'encrypt') && (
                       <Badge 
-                        className={`text-xs px-2 py-0.5 ${
+                        className={`text-xs px-2 py-0.5 pointer-events-none ${
                           operationMode === 'private' 
                             ? 'bg-[#0000db] text-white' 
                             : 'bg-foreground/10 text-foreground border border-foreground/20'
@@ -1622,25 +1587,44 @@ export function WalletDashboard({
                                 </div>
                               </Button>
                             </SheetTrigger>
-                            <SheetContent side="left" className="w-80 flex flex-col pb-14">
-                              <SheetHeader>
-                                <SheetTitle className="text-sm">Select Wallet ({wallets.length})</SheetTitle>
+                            <SheetContent side="left" className="w-80 flex flex-col pb-14 px-0">
+                              <SheetHeader className="px-4">
+                                <SheetTitle className="text-sm flex items-center gap-2">
+                                  <WalletIcon className="h-4 w-4" />
+                                  Wallets ({wallets.length})
+                                </SheetTitle>
                                 <SheetDescription className="sr-only">Choose a wallet from your list</SheetDescription>
                               </SheetHeader>
                               <div className="flex-1 mt-3 overflow-hidden">
                                 <ScrollArea className="h-full max-h-[calc(100vh-200px)]" stabilizeGutter>
-                                  <div className="divide-y divide-dashed divide-border">
+                                  <ScrollAreaContent className="divide-y divide-dashed divide-border">
                                     {wallets.map((w, i) => {
                                       const isActive = w.address === wallet.address;
-                                      const shortAddress = `${w.address.slice(0, 6)}...${w.address.slice(-4)}`;
+                                      const shortAddress = `${w.address.slice(0, 6)}...${w.address.slice(-5)}`;
                                       const walletType = w.type === 'generated' ? 'Generated' 
                                         : w.type === 'imported-mnemonic' ? 'Imported (Mnemonic)' 
                                         : w.type === 'imported-private-key' ? 'Imported (Key)' 
                                         : '';
+                                      
+                                      // Get nonce for this wallet (active wallet uses main nonce state)
+                                      const walletNonce = isActive ? nonce : walletNonces[w.address];
+                                      
+                                      // Fetch nonce on hover for non-active wallets
+                                      const handleMouseEnter = async () => {
+                                        if (!isActive && walletNonces[w.address] === undefined) {
+                                          try {
+                                            const balanceData = await fetchBalance(w.address);
+                                            setWalletNonces(prev => ({ ...prev, [w.address]: balanceData.nonce }));
+                                          } catch {
+                                            setWalletNonces(prev => ({ ...prev, [w.address]: null }));
+                                          }
+                                        }
+                                      };
+                                      
                                     return (
                                       <div
                                         key={w.address}
-                                        className={`relative py-2.5 pl-3 cursor-pointer transition-all duration-200 ${
+                                        className={`group relative py-2.5 pl-4 pr-4 cursor-pointer transition-all duration-200 ${
                                           isActive 
                                             ? '' 
                                             : 'hover:bg-accent/50'
@@ -1649,76 +1633,87 @@ export function WalletDashboard({
                                           onSwitchWallet(w);
                                           setShowWalletSelector(false);
                                         }}
+                                        onMouseEnter={handleMouseEnter}
                                       >
                                         {/* Active indicator bar - left side */}
                                         <div className={`absolute left-0 top-1/2 -translate-y-1/2 w-1 rounded-r-full bg-[#0000db] transition-all duration-200 ${
                                           isActive ? 'h-8 opacity-100' : 'h-0 opacity-0'
                                         }`} />
                                         
-                                        {/* Row 1: Number + Address + Actions */}
-                                        <div className="flex items-center justify-between">
-                                          <div className="flex items-center gap-1.5 min-w-0">
-                                            <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${
-                                              isActive ? 'bg-[#0000db] text-white' : 'bg-muted text-muted-foreground'
-                                            }`}>
-                                              {i + 1}
-                                            </span>
-                                            <span className={`font-mono text-xs truncate ${isActive ? 'text-[#0000db] font-semibold' : ''}`}>
-                                              {shortAddress}
-                                            </span>
-                                          </div>
-                                          <div className="flex items-center gap-0.5 flex-shrink-0">
-                                            <Button
-                                              variant="ghost"
-                                              size="sm"
-                                              onClick={(e) => {
-                                                e.stopPropagation();
-                                                copyToClipboard(w.address, `walletPopup-${w.address}`);
-                                              }}
-                                              className={`h-6 w-6 p-0 ${isActive ? 'text-[#0000db] hover:text-[#0000db]/80' : ''}`}
-                                              title="Copy address"
-                                            >
-                                              {copiedField === `walletPopup-${w.address}` ? <Check className="h-3 w-3 text-green-500" /> : <Copy className="h-3 w-3" />}
-                                            </Button>
-                                            <div onClick={(e) => e.stopPropagation()}>
-                                              <WalletLabelEditor address={w.address} isPopupMode={true} />
+                                        {/* Content wrapper */}
+                                        <div className="pl-2">
+                                          {/* Row 1: Number + Address + Actions */}
+                                          <div className="flex items-center justify-between">
+                                            <div className="flex items-center gap-1.5 min-w-0">
+                                              <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${
+                                                isActive ? 'bg-[#0000db] text-white' : 'bg-muted text-muted-foreground'
+                                              }`}>
+                                                {i + 1}
+                                              </span>
+                                              <span className={`font-mono text-xs truncate ${isActive ? 'text-[#0000db] font-semibold' : ''}`}>
+                                                {shortAddress}
+                                              </span>
                                             </div>
-                                            {wallets.length > 1 && (
+                                            <div className="flex items-center gap-0.5 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
                                               <Button
                                                 variant="ghost"
                                                 size="sm"
                                                 onClick={(e) => {
                                                   e.stopPropagation();
-                                                  setWalletToDelete(w);
-                                                  setShowWalletSelector(false);
+                                                  copyToClipboard(w.address, `walletPopup-${w.address}`);
                                                 }}
-                                                className="h-6 w-6 p-0 text-red-500 hover:text-red-700"
-                                                title="Remove wallet"
+                                                className={`h-6 w-6 p-0 ${isActive ? 'text-[#0000db] hover:text-[#0000db]/80' : ''}`}
+                                                title="Copy address"
                                               >
-                                                <Trash2 className="h-3 w-3" />
+                                                {copiedField === `walletPopup-${w.address}` ? <Check className="h-3 w-3 text-green-500" /> : <Copy className="h-3 w-3" />}
                                               </Button>
+                                              <div onClick={(e) => e.stopPropagation()}>
+                                                <WalletLabelEditor address={w.address} isPopupMode={true} />
+                                              </div>
+                                              {wallets.length > 1 && (
+                                                <Button
+                                                  variant="ghost"
+                                                  size="sm"
+                                                  onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    setWalletToDelete(w);
+                                                    setShowWalletSelector(false);
+                                                  }}
+                                                  className="h-6 w-6 p-0 text-red-500 hover:text-red-700"
+                                                  title="Remove wallet"
+                                                >
+                                                  <Trash2 className="h-3 w-3" />
+                                                </Button>
+                                              )}
+                                            </div>
+                                          </div>
+                                          
+                                          {/* Row 2: Wallet Name */}
+                                          <div className={`mt-1 text-xs font-medium truncate ${isActive ? 'text-[#0000db]' : ''}`}>
+                                            <WalletDisplayName address={w.address} isPopupMode={true} />
+                                          </div>
+                                          
+                                          {/* Row 3: Type + Nonce (active always shows, non-active shows on hover) */}
+                                          <div className={`flex items-center justify-between mt-0.5 text-[10px] ${
+                                            isActive ? 'text-[#0000db]/70' : 'text-muted-foreground'
+                                          }`}>
+                                            <span>{walletType}</span>
+                                            {isActive ? (
+                                              <span>Nonce: {nonce}</span>
+                                            ) : (
+                                              <span className="opacity-0 group-hover:opacity-100 transition-opacity">
+                                                Nonce: {walletNonce !== undefined ? (walletNonce ?? '-') : '...'}
+                                              </span>
                                             )}
                                           </div>
-                                        </div>
-                                        
-                                        {/* Row 2: Wallet Name */}
-                                        <div className={`mt-1 text-xs font-medium truncate ${isActive ? 'text-[#0000db]' : ''}`}>
-                                          <WalletDisplayName address={w.address} isPopupMode={true} />
-                                        </div>
-                                        
-                                        {/* Row 3: Type */}
-                                        <div className={`mt-0.5 text-[10px] ${
-                                          isActive ? 'text-[#0000db]/70' : 'text-muted-foreground'
-                                        }`}>
-                                          {walletType}
                                         </div>
                                       </div>
                                     );
                                   })}
-                                </div>
+                                </ScrollAreaContent>
                               </ScrollArea>
                             </div>
-                            <div className="mt-3 flex-shrink-0">
+                            <div className="mt-3 flex-shrink-0 px-4">
                               <Button
                                 variant="outline"
                                 size="sm"
@@ -1791,27 +1786,12 @@ export function WalletDashboard({
                         <Menu className="h-3.5 w-3.5" />
                       </Button>
                     </SheetTrigger>
-                    <SheetContent side="right" className="w-72 pb-14">
+                    <SheetContent side="right" className="w-72 pb-14 flex flex-col">
                       <SheetHeader className="mt-2">
                         <SheetTitle className="text-sm">Wallet Menu</SheetTitle>
                         <SheetDescription className="sr-only">Wallet settings and actions</SheetDescription>
                       </SheetHeader>
-                      <div className="mt-4 space-y-3">
-                        {/* Wallet Info Card */}
-                        <div className="p-3 bg-gradient-to-br from-[#0000db]/5 to-[#0000db]/10 border border-[#0000db]/20 ">
-                          {/* Stats Grid */}
-                          <div className="grid grid-cols-2 gap-2">
-                            <div className="bg-transparent border border-[#0000db]/50  p-2 text-center">
-                              <div className="text-[10px] text-muted-foreground mb-0.5">Nonce</div>
-                              <div className="text-sm font-semibold text-[#0000db]">{nonce}</div>
-                            </div>
-                            <div className="bg-transparent border border-[#0000db]/50  p-2 text-center">
-                              <div className="text-[10px] text-muted-foreground mb-0.5">Wallets</div>
-                              <div className="text-sm font-semibold text-[#0000db]">{wallets.length}</div>
-                            </div>
-                          </div>
-                        </div>
-
+                      <div className="flex-1 flex flex-col justify-center space-y-3">
                         {/* Expand View Button */}
                         {typeof chrome !== 'undefined' && chrome.tabs && (
                           <Button
@@ -2348,18 +2328,18 @@ export function WalletDashboard({
               top: showWalletSidebar ? '65px' : '85px'
             }}
           >
-            <div className="h-full flex flex-col p-4 pr-6" style={{ width: `${sidebarWidth}px` }}>
+            <div className="h-full flex flex-col pt-4 pb-4 pl-4 pr-3" style={{ width: `${sidebarWidth - 8}px` }}>
               <div className="flex items-center justify-between mb-4 mt-2">
                 <h3 className="font-semibold text-base flex items-center gap-2">
                   <WalletIcon className="h-5 w-5" />
                   Wallets ({wallets.length})
                 </h3>
               </div>
-              <ScrollArea className="flex-1" stabilizeGutter>
+              <ScrollArea className="flex-1 -ml-4 -mr-3" stabilizeGutter>
                 <ScrollAreaContent className="divide-y divide-dashed divide-border">
                   {wallets.map((w, i) => {
                     const isActive = w.address === wallet.address;
-                    const shortAddress = `${w.address.slice(0, 6)}...${w.address.slice(-4)}`;
+                    const shortAddress = `${w.address.slice(0, 6)}...${w.address.slice(-5)}`;
                     const walletType = w.type === 'generated' ? 'Generated' 
                       : w.type === 'imported-mnemonic' ? 'Imported (Mnemonic)' 
                       : w.type === 'imported-private-key' ? 'Imported (Key)' 
@@ -2383,7 +2363,7 @@ export function WalletDashboard({
                     return (
                       <div
                         key={w.address}
-                        className={`group relative py-3 cursor-pointer transition-all duration-200 ${
+                        className={`group relative py-3 pl-4 pr-3 cursor-pointer transition-all duration-200 ${
                           isActive 
                             ? '' 
                             : 'hover:bg-accent/50'
@@ -2396,8 +2376,8 @@ export function WalletDashboard({
                           isActive ? 'h-10 opacity-100' : 'h-0 opacity-0'
                         }`} />
                         
-                        {/* Content wrapper with left padding */}
-                        <div className="pl-4 pr-2">
+                        {/* Content wrapper */}
+                        <div className="pl-2">
                           {/* Row 1: Number + Address + Actions (hidden, show on hover) */}
                           <div className="flex items-center justify-between">
                             <div className="flex items-center gap-2 min-w-0">
@@ -3436,7 +3416,7 @@ export function WalletDashboard({
                 rpcStatus === 'disconnected' ? 'text-red-500' : 
                 'text-yellow-500'
               }`}>
-                {rpcStatus === 'connected' ? 'Connected (Mainnet)' : 
+                {rpcStatus === 'connected' ? `Connected (${activeNetwork.charAt(0).toUpperCase() + activeNetwork.slice(1)})` : 
                  rpcStatus === 'disconnected' ? 'Disconnected' : 
                  'Connecting...'}
               </span>
@@ -3514,7 +3494,7 @@ export function WalletDashboard({
               rpcStatus === 'disconnected' ? 'text-red-500' : 
               'text-yellow-500'
             }`}>
-              {rpcStatus === 'connected' ? 'Connected (Mainnet)' : 
+              {rpcStatus === 'connected' ? `Connected (${activeNetwork.charAt(0).toUpperCase() + activeNetwork.slice(1)})` : 
                rpcStatus === 'disconnected' ? 'Disconnected' : 
                'Connecting...'}
             </span>

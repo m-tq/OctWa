@@ -175,7 +175,7 @@ export function UnifiedHistory({ wallet, transactions, onTransactionsUpdate, isL
   };
 
   const truncateHash = (hash: string) => `${hash.slice(0, 8)}...${hash.slice(-8)}`;
-  const truncateAddress = (address: string) => `${address.slice(0, 6)}...${address.slice(-4)}`;
+  const truncateAddress = (address: string) => `${address.slice(0, 6)}...${address.slice(-5)}`;
 
   const getStatusIcon = (status: string, small: boolean = false) => {
     const sizeClass = small ? "h-3 w-3" : "h-4 w-4";

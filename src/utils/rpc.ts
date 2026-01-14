@@ -1,9 +1,15 @@
 import { RPCProvider } from '../types/wallet';
 
-// Sync rpcProviders to chrome.storage.local for background script access
+// Sync rpcProviders and selectedNetwork to chrome.storage.local for background script access
 function syncToExtensionStorage(providers: RPCProvider[]) {
   if (typeof chrome !== 'undefined' && chrome.storage?.local) {
-    chrome.storage.local.set({ rpcProviders: JSON.stringify(providers) }).catch(err => {
+    const activeProvider = providers.find(p => p.isActive);
+    const selectedNetwork = activeProvider?.network || 'mainnet';
+    
+    chrome.storage.local.set({ 
+      rpcProviders: JSON.stringify(providers),
+      selectedNetwork 
+    }).catch(err => {
       console.warn('Failed to sync rpcProviders to chrome.storage:', err);
     });
   }
@@ -31,7 +37,8 @@ export function getActiveRPCProvider(): RPCProvider | null {
     headers: {},
     priority: 1,
     isActive: true,
-    createdAt: Date.now()
+    createdAt: Date.now(),
+    network: 'mainnet'
   };
   
   // Save default provider if none exists

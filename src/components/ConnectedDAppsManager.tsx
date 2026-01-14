@@ -1,26 +1,64 @@
+/**
+ * ConnectedDAppsManager - Manage connected dApps and their capabilities
+ */
+
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
-import { 
-  Globe, 
-  MoreVertical, 
-  ExternalLink, 
-  Shield, 
-  Eye, 
-  Send, 
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog';
+import {
+  Globe,
+  MoreVertical,
+  ExternalLink,
+  Shield,
   RefreshCw,
-  Settings,
-  Unplug
+  Unplug,
+  Eye,
+  Edit,
+  Cpu,
 } from 'lucide-react';
-import { Wallet, ConnectedDApp } from '../types/wallet';
+import { Wallet } from '../types/wallet';
 import { useToast } from '@/hooks/use-toast';
+
+// Connection stored in localStorage
+interface StoredConnection {
+  circle: string;
+  appOrigin: string;
+  appName: string;
+  walletPubKey: string;
+  network: 'testnet' | 'mainnet';
+  connectedAt: number;
+}
+
+// Capability stored in localStorage
+interface StoredCapability {
+  id: string;
+  circle: string;
+  methods: string[];
+  scope: 'read' | 'write' | 'compute';
+  encrypted: boolean;
+  issuedAt: number;
+  expiresAt?: number;
+}
 
 interface ConnectedDAppsManagerProps {
   wallets: Wallet[];
@@ -28,137 +66,118 @@ interface ConnectedDAppsManagerProps {
   isPopupMode?: boolean;
 }
 
-export function ConnectedDAppsManager({ wallets, onClose, isPopupMode = false }: ConnectedDAppsManagerProps) {
-  const [connectedDApps, setConnectedDApps] = useState<ConnectedDApp[]>([]);
-  const [showChangeWalletDialog, setShowChangeWalletDialog] = useState(false);
-  const [selectedDApp, setSelectedDApp] = useState<ConnectedDApp | null>(null);
-  const [selectedWalletAddress, setSelectedWalletAddress] = useState<string>('');
+export function ConnectedDAppsManager({
+  wallets,
+  onClose,
+  isPopupMode = false,
+}: ConnectedDAppsManagerProps) {
+  const [connections, setConnections] = useState<StoredConnection[]>([]);
+  const [capabilities, setCapabilities] = useState<Record<string, StoredCapability[]>>({});
   const { toast } = useToast();
 
   useEffect(() => {
-    loadConnectedDApps();
+    loadData();
   }, []);
 
-  const loadConnectedDApps = () => {
-    const connections = JSON.parse(localStorage.getItem('connectedDApps') || '[]');
-    
-    // Remove duplicates based on origin
-    const uniqueConnections = connections.reduce((acc: ConnectedDApp[], current: ConnectedDApp) => {
-      const existingIndex = acc.findIndex(item => item.origin === current.origin);
-      if (existingIndex >= 0) {
-        // Keep the most recent connection (higher connectedAt timestamp)
-        if (current.connectedAt > acc[existingIndex].connectedAt) {
-          acc[existingIndex] = current;
-        }
-      } else {
-        acc.push(current);
-      }
-      return acc;
-    }, []);
-    
-    // Save cleaned connections back to localStorage
-    if (uniqueConnections.length !== connections.length) {
-      localStorage.setItem('connectedDApps', JSON.stringify(uniqueConnections));
-    }
-    
-    setConnectedDApps(uniqueConnections);
+  const loadData = () => {
+    // Load connections
+    const storedConnections = JSON.parse(localStorage.getItem('connectedDApps') || '[]');
+    setConnections(storedConnections);
+
+    // Load capabilities
+    const storedCapabilities = JSON.parse(localStorage.getItem('capabilities') || '{}');
+    setCapabilities(storedCapabilities);
   };
 
-  const saveConnectedDApps = (updatedDApps: ConnectedDApp[]) => {
-    localStorage.setItem('connectedDApps', JSON.stringify(updatedDApps));
-    setConnectedDApps(updatedDApps);
-  };
-
-  const handleDisconnect = (dapp: ConnectedDApp) => {
-    const updatedDApps = connectedDApps.filter(d => d.origin !== dapp.origin);
-    saveConnectedDApps(updatedDApps);
-    
-    toast({
-      title: "dApp Disconnected",
-      description: `${dapp.appName} has been disconnected from your wallet`,
-    });
-  };
-
-  const handleChangeWallet = () => {
-    if (!selectedDApp || !selectedWalletAddress) return;
-    
-    const selectedWallet = wallets.find(w => w.address === selectedWalletAddress);
-    if (!selectedWallet) return;
-    
-    // Update the connection for this specific origin
-    const updatedDApps = connectedDApps.map(dapp => 
-      dapp.origin === selectedDApp.origin 
-        ? { ...dapp, selectedAddress: selectedWallet.address }
-        : dapp
+  const handleDisconnect = (connection: StoredConnection) => {
+    // Remove connection
+    const updatedConnections = connections.filter(
+      (c) => c.appOrigin !== connection.appOrigin
     );
-    
-    saveConnectedDApps(updatedDApps);
-    setShowChangeWalletDialog(false);
-    setSelectedDApp(null);
-    setSelectedWalletAddress('');
-    
+    localStorage.setItem('connectedDApps', JSON.stringify(updatedConnections));
+
+    // Remove capabilities for this origin
+    const updatedCapabilities = { ...capabilities };
+    delete updatedCapabilities[connection.appOrigin];
+    localStorage.setItem('capabilities', JSON.stringify(updatedCapabilities));
+
+    setConnections(updatedConnections);
+    setCapabilities(updatedCapabilities);
+
     toast({
-      title: "Wallet Changed",
-      description: `${selectedDApp.appName} is now connected to ${truncateAddress(selectedWallet.address)}`,
+      title: 'Disconnected',
+      description: `${connection.appName} has been disconnected`,
     });
   };
 
   const handleDisconnectAll = () => {
-    saveConnectedDApps([]);
+    localStorage.setItem('connectedDApps', '[]');
+    localStorage.setItem('capabilities', '{}');
+    setConnections([]);
+    setCapabilities({});
+
     toast({
-      title: "All dApps Disconnected",
-      description: "All connected dApps have been disconnected",
+      title: 'All Disconnected',
+      description: 'All dApps have been disconnected',
     });
   };
 
-  const openChangeWalletDialog = (dapp: ConnectedDApp) => {
-    setSelectedDApp(dapp);
-    setSelectedWalletAddress(dapp.selectedAddress);
-    setShowChangeWalletDialog(true);
-  };
+  const truncateAddress = (address: string) =>
+    `${address.slice(0, 8)}...${address.slice(-6)}`;
 
-  const truncateAddress = (address: string) => {
-    return `${address.slice(0, 8)}...${address.slice(-6)}`;
-  };
-
-  const formatDate = (timestamp: number) => {
-    return new Date(timestamp).toLocaleDateString('en-US', {
-      year: 'numeric',
+  const formatDate = (timestamp: number) =>
+    new Date(timestamp).toLocaleDateString('en-US', {
       month: 'short',
       day: 'numeric',
       hour: '2-digit',
-      minute: '2-digit'
+      minute: '2-digit',
     });
-  };
 
-  const getPermissionIcon = (permission: string) => {
-    switch (permission) {
-      case 'view_address':
+  const getScopeIcon = (scope: string) => {
+    switch (scope) {
+      case 'read':
         return <Eye className="h-3 w-3" />;
-      case 'view_balance':
-        return <Eye className="h-3 w-3" />;
-      case 'call_methods':
-        return <Send className="h-3 w-3" />;
+      case 'write':
+        return <Edit className="h-3 w-3" />;
+      case 'compute':
+        return <Cpu className="h-3 w-3" />;
       default:
         return <Shield className="h-3 w-3" />;
     }
   };
 
-  const getWalletDisplayName = (address: string) => {
-    const walletIndex = wallets.findIndex(w => w.address === address);
-    return walletIndex >= 0 ? `Account ${walletIndex + 1}` : 'Unknown Wallet';
+  const getScopeColor = (scope: string) => {
+    switch (scope) {
+      case 'read':
+        return 'bg-green-100 text-green-800';
+      case 'write':
+        return 'bg-amber-100 text-amber-800';
+      case 'compute':
+        return 'bg-purple-100 text-purple-800';
+      default:
+        return 'bg-gray-100 text-gray-800';
+    }
   };
 
   return (
-    <div className={isPopupMode ? "space-y-3" : "space-y-6"}>
-      <Card className={isPopupMode ? "border-0 shadow-none" : ""}>
-        <CardHeader className={`flex flex-row items-center justify-between space-y-0 ${isPopupMode ? "p-0 pb-3" : "pb-4"}`}>
-          <CardTitle className={`flex items-center gap-2 ${isPopupMode ? "text-sm" : ""}`}>
-            <Globe className={isPopupMode ? "h-4 w-4" : "h-5 w-5"} />
+    <div className={isPopupMode ? 'space-y-3' : 'space-y-6'}>
+      <Card className={isPopupMode ? 'border-0 shadow-none' : ''}>
+        <CardHeader
+          className={`flex flex-row items-center justify-between space-y-0 ${
+            isPopupMode ? 'p-0 pb-3' : 'pb-4'
+          }`}
+        >
+          <CardTitle
+            className={`flex items-center gap-2 ${isPopupMode ? 'text-sm' : ''}`}
+          >
+            <Globe className={isPopupMode ? 'h-4 w-4' : 'h-5 w-5'} />
             Connected dApps
-            {connectedDApps.length > 0 && (
-              <Badge variant="secondary" className={isPopupMode ? "text-[10px] px-1 py-0" : "ml-2"}>
-                {connectedDApps.length}
+            {connections.length > 0 && (
+              <Badge
+                variant="secondary"
+                className={isPopupMode ? 'text-[10px] px-1 py-0' : 'ml-2'}
+              >
+                {connections.length}
               </Badge>
             )}
           </CardTitle>
@@ -166,33 +185,44 @@ export function ConnectedDAppsManager({ wallets, onClose, isPopupMode = false }:
             <Button
               variant="outline"
               size="sm"
-              onClick={loadConnectedDApps}
-              className={isPopupMode ? "h-7 w-7 p-0" : ""}
+              onClick={loadData}
+              className={isPopupMode ? 'h-7 w-7 p-0' : ''}
             >
-              <RefreshCw className={isPopupMode ? "h-3 w-3" : "h-4 w-4 mr-2"} />
-              {!isPopupMode && "Refresh"}
+              <RefreshCw className={isPopupMode ? 'h-3 w-3' : 'h-4 w-4'} />
             </Button>
-            {connectedDApps.length > 0 && (
+            {connections.length > 0 && (
               <AlertDialog>
                 <AlertDialogTrigger asChild>
-                  <Button variant="outline" size="sm" className={`text-red-600 hover:text-red-700 ${isPopupMode ? "h-7 text-[10px] px-2" : ""}`}>
-                    <Unplug className={isPopupMode ? "h-3 w-3 mr-1" : "h-4 w-4 mr-2"} />
-                    {isPopupMode ? "All" : "Disconnect All"}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className={`text-red-600 hover:text-red-700 ${
+                      isPopupMode ? 'h-7 text-[10px] px-2' : ''
+                    }`}
+                  >
+                    <Unplug className={isPopupMode ? 'h-3 w-3 mr-1' : 'h-4 w-4 mr-2'} />
+                    {isPopupMode ? 'All' : 'Disconnect All'}
                   </Button>
                 </AlertDialogTrigger>
-                <AlertDialogContent className={isPopupMode ? "w-[320px] p-4" : ""}>
+                <AlertDialogContent className={isPopupMode ? 'w-[320px] p-4' : ''}>
                   <AlertDialogHeader>
-                    <AlertDialogTitle className={isPopupMode ? "text-sm" : ""}>Disconnect All dApps</AlertDialogTitle>
-                    <AlertDialogDescription className={isPopupMode ? "text-xs" : ""}>
-                      {isPopupMode 
-                        ? "Disconnect all dApps? You'll need to reconnect each one manually."
-                        : "Are you sure you want to disconnect all connected dApps? This action cannot be undone and you'll need to reconnect each dApp manually."
-                      }
+                    <AlertDialogTitle className={isPopupMode ? 'text-sm' : ''}>
+                      Disconnect All dApps
+                    </AlertDialogTitle>
+                    <AlertDialogDescription className={isPopupMode ? 'text-xs' : ''}>
+                      This will disconnect all dApps and revoke all capabilities.
                     </AlertDialogDescription>
                   </AlertDialogHeader>
                   <AlertDialogFooter>
-                    <AlertDialogCancel className={isPopupMode ? "h-8 text-xs" : ""}>Cancel</AlertDialogCancel>
-                    <AlertDialogAction onClick={handleDisconnectAll} className={`bg-red-600 hover:bg-red-700 ${isPopupMode ? "h-8 text-xs" : ""}`}>
+                    <AlertDialogCancel className={isPopupMode ? 'h-8 text-xs' : ''}>
+                      Cancel
+                    </AlertDialogCancel>
+                    <AlertDialogAction
+                      onClick={handleDisconnectAll}
+                      className={`bg-red-600 hover:bg-red-700 ${
+                        isPopupMode ? 'h-8 text-xs' : ''
+                      }`}
+                    >
                       Disconnect All
                     </AlertDialogAction>
                   </AlertDialogFooter>
@@ -201,69 +231,120 @@ export function ConnectedDAppsManager({ wallets, onClose, isPopupMode = false }:
             )}
           </div>
         </CardHeader>
-        <CardContent className={isPopupMode ? "p-0" : ""}>
-          {connectedDApps.length === 0 ? (
-            <Alert className={isPopupMode ? "py-2" : ""}>
-              <div className="flex items-start space-x-3">
-                <Globe className={`${isPopupMode ? "h-3 w-3" : "h-4 w-4"} mt-0.5 flex-shrink-0`} />
-                <AlertDescription className={isPopupMode ? "text-xs" : ""}>
-                  {isPopupMode ? "No connected dApps." : "No connected dApps found. When you connect to a dApp, it will appear here for management."}
+
+        <CardContent className={isPopupMode ? 'p-0' : ''}>
+          {connections.length === 0 ? (
+            <Alert className={`${isPopupMode ? 'py-2' : ''}`}>
+              <div className="flex items-center gap-2">
+                <Globe className={`${isPopupMode ? 'h-3 w-3' : 'h-4 w-4'} shrink-0`} />
+                <AlertDescription className={`${isPopupMode ? 'text-xs' : ''}`}>
+                  No connected dApps. Connect to a dApp to see it here.
                 </AlertDescription>
               </div>
             </Alert>
           ) : (
-            <div className={isPopupMode ? "space-y-2" : "space-y-4"}>
-              {connectedDApps.map((dapp) => {
-                const connectedWallet = wallets.find(w => w.address === dapp.selectedAddress);
-                
+            <div className={isPopupMode ? 'space-y-2' : 'space-y-4'}>
+              {connections.map((connection) => {
+                const originCapabilities = capabilities[connection.appOrigin] || [];
+                const activeCapabilities = originCapabilities.filter(
+                  (c) => !c.expiresAt || c.expiresAt > Date.now()
+                );
+
                 return (
                   <div
-                    key={dapp.origin}
-                    className={`flex items-center justify-between border  hover:bg-muted/50 transition-colors ${isPopupMode ? "p-2" : "p-4"}`}
+                    key={connection.appOrigin}
+                    className={`border rounded-lg hover:bg-muted/50 transition-colors ${
+                      isPopupMode ? 'p-2' : 'p-4'
+                    }`}
                   >
-                    <div className="flex items-center space-x-2 flex-1 min-w-0">
-                      <Avatar className={isPopupMode ? "h-8 w-8" : "h-12 w-12"}>
-                        <AvatarFallback className="bg-primary text-primary-foreground text-xs">
-                          {dapp.appName.charAt(0).toUpperCase()}
-                        </AvatarFallback>
-                      </Avatar>
-                      
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-1 mb-0.5">
-                          <h3 className={`font-medium truncate ${isPopupMode ? "text-xs" : "text-sm sm:text-base"}`}>{dapp.appName}</h3>
-                        </div>
-                        <p className={`text-muted-foreground truncate ${isPopupMode ? "text-[10px]" : "text-xs sm:text-sm"}`}>
-                          {dapp.origin}
-                        </p>
-                      </div>
-                    </div>
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2 flex-1 min-w-0">
+                        <Avatar className={isPopupMode ? 'h-8 w-8' : 'h-10 w-10'}>
+                          <AvatarFallback className="bg-primary text-primary-foreground text-xs">
+                            {connection.appName.charAt(0).toUpperCase()}
+                          </AvatarFallback>
+                        </Avatar>
 
-                    <div className="flex items-center gap-1 flex-shrink-0">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <h3
+                              className={`font-medium truncate ${
+                                isPopupMode ? 'text-xs' : 'text-sm'
+                              }`}
+                            >
+                              {connection.appName}
+                            </h3>
+                            <Badge
+                              variant="outline"
+                              className={isPopupMode ? 'text-[8px] px-1' : 'text-xs'}
+                            >
+                              {connection.network}
+                            </Badge>
+                          </div>
+                          <p
+                            className={`text-muted-foreground truncate ${
+                              isPopupMode ? 'text-[10px]' : 'text-xs'
+                            }`}
+                          >
+                            Circle: {connection.circle}
+                          </p>
+                        </div>
+                      </div>
+
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="sm" className={isPopupMode ? "h-6 w-6 p-0" : "h-8 w-8 p-0 sm:h-9 sm:w-9"}>
-                            <MoreVertical className={isPopupMode ? "h-3 w-3" : "h-4 w-4"} />
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className={isPopupMode ? 'h-6 w-6 p-0' : 'h-8 w-8 p-0'}
+                          >
+                            <MoreVertical className={isPopupMode ? 'h-3 w-3' : 'h-4 w-4'} />
                           </Button>
                         </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem onClick={() => openChangeWalletDialog(dapp)} className={isPopupMode ? "text-xs" : ""}>
-                            <Settings className={`${isPopupMode ? "h-3 w-3" : "h-4 w-4"} mr-2`} />
-                            Change Wallet
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => window.open(dapp.origin, '_blank')} className={isPopupMode ? "text-xs" : ""}>
-                            <ExternalLink className={`${isPopupMode ? "h-3 w-3" : "h-4 w-4"} mr-2`} />
+                        <DropdownMenuContent align="end" className="z-[9999]">
+                          <DropdownMenuItem
+                            onClick={() => window.open(connection.appOrigin, '_blank')}
+                            className={isPopupMode ? 'text-xs' : ''}
+                          >
+                            <ExternalLink className={`${isPopupMode ? 'h-3 w-3' : 'h-4 w-4'} mr-2`} />
                             Visit
                           </DropdownMenuItem>
-                          <DropdownMenuItem 
-                            onClick={() => handleDisconnect(dapp)}
-                            className={`text-red-600 ${isPopupMode ? "text-xs" : ""}`}
+                          <DropdownMenuItem
+                            onClick={() => handleDisconnect(connection)}
+                            className={`text-red-600 ${isPopupMode ? 'text-xs' : ''}`}
                           >
-                            <Unplug className={`${isPopupMode ? "h-3 w-3" : "h-4 w-4"} mr-2`} />
+                            <Unplug className={`${isPopupMode ? 'h-3 w-3' : 'h-4 w-4'} mr-2`} />
                             Disconnect
                           </DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </div>
+
+                    {/* Active Capabilities */}
+                    {activeCapabilities.length > 0 && (
+                      <div className={`mt-2 pt-2 border-t ${isPopupMode ? 'space-y-1' : 'space-y-2'}`}>
+                        <p className={`text-muted-foreground ${isPopupMode ? 'text-[10px]' : 'text-xs'}`}>
+                          Active Capabilities:
+                        </p>
+                        <div className="flex flex-wrap gap-1">
+                          {activeCapabilities.map((cap) => (
+                            <Badge
+                              key={cap.id}
+                              variant="secondary"
+                              className={`${getScopeColor(cap.scope)} ${
+                                isPopupMode ? 'text-[8px] px-1' : 'text-xs'
+                              }`}
+                            >
+                              {getScopeIcon(cap.scope)}
+                              <span className="ml-1">{cap.scope}</span>
+                              <span className="ml-1 opacity-70">
+                                ({cap.methods.length} methods)
+                              </span>
+                            </Badge>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 );
               })}
@@ -271,69 +352,6 @@ export function ConnectedDAppsManager({ wallets, onClose, isPopupMode = false }:
           )}
         </CardContent>
       </Card>
-
-      {/* Change Wallet Dialog */}
-      <Dialog open={showChangeWalletDialog} onOpenChange={setShowChangeWalletDialog}>
-        <DialogContent className={isPopupMode ? "w-[320px] p-3" : "sm:max-w-md mx-4 max-w-[calc(100vw-2rem)]"}>
-          <DialogHeader className={isPopupMode ? "pb-2" : ""}>
-            <DialogTitle className={isPopupMode ? "text-sm" : ""}>Change Connected Wallet</DialogTitle>
-          </DialogHeader>
-          
-          {selectedDApp && (
-            <div className={isPopupMode ? "space-y-3" : "space-y-4"}>
-              <div className={`flex items-center gap-2 bg-muted  ${isPopupMode ? "p-2" : "p-3"}`}>
-                <Avatar className={isPopupMode ? "h-8 w-8" : "h-10 w-10"}>
-                  <AvatarFallback className="bg-primary text-primary-foreground text-xs">
-                    {selectedDApp.appName.charAt(0).toUpperCase()}
-                  </AvatarFallback>
-                </Avatar>
-                <div className="flex-1 min-w-0">
-                  <div className={`font-medium truncate ${isPopupMode ? "text-xs" : ""}`}>{selectedDApp.appName}</div>
-                  <div className={`text-muted-foreground truncate ${isPopupMode ? "text-[10px]" : "text-sm"}`}>{selectedDApp.origin}</div>
-                </div>
-              </div>
-
-              <div className={isPopupMode ? "space-y-1" : "space-y-2"}>
-                <label className={`font-medium ${isPopupMode ? "text-xs" : "text-sm"}`}>Select Wallet</label>
-                <Select value={selectedWalletAddress} onValueChange={setSelectedWalletAddress}>
-                  <SelectTrigger className={isPopupMode ? "h-8 text-xs" : ""}>
-                    <SelectValue placeholder="Choose a wallet" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {wallets.map((wallet, index) => (
-                      <SelectItem key={wallet.address} value={wallet.address} className={isPopupMode ? "text-xs" : ""}>
-                        <div className="flex items-center gap-2 w-full">
-                          <span>Account {index + 1}</span>
-                          <span className={`text-muted-foreground font-mono truncate ${isPopupMode ? "text-[10px]" : "text-xs"}`}>
-                            {truncateAddress(wallet.address)}
-                          </span>
-                        </div>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="flex gap-2">
-                <Button
-                  variant="outline"
-                  onClick={() => setShowChangeWalletDialog(false)}
-                  className={`flex-1 ${isPopupMode ? "h-8 text-xs" : ""}`}
-                >
-                  Cancel
-                </Button>
-                <Button
-                  onClick={handleChangeWallet}
-                  disabled={!selectedWalletAddress || selectedWalletAddress === selectedDApp.selectedAddress}
-                  className={`flex-1 ${isPopupMode ? "h-8 text-xs" : ""}`}
-                >
-                  Change
-                </Button>
-              </div>
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }
