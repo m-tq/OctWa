@@ -9,7 +9,10 @@
   ],
   "host_permissions": [
     "https://octra.network/*",
-    "https://octrascan.io/*"
+    "https://octrascan.io/*",
+    "https://api.etherscan.io/*",
+    "https://mainnet.infura.io/*",
+    "https://sepolia.infura.io/*"
   ],
   "background": {
     "service_worker": "background.js"
