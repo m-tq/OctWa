@@ -11,19 +11,19 @@ octwa/
 ├── src/                    # Main wallet application
 ├── extensionFiles/         # Browser extension files
 ├── packages/sdk/           # @octwa/sdk - dApp integration SDK
-├── intents-api/            # Intent-based swap backend
-├── octwa-dex/              # DEX frontend (OCT ⇄ ETH swaps)
 ├── landing/                # Landing page
 └── scripts/                # Build scripts
 ```
 
-## Related Projects
+## SDK
 
-| Project | Description | README |
-|---------|-------------|--------|
-| `packages/sdk` | SDK for dApp integration | [packages/sdk/README.md](packages/sdk/README.md) |
-| `intents-api` | Swap backend API | [intents-api/README.md](intents-api/README.md) |
-| `octwa-dex` | DEX frontend | [octwa-dex/README.md](octwa-dex/README.md) |
+The `@octwa/sdk` package is available on npm for dApp integration:
+
+```bash
+npm install @octwa/sdk
+```
+
+See [packages/sdk/README.md](packages/sdk/README.md) for documentation.
 
 ## Security Features
 
@@ -98,14 +98,98 @@ Manage providers via UI (RPC Provider Manager) or seed `localStorage` key `rpcPr
 
 ## Screenshots
 
+### Web Application
+
+<p align="center">
+  <img src="public/screenshot/welcome.png" alt="Welcome" width="400">
+  <br><em>Welcome Screen</em>
+</p>
+
+<p align="center">
+  <img src="public/screenshot/onboarding_first.png" alt="Onboarding" width="400">
+  <br><em>Onboarding - Create Wallet</em>
+</p>
+
+<p align="center">
+  <img src="public/screenshot/onboarding_last.png" alt="Onboarding Complete" width="400">
+  <br><em>Onboarding - Backup Seed</em>
+</p>
+
+<p align="center">
+  <img src="public/screenshot/password.png" alt="Password" width="400">
+  <br><em>Password Setup</em>
+</p>
+
 <p align="center">
   <img src="public/screenshot/dashboard.png" alt="Dashboard" width="400">
   <br><em>Dashboard</em>
 </p>
 
 <p align="center">
+  <img src="public/screenshot/multiwallet.png" alt="Multi Wallet" width="400">
+  <br><em>Multi Wallet Support</em>
+</p>
+
+<p align="center">
+  <img src="public/screenshot/multisend.png" alt="Multi Send" width="400">
+  <br><em>Multi Send</em>
+</p>
+
+<p align="center">
+  <img src="public/screenshot/bulksend.png" alt="Bulk Send" width="400">
+  <br><em>Bulk Send (CSV Import)</em>
+</p>
+
+<p align="center">
+  <img src="public/screenshot/privacy_first.png" alt="Privacy Setup" width="400">
+  <br><em>Privacy Mode Setup</em>
+</p>
+
+<p align="center">
   <img src="public/screenshot/private.png" alt="Private Mode" width="400">
   <br><em>Private Mode with FHE</em>
+</p>
+
+<p align="center">
+  <img src="public/screenshot/evm_assets.png" alt="EVM Assets" width="400">
+  <br><em>EVM Assets</em>
+</p>
+
+### Browser Extension (Popup)
+
+<p align="center">
+  <img src="public/screenshot/popup/locked.png" alt="Locked" width="300">
+  <br><em>Locked State</em>
+</p>
+
+<p align="center">
+  <img src="public/screenshot/popup/dashboard.png" alt="Popup Dashboard" width="300">
+  <br><em>Dashboard</em>
+</p>
+
+<p align="center">
+  <img src="public/screenshot/popup/multiwallet.png" alt="Popup Multi Wallet" width="300">
+  <br><em>Multi Wallet</em>
+</p>
+
+<p align="center">
+  <img src="public/screenshot/popup/walletmenu.png" alt="Wallet Menu" width="300">
+  <br><em>Wallet Menu</em>
+</p>
+
+<p align="center">
+  <img src="public/screenshot/popup/publicsend.png" alt="Public Send" width="300">
+  <br><em>Public Send</em>
+</p>
+
+<p align="center">
+  <img src="public/screenshot/popup/privatedashboard.png" alt="Private Dashboard" width="300">
+  <br><em>Private Dashboard</em>
+</p>
+
+<p align="center">
+  <img src="public/screenshot/popup/privatesend.png" alt="Private Send" width="300">
+  <br><em>Private Send</em>
 </p>
 
 ## Video Demo
