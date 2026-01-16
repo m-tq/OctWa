@@ -94,6 +94,48 @@ export class ScopeViolationError extends OctraError {
 }
 
 /**
+ * Thrown when capability signature verification fails
+ */
+export class SignatureInvalidError extends OctraError {
+  constructor(capabilityId: string, details?: unknown) {
+    super(
+      'SIGNATURE_INVALID',
+      `Capability '${capabilityId}' has invalid signature`,
+      details
+    );
+    this.name = 'SignatureInvalidError';
+  }
+}
+
+/**
+ * Thrown when capability has expired
+ */
+export class CapabilityExpiredError extends OctraError {
+  constructor(capabilityId: string, expiresAt: number, details?: unknown) {
+    super(
+      'CAPABILITY_EXPIRED',
+      `Capability '${capabilityId}' expired at ${new Date(expiresAt).toISOString()}`,
+      details
+    );
+    this.name = 'CapabilityExpiredError';
+  }
+}
+
+/**
+ * Thrown when capability origin doesn't match current origin
+ */
+export class OriginMismatchError extends OctraError {
+  constructor(expected: string, actual: string, details?: unknown) {
+    super(
+      'ORIGIN_MISMATCH',
+      `Origin mismatch: capability bound to '${expected}', current origin is '${actual}'`,
+      details
+    );
+    this.name = 'OriginMismatchError';
+  }
+}
+
+/**
  * Check if an error is a user rejection error from the provider
  */
 export function isUserRejectionError(error: unknown): boolean {
@@ -130,6 +172,14 @@ export function wrapProviderError(error: unknown): OctraError {
 
     if (error.message.toLowerCase().includes('capability')) {
       return new CapabilityError(error.message, error);
+    }
+
+    if (error.message.toLowerCase().includes('signature')) {
+      return new ValidationError(error.message, error);
+    }
+
+    if (error.message.toLowerCase().includes('origin')) {
+      return new ValidationError(error.message, error);
     }
 
     return new ValidationError(error.message, error);

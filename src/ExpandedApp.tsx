@@ -450,6 +450,20 @@ function ExpandedApp() {
     }
   };
 
+  const reorderWallets = async (newOrder: Wallet[]) => {
+    try {
+      // Update state immediately for UI feedback
+      setWallets(newOrder);
+      
+      // Persist the new order
+      await WalletManager.reorderWallets(newOrder);
+      
+      console.log('🔄 ExpandedApp: Wallets reordered successfully');
+    } catch (error) {
+      console.error('Failed to reorder wallets:', error);
+    }
+  };
+
   const disconnectWallet = async () => {
     try {
       // Use WalletManager to properly lock wallets
@@ -559,6 +573,7 @@ function ExpandedApp() {
             onSwitchWallet={switchWallet}
             onAddWallet={addWallet}
             onRemoveWallet={removeWallet}
+            onReorderWallets={reorderWallets}
           />
         )}
         <Toaster />

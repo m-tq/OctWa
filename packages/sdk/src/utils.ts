@@ -113,3 +113,17 @@ export function isEncryptedBlob(value: unknown): boolean {
     blob.data instanceof Uint8Array
   );
 }
+
+/**
+ * Get current origin safely
+ */
+export function getCurrentOrigin(): string {
+  if (typeof window === 'undefined') {
+    return '';
+  }
+  try {
+    return window.location?.origin || '';
+  } catch {
+    return '';
+  }
+}

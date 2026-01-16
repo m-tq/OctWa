@@ -44,6 +44,7 @@ import {
   Layers,
   FileText,
   MessageSquare,
+  Coins,
 } from 'lucide-react';
 import { ExtensionStorageManager } from '../utils/extensionStorage';
 import { MultiSend } from './MultiSend';
@@ -65,9 +66,12 @@ import { DecryptBalanceDialog } from './DecryptBalanceDialog';
 import { AddressBook } from './AddressBook';
 import { OnboardingOverlay, useOnboarding, resetOnboardingState } from './OnboardingOverlay';
 import { WalletLabelEditor, WalletDisplayName } from './WalletLabelEditor';
+import { DraggableWalletList } from './DraggableWalletList';
+import { EVMAssets } from './EVMAssets';
 import { Wallet } from '../types/wallet';
 import { WalletManager } from '../utils/walletManager';
 import { fetchBalance, getTransactionHistory, fetchEncryptedBalance, fetchTransactionDetails, fetchPendingTransactionByHash, getPendingPrivateTransfers, apiCache } from '../utils/api';
+
 import { useToast } from '@/hooks/use-toast';
 import { OperationMode, saveOperationMode, loadOperationMode, isPrivateModeAvailable } from '../utils/modeStorage';
 import { verifyPassword } from '../utils/password';
@@ -94,6 +98,7 @@ interface WalletDashboardProps {
   onSwitchWallet: (wallet: Wallet) => void;
   onAddWallet: (wallet: Wallet) => void;
   onRemoveWallet: (wallet: Wallet) => void;
+  onReorderWallets: (wallets: Wallet[]) => void;
   onExpandedView?: () => void;
   isPopupMode?: boolean;
 }
@@ -105,6 +110,7 @@ export function WalletDashboard({
   onSwitchWallet, 
   onAddWallet, 
   onRemoveWallet,
+  onReorderWallets,
   isPopupMode = false
 }: WalletDashboardProps) {
   const [activeTab, setActiveTab] = useState<string>('balance');
@@ -199,6 +205,8 @@ export function WalletDashboard({
   // Address Book state
   const [showAddressBook, setShowAddressBook] = useState(false);
   const [addressBookPrefilledAddress, setAddressBookPrefilledAddress] = useState<string>('');
+  // EVM Assets state
+  const [showEVMAssets, setShowEVMAssets] = useState(false);
   // Current epoch state
   const [currentEpoch, setCurrentEpoch] = useState<number>(0);
   const [isUpdatingEpoch, setIsUpdatingEpoch] = useState(false);
@@ -1251,6 +1259,17 @@ export function WalletDashboard({
         <OnboardingOverlay onComplete={() => setShowOnboarding(false)} />
       )}
 
+      {/* EVM Assets Full Screen Modal */}
+      {!isPopupMode && (
+        <EVMAssets
+          wallets={wallets}
+          activeWallet={wallet}
+          open={showEVMAssets}
+          onOpenChange={setShowEVMAssets}
+          onSwitchWallet={onSwitchWallet}
+        />
+      )}
+
       {/* ============================================ */}
       {/* POPUP MODE - NEW FULLSCREEN UI */}
       {/* ============================================ */}
@@ -1642,120 +1661,22 @@ export function WalletDashboard({
                               </SheetHeader>
                               <div className="flex-1 mt-3 overflow-hidden">
                                 <ScrollArea className="h-full max-h-[calc(100vh-200px)]" stabilizeGutter>
-                                  <ScrollAreaContent className="divide-y divide-dashed divide-border">
-                                    {wallets.map((w, i) => {
-                                      const isActive = w.address === wallet.address;
-                                      const shortAddress = `${w.address.slice(0, 6)}...${w.address.slice(-5)}`;
-                                      const walletType = w.type === 'generated' ? 'Generated' 
-                                        : w.type === 'imported-mnemonic' ? 'Imported (Mnemonic)' 
-                                        : w.type === 'imported-private-key' ? 'Imported (Key)' 
-                                        : '';
-                                      
-                                      // Get nonce for this wallet (active wallet uses main nonce state)
-                                      const walletNonce = isActive ? nonce : walletNonces[w.address];
-                                      
-                                      // Fetch nonce on hover for non-active wallets
-                                      const handleMouseEnter = async () => {
-                                        if (!isActive && walletNonces[w.address] === undefined) {
-                                          try {
-                                            const balanceData = await fetchBalance(w.address);
-                                            setWalletNonces(prev => ({ ...prev, [w.address]: balanceData.nonce }));
-                                          } catch {
-                                            setWalletNonces(prev => ({ ...prev, [w.address]: null }));
-                                          }
-                                        }
-                                      };
-                                      
-                                    return (
-                                      <div
-                                        key={w.address}
-                                        className={`group relative py-2.5 pl-4 pr-4 cursor-pointer transition-all duration-200 ${
-                                          isActive 
-                                            ? '' 
-                                            : 'hover:bg-accent/50'
-                                        }`}
-                                        onClick={() => {
-                                          onSwitchWallet(w);
-                                          setShowWalletSelector(false);
-                                        }}
-                                        onMouseEnter={handleMouseEnter}
-                                      >
-                                        {/* Active indicator bar - left side */}
-                                        <div className={`absolute left-0 top-1/2 -translate-y-1/2 w-1 rounded-r-full bg-[#0000db] transition-all duration-200 ${
-                                          isActive ? 'h-8 opacity-100' : 'h-0 opacity-0'
-                                        }`} />
-                                        
-                                        {/* Content wrapper */}
-                                        <div className="pl-2">
-                                          {/* Row 1: Number + Address + Actions */}
-                                          <div className="flex items-center justify-between">
-                                            <div className="flex items-center gap-1.5 min-w-0">
-                                              <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${
-                                                isActive ? 'bg-[#0000db] text-white' : 'bg-muted text-muted-foreground'
-                                              }`}>
-                                                {i + 1}
-                                              </span>
-                                              <span className={`font-mono text-xs truncate ${isActive ? 'text-[#0000db] font-semibold' : ''}`}>
-                                                {shortAddress}
-                                              </span>
-                                            </div>
-                                            <div className="flex items-center gap-0.5 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
-                                              <Button
-                                                variant="ghost"
-                                                size="sm"
-                                                onClick={(e) => {
-                                                  e.stopPropagation();
-                                                  copyToClipboard(w.address, `walletPopup-${w.address}`);
-                                                }}
-                                                className={`h-6 w-6 p-0 ${isActive ? 'text-[#0000db] hover:text-[#0000db]/80' : ''}`}
-                                                title="Copy address"
-                                              >
-                                                {copiedField === `walletPopup-${w.address}` ? <Check className="h-3 w-3 text-green-500" /> : <Copy className="h-3 w-3" />}
-                                              </Button>
-                                              <div onClick={(e) => e.stopPropagation()}>
-                                                <WalletLabelEditor address={w.address} isPopupMode={true} />
-                                              </div>
-                                              {wallets.length > 1 && (
-                                                <Button
-                                                  variant="ghost"
-                                                  size="sm"
-                                                  onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    setWalletToDelete(w);
-                                                    setShowWalletSelector(false);
-                                                  }}
-                                                  className="h-6 w-6 p-0 text-red-500 hover:text-red-700"
-                                                  title="Remove wallet"
-                                                >
-                                                  <Trash2 className="h-3 w-3" />
-                                                </Button>
-                                              )}
-                                            </div>
-                                          </div>
-                                          
-                                          {/* Row 2: Wallet Name */}
-                                          <div className={`mt-1 text-xs font-medium truncate ${isActive ? 'text-[#0000db]' : ''}`}>
-                                            <WalletDisplayName address={w.address} isPopupMode={true} />
-                                          </div>
-                                          
-                                          {/* Row 3: Type + Nonce (active always shows, non-active shows on hover) */}
-                                          <div className={`flex items-center justify-between mt-0.5 text-[10px] ${
-                                            isActive ? 'text-[#0000db]/70' : 'text-muted-foreground'
-                                          }`}>
-                                            <span>{walletType}</span>
-                                            {isActive ? (
-                                              <span>Nonce: {nonce}</span>
-                                            ) : (
-                                              <span className="opacity-0 group-hover:opacity-100 transition-opacity">
-                                                Nonce: {walletNonce !== undefined ? (walletNonce ?? '-') : '...'}
-                                              </span>
-                                            )}
-                                          </div>
-                                        </div>
-                                      </div>
-                                    );
-                                  })}
-                                </ScrollAreaContent>
+                                  <ScrollAreaContent>
+                                    <DraggableWalletList
+                                      wallets={wallets}
+                                      activeWallet={wallet}
+                                      nonce={nonce}
+                                      walletNonces={walletNonces}
+                                      setWalletNonces={setWalletNonces}
+                                      onSwitchWallet={onSwitchWallet}
+                                      onCopyAddress={copyToClipboard}
+                                      onDeleteWallet={setWalletToDelete}
+                                      onReorderWallets={onReorderWallets}
+                                      copiedField={copiedField}
+                                      isPopupMode={true}
+                                      closeSelector={() => setShowWalletSelector(false)}
+                                    />
+                                  </ScrollAreaContent>
                               </ScrollArea>
                             </div>
                             <div className="mt-3 flex-shrink-0 px-4">
@@ -2381,116 +2302,20 @@ export function WalletDashboard({
                 </h3>
               </div>
               <ScrollArea className="flex-1 -ml-4 -mr-3" stabilizeGutter>
-                <ScrollAreaContent className="divide-y divide-dashed divide-border">
-                  {wallets.map((w, i) => {
-                    const isActive = w.address === wallet.address;
-                    const shortAddress = `${w.address.slice(0, 6)}...${w.address.slice(-5)}`;
-                    const walletType = w.type === 'generated' ? 'Generated' 
-                      : w.type === 'imported-mnemonic' ? 'Imported (Mnemonic)' 
-                      : w.type === 'imported-private-key' ? 'Imported (Key)' 
-                      : '';
-                    
-                    // Get nonce for this wallet (active wallet uses main nonce state)
-                    const walletNonce = isActive ? nonce : walletNonces[w.address];
-                    
-                    // Fetch nonce on hover for non-active wallets
-                    const handleMouseEnter = async () => {
-                      if (!isActive && walletNonces[w.address] === undefined) {
-                        try {
-                          const balanceData = await fetchBalance(w.address);
-                          setWalletNonces(prev => ({ ...prev, [w.address]: balanceData.nonce }));
-                        } catch {
-                          setWalletNonces(prev => ({ ...prev, [w.address]: null }));
-                        }
-                      }
-                    };
-                    
-                    return (
-                      <div
-                        key={w.address}
-                        className={`group relative py-3 pl-4 pr-3 cursor-pointer transition-all duration-200 ${
-                          isActive 
-                            ? '' 
-                            : 'hover:bg-accent/50'
-                        }`}
-                        onClick={() => onSwitchWallet(w)}
-                        onMouseEnter={handleMouseEnter}
-                      >
-                        {/* Active indicator bar - left side */}
-                        <div className={`absolute left-0 top-1/2 -translate-y-1/2 w-1 rounded-r-full bg-[#0000db] transition-all duration-200 ${
-                          isActive ? 'h-10 opacity-100' : 'h-0 opacity-0'
-                        }`} />
-                        
-                        {/* Content wrapper */}
-                        <div className="pl-2">
-                          {/* Row 1: Number + Address + Actions (hidden, show on hover) */}
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-2 min-w-0">
-                              <span className={`text-xs font-medium px-1.5 py-0.5 rounded ${
-                                isActive ? 'bg-[#0000db] text-white' : 'bg-muted text-muted-foreground'
-                              }`}>
-                                {i + 1}
-                              </span>
-                              <span className={`font-mono text-sm truncate ${isActive ? 'text-[#0000db] font-semibold' : ''}`}>
-                                {shortAddress}
-                              </span>
-                            </div>
-                            {/* Actions - hidden by default, show on hover */}
-                            <div className="flex items-center gap-1 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  copyToClipboard(w.address, `sidebarWallet-${w.address}`);
-                                }}
-                                className={`h-6 w-6 p-0 ${isActive ? 'text-[#0000db] hover:text-[#0000db]/80' : ''}`}
-                                title="Copy address"
-                              >
-                                {copiedField === `sidebarWallet-${w.address}` ? <Check className="h-3 w-3 text-green-500" /> : <Copy className="h-3 w-3" />}
-                              </Button>
-                              <div onClick={(e) => e.stopPropagation()}>
-                                <WalletLabelEditor address={w.address} isPopupMode={false} />
-                              </div>
-                              {wallets.length > 1 && (
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setWalletToDelete(w);
-                                  }}
-                                  className="h-6 w-6 p-0 text-red-500 hover:text-red-700"
-                                  title="Remove wallet"
-                                >
-                                  <Trash2 className="h-3 w-3" />
-                                </Button>
-                              )}
-                            </div>
-                          </div>
-                          
-                          {/* Row 2: Wallet Name */}
-                          <div className={`mt-1 text-sm font-medium truncate ${isActive ? 'text-[#0000db]' : ''}`}>
-                            <WalletDisplayName address={w.address} />
-                          </div>
-                          
-                          {/* Row 3: Type + Nonce (active always shows, non-active shows on hover) */}
-                          <div className={`flex items-center justify-between mt-1 text-xs ${
-                            isActive ? 'text-[#0000db]/70' : 'text-muted-foreground'
-                          }`}>
-                            <span>{walletType}</span>
-                            {isActive ? (
-                              <span>Nonce: {nonce}</span>
-                            ) : (
-                              <span className="opacity-0 group-hover:opacity-100 transition-opacity">
-                                Nonce: {walletNonce !== undefined ? (walletNonce ?? '-') : '...'}
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
+                <ScrollAreaContent>
+                  <DraggableWalletList
+                    wallets={wallets}
+                    activeWallet={wallet}
+                    nonce={nonce}
+                    walletNonces={walletNonces}
+                    setWalletNonces={setWalletNonces}
+                    onSwitchWallet={onSwitchWallet}
+                    onCopyAddress={copyToClipboard}
+                    onDeleteWallet={setWalletToDelete}
+                    onReorderWallets={onReorderWallets}
+                    copiedField={copiedField}
+                    isPopupMode={false}
+                  />
                 </ScrollAreaContent>
               </ScrollArea>
               
@@ -2896,6 +2721,22 @@ export function WalletDashboard({
                       {pendingTransfersCount}
                     </Badge>
                   )}
+                </Button>
+              </div>
+            )}
+            
+            {/* EVM Assets Section - Only in Public Mode */}
+            {operationMode === 'public' && (
+              <div className="w-full max-w-lg">
+                <div className="border-t border-dashed border-border my-4" />
+                <Button
+                  variant="outline"
+                  className="w-full flex items-center justify-center gap-3 h-14 border border-orange-500/30 hover:border-orange-500/50 hover:bg-orange-500/5 transition-all text-orange-600 dark:text-orange-400"
+                  onClick={() => setShowEVMAssets(true)}
+                >
+                  <Coins className="h-5 w-5" />
+                  <span className="text-sm font-medium">EVM Assets</span>
+                  <span className="text-xs text-orange-500/70 ml-2">ETH / ERC20</span>
                 </Button>
               </div>
             )}

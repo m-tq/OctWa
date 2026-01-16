@@ -12,16 +12,16 @@
 
 import * as nacl from 'tweetnacl';
 
-// Capability payload interface
+// Capability payload interface (matches SDK types)
 export interface CapabilityPayload {
-  version: number;
+  version: 1;
   circle: string;
   methods: string[];
   scope: 'read' | 'write' | 'compute';
   encrypted: boolean;
   appOrigin: string;
   issuedAt: number;
-  expiresAt?: number;
+  expiresAt: number; // Mandatory in v1
   nonce: string;
 }
 
@@ -43,16 +43,14 @@ export function canonicalizeCapability(payload: CapabilityPayload): string {
   // Sort methods array
   const sortedMethods = [...payload.methods].sort();
   
-  // Build canonical object with sorted keys
+  // Build canonical object with sorted keys (lexicographic order)
   const canonical: Record<string, unknown> = {};
   
   // Add fields in lexicographic order
   canonical.appOrigin = payload.appOrigin;
   canonical.circle = payload.circle;
   canonical.encrypted = payload.encrypted;
-  if (payload.expiresAt !== undefined) {
-    canonical.expiresAt = payload.expiresAt;
-  }
+  canonical.expiresAt = payload.expiresAt; // Mandatory in v1
   canonical.issuedAt = payload.issuedAt;
   canonical.methods = sortedMethods;
   canonical.nonce = payload.nonce;
@@ -166,17 +164,15 @@ export async function signCapability(
     throw new Error(`Private key must be a string, got ${typeof privateKey}`);
   }
   
-  console.log('[Capability] Private key input length:', privateKey.length, 'chars');
-  console.log('[Capability] Private key preview:', privateKey.slice(0, 8) + '...' + privateKey.slice(-4));
+  // SECURITY: Do not log private key details
+  console.log('[Capability] Signing capability...');
   
   // Get canonical form
   const canonical = canonicalizeCapability(payload);
-  console.log('[Capability] Canonical form:', canonical);
   
   // Hash the canonical form
   const canonicalBytes = new TextEncoder().encode(canonical);
   const digest = await sha256(canonicalBytes);
-  console.log('[Capability] SHA-256 digest:', bytesToHex(digest));
   
   // Convert private key to bytes - detect format (base64 or hex)
   let privateKeyBytes: Uint8Array;
@@ -185,18 +181,13 @@ export async function signCapability(
   if (isBase64(privateKey)) {
     try {
       privateKeyBytes = base64ToBytes(privateKey);
-      console.log('[Capability] Private key format: base64, decoded length:', privateKeyBytes.length, 'bytes');
     } catch (e) {
-      console.error('[Capability] Base64 decode failed:', e);
       throw new Error(`Failed to decode base64 private key: ${e}`);
     }
   } else if (isHex(privateKey)) {
     // Hex format
     privateKeyBytes = hexToBytes(privateKey);
-    console.log('[Capability] Private key format: hex, decoded length:', privateKeyBytes.length, 'bytes');
   } else {
-    console.error('[Capability] Invalid key format. Not base64 or hex.');
-    console.error('[Capability] Key sample:', privateKey.slice(0, 20));
     throw new Error('Invalid private key format: must be base64 or hex');
   }
   
@@ -208,38 +199,28 @@ export async function signCapability(
   try {
     if (privateKeyBytes.length === 32) {
       // 32-byte seed - create keypair from seed
-      console.log('[Capability] Creating keypair from 32-byte seed');
       keyPair = nacl.sign.keyPair.fromSeed(privateKeyBytes);
-      console.log('[Capability] Keypair created successfully');
     } else if (privateKeyBytes.length === 64) {
       // 64-byte secret key - extract seed (first 32 bytes) and create keypair
-      console.log('[Capability] Extracting seed from 64-byte key');
       const seed = privateKeyBytes.slice(0, 32);
       keyPair = nacl.sign.keyPair.fromSeed(seed);
-      console.log('[Capability] Keypair created from 64-byte key');
     } else {
       // Try to hash the key to get 32 bytes if it's in a different format
-      console.log('[Capability] Non-standard key length:', privateKeyBytes.length, ', hashing to 32 bytes');
       const hashedKey = await sha256(privateKeyBytes);
       keyPair = nacl.sign.keyPair.fromSeed(hashedKey);
-      console.log('[Capability] Keypair created from hashed key');
     }
   } catch (e) {
-    console.error('[Capability] Failed to create keypair:', e);
-    console.error('[Capability] Key bytes length:', privateKeyBytes.length);
     throw new Error(`Failed to create keypair from private key: ${e}`);
   }
   
   // Sign the digest
-  console.log('[Capability] Signing digest...');
   const signature = nacl.sign.detached(digest, keyPair.secretKey);
   
   // Get public key hex
   const issuerPubKey = bytesToHex(keyPair.publicKey);
   const signatureHex = bytesToHex(signature);
   
-  console.log('[Capability] Public key:', issuerPubKey);
-  console.log('[Capability] Signature:', signatureHex);
+  console.log('[Capability] Capability signed successfully');
   
   // Return signed capability with sorted methods
   return {

@@ -13,6 +13,11 @@ dist
 dist-ssr
 *.local
 .env
+**/.env
+
+# Database
+intents-api/data/
+*.db
 
 # Editor directories and files
 .kiro/*

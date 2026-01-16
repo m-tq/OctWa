@@ -1,30 +1,12 @@
 # @octwa/sdk
 
-Octra Web Wallet SDK - Capability-based authorization for Octra dApps.
-
-> **Important**: This SDK does NOT follow EVM/MetaMask patterns. It implements Octra's capability-based authorization model where dApps establish cryptographic authority over encrypted computation.
+SDK for integrating dApps with OCTWA Wallet browser extension.
 
 ## Installation
 
 ```bash
 npm install @octwa/sdk
 ```
-
-## Core Concepts
-
-### Octra Model vs EVM Model
-
-**EVM Model (NOT used):**
-```
-connect → sign message → trust address
-```
-
-**Octra Model (Used):**
-```
-connect → issue capability → verify scoped authority
-```
-
-A dApp does not ask "Who are you?" but rather "What are you allowed to do, and can you cryptographically prove it?"
 
 ## Quick Start
 
@@ -40,198 +22,209 @@ if (!sdk.isInstalled()) {
   return;
 }
 
-// Connect to a Circle (NO signing popup)
+// Connect to a Circle
 const connection = await sdk.connect({
-  circle: 'my-circle-id',
-  appOrigin: window.origin,
+  circle: 'my_dapp_v1',
+  appOrigin: window.location.origin,
 });
 
-// Request capability (user approval required)
+console.log('Connected:', connection.walletPubKey);
+console.log('EVM Address:', connection.evmAddress);
+
+// Request capability
 const capability = await sdk.requestCapability({
-  circle: 'my-circle-id',
-  methods: ['getData', 'setData'],
+  circle: 'my_dapp_v1',
+  methods: ['get_balance', 'send_transaction'],
   scope: 'write',
   encrypted: false,
-  ttlSeconds: 3600, // 1 hour
+  ttlSeconds: 3600,
 });
 
-// Invoke method using capability
+// Invoke method
 const result = await sdk.invoke({
   capabilityId: capability.id,
-  method: 'getData',
-  payload: new Uint8Array([1, 2, 3]),
+  method: 'get_balance',
 });
 
-// Get session state
-const state = sdk.getSessionState();
-console.log('Connected:', state.connected);
-console.log('Active capabilities:', state.activeCapabilities.length);
-
-// Disconnect
-await sdk.disconnect();
-```
-
-## API Reference
-
-### `OctraSDK.init(options?)`
-
-Initialize the SDK and detect wallet provider.
-
-```typescript
-const sdk = await OctraSDK.init({ timeout: 3000 });
-```
-
-### `sdk.connect(request)`
-
-Connect to a Circle without signing.
-
-```typescript
-interface ConnectRequest {
-  circle: string;      // Target Circle ID
-  appOrigin: string;   // window.origin
-}
-
-interface Connection {
-  circle: string;
-  sessionId: string;
-  walletPubKey: string;
-  network: 'testnet' | 'mainnet';
+if (result.success) {
+  const data = JSON.parse(new TextDecoder().decode(result.data));
+  console.log('Balance:', data.balance);
 }
 ```
 
-### `sdk.requestCapability(request)`
+## Core Concepts
 
-Request scoped authorization from user.
+### Circles
+Circles are isolated contexts for dApp interactions. Each Circle has its own capabilities and permissions.
+
+### Capabilities
+Capabilities are cryptographically signed permissions that grant access to specific methods within a Circle.
 
 ```typescript
-interface CapabilityRequest {
-  circle: string;
-  methods: string[];
-  scope: 'read' | 'write' | 'compute';
-  encrypted: boolean;
-  ttlSeconds?: number;
-}
-
 interface Capability {
   id: string;
   circle: string;
   methods: string[];
   scope: 'read' | 'write' | 'compute';
   encrypted: boolean;
+  appOrigin: string;
   issuedAt: number;
-  expiresAt?: number;
-  issuerPubKey: string;
+  expiresAt: number;
   signature: string;
 }
 ```
 
-### `sdk.invoke(request)`
-
-Execute method with capability.
+### Invocations
+Invoke methods using a valid capability:
 
 ```typescript
-interface InvocationRequest {
-  capabilityId: string;
-  method: string;
-  payload?: Uint8Array | EncryptedBlob;
-}
-
-interface InvocationResult {
-  success: boolean;
-  data?: Uint8Array | EncryptedBlob;
-  error?: string;
-}
+const result = await sdk.invoke({
+  capabilityId: capability.id,
+  method: 'send_transaction',
+  payload: new TextEncoder().encode(JSON.stringify({
+    to: 'oct...',
+    amount: 100,
+  })),
+});
 ```
 
-### `sdk.getSessionState()`
+## API Reference
 
+### OctraSDK
+
+#### `OctraSDK.init(options?)`
+Initialize the SDK.
+
+```typescript
+const sdk = await OctraSDK.init({
+  timeout: 3000, // Provider detection timeout
+});
+```
+
+#### `sdk.isInstalled()`
+Check if wallet extension is installed.
+
+#### `sdk.connect(request)`
+Connect to a Circle.
+
+```typescript
+const connection = await sdk.connect({
+  circle: 'my_circle',
+  appOrigin: window.location.origin,
+});
+```
+
+#### `sdk.disconnect()`
+Disconnect from current Circle.
+
+#### `sdk.requestCapability(request)`
+Request a new capability.
+
+```typescript
+const capability = await sdk.requestCapability({
+  circle: 'my_circle',
+  methods: ['get_balance', 'send_transaction'],
+  scope: 'write',
+  encrypted: false,
+  ttlSeconds: 7200,
+});
+```
+
+#### `sdk.invoke(request)`
+Invoke a method using a capability.
+
+```typescript
+const result = await sdk.invoke({
+  capabilityId: capability.id,
+  method: 'get_balance',
+  payload: new TextEncoder().encode(JSON.stringify({ ... })),
+});
+```
+
+#### `sdk.getSessionState()`
 Get current session state.
 
 ```typescript
-interface SessionState {
-  connected: boolean;
-  circle?: string;
-  activeCapabilities: Capability[];
-}
+const state = sdk.getSessionState();
+// { connected: true, circle: 'my_circle', activeCapabilities: [...] }
 ```
 
-### `sdk.disconnect()`
-
-Disconnect and clear all state.
-
-## Encrypted Payloads
-
-The SDK supports encrypted payloads using HFHE scheme:
+### Events
 
 ```typescript
-interface EncryptedBlob {
-  scheme: 'HFHE';
-  data: Uint8Array;
-  metadata?: Uint8Array;
-}
+// Connection events
+sdk.on('connect', ({ connection }) => { ... });
+sdk.on('disconnect', () => { ... });
 
-// Pass encrypted payload to invoke
-await sdk.invoke({
-  capabilityId: capability.id,
-  method: 'processEncrypted',
-  payload: {
-    scheme: 'HFHE',
-    data: encryptedData,
-    metadata: encryptedMetadata,
-  },
-});
+// Capability events
+sdk.on('capabilityGranted', ({ capability }) => { ... });
+sdk.on('capabilityRevoked', ({ capabilityId }) => { ... });
+
+// Extension ready
+sdk.on('extensionReady', () => { ... });
+```
+
+## Intents Client
+
+For intent-based swaps (OCT ⇄ ETH):
+
+```typescript
+import { OctraSDK, IntentsClient } from '@octwa/sdk';
+
+const sdk = await OctraSDK.init();
+const intents = new IntentsClient(sdk, 'http://localhost:3001');
+
+// Get quote
+const quote = await intents.getQuote(100); // 100 OCT
+
+// Create intent
+const payload = await intents.createIntent(quote, '0x...targetAddress');
+
+// Sign intent
+intents.setCapability(capability);
+await intents.signIntent(payload);
+
+// Submit after sending OCT to escrow
+const result = await intents.submitIntent(octraTxHash);
+
+// Wait for fulfillment
+const status = await intents.waitForFulfillment(result.intentId);
 ```
 
 ## Error Handling
 
 ```typescript
-import {
+import { 
   NotInstalledError,
   NotConnectedError,
   UserRejectedError,
-  ValidationError,
-  CapabilityError,
+  CapabilityExpiredError,
   ScopeViolationError,
 } from '@octwa/sdk';
 
 try {
-  await sdk.invoke({ ... });
+  await sdk.connect({ ... });
 } catch (error) {
-  if (error instanceof CapabilityError) {
-    console.log('Capability invalid or expired');
-  } else if (error instanceof ScopeViolationError) {
-    console.log('Method not allowed by capability');
+  if (error instanceof NotInstalledError) {
+    // Wallet not installed
+  } else if (error instanceof UserRejectedError) {
+    // User rejected the request
   }
 }
 ```
 
-## Events
+## Types
 
 ```typescript
-sdk.on('connect', ({ connection }) => {
-  console.log('Connected to:', connection.circle);
-});
-
-sdk.on('disconnect', () => {
-  console.log('Disconnected');
-});
-
-sdk.on('capabilityGranted', ({ capability }) => {
-  console.log('Capability granted:', capability.id);
-});
-
-// Unsubscribe
-const unsubscribe = sdk.on('connect', handler);
-unsubscribe();
+import type {
+  Connection,
+  Capability,
+  CapabilityRequest,
+  InvocationRequest,
+  InvocationResult,
+  SessionState,
+} from '@octwa/sdk';
 ```
-
-## Security
-
-- **No arbitrary signing**: SDK does NOT expose `signMessage` or `signRaw`
-- **Capability-based**: All actions require scoped, signed capabilities
-- **Replay protection**: Nonces are monotonically increasing per capability
-- **Origin binding**: App origin is embedded in capability hash
-- **Expiry enforcement**: Capabilities become invalid after expiration
 
 ## License
 

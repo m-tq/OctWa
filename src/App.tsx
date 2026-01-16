@@ -520,6 +520,20 @@ function App() {
     }
   };
 
+  const reorderWallets = async (newOrder: Wallet[]) => {
+    try {
+      // Update state immediately for UI feedback
+      setWallets(newOrder);
+      
+      // Persist the new order
+      await WalletManager.reorderWallets(newOrder);
+      
+      console.log('🔄 App: Wallets reordered successfully');
+    } catch (error) {
+      console.error('Failed to reorder wallets:', error);
+    }
+  };
+
   const disconnectWallet = () => {
     // Lock the wallet properly using WalletManager
     WalletManager.lockWallets();
@@ -649,6 +663,7 @@ function App() {
             onSwitchWallet={switchWallet}
             onAddWallet={addWallet}
             onRemoveWallet={removeWallet}
+            onReorderWallets={reorderWallets}
           />
         )}
         <Toaster />

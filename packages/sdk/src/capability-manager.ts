@@ -1,19 +1,68 @@
 import type { Capability } from './types';
+import { 
+  verifyCapabilitySignature, 
+  isCapabilityExpired, 
+  isOriginValid,
+  validateCapability 
+} from './crypto';
+
+/**
+ * Capability validation result
+ */
+export interface CapabilityValidationResult {
+  valid: boolean;
+  error?: string;
+}
 
 /**
  * Manages capability lifecycle and validation.
  * Capabilities are NOT persisted - cleared on page reload.
+ * 
+ * Key security features:
+ * - Cryptographic signature verification before use
+ * - Origin binding enforcement
+ * - Expiry checking
+ * - Method scope enforcement
  */
 export class CapabilityManager {
   private capabilities: Map<string, Capability> = new Map();
   private nonceMap: Map<string, number> = new Map();
+  private currentOrigin: string;
+
+  constructor(origin?: string) {
+    this.currentOrigin = origin || (typeof window !== 'undefined' ? window.location.origin : '');
+  }
 
   /**
-   * Add a capability to the manager
+   * Add a capability after cryptographic verification
+   * 
+   * @throws Error if capability signature is invalid
    */
-  addCapability(cap: Capability): void {
+  async addCapability(cap: Capability): Promise<CapabilityValidationResult> {
+    // Verify signature before accepting
+    const validation = await validateCapability(cap, this.currentOrigin);
+    
+    if (!validation.valid) {
+      console.warn('[CapabilityManager] Rejected invalid capability:', validation.error);
+      return validation;
+    }
+    
     this.capabilities.set(cap.id, cap);
+    
     // Initialize nonce for this capability
+    if (!this.nonceMap.has(cap.id)) {
+      this.nonceMap.set(cap.id, 0);
+    }
+    
+    return { valid: true };
+  }
+
+  /**
+   * Add capability without verification (for trusted sources like wallet)
+   * Use with caution - only for capabilities directly from the wallet provider
+   */
+  addCapabilityTrusted(cap: Capability): void {
+    this.capabilities.set(cap.id, cap);
     if (!this.nonceMap.has(cap.id)) {
       this.nonceMap.set(cap.id, 0);
     }
@@ -38,11 +87,10 @@ export class CapabilityManager {
    * Get all active (non-expired) capabilities
    */
   getActiveCapabilities(): Capability[] {
-    const now = Date.now();
     const active: Capability[] = [];
 
     for (const cap of this.capabilities.values()) {
-      if (this.isCapabilityValidInternal(cap, now)) {
+      if (!isCapabilityExpired(cap)) {
         active.push(cap);
       }
     }
@@ -51,12 +99,35 @@ export class CapabilityManager {
   }
 
   /**
-   * Check if a capability is valid (exists and not expired)
+   * Check if a capability is valid (exists, not expired, origin matches)
    */
   isCapabilityValid(id: string): boolean {
     const cap = this.capabilities.get(id);
     if (!cap) return false;
-    return this.isCapabilityValidInternal(cap, Date.now());
+    
+    // Check expiry
+    if (isCapabilityExpired(cap)) {
+      return false;
+    }
+    
+    // Check origin binding
+    if (!isOriginValid(cap, this.currentOrigin)) {
+      return false;
+    }
+    
+    return true;
+  }
+
+  /**
+   * Async validation including signature verification
+   */
+  async validateCapabilityFull(id: string): Promise<CapabilityValidationResult> {
+    const cap = this.capabilities.get(id);
+    if (!cap) {
+      return { valid: false, error: 'Capability not found' };
+    }
+    
+    return validateCapability(cap, this.currentOrigin);
   }
 
   /**
@@ -88,9 +159,8 @@ export class CapabilityManager {
    * Remove expired capabilities from the manager
    */
   cleanupExpired(): void {
-    const now = Date.now();
     for (const [id, cap] of this.capabilities.entries()) {
-      if (!this.isCapabilityValidInternal(cap, now)) {
+      if (isCapabilityExpired(cap)) {
         this.capabilities.delete(id);
         this.nonceMap.delete(id);
       }
@@ -107,13 +177,16 @@ export class CapabilityManager {
   }
 
   /**
-   * Internal validity check
+   * Get capability for a specific method (finds first valid capability that allows the method)
    */
-  private isCapabilityValidInternal(cap: Capability, now: number): boolean {
-    // Check expiry
-    if (cap.expiresAt !== undefined && cap.expiresAt < now) {
-      return false;
+  getCapabilityForMethod(method: string): Capability | undefined {
+    for (const cap of this.capabilities.values()) {
+      if (!isCapabilityExpired(cap) && 
+          isOriginValid(cap, this.currentOrigin) && 
+          cap.methods.includes(method)) {
+        return cap;
+      }
     }
-    return true;
+    return undefined;
   }
 }

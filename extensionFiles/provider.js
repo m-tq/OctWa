@@ -2,19 +2,20 @@
  * Octra Wallet Provider
  * 
  * Implements capability-based authorization model.
- * Does NOT follow EVM/MetaMask patterns.
+ * Synced with @octwa/sdk types.
  */
 (function() {
   'use strict';
 
+  const PROVIDER_VERSION = '2.0.0';
+
   class OctraProvider {
     constructor() {
       this.isOctra = true;
-      this.version = '1.1.2';
+      this.version = PROVIDER_VERSION;
       this._eventListeners = {};
       this._pendingRequests = {};
 
-      // Listen for responses from content script
       window.addEventListener('message', (event) => {
         if (event.source !== window) return;
         if (event.data.source !== 'octra-content-script') return;
@@ -60,14 +61,10 @@
     /**
      * Connect to a Circle (NO signing popup)
      * @param {Object} request - ConnectRequest
-     * @param {string} request.circle - Target Circle ID
-     * @param {string} request.appOrigin - Application origin
-     * @param {Array} [request.requestedCapabilities] - Optional capability templates
      * @returns {Promise<Connection>}
      */
     async connect(request) {
       return new Promise((resolve, reject) => {
-        // Validate request
         if (!request || !request.circle) {
           reject(new Error('Circle ID is required'));
           return;
@@ -89,7 +86,6 @@
           }
         }, '*');
 
-        // Timeout after 60 seconds
         setTimeout(() => {
           if (this._pendingRequests[requestId]) {
             delete this._pendingRequests[requestId];
@@ -104,29 +100,20 @@
      */
     async disconnect() {
       this._emit('disconnect');
-
       window.postMessage({
         source: 'octra-provider',
         type: 'DISCONNECT_REQUEST',
-        data: {
-          appOrigin: window.location.origin
-        }
+        data: { appOrigin: window.location.origin }
       }, '*');
     }
 
     /**
      * Request a capability from user
      * @param {Object} request - CapabilityRequest
-     * @param {string} request.circle - Target Circle ID
-     * @param {string[]} request.methods - Methods to request access to
-     * @param {string} request.scope - 'read' | 'write' | 'compute'
-     * @param {boolean} request.encrypted - Whether payloads should be encrypted
-     * @param {number} [request.ttlSeconds] - Time-to-live in seconds
-     * @returns {Promise<Capability>}
+     * @returns {Promise<Capability>} - Signed capability with all required fields
      */
     async requestCapability(request) {
       return new Promise((resolve, reject) => {
-        // Validate request
         if (!request || !request.circle) {
           reject(new Error('Circle ID is required'));
           return;
@@ -159,7 +146,6 @@
           }
         }, '*');
 
-        // Timeout after 5 minutes
         setTimeout(() => {
           if (this._pendingRequests[requestId]) {
             delete this._pendingRequests[requestId];
@@ -172,11 +158,6 @@
     /**
      * Invoke a method using a capability
      * @param {Object} call - SignedInvocation
-     * @param {string} call.capabilityId - Capability ID
-     * @param {string} call.method - Method to invoke
-     * @param {Uint8Array|Object} [call.payload] - Optional payload
-     * @param {number} call.nonce - Monotonic nonce
-     * @param {number} call.timestamp - Timestamp
      * @returns {Promise<InvocationResult>}
      */
     async invoke(call) {
@@ -193,7 +174,6 @@
         const requestId = this._generateRequestId();
         this._pendingRequests[requestId] = { resolve, reject };
 
-        // Convert Uint8Array to array for postMessage
         let payload = call.payload;
         if (payload instanceof Uint8Array) {
           payload = { _type: 'Uint8Array', data: Array.from(payload) };
@@ -217,11 +197,11 @@
             payload: payload,
             nonce: call.nonce,
             timestamp: call.timestamp,
-            appOrigin: window.location.origin
+            appOrigin: window.location.origin,
+            appName: document.title || window.location.hostname
           }
         }, '*');
 
-        // Timeout after 5 minutes
         setTimeout(() => {
           if (this._pendingRequests[requestId]) {
             delete this._pendingRequests[requestId];
@@ -258,7 +238,6 @@
             break;
 
           case 'INVOKE_RESPONSE':
-            // Convert array back to Uint8Array if needed
             if (result && result.data) {
               if (result.data._type === 'Uint8Array') {
                 result.data = new Uint8Array(result.data.data);
@@ -316,23 +295,19 @@
   // Inject provider
   if (typeof window !== 'undefined') {
     window.octra = new OctraProvider();
-
-    // Dispatch ready event
     window.dispatchEvent(new Event('octraLoaded'));
 
-    // Make provider detectable
     Object.defineProperty(window, 'isOctra', {
       value: true,
       writable: false,
       configurable: false
     });
 
-    // Announce availability
     window.postMessage({
       type: 'OCTRA_EXTENSION_AVAILABLE',
-      version: '1.1.2'
+      version: PROVIDER_VERSION
     }, '*');
 
-    console.log('[Octra] Wallet Provider v1.1.2 injected (Capability-based model)');
+    console.log(`[Octra] Wallet Provider v${PROVIDER_VERSION} injected (Capability-based model)`);
   }
 })();

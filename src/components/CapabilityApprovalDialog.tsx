@@ -19,16 +19,16 @@ import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 
-// Capability scope type
+// Capability scope type (matches SDK)
 type CapabilityScope = 'read' | 'write' | 'compute';
 
-// Capability request from dApp
+// Capability request from dApp (matches SDK CapabilityRequest)
 interface CapabilityRequest {
   circle: string;
   methods: string[];
   scope: CapabilityScope;
   encrypted: boolean;
-  ttlSeconds?: number;
+  ttlSeconds?: number; // Optional - defaults to 24h if not specified
   appOrigin: string;
   appName?: string;
   appIcon?: string;

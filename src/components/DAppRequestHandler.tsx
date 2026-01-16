@@ -33,6 +33,10 @@ import {
   createCapabilityId,
   type CapabilityPayload
 } from '../utils/capability';
+import { WalletManager } from '../utils/walletManager';
+import { createTransaction, sendTransaction, fetchBalance } from '../utils/api';
+import { sendEVMTransaction } from '../utils/evmRpc';
+import nacl from 'tweetnacl';
 
 // Types
 interface ConnectionRequest {
@@ -60,6 +64,18 @@ interface CapabilityRequest {
   appIcon?: string;
 }
 
+interface TransactionPayload {
+  to: string;
+  amount: number;
+  message?: string;
+}
+
+interface EVMTransactionPayload {
+  to: string;
+  amount: string; // ETH amount as string
+  data?: string; // Hex encoded intent payload
+}
+
 interface InvokeRequest {
   capabilityId: string;
   method: string;
@@ -67,11 +83,16 @@ interface InvokeRequest {
   nonce: number;
   timestamp: number;
   appOrigin: string;
+  appName?: string;
   capability: {
     circle: string;
     methods: string[];
     scope: string;
     encrypted: boolean;
+  };
+  connection?: {
+    walletPubKey: string;
+    network: string;
   };
 }
 
@@ -82,13 +103,30 @@ interface DAppRequestHandlerProps {
 type RequestType = 'connection' | 'capability' | 'invoke' | null;
 
 export function DAppRequestHandler({ wallets }: DAppRequestHandlerProps) {
+  console.log('[DAppRequestHandler] Render - wallets count:', wallets.length, 'addresses:', wallets.map(w => w.address.slice(0, 10)));
+  
   const [requestType, setRequestType] = useState<RequestType>(null);
   const [connectionRequest, setConnectionRequest] = useState<ConnectionRequest | null>(null);
   const [capabilityRequest, setCapabilityRequest] = useState<CapabilityRequest | null>(null);
   const [invokeRequest, setInvokeRequest] = useState<InvokeRequest | null>(null);
+  const [parsedTxPayload, setParsedTxPayload] = useState<TransactionPayload | null>(null);
+  const [parsedEvmTxPayload, setParsedEvmTxPayload] = useState<EVMTransactionPayload | null>(null);
   const [selectedWallet, setSelectedWallet] = useState<Wallet | null>(wallets[0] || null);
   const [isProcessing, setIsProcessing] = useState(false);
   const { toast } = useToast();
+
+  // Sync selectedWallet when wallets prop changes
+  useEffect(() => {
+    if (wallets.length > 0 && !selectedWallet) {
+      setSelectedWallet(wallets[0]);
+    } else if (wallets.length > 0 && selectedWallet) {
+      // Ensure selectedWallet is still in the wallets list
+      const stillExists = wallets.find(w => w.address === selectedWallet.address);
+      if (!stillExists) {
+        setSelectedWallet(wallets[0]);
+      }
+    }
+  }, [wallets, selectedWallet]);
 
   useEffect(() => {
     loadPendingRequest();
@@ -149,6 +187,74 @@ export function DAppRequestHandler({ wallets }: DAppRequestHandlerProps) {
       } else if (pending.pendingInvokeRequest) {
         setRequestType('invoke');
         setInvokeRequest(pending.pendingInvokeRequest);
+        
+        // Parse transaction payload for send_transaction method
+        if (pending.pendingInvokeRequest.method === 'send_transaction') {
+          try {
+            const payload = pending.pendingInvokeRequest.payload;
+            let txParams: TransactionPayload | null = null;
+            
+            if (payload && typeof payload === 'object' && '_type' in payload && (payload as { _type: string })._type === 'Uint8Array') {
+              const payloadWithData = payload as unknown as { _type: string; data: number[] };
+              const bytes = new Uint8Array(payloadWithData.data);
+              txParams = JSON.parse(new TextDecoder().decode(bytes));
+            } else if (payload instanceof Uint8Array) {
+              txParams = JSON.parse(new TextDecoder().decode(payload));
+            } else if (typeof payload === 'object' && payload !== null && '0' in payload) {
+              const obj = payload as Record<string, number>;
+              const keys = Object.keys(obj).filter((k) => !isNaN(Number(k)));
+              const length = keys.length;
+              const bytes = new Uint8Array(length);
+              for (let i = 0; i < length; i++) {
+                bytes[i] = obj[i.toString()];
+              }
+              txParams = JSON.parse(new TextDecoder().decode(bytes));
+            } else if (payload) {
+              txParams = payload as TransactionPayload;
+            }
+            
+            if (txParams) {
+              setParsedTxPayload(txParams);
+              console.log('[DAppRequestHandler] Parsed tx payload:', txParams);
+            }
+          } catch (e) {
+            console.error('[DAppRequestHandler] Failed to parse tx payload for display:', e);
+          }
+        }
+        
+        // Parse EVM transaction payload for send_evm_transaction method
+        if (pending.pendingInvokeRequest.method === 'send_evm_transaction') {
+          try {
+            const payload = pending.pendingInvokeRequest.payload;
+            let evmTxParams: EVMTransactionPayload | null = null;
+            
+            if (payload && typeof payload === 'object' && '_type' in payload && (payload as { _type: string })._type === 'Uint8Array') {
+              const payloadWithData = payload as unknown as { _type: string; data: number[] };
+              const bytes = new Uint8Array(payloadWithData.data);
+              evmTxParams = JSON.parse(new TextDecoder().decode(bytes));
+            } else if (payload instanceof Uint8Array) {
+              evmTxParams = JSON.parse(new TextDecoder().decode(payload));
+            } else if (typeof payload === 'object' && payload !== null && '0' in payload) {
+              const obj = payload as Record<string, number>;
+              const keys = Object.keys(obj).filter((k) => !isNaN(Number(k)));
+              const length = keys.length;
+              const bytes = new Uint8Array(length);
+              for (let i = 0; i < length; i++) {
+                bytes[i] = obj[i.toString()];
+              }
+              evmTxParams = JSON.parse(new TextDecoder().decode(bytes));
+            } else if (payload) {
+              evmTxParams = payload as EVMTransactionPayload;
+            }
+            
+            if (evmTxParams) {
+              setParsedEvmTxPayload(evmTxParams);
+              console.log('[DAppRequestHandler] Parsed EVM tx payload:', evmTxParams);
+            }
+          } catch (e) {
+            console.error('[DAppRequestHandler] Failed to parse EVM tx payload for display:', e);
+          }
+        }
       }
     }
   };
@@ -220,9 +326,17 @@ export function DAppRequestHandler({ wallets }: DAppRequestHandlerProps) {
 
       // Send response - include both field names for compatibility
       if (typeof chrome !== 'undefined' && chrome.runtime) {
+        // Get EVM address from storage (safe - no private key needed)
+        const evmAddress = WalletManager.getEvmAddress(selectedWallet.address);
+        console.log('[DAppRequestHandler] Got EVM address from storage:', {
+          octraAddress: selectedWallet.address,
+          evmAddress: evmAddress || '(not found)'
+        });
+
         console.log('[DAppRequestHandler] Sending CONNECTION_RESULT:', {
           appOrigin: connectionRequest.appOrigin,
           walletPubKey: selectedWallet.address,
+          evmAddress,
           network: currentNetwork
         });
         
@@ -233,6 +347,7 @@ export function DAppRequestHandler({ wallets }: DAppRequestHandlerProps) {
           approved: true,
           walletPubKey: selectedWallet.address,
           address: selectedWallet.address, // For compatibility
+          evmAddress, // EVM address from storage
           network: currentNetwork
         });
         chrome.storage.local.remove('pendingConnectionRequest');
@@ -255,9 +370,8 @@ export function DAppRequestHandler({ wallets }: DAppRequestHandlerProps) {
     console.log('[DAppRequestHandler] Starting capability approval...');
     console.log('[DAppRequestHandler] Capability request:', capabilityRequest);
     console.log('[DAppRequestHandler] Selected wallet address:', selectedWallet.address);
-    console.log('[DAppRequestHandler] Selected wallet has privateKey:', !!selectedWallet.privateKey);
-    console.log('[DAppRequestHandler] Private key type:', typeof selectedWallet.privateKey);
-    console.log('[DAppRequestHandler] Private key length:', selectedWallet.privateKey?.length || 0);
+    // SECURITY: Do not log private key details
+    console.log('[DAppRequestHandler] Wallet ready for signing:', !!selectedWallet.privateKey);
     
     // Validate private key exists
     if (!selectedWallet.privateKey) {
@@ -274,8 +388,9 @@ export function DAppRequestHandler({ wallets }: DAppRequestHandlerProps) {
     setIsProcessing(true);
 
     try {
-      // Build capability payload
+      // Build capability payload (expiresAt is mandatory in v1)
       const now = Date.now();
+      const defaultTTL = 24 * 60 * 60 * 1000; // 24 hours default
       const payload: CapabilityPayload = {
         version: 1,
         circle: capabilityRequest.circle,
@@ -284,7 +399,9 @@ export function DAppRequestHandler({ wallets }: DAppRequestHandlerProps) {
         encrypted: capabilityRequest.encrypted,
         appOrigin: capabilityRequest.appOrigin,
         issuedAt: now,
-        expiresAt: capabilityRequest.ttlSeconds ? now + capabilityRequest.ttlSeconds * 1000 : undefined,
+        expiresAt: capabilityRequest.ttlSeconds 
+          ? now + capabilityRequest.ttlSeconds * 1000 
+          : now + defaultTTL, // Default 24h if not specified
         nonce: generateNonce()
       };
 
@@ -346,26 +463,227 @@ export function DAppRequestHandler({ wallets }: DAppRequestHandlerProps) {
   };
 
   const handleInvokeApprove = async () => {
-    if (!invokeRequest) return;
+    if (!invokeRequest || !selectedWallet) return;
     setIsProcessing(true);
 
     try {
-      // TODO: Execute actual invocation via network
-      // For now, return mock success
-      if (typeof chrome !== 'undefined' && chrome.runtime) {
-        chrome.runtime.sendMessage({
-          type: 'INVOKE_RESULT',
-          appOrigin: invokeRequest.appOrigin,
-          approved: true,
-          data: new Uint8Array([1, 2, 3])
+      console.log('[DAppRequestHandler] Processing invoke:', invokeRequest.method);
+      
+      // Handle send_transaction method - use existing wallet transaction functions
+      if (invokeRequest.method === 'send_transaction') {
+        console.log('[DAppRequestHandler] Executing send_transaction...');
+        
+        // Parse the transaction payload
+        let txParams: TransactionPayload;
+        const payload = invokeRequest.payload;
+        
+        try {
+          if (payload && typeof payload === 'object' && '_type' in payload && (payload as { _type: string })._type === 'Uint8Array') {
+            const payloadWithData = payload as unknown as { _type: string; data: number[] };
+            const bytes = new Uint8Array(payloadWithData.data);
+            txParams = JSON.parse(new TextDecoder().decode(bytes));
+          } else if (payload instanceof Uint8Array) {
+            txParams = JSON.parse(new TextDecoder().decode(payload));
+          } else if (typeof payload === 'object' && payload !== null && '0' in payload) {
+            // Handle serialized Uint8Array
+            const obj = payload as Record<string, number>;
+            const keys = Object.keys(obj).filter((k) => !isNaN(Number(k)));
+            const length = keys.length;
+            const bytes = new Uint8Array(length);
+            for (let i = 0; i < length; i++) {
+              bytes[i] = obj[i.toString()];
+            }
+            txParams = JSON.parse(new TextDecoder().decode(bytes));
+          } else {
+            txParams = payload as TransactionPayload;
+          }
+        } catch (e) {
+          console.error('[DAppRequestHandler] Failed to parse tx payload:', e);
+          throw new Error('Failed to parse transaction payload');
+        }
+        
+        console.log('[DAppRequestHandler] Transaction params:', txParams);
+        console.log('[DAppRequestHandler]   to:', txParams.to);
+        console.log('[DAppRequestHandler]   amount:', txParams.amount);
+        console.log('[DAppRequestHandler]   message:', txParams.message ? '(present)' : '(empty)');
+        
+        // Validate wallet has private key
+        if (!selectedWallet.privateKey) {
+          throw new Error('Wallet private key not available. Please unlock your wallet.');
+        }
+        
+        // Get current nonce and add 1 for new transaction
+        // IMPORTANT: Force refresh to get latest nonce from chain, not cached
+        console.log('[DAppRequestHandler] Fetching nonce for:', selectedWallet.address);
+        const balanceData = await fetchBalance(selectedWallet.address, true); // Force refresh!
+        const currentNonce = balanceData.nonce;
+        const txNonce = currentNonce + 1; // IMPORTANT: nonce must be current + 1
+        
+        // Derive public key from private key using nacl
+        const privateKeyBuffer = Buffer.from(selectedWallet.privateKey, 'base64');
+        const keyPair = nacl.sign.keyPair.fromSeed(privateKeyBuffer.slice(0, 32));
+        const publicKeyHex = Buffer.from(keyPair.publicKey).toString('hex');
+        
+        console.log('[DAppRequestHandler] Creating transaction...');
+        console.log('[DAppRequestHandler]   currentNonce:', currentNonce);
+        console.log('[DAppRequestHandler]   txNonce (current+1):', txNonce);
+        
+        // Create and sign transaction using existing wallet functions
+        const transaction = createTransaction(
+          selectedWallet.address,
+          txParams.to,
+          txParams.amount,
+          txNonce, // Use current nonce + 1
+          selectedWallet.privateKey,
+          publicKeyHex,
+          txParams.message // Include intent payload as message
+        );
+        
+        console.log('[DAppRequestHandler] Sending transaction to Octra chain...');
+        const txResult = await sendTransaction(transaction);
+        
+        console.log('[DAppRequestHandler] Transaction result:', txResult);
+        
+        if (!txResult.success || !txResult.hash) {
+          throw new Error(txResult.error || 'Transaction failed');
+        }
+        
+        // Return the result to dApp
+        const resultData = {
+          success: true,
+          txHash: txResult.hash,
+          from: selectedWallet.address,
+          to: txParams.to,
+          amount: txParams.amount,
+          timestamp: Date.now(),
+        };
+        
+        console.log('[DAppRequestHandler] ✅ Transaction sent! txHash:', txResult.hash);
+        
+        if (typeof chrome !== 'undefined' && chrome.runtime) {
+          chrome.runtime.sendMessage({
+            type: 'INVOKE_RESULT',
+            appOrigin: invokeRequest.appOrigin,
+            approved: true,
+            data: new TextEncoder().encode(JSON.stringify(resultData))
+          });
+          chrome.storage.local.remove('pendingInvokeRequest');
+        }
+        
+        toast({ 
+          title: 'Transaction Sent', 
+          description: `Sent ${txParams.amount} OCT to ${txParams.to.slice(0, 12)}...` 
         });
-        chrome.storage.local.remove('pendingInvokeRequest');
+      } else if (invokeRequest.method === 'send_evm_transaction') {
+        // Handle EVM transaction (ETH on Sepolia)
+        console.log('[DAppRequestHandler] Executing send_evm_transaction...');
+        
+        // Parse the EVM transaction payload
+        let evmTxParams: EVMTransactionPayload;
+        const payload = invokeRequest.payload;
+        
+        try {
+          if (payload && typeof payload === 'object' && '_type' in payload && (payload as { _type: string })._type === 'Uint8Array') {
+            const payloadWithData = payload as unknown as { _type: string; data: number[] };
+            const bytes = new Uint8Array(payloadWithData.data);
+            evmTxParams = JSON.parse(new TextDecoder().decode(bytes));
+          } else if (payload instanceof Uint8Array) {
+            evmTxParams = JSON.parse(new TextDecoder().decode(payload));
+          } else if (typeof payload === 'object' && payload !== null && '0' in payload) {
+            const obj = payload as Record<string, number>;
+            const keys = Object.keys(obj).filter((k) => !isNaN(Number(k)));
+            const length = keys.length;
+            const bytes = new Uint8Array(length);
+            for (let i = 0; i < length; i++) {
+              bytes[i] = obj[i.toString()];
+            }
+            evmTxParams = JSON.parse(new TextDecoder().decode(bytes));
+          } else {
+            evmTxParams = payload as EVMTransactionPayload;
+          }
+        } catch (e) {
+          console.error('[DAppRequestHandler] Failed to parse EVM tx payload:', e);
+          throw new Error('Failed to parse EVM transaction payload');
+        }
+        
+        console.log('[DAppRequestHandler] EVM Transaction params:', evmTxParams);
+        console.log('[DAppRequestHandler]   to:', evmTxParams.to);
+        console.log('[DAppRequestHandler]   amount:', evmTxParams.amount, 'ETH');
+        console.log('[DAppRequestHandler]   data:', evmTxParams.data ? '(present)' : '(empty)');
+        
+        // Validate wallet has private key
+        if (!selectedWallet.privateKey) {
+          throw new Error('Wallet private key not available. Please unlock your wallet.');
+        }
+        
+        // Get EVM private key from WalletManager (async - retrieves from session)
+        const evmPrivateKey = await WalletManager.getEvmPrivateKey(selectedWallet.address);
+        if (!evmPrivateKey) {
+          throw new Error('EVM private key not found. Please re-import your wallet.');
+        }
+        
+        console.log('[DAppRequestHandler] Sending EVM transaction to Sepolia...');
+        
+        // Send EVM transaction using sendEVMTransaction
+        const txHash = await sendEVMTransaction(
+          evmPrivateKey,
+          evmTxParams.to,
+          evmTxParams.amount,
+          'eth-sepolia', // Network ID for Sepolia
+          evmTxParams.data // Intent payload as hex data
+        );
+        
+        console.log('[DAppRequestHandler] ✅ EVM Transaction sent! txHash:', txHash);
+        
+        // Return the result to dApp
+        const resultData = {
+          success: true,
+          txHash,
+          from: WalletManager.getEvmAddress(selectedWallet.address),
+          to: evmTxParams.to,
+          amount: evmTxParams.amount,
+          timestamp: Date.now(),
+        };
+        
+        if (typeof chrome !== 'undefined' && chrome.runtime) {
+          chrome.runtime.sendMessage({
+            type: 'INVOKE_RESULT',
+            appOrigin: invokeRequest.appOrigin,
+            approved: true,
+            data: new TextEncoder().encode(JSON.stringify(resultData))
+          });
+          chrome.storage.local.remove('pendingInvokeRequest');
+        }
+        
+        toast({ 
+          title: 'ETH Transaction Sent', 
+          description: `Sent ${evmTxParams.amount} ETH to ${evmTxParams.to.slice(0, 12)}...` 
+        });
+      } else {
+        // For other methods, return mock success (to be implemented)
+        console.log('[DAppRequestHandler] Executing other method:', invokeRequest.method);
+        
+        if (typeof chrome !== 'undefined' && chrome.runtime) {
+          chrome.runtime.sendMessage({
+            type: 'INVOKE_RESULT',
+            appOrigin: invokeRequest.appOrigin,
+            approved: true,
+            data: new Uint8Array([1, 2, 3])
+          });
+          chrome.storage.local.remove('pendingInvokeRequest');
+        }
+        
+        toast({ title: 'Invocation Complete', description: `Executed ${invokeRequest.method}` });
       }
-
-      toast({ title: 'Invocation Complete', description: `Executed ${invokeRequest.method}` });
+      
       window.close();
     } catch (error) {
-      console.error('Invoke error:', error);
+      console.error('[DAppRequestHandler] Invoke error:', error);
+      toast({ 
+        title: 'Transaction Failed', 
+        description: error instanceof Error ? error.message : 'Unknown error',
+        variant: 'destructive'
+      });
       setIsProcessing(false);
     }
   };
@@ -429,40 +747,40 @@ export function DAppRequestHandler({ wallets }: DAppRequestHandlerProps) {
 
   // Render based on request type - optimized for popup size (400x600)
   return (
-    <div className="h-full flex flex-col p-4">
+    <div className="h-full flex flex-col p-3">
       <Card className="border-0 shadow-none flex-1 flex flex-col">
-        <CardHeader className="text-center pb-3 pt-2">
+        <CardHeader className="text-center pb-2 pt-1 space-y-1">
           {/* App Icon */}
-          <div className="flex justify-center mb-2">
-            <Avatar className="h-12 w-12">
+          <div className="flex justify-center mb-1">
+            <Avatar className="h-10 w-10">
               {(connectionRequest?.appIcon || capabilityRequest?.appIcon) && (
                 <AvatarImage src={connectionRequest?.appIcon || capabilityRequest?.appIcon} />
               )}
               <AvatarFallback className="bg-primary text-primary-foreground">
-                {requestType === 'connection' && <Globe className="h-6 w-6" />}
-                {requestType === 'capability' && <Shield className="h-6 w-6" />}
-                {requestType === 'invoke' && <Zap className="h-6 w-6" />}
+                {requestType === 'connection' && <Globe className="h-5 w-5" />}
+                {requestType === 'capability' && <Shield className="h-5 w-5" />}
+                {requestType === 'invoke' && <Zap className="h-5 w-5" />}
               </AvatarFallback>
             </Avatar>
           </div>
 
           {/* Title */}
-          <CardTitle className="text-lg">
+          <CardTitle className="text-base">
             {requestType === 'connection' && 'Connection Request'}
             {requestType === 'capability' && 'Capability Request'}
             {requestType === 'invoke' && 'Invoke Request'}
           </CardTitle>
 
           {/* App Info */}
-          <p className="text-sm text-muted-foreground truncate">
-            {connectionRequest?.appName || capabilityRequest?.appName || 'Unknown App'}
+          <p className="text-sm font-medium text-foreground truncate">
+            {connectionRequest?.appName || capabilityRequest?.appName || invokeRequest?.appName || 'Octra DEX'}
           </p>
           <p className="text-xs text-muted-foreground truncate">
             {connectionRequest?.appOrigin || capabilityRequest?.appOrigin || invokeRequest?.appOrigin}
           </p>
         </CardHeader>
 
-        <CardContent className="flex-1 flex flex-col space-y-3 overflow-hidden">
+        <CardContent className="flex-1 flex flex-col space-y-2 overflow-hidden pt-0">
           {/* Connection Request */}
           {requestType === 'connection' && connectionRequest && (
             <>
@@ -569,46 +887,119 @@ export function DAppRequestHandler({ wallets }: DAppRequestHandlerProps) {
                   <span className="text-xs text-muted-foreground">Circle</span>
                   <span className="font-mono text-xs truncate max-w-[180px]">{invokeRequest.capability.circle}</span>
                 </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-xs text-muted-foreground">Nonce</span>
-                  <span className="font-mono text-xs">{invokeRequest.nonce}</span>
-                </div>
               </div>
 
-              <Alert className="py-2">
-                <Zap className="h-3 w-3" />
-                <AlertDescription className="text-xs">
-                  This will execute the method using your granted capability.
-                </AlertDescription>
+              {/* Transaction Details for send_transaction */}
+              {invokeRequest.method === 'send_transaction' && parsedTxPayload && (
+                <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg space-y-2">
+                  <h4 className="font-medium text-sm text-amber-800">Transaction Details</h4>
+                  <div className="space-y-1">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-amber-700">To</span>
+                      <span className="font-mono text-xs text-amber-900 truncate max-w-[180px]">{parsedTxPayload.to}</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-amber-700">Amount</span>
+                      <span className="font-bold text-sm text-amber-900">{parsedTxPayload.amount} OCT</span>
+                    </div>
+                    {parsedTxPayload.message && (
+                      <div className="pt-1 border-t border-amber-200">
+                        <span className="text-xs text-amber-700">Message (Intent Payload)</span>
+                        <div className="mt-1 p-1 bg-amber-100 rounded text-xs font-mono text-amber-800 max-h-[60px] overflow-y-auto break-all">
+                          {parsedTxPayload.message.length > 100 
+                            ? parsedTxPayload.message.slice(0, 100) + '...' 
+                            : parsedTxPayload.message}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* EVM Transaction Details for send_evm_transaction */}
+              {invokeRequest.method === 'send_evm_transaction' && parsedEvmTxPayload && (
+                <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg space-y-2">
+                  <h4 className="font-medium text-sm text-blue-800">ETH Transaction Details</h4>
+                  <div className="space-y-1">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-blue-700">Network</span>
+                      <span className="font-medium text-xs text-blue-900">Sepolia Testnet</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-blue-700">To</span>
+                      <span className="font-mono text-xs text-blue-900 truncate max-w-[180px]">{parsedEvmTxPayload.to}</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-blue-700">Amount</span>
+                      <span className="font-bold text-sm text-blue-900">{parsedEvmTxPayload.amount} ETH</span>
+                    </div>
+                    {parsedEvmTxPayload.data && (
+                      <div className="pt-1 border-t border-blue-200">
+                        <span className="text-xs text-blue-700">Data (Intent Payload)</span>
+                        <div className="mt-1 p-1 bg-blue-100 rounded text-xs font-mono text-blue-800 max-h-[60px] overflow-y-auto break-all">
+                          {parsedEvmTxPayload.data.length > 100 
+                            ? parsedEvmTxPayload.data.slice(0, 100) + '...' 
+                            : parsedEvmTxPayload.data}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              <Alert className={invokeRequest.method === 'send_transaction' || invokeRequest.method === 'send_evm_transaction' ? "border-amber-200 bg-amber-50 py-2" : "py-2"}>
+                {invokeRequest.method === 'send_transaction' ? (
+                  <>
+                    <AlertTriangle className="h-3 w-3 text-amber-600" />
+                    <AlertDescription className="text-xs text-amber-800">
+                      This will send OCT from your wallet. Make sure you trust this dApp.
+                    </AlertDescription>
+                  </>
+                ) : invokeRequest.method === 'send_evm_transaction' ? (
+                  <>
+                    <AlertTriangle className="h-3 w-3 text-amber-600" />
+                    <AlertDescription className="text-xs text-amber-800">
+                      This will send ETH from your wallet on Sepolia. Make sure you trust this dApp.
+                    </AlertDescription>
+                  </>
+                ) : (
+                  <>
+                    <Zap className="h-3 w-3" />
+                    <AlertDescription className="text-xs">
+                      This will execute the method using your granted capability.
+                    </AlertDescription>
+                  </>
+                )}
               </Alert>
             </>
           )}
 
           {/* Spacer to push buttons to bottom */}
-          <div className="flex-1" />
+          <div className="flex-1 min-h-2" />
 
           {/* Action Buttons */}
-          <div className="flex gap-3 pt-2">
+          <div className="flex gap-2 pt-1">
             <Button
               variant="outline"
               onClick={handleReject}
               disabled={isProcessing}
-              className="flex-1 h-10"
+              className="flex-1 h-9"
             >
               <X className="h-4 w-4 mr-1" />
               Reject
             </Button>
             <Button
               onClick={() => {
+                console.log('[DAppRequestHandler] Approve clicked, requestType:', requestType, 'selectedWallet:', selectedWallet?.address);
                 if (requestType === 'connection') handleConnectionApprove();
                 else if (requestType === 'capability') handleCapabilityApprove();
                 else if (requestType === 'invoke') handleInvokeApprove();
               }}
-              disabled={isProcessing || (requestType === 'connection' && !selectedWallet)}
-              className="flex-1 h-10"
+              disabled={isProcessing || !selectedWallet}
+              className="flex-1 h-9"
             >
               <Check className="h-4 w-4 mr-1" />
-              {isProcessing ? 'Processing...' : 'Approve'}
+              {isProcessing ? 'Processing...' : !selectedWallet ? 'Loading...' : 'Approve'}
             </Button>
           </div>
         </CardContent>

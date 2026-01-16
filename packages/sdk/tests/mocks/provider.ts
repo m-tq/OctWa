@@ -20,6 +20,18 @@ export interface MockProviderOptions {
 
 let capabilityCounter = 0;
 
+// Get current origin for test environment
+function getCurrentOrigin(): string {
+  if (typeof window !== 'undefined' && window.location) {
+    try {
+      return window.location.origin || '';
+    } catch {
+      return '';
+    }
+  }
+  return '';
+}
+
 export function createMockProvider(options: MockProviderOptions = {}): OctraProvider & { emit: (event: string, data?: unknown) => void } {
   const eventListeners: Map<string, Set<EventCallback>> = new Map();
 
@@ -61,17 +73,24 @@ export function createMockProvider(options: MockProviderOptions = {}): OctraProv
 
       capabilityCounter++;
       const now = Date.now();
+      const expiresAt = req.ttlSeconds ? now + req.ttlSeconds * 1000 : now + 3600000; // Default 1 hour
+
+      // Use current origin for proper origin binding in tests
+      const appOrigin = getCurrentOrigin();
 
       return {
         id: `cap-${capabilityCounter}-${Date.now()}`,
+        version: 1,
         circle: req.circle,
-        methods: req.methods,
+        methods: [...req.methods].sort(), // Sort methods as per spec
         scope: req.scope,
         encrypted: req.encrypted,
+        appOrigin: appOrigin,
         issuedAt: now,
-        expiresAt: req.ttlSeconds ? now + req.ttlSeconds * 1000 : undefined,
-        issuerPubKey: 'mock-issuer-pub-key',
-        signature: 'mock-signature-' + Math.random().toString(36).slice(2),
+        expiresAt: expiresAt,
+        nonce: `test-nonce-${capabilityCounter}-${Date.now()}`,
+        issuerPubKey: 'mock-issuer-pub-key-32bytes-hex00',
+        signature: 'mock-signature-64bytes-hex-for-testing-purposes-only-not-real-sig00000000',
       };
     },
 

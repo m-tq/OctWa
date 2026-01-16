@@ -29,8 +29,10 @@ export interface Connection {
   circle: string;
   /** Unique session identifier */
   sessionId: string;
-  /** Wallet's public key */
+  /** Wallet's public key (Octra address) */
   walletPubKey: string;
+  /** Derived EVM address (from same key) */
+  evmAddress?: string;
   /** Network type */
   network: 'testnet' | 'mainnet';
 }
@@ -72,29 +74,42 @@ export interface CapabilityRequest {
   ttlSeconds?: number;
 }
 
+/**
+ * Capability payload for signing (without signature fields)
+ * This is the cryptographic artifact that gets signed
+ */
+export interface CapabilityPayload {
+  /** Version of capability format */
+  readonly version: 1;
+  /** Circle this capability is scoped to */
+  readonly circle: string;
+  /** Allowed methods (sorted lexicographically) */
+  readonly methods: readonly string[];
+  /** Access scope level */
+  readonly scope: CapabilityScope;
+  /** Whether payloads are encrypted */
+  readonly encrypted: boolean;
+  /** Application origin - cryptographically bound */
+  readonly appOrigin: string;
+  /** Timestamp when capability was issued (Unix ms) */
+  readonly issuedAt: number;
+  /** Timestamp when capability expires (Unix ms) */
+  readonly expiresAt: number;
+  /** Unique nonce for replay protection */
+  readonly nonce: string;
+}
 
 /**
  * Signed capability - grants scoped authority
+ * This is an immutable cryptographic artifact
  */
-export interface Capability {
+export interface Capability extends CapabilityPayload {
   /** Unique capability identifier */
-  id: string;
-  /** Circle this capability is scoped to */
-  circle: string;
-  /** Allowed methods */
-  methods: string[];
-  /** Access scope level */
-  scope: CapabilityScope;
-  /** Whether payloads are encrypted */
-  encrypted: boolean;
-  /** Timestamp when capability was issued (Unix ms) */
-  issuedAt: number;
-  /** Timestamp when capability expires (Unix ms, optional) */
-  expiresAt?: number;
+  readonly id: string;
   /** Public key of the issuer (wallet) */
-  issuerPubKey: string;
-  /** Cryptographic signature */
-  signature: string;
+  readonly issuerPubKey: string;
+  /** Cryptographic signature (ed25519) */
+  readonly signature: string;
 }
 
 // ============================================================================
@@ -183,6 +198,12 @@ export interface SessionState {
 export interface InitOptions {
   /** Provider detection timeout in milliseconds (default: 3000) */
   timeout?: number;
+  /** 
+   * Skip cryptographic signature verification on capabilities.
+   * WARNING: Only use for testing! Never enable in production.
+   * @default false
+   */
+  skipSignatureVerification?: boolean;
 }
 
 // ============================================================================
@@ -227,7 +248,10 @@ export type ErrorCode =
   | 'TIMEOUT'
   | 'VALIDATION_ERROR'
   | 'CAPABILITY_ERROR'
-  | 'SCOPE_VIOLATION';
+  | 'SCOPE_VIOLATION'
+  | 'SIGNATURE_INVALID'
+  | 'CAPABILITY_EXPIRED'
+  | 'ORIGIN_MISMATCH';
 
 // ============================================================================
 // Event Types

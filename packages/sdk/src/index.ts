@@ -3,6 +3,13 @@
  * 
  * Capability-based authorization for Octra dApps.
  * Does NOT follow EVM/MetaMask patterns.
+ * 
+ * Features:
+ * - ed25519 cryptographic signing
+ * - Deterministic canonicalization
+ * - Origin binding
+ * - Replay protection via nonce
+ * - Expiry enforcement
  */
 
 // Main SDK class
@@ -18,7 +25,25 @@ export {
   ValidationError,
   CapabilityError,
   ScopeViolationError,
+  SignatureInvalidError,
+  CapabilityExpiredError,
+  OriginMismatchError,
 } from './errors';
+
+// Crypto utilities (for advanced use cases)
+export {
+  canonicalizeCapabilityPayload,
+  hashCapabilityPayload,
+  verifyCapabilitySignature,
+  verifyEd25519Signature,
+  isCapabilityExpired,
+  isOriginValid,
+  validateCapability,
+  generateNonce,
+  hexToBytes,
+  bytesToHex,
+  sha256,
+} from './crypto';
 
 // Types - Connect Flow
 export type {
@@ -31,6 +56,7 @@ export type {
   CapabilityScope,
   CapabilityTemplate,
   CapabilityRequest,
+  CapabilityPayload,
   Capability,
 } from './types';
 
@@ -66,3 +92,17 @@ export type {
 export type {
   ErrorCode,
 } from './types';
+
+// Intents SDK
+export {
+  IntentsClient,
+  deriveEvmAddress,
+} from './intents';
+
+export type {
+  SwapIntentPayload,
+  Quote,
+  SwapResult,
+  IntentStatus,
+  TargetChain,
+} from './intents';

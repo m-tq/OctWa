@@ -24,13 +24,13 @@ describe('OctraSDK', () => {
       const mockProvider = createMockProvider();
       injectMockProvider(mockProvider);
 
-      const sdk = await OctraSDK.init({ timeout: 100 });
+      const sdk = await OctraSDK.init({ timeout: 100, skipSignatureVerification: true });
 
       expect(sdk.isInstalled()).toBe(true);
     });
 
     it('should initialize without provider when not available', async () => {
-      const sdk = await OctraSDK.init({ timeout: 100 });
+      const sdk = await OctraSDK.init({ timeout: 100, skipSignatureVerification: true });
 
       expect(sdk.isInstalled()).toBe(false);
     });
@@ -41,7 +41,7 @@ describe('OctraSDK', () => {
       const mockProvider = createMockProvider();
       injectMockProvider(mockProvider);
 
-      const sdk = await OctraSDK.init({ timeout: 100 });
+      const sdk = await OctraSDK.init({ timeout: 100, skipSignatureVerification: true });
       const result = await sdk.connect({
         circle: 'test-circle',
         appOrigin: 'https://example.com',
@@ -54,7 +54,7 @@ describe('OctraSDK', () => {
     });
 
     it('should throw NotInstalledError when provider not available', async () => {
-      const sdk = await OctraSDK.init({ timeout: 100 });
+      const sdk = await OctraSDK.init({ timeout: 100, skipSignatureVerification: true });
 
       await expect(
         sdk.connect({ circle: 'test-circle', appOrigin: 'https://example.com' })
@@ -65,7 +65,7 @@ describe('OctraSDK', () => {
       const mockProvider = createMockProvider();
       injectMockProvider(mockProvider);
 
-      const sdk = await OctraSDK.init({ timeout: 100 });
+      const sdk = await OctraSDK.init({ timeout: 100, skipSignatureVerification: true });
 
       await expect(
         sdk.connect({ circle: '', appOrigin: 'https://example.com' })
@@ -76,7 +76,7 @@ describe('OctraSDK', () => {
       const mockProvider = createMockProvider();
       injectMockProvider(mockProvider);
 
-      const sdk = await OctraSDK.init({ timeout: 100 });
+      const sdk = await OctraSDK.init({ timeout: 100, skipSignatureVerification: true });
 
       await expect(
         sdk.connect({ circle: 'test-circle', appOrigin: '' })
@@ -87,7 +87,7 @@ describe('OctraSDK', () => {
       const mockProvider = createMockProvider({ shouldRejectConnect: true });
       injectMockProvider(mockProvider);
 
-      const sdk = await OctraSDK.init({ timeout: 100 });
+      const sdk = await OctraSDK.init({ timeout: 100, skipSignatureVerification: true });
 
       await expect(
         sdk.connect({ circle: 'test-circle', appOrigin: 'https://example.com' })
@@ -100,7 +100,7 @@ describe('OctraSDK', () => {
       const mockProvider = createMockProvider();
       injectMockProvider(mockProvider);
 
-      const sdk = await OctraSDK.init({ timeout: 100 });
+      const sdk = await OctraSDK.init({ timeout: 100, skipSignatureVerification: true });
       await sdk.connect({ circle: 'test-circle', appOrigin: 'https://example.com' });
 
       const stateBefore = sdk.getSessionState();
@@ -120,7 +120,7 @@ describe('OctraSDK', () => {
       const mockProvider = createMockProvider();
       injectMockProvider(mockProvider);
 
-      const sdk = await OctraSDK.init({ timeout: 100 });
+      const sdk = await OctraSDK.init({ timeout: 100, skipSignatureVerification: true });
       await sdk.connect({ circle: 'test-circle', appOrigin: 'https://example.com' });
 
       const capability = await sdk.requestCapability({
@@ -142,7 +142,7 @@ describe('OctraSDK', () => {
       const mockProvider = createMockProvider();
       injectMockProvider(mockProvider);
 
-      const sdk = await OctraSDK.init({ timeout: 100 });
+      const sdk = await OctraSDK.init({ timeout: 100, skipSignatureVerification: true });
 
       await expect(
         sdk.requestCapability({
@@ -158,7 +158,7 @@ describe('OctraSDK', () => {
       const mockProvider = createMockProvider();
       injectMockProvider(mockProvider);
 
-      const sdk = await OctraSDK.init({ timeout: 100 });
+      const sdk = await OctraSDK.init({ timeout: 100, skipSignatureVerification: true });
       await sdk.connect({ circle: 'test-circle', appOrigin: 'https://example.com' });
 
       await expect(
@@ -175,7 +175,7 @@ describe('OctraSDK', () => {
       const mockProvider = createMockProvider();
       injectMockProvider(mockProvider);
 
-      const sdk = await OctraSDK.init({ timeout: 100 });
+      const sdk = await OctraSDK.init({ timeout: 100, skipSignatureVerification: true });
       await sdk.connect({ circle: 'test-circle', appOrigin: 'https://example.com' });
 
       await expect(
@@ -192,7 +192,7 @@ describe('OctraSDK', () => {
       const mockProvider = createMockProvider({ shouldRejectCapability: true });
       injectMockProvider(mockProvider);
 
-      const sdk = await OctraSDK.init({ timeout: 100 });
+      const sdk = await OctraSDK.init({ timeout: 100, skipSignatureVerification: true });
       await sdk.connect({ circle: 'test-circle', appOrigin: 'https://example.com' });
 
       await expect(
@@ -211,7 +211,7 @@ describe('OctraSDK', () => {
       const mockProvider = createMockProvider();
       injectMockProvider(mockProvider);
 
-      const sdk = await OctraSDK.init({ timeout: 100 });
+      const sdk = await OctraSDK.init({ timeout: 100, skipSignatureVerification: true });
       await sdk.connect({ circle: 'test-circle', appOrigin: 'https://example.com' });
 
       const capability = await sdk.requestCapability({
@@ -233,7 +233,7 @@ describe('OctraSDK', () => {
       const mockProvider = createMockProvider();
       injectMockProvider(mockProvider);
 
-      const sdk = await OctraSDK.init({ timeout: 100 });
+      const sdk = await OctraSDK.init({ timeout: 100, skipSignatureVerification: true });
       await sdk.connect({ circle: 'test-circle', appOrigin: 'https://example.com' });
 
       await expect(
@@ -248,7 +248,7 @@ describe('OctraSDK', () => {
       const mockProvider = createMockProvider();
       injectMockProvider(mockProvider);
 
-      const sdk = await OctraSDK.init({ timeout: 100 });
+      const sdk = await OctraSDK.init({ timeout: 100, skipSignatureVerification: true });
       await sdk.connect({ circle: 'test-circle', appOrigin: 'https://example.com' });
 
       const capability = await sdk.requestCapability({
@@ -270,7 +270,7 @@ describe('OctraSDK', () => {
       const mockProvider = createMockProvider();
       injectMockProvider(mockProvider);
 
-      const sdk = await OctraSDK.init({ timeout: 100 });
+      const sdk = await OctraSDK.init({ timeout: 100, skipSignatureVerification: true });
       await sdk.connect({ circle: 'test-circle', appOrigin: 'https://example.com' });
 
       const capability = await sdk.requestCapability({
@@ -301,7 +301,7 @@ describe('OctraSDK', () => {
       const mockProvider = createMockProvider();
       injectMockProvider(mockProvider);
 
-      const sdk = await OctraSDK.init({ timeout: 100 });
+      const sdk = await OctraSDK.init({ timeout: 100, skipSignatureVerification: true });
       const state = sdk.getSessionState();
 
       expect(state.connected).toBe(false);
@@ -313,7 +313,7 @@ describe('OctraSDK', () => {
       const mockProvider = createMockProvider();
       injectMockProvider(mockProvider);
 
-      const sdk = await OctraSDK.init({ timeout: 100 });
+      const sdk = await OctraSDK.init({ timeout: 100, skipSignatureVerification: true });
       await sdk.connect({ circle: 'test-circle', appOrigin: 'https://example.com' });
 
       const state = sdk.getSessionState();
@@ -326,7 +326,7 @@ describe('OctraSDK', () => {
       const mockProvider = createMockProvider();
       injectMockProvider(mockProvider);
 
-      const sdk = await OctraSDK.init({ timeout: 100 });
+      const sdk = await OctraSDK.init({ timeout: 100, skipSignatureVerification: true });
       await sdk.connect({ circle: 'test-circle', appOrigin: 'https://example.com' });
 
       await sdk.requestCapability({
@@ -348,7 +348,7 @@ describe('OctraSDK', () => {
       const mockProvider = createMockProvider();
       injectMockProvider(mockProvider);
 
-      const sdk = await OctraSDK.init({ timeout: 100 });
+      const sdk = await OctraSDK.init({ timeout: 100, skipSignatureVerification: true });
 
       let emittedConnection: unknown = null;
       sdk.on('connect', ({ connection }) => {
@@ -365,7 +365,7 @@ describe('OctraSDK', () => {
       const mockProvider = createMockProvider();
       injectMockProvider(mockProvider);
 
-      const sdk = await OctraSDK.init({ timeout: 100 });
+      const sdk = await OctraSDK.init({ timeout: 100, skipSignatureVerification: true });
       await sdk.connect({ circle: 'test-circle', appOrigin: 'https://example.com' });
 
       let disconnected = false;
@@ -382,7 +382,7 @@ describe('OctraSDK', () => {
       const mockProvider = createMockProvider();
       injectMockProvider(mockProvider);
 
-      const sdk = await OctraSDK.init({ timeout: 100 });
+      const sdk = await OctraSDK.init({ timeout: 100, skipSignatureVerification: true });
       await sdk.connect({ circle: 'test-circle', appOrigin: 'https://example.com' });
 
       let grantedCapability: unknown = null;
@@ -404,7 +404,7 @@ describe('OctraSDK', () => {
       const mockProvider = createMockProvider();
       injectMockProvider(mockProvider);
 
-      const sdk = await OctraSDK.init({ timeout: 100 });
+      const sdk = await OctraSDK.init({ timeout: 100, skipSignatureVerification: true });
 
       let callCount = 0;
       const unsubscribe = sdk.on('connect', () => {
@@ -428,7 +428,7 @@ describe('OctraSDK', () => {
       const mockProvider = createMockProvider();
       injectMockProvider(mockProvider);
 
-      const sdk = await OctraSDK.init({ timeout: 100 });
+      const sdk = await OctraSDK.init({ timeout: 100, skipSignatureVerification: true });
 
       // Verify signMessage does not exist
       expect((sdk as unknown as Record<string, unknown>).signMessage).toBeUndefined();
@@ -438,7 +438,7 @@ describe('OctraSDK', () => {
       const mockProvider = createMockProvider();
       injectMockProvider(mockProvider);
 
-      const sdk = await OctraSDK.init({ timeout: 100 });
+      const sdk = await OctraSDK.init({ timeout: 100, skipSignatureVerification: true });
 
       // Verify signRaw does not exist
       expect((sdk as unknown as Record<string, unknown>).signRaw).toBeUndefined();

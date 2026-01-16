@@ -1,6 +1,10 @@
 import { ExtensionStorageManager } from './extensionStorage';
 import { verifyPassword, decryptWalletData, encryptWalletData, secureWipe, isRateLimited, getRemainingAttempts, generateSessionKey, encryptSessionData, decryptSessionData } from './password';
 import { Wallet } from '../types/wallet';
+import { deriveEvmFromOctraKey } from './evmDerive';
+
+// Storage key for EVM address mapping
+const EVM_ADDRESS_MAP_KEY = 'evmAddressMap';
 
 export class WalletManager {
   // Store password temporarily in memory for encrypting new wallets
@@ -69,6 +73,59 @@ export class WalletManager {
     } catch (error) {
       console.error('❌ WalletManager: Migration failed:', error);
       return { migrated: false, message: 'Migration failed. Please contact support.' };
+    }
+  }
+
+  /**
+   * Store EVM address mapping for a wallet (safe - no private key)
+   * Called after wallet unlock/creation
+   */
+  static async storeEvmAddress(octraAddress: string, privateKeyB64: string): Promise<string> {
+    try {
+      const { evmAddress } = deriveEvmFromOctraKey(privateKeyB64);
+      
+      // Get existing map
+      const mapStr = localStorage.getItem(EVM_ADDRESS_MAP_KEY);
+      const map: Record<string, string> = mapStr ? JSON.parse(mapStr) : {};
+      
+      // Store mapping
+      map[octraAddress] = evmAddress;
+      localStorage.setItem(EVM_ADDRESS_MAP_KEY, JSON.stringify(map));
+      
+      // Also sync to extension storage
+      await ExtensionStorageManager.set(EVM_ADDRESS_MAP_KEY, JSON.stringify(map));
+      
+      console.log('✅ WalletManager: Stored EVM address for', octraAddress.slice(0, 8), '->', evmAddress);
+      return evmAddress;
+    } catch (error) {
+      console.error('❌ WalletManager: Failed to store EVM address:', error);
+      return '';
+    }
+  }
+
+  /**
+   * Get EVM address for an Octra address (safe - no private key needed)
+   */
+  static getEvmAddress(octraAddress: string): string {
+    try {
+      const mapStr = localStorage.getItem(EVM_ADDRESS_MAP_KEY);
+      if (!mapStr) return '';
+      
+      const map: Record<string, string> = JSON.parse(mapStr);
+      return map[octraAddress] || '';
+    } catch {
+      return '';
+    }
+  }
+
+  /**
+   * Store EVM addresses for all wallets (called after unlock)
+   */
+  static async storeAllEvmAddresses(wallets: Wallet[]): Promise<void> {
+    for (const wallet of wallets) {
+      if (wallet.privateKey) {
+        await this.storeEvmAddress(wallet.address, wallet.privateKey);
+      }
     }
   }
 
@@ -628,6 +685,9 @@ export class WalletManager {
         // Session encryption key is generated in setSessionPassword
         await this.updateSessionWallets(decryptedWallets);
         console.log('🔓 WalletManager: Stored', decryptedWallets.length, 'wallets in encrypted session storage');
+        
+        // Store EVM addresses for all wallets (safe - only stores derived addresses)
+        await this.storeAllEvmAddresses(decryptedWallets);
       }
       
       // SECURITY: Clean up any legacy unencrypted data and run audit
@@ -752,6 +812,9 @@ export class WalletManager {
       await ExtensionStorageManager.set('encryptedWallets', encryptedJson);
       localStorage.setItem('encryptedWallets', encryptedJson);
       
+      // Store EVM address for this wallet (safe - only stores derived address)
+      await this.storeEvmAddress(wallet.address, wallet.privateKey);
+      
       console.log(`🔐 Wallet ${wallet.address.slice(0, 8)}... stored (encrypted), total: ${encryptedWallets.length}`);
       
       // Verify storage
@@ -761,6 +824,57 @@ export class WalletManager {
     } catch (error) {
       console.error('❌ Failed to store wallet:', error);
       throw error; // Re-throw so caller knows it failed
+    }
+  }
+
+  // Reorder wallets (for drag-and-drop functionality)
+  static async reorderWallets(newOrder: Wallet[]): Promise<void> {
+    let password = this.getSessionPassword();
+    
+    if (!password) {
+      password = await this.ensureSessionPassword();
+    }
+    
+    if (!password) {
+      console.error('🚨 SECURITY: Cannot reorder wallets without session password!');
+      throw new Error('Session password required to reorder wallets. Please unlock your wallet first.');
+    }
+    
+    try {
+      // Get existing encrypted wallets
+      const localData = localStorage.getItem('encryptedWallets');
+      const extData = await ExtensionStorageManager.get('encryptedWallets');
+      
+      const existingData = localData || extData;
+      if (!existingData) {
+        console.warn('⚠️ reorderWallets: No encrypted wallets found');
+        return;
+      }
+      
+      const encryptedWallets: any[] = typeof existingData === 'string' 
+        ? JSON.parse(existingData) 
+        : existingData;
+      
+      // Create a map of address to encrypted wallet data
+      const encryptedMap = new Map(encryptedWallets.map(w => [w.address, w]));
+      
+      // Reorder based on newOrder
+      const reorderedEncrypted = newOrder
+        .map(wallet => encryptedMap.get(wallet.address))
+        .filter(Boolean);
+      
+      // Save reordered wallets to both storages
+      const encryptedJson = JSON.stringify(reorderedEncrypted);
+      await ExtensionStorageManager.set('encryptedWallets', encryptedJson);
+      localStorage.setItem('encryptedWallets', encryptedJson);
+      
+      // Update session wallets with new order
+      await this.updateSessionWallets(newOrder);
+      
+      console.log('🔄 WalletManager: Wallets reordered successfully, count:', newOrder.length);
+    } catch (error) {
+      console.error('❌ Failed to reorder wallets:', error);
+      throw error;
     }
   }
 
@@ -976,6 +1090,39 @@ export class WalletManager {
     } catch (error) {
       console.error('Failed to import backup:', error);
       return { success: false, error: 'Failed to import backup. Invalid data format.' };
+    }
+  }
+
+  /**
+   * Get EVM private key for a wallet (for signing EVM transactions)
+   * This retrieves the private key from session storage (decrypted wallets)
+   * Only available when wallet is unlocked
+   */
+  static async getEvmPrivateKey(octraAddress: string): Promise<string | null> {
+    try {
+      // Get session wallets (decrypted)
+      const wallets = await this.getSessionWallets();
+      
+      if (!wallets || wallets.length === 0) {
+        console.warn('[WalletManager] No session wallets available');
+        return null;
+      }
+      
+      // Find wallet by address
+      const wallet = wallets.find(w => w.address === octraAddress);
+      if (!wallet || !wallet.privateKey) {
+        console.warn('[WalletManager] Wallet not found or no private key:', octraAddress.slice(0, 8));
+        return null;
+      }
+      
+      // Derive EVM private key from Octra private key
+      const { deriveEvmFromOctraKey } = await import('./evmDerive');
+      const { privateKeyHex } = deriveEvmFromOctraKey(wallet.privateKey);
+      
+      return privateKeyHex;
+    } catch (error) {
+      console.error('[WalletManager] Failed to get EVM private key:', error);
+      return null;
     }
   }
 }

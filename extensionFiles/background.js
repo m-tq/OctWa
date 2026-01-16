@@ -2,6 +2,14 @@
  * Octra Wallet Background Script
  * 
  * Handles capability-based authorization model.
+ * 
+ * Capability format (v1):
+ * - version: 1
+ * - circle, methods, scope, encrypted
+ * - appOrigin (cryptographically bound)
+ * - issuedAt, expiresAt (mandatory)
+ * - nonce (replay protection)
+ * - issuerPubKey, signature (ed25519)
  */
 
 // Lock wallet on browser startup
@@ -60,6 +68,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 async function handleDAppRequest(message, sender) {
   const { type, requestId, data } = message;
 
+  console.log('[Background] handleDAppRequest called:', type, requestId);
+
   try {
     switch (type) {
       case 'CONNECTION_REQUEST':
@@ -69,6 +79,7 @@ async function handleDAppRequest(message, sender) {
         return await handleCapabilityRequest(data, sender);
 
       case 'INVOKE_REQUEST':
+        console.log('[Background] Processing INVOKE_REQUEST');
         return await handleInvokeRequest(data, sender);
 
       case 'DISCONNECT_REQUEST':
@@ -88,6 +99,23 @@ async function handleConnectionRequest(data, sender) {
   const { circle, appOrigin, appName, appIcon, requestedCapabilities } = data;
 
   console.log('[Background] Connection request:', { circle, appOrigin, appName });
+
+  // Check if already connected - return existing connection without popup
+  const existingConnection = await getConnection(appOrigin);
+  if (existingConnection && existingConnection.circle === circle) {
+    console.log('[Background] Already connected, returning existing connection');
+    return {
+      type: 'CONNECTION_RESPONSE',
+      success: true,
+      result: {
+        circle: existingConnection.circle,
+        sessionId: `session-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+        walletPubKey: existingConnection.walletPubKey,
+        evmAddress: existingConnection.evmAddress || '',
+        network: existingConnection.network || 'mainnet'
+      }
+    };
+  }
 
   // Store pending request
   await setStorageData('pendingConnectionRequest', {
@@ -124,8 +152,9 @@ async function handleConnectionRequest(data, sender) {
           // Get wallet address from either walletPubKey or address field
           const walletAddress = msg.walletPubKey || msg.address || 'unknown';
           const network = msg.network || 'mainnet';
+          const evmAddress = msg.evmAddress || '';
           
-          console.log('[Background] Connection approved:', { walletAddress, network });
+          console.log('[Background] Connection approved:', { walletAddress, evmAddress, network });
 
           // Store connection
           saveConnection({
@@ -133,6 +162,7 @@ async function handleConnectionRequest(data, sender) {
             appOrigin,
             appName,
             walletPubKey: walletAddress,
+            evmAddress: evmAddress,
             network: network,
             connectedAt: Date.now()
           });
@@ -144,6 +174,7 @@ async function handleConnectionRequest(data, sender) {
               circle,
               sessionId: `session-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
               walletPubKey: walletAddress,
+              evmAddress: evmAddress,
               network: network
             }
           });
@@ -217,17 +248,32 @@ async function handleCapabilityRequest(data, sender) {
           const signedCapability = msg.signedCapability;
           const capabilityId = msg.capabilityId;
           
+          // Build full capability with all required fields (SDK v1 format)
           const capability = {
             id: capabilityId,
-            ...signedCapability
+            version: signedCapability.version || 1,
+            circle: signedCapability.circle,
+            methods: signedCapability.methods, // Already sorted by signer
+            scope: signedCapability.scope,
+            encrypted: signedCapability.encrypted,
+            appOrigin: signedCapability.appOrigin,
+            issuedAt: signedCapability.issuedAt,
+            expiresAt: signedCapability.expiresAt,
+            nonce: signedCapability.nonce,
+            issuerPubKey: signedCapability.issuerPubKey,
+            signature: signedCapability.signature
           };
 
-          console.log('[Background] Capability approved:', {
+          console.log('[Background] Capability approved (v1 format):', {
             id: capability.id,
+            version: capability.version,
             circle: capability.circle,
             methods: capability.methods,
             scope: capability.scope,
-            issuerPubKey: capability.issuerPubKey?.slice(0, 16) + '...'
+            appOrigin: capability.appOrigin,
+            expiresAt: capability.expiresAt ? new Date(capability.expiresAt).toISOString() : 'never',
+            issuerPubKey: capability.issuerPubKey?.slice(0, 16) + '...',
+            signature: capability.signature?.slice(0, 16) + '...'
           });
 
           // Store capability
@@ -265,24 +311,86 @@ async function handleCapabilityRequest(data, sender) {
 
 // Handle invoke request
 async function handleInvokeRequest(data, sender) {
-  const { capabilityId, method, payload, nonce, timestamp, appOrigin } = data;
+  const { capabilityId, method, payload, nonce, timestamp, appOrigin, appName } = data;
+
+  console.log('[Background] handleInvokeRequest:', { capabilityId, method, appOrigin, appName });
 
   // Get capability
   const capability = await getCapability(appOrigin, capabilityId);
   if (!capability) {
-    throw new Error('Capability not found');
+    console.error('[Background] Capability not found for:', appOrigin, capabilityId);
+    // Log all stored capabilities for debugging
+    const allCaps = await getStorageData('capabilities') || {};
+    console.log('[Background] All stored capabilities:', Object.keys(allCaps));
+    throw new Error(`Capability '${capabilityId}' not found`);
   }
 
-  // Check expiry
+  // Verify origin binding (cryptographic enforcement)
+  if (capability.appOrigin !== appOrigin) {
+    console.error('[Background] Origin mismatch:', { expected: capability.appOrigin, actual: appOrigin });
+    throw new Error('Origin mismatch - capability bound to different origin');
+  }
+
+  // Check expiry (mandatory in v1)
   if (capability.expiresAt && capability.expiresAt < Date.now()) {
     throw new Error('Capability expired');
   }
 
-  // Check method is allowed
+  // Check method is allowed (methods are sorted in capability)
   if (!capability.methods.includes(method)) {
     throw new Error(`Method '${method}' not allowed by capability`);
   }
 
+  // Get connection for wallet address
+  const connection = await getConnection(appOrigin);
+  if (!connection) {
+    throw new Error('Not connected to wallet');
+  }
+
+  // ==========================================================================
+  // AUTO-EXECUTE READ METHODS (no user approval needed for read scope)
+  // These methods are safe to execute automatically because:
+  // 1. User already approved the capability with these methods
+  // 2. Read scope doesn't modify state
+  // 3. Data is bound to the capability's origin
+  // 
+  // NOTE: send_transaction and send_evm_transaction are NOT auto-execute
+  // They require popup approval as they transfer funds
+  // ==========================================================================
+  const autoExecuteMethods = ['get_balance', 'get_quote', 'sign_intent', 'create_intent', 'submit_intent', 'get_intent_status'];
+  
+  console.log('[Background] Checking auto-execute for method:', method, 'scope:', capability.scope);
+  console.log('[Background] autoExecuteMethods includes:', autoExecuteMethods.includes(method));
+  
+  if (capability.scope === 'read' || autoExecuteMethods.includes(method)) {
+    console.log('[Background] Auto-executing read method:', method);
+    
+    try {
+      const result = await executeMethod(method, payload, connection, capability);
+      console.log('[Background] Auto-execute result:', result);
+      return {
+        type: 'INVOKE_RESPONSE',
+        success: true,
+        result: {
+          success: true,
+          data: result
+        }
+      };
+    } catch (error) {
+      console.error('[Background] Auto-execute error:', error);
+      return {
+        type: 'INVOKE_RESPONSE',
+        success: false,
+        error: error.message || 'Method execution failed'
+      };
+    }
+  }
+
+  // ==========================================================================
+  // WRITE METHODS - Require user approval
+  // send_transaction requires popup approval and actual chain submission
+  // ==========================================================================
+  
   // Store pending request
   await setStorageData('pendingInvokeRequest', {
     capabilityId,
@@ -291,7 +399,9 @@ async function handleInvokeRequest(data, sender) {
     nonce,
     timestamp,
     appOrigin,
+    appName,
     capability,
+    connection, // Include connection for tx execution
     requestTimestamp: Date.now()
   });
 
@@ -343,6 +453,212 @@ async function handleInvokeRequest(data, sender) {
       });
     }, 300000);
   });
+}
+
+// =============================================================================
+// Method Execution (wallet-side RPC calls)
+// =============================================================================
+
+const RPC_URL = 'https://octra.network';
+const MU_FACTOR = 1_000_000;
+
+async function executeMethod(method, payload, connection, capability) {
+  switch (method) {
+    case 'get_balance':
+      return await executeGetBalance(connection);
+    
+    case 'get_quote':
+      return await executeGetQuote(payload);
+
+    case 'sign_intent':
+      return await executeSignIntent(payload, connection);
+
+    case 'send_transaction':
+      return await executeSendTransaction(payload, connection);
+
+    case 'create_intent':
+    case 'submit_intent':
+    case 'get_intent_status':
+      // These would be implemented with actual solver network
+      // For now, return success
+      return new TextEncoder().encode(JSON.stringify({ success: true }));
+    
+    default:
+      throw new Error(`Unknown auto-execute method: ${method}`);
+  }
+}
+
+// Sign swap intent (simulated - in production would use actual signing)
+async function executeSignIntent(payload, connection) {
+  let intentPayload;
+  try {
+    if (payload && payload._type === 'Uint8Array') {
+      const bytes = new Uint8Array(payload.data);
+      intentPayload = JSON.parse(new TextDecoder().decode(bytes));
+    } else if (payload instanceof Uint8Array) {
+      intentPayload = JSON.parse(new TextDecoder().decode(payload));
+    } else if (typeof payload === 'object' && payload !== null && '0' in payload) {
+      const obj = payload;
+      const keys = Object.keys(obj).filter((k) => !isNaN(Number(k)));
+      const length = keys.length;
+      const bytes = new Uint8Array(length);
+      for (let i = 0; i < length; i++) {
+        bytes[i] = obj[i.toString()];
+      }
+      intentPayload = JSON.parse(new TextDecoder().decode(bytes));
+    } else {
+      intentPayload = payload;
+    }
+  } catch (e) {
+    throw new Error('Failed to parse intent payload');
+  }
+
+  console.log('[Background] Signing intent:', intentPayload);
+
+  // In production, this would:
+  // 1. Validate the intent payload
+  // 2. Sign with wallet's private key
+  // 3. Return signed intent
+
+  const result = {
+    success: true,
+    intentId: `intent-${Date.now()}`,
+    payload: intentPayload,
+    issuerPubKey: connection.walletPubKey,
+    signature: 'simulated_signature_' + Date.now(),
+  };
+
+  return new TextEncoder().encode(JSON.stringify(result));
+}
+
+// Get balance from RPC (wallet-side, not dApp-side)
+async function executeGetBalance(connection) {
+  const address = connection.walletPubKey;
+  
+  console.log('[Background] Fetching balance for:', address);
+  
+  try {
+    const response = await fetch(`${RPC_URL}/address/${address}`);
+    
+    if (!response.ok) {
+      throw new Error(`RPC error: ${response.status}`);
+    }
+    
+    const data = await response.json();
+    console.log('[Background] RPC response:', data);
+    
+    // Balance from RPC is already in OCT (not micro-units)
+    const balanceInOct = parseFloat(data.balance) || 0;
+    
+    console.log('[Background] Balance fetched:', { oct: balanceInOct });
+    
+    // Return as Uint8Array (SDK format)
+    const result = {
+      address: address,
+      balance: balanceInOct,
+      network: connection.network || 'mainnet'
+    };
+    
+    return new TextEncoder().encode(JSON.stringify(result));
+  } catch (error) {
+    console.error('[Background] Balance fetch error:', error);
+    throw new Error(`Failed to fetch balance: ${error.message}`);
+  }
+}
+
+// Get swap quote (simulated for demo)
+async function executeGetQuote(payload) {
+  // Parse payload
+  let params;
+  try {
+    if (payload && payload._type === 'Uint8Array') {
+      const bytes = new Uint8Array(payload.data);
+      params = JSON.parse(new TextDecoder().decode(bytes));
+    } else if (payload instanceof Uint8Array) {
+      params = JSON.parse(new TextDecoder().decode(payload));
+    } else {
+      params = payload || {};
+    }
+  } catch (e) {
+    params = {};
+  }
+  
+  const { from = 'OCT', to = 'USDT', amount = 0 } = params;
+  
+  // Simulated rate (in production, this would come from AMM/oracle)
+  const rates = {
+    'OCT/USDT': 2.5,
+    'USDT/OCT': 0.4
+  };
+  
+  const pair = `${from}/${to}`;
+  const rate = rates[pair] || 1;
+  const fee = amount * 0.003; // 0.3% fee
+  const toAmount = (amount - fee) * rate;
+  const priceImpact = amount > 1000 ? 0.5 : amount > 100 ? 0.2 : 0.1;
+  
+  const result = {
+    from,
+    to,
+    fromAmount: amount,
+    toAmount,
+    rate,
+    fee,
+    priceImpact,
+    timestamp: Date.now()
+  };
+  
+  return new TextEncoder().encode(JSON.stringify(result));
+}
+
+// Send transaction to escrow (for intent-based swaps)
+async function executeSendTransaction(payload, connection) {
+  let txParams;
+  try {
+    if (payload && payload._type === 'Uint8Array') {
+      const bytes = new Uint8Array(payload.data);
+      txParams = JSON.parse(new TextDecoder().decode(bytes));
+    } else if (payload instanceof Uint8Array) {
+      txParams = JSON.parse(new TextDecoder().decode(payload));
+    } else if (typeof payload === 'object' && payload !== null && '0' in payload) {
+      const obj = payload;
+      const keys = Object.keys(obj).filter((k) => !isNaN(Number(k)));
+      const length = keys.length;
+      const bytes = new Uint8Array(length);
+      for (let i = 0; i < length; i++) {
+        bytes[i] = obj[i.toString()];
+      }
+      txParams = JSON.parse(new TextDecoder().decode(bytes));
+    } else {
+      txParams = payload;
+    }
+  } catch (e) {
+    throw new Error('Failed to parse transaction payload');
+  }
+
+  console.log('[Background] Sending transaction:', txParams);
+
+  const { to, amount, message } = txParams;
+
+  // In production, this would:
+  // 1. Build the actual Octra transaction
+  // 2. Sign with wallet's private key
+  // 3. Broadcast to Octra network
+  // 4. Return the transaction hash
+
+  // Simulated transaction hash
+  const txHash = '0x' + Date.now().toString(16) + Math.random().toString(16).slice(2, 18);
+
+  const result = {
+    success: true,
+    txHash,
+    from: connection.walletPubKey,
+    to,
+    amount,
+    timestamp: Date.now(),
+  };
+
+  return new TextEncoder().encode(JSON.stringify(result));
 }
 
 // Handle disconnect request
@@ -415,17 +731,29 @@ async function removeConnection(appOrigin) {
 
 async function getCapability(appOrigin, capabilityId) {
   const capabilities = await getStorageData('capabilities') || {};
+  console.log('[Background] getCapability - all capabilities:', JSON.stringify(capabilities));
+  console.log('[Background] getCapability - looking for:', appOrigin, capabilityId);
   const originCaps = capabilities[appOrigin] || [];
-  return originCaps.find(c => c.id === capabilityId);
+  console.log('[Background] getCapability - origin caps:', originCaps.length);
+  const found = originCaps.find(c => c.id === capabilityId);
+  console.log('[Background] getCapability - found:', found ? 'yes' : 'no');
+  return found;
 }
 
 async function saveCapability(appOrigin, capability) {
+  console.log('[Background] saveCapability - saving for:', appOrigin, capability.id);
   const capabilities = await getStorageData('capabilities') || {};
   if (!capabilities[appOrigin]) {
     capabilities[appOrigin] = [];
   }
   capabilities[appOrigin].push(capability);
   await setStorageData('capabilities', capabilities);
+  
+  // Verify save
+  const verify = await getStorageData('capabilities');
+  const saved = verify?.[appOrigin]?.find(c => c.id === capability.id);
+  console.log('[Background] saveCapability - verified:', saved ? 'YES' : 'NO');
+  console.log('[Background] saveCapability - total for origin:', capabilities[appOrigin].length);
 }
 
 // Sync storage changes

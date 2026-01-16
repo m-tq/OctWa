@@ -49,15 +49,20 @@ interface StoredConnection {
   connectedAt: number;
 }
 
-// Capability stored in localStorage
+// Capability stored in localStorage (matches SDK Capability type)
 interface StoredCapability {
   id: string;
+  version: 1;
   circle: string;
   methods: string[];
   scope: 'read' | 'write' | 'compute';
   encrypted: boolean;
+  appOrigin: string;
   issuedAt: number;
-  expiresAt?: number;
+  expiresAt: number; // Mandatory in v1
+  nonce: string;
+  issuerPubKey: string;
+  signature: string;
 }
 
 interface ConnectedDAppsManagerProps {

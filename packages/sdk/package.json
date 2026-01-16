@@ -1,15 +1,15 @@
 {
   "name": "@octwa/sdk",
   "version": "1.0.0",
-  "description": "SDK for integrating dApps with Octra Wallet browser extension",
+  "description": "SDK for integrating dApps with OCTWA Wallet browser extension",
   "main": "dist/index.js",
   "module": "dist/index.mjs",
   "types": "dist/index.d.ts",
   "exports": {
     ".": {
+      "types": "./dist/index.d.ts",
       "import": "./dist/index.mjs",
-      "require": "./dist/index.js",
-      "types": "./dist/index.d.ts"
+      "require": "./dist/index.js"
     }
   },
   "files": [
@@ -23,6 +23,7 @@
     "prepublishOnly": "npm run build"
   },
   "keywords": [
+    "octwa",
     "octra",
     "wallet",
     "sdk",
