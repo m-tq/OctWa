@@ -1,8 +1,10 @@
 /**
  * ConnectedDAppsManager - Manage connected dApps and their capabilities
+ * 
+ * Syncs with both localStorage (web) and chrome.storage.local (extension)
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -39,12 +41,13 @@ import {
 import { Wallet } from '../types/wallet';
 import { useToast } from '@/hooks/use-toast';
 
-// Connection stored in localStorage
+// Connection stored in localStorage/chrome.storage
 interface StoredConnection {
   circle: string;
   appOrigin: string;
   appName: string;
   walletPubKey: string;
+  evmAddress?: string;
   network: 'testnet' | 'mainnet';
   connectedAt: number;
 }
@@ -59,7 +62,7 @@ interface StoredCapability {
   encrypted: boolean;
   appOrigin: string;
   issuedAt: number;
-  expiresAt: number; // Mandatory in v1
+  expiresAt: number;
   nonce: string;
   issuerPubKey: string;
   signature: string;
@@ -71,6 +74,9 @@ interface ConnectedDAppsManagerProps {
   isPopupMode?: boolean;
 }
 
+// Check if running in extension context
+const isExtension = typeof chrome !== 'undefined' && chrome.storage?.local;
+
 export function ConnectedDAppsManager({
   wallets,
   onClose,
@@ -78,52 +84,155 @@ export function ConnectedDAppsManager({
 }: ConnectedDAppsManagerProps) {
   const [connections, setConnections] = useState<StoredConnection[]>([]);
   const [capabilities, setCapabilities] = useState<Record<string, StoredCapability[]>>({});
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const { toast } = useToast();
+
+  // Load data from both localStorage and chrome.storage
+  const loadData = useCallback(async () => {
+    setIsRefreshing(true);
+    try {
+      let storedConnections: StoredConnection[] = [];
+      let storedCapabilities: Record<string, StoredCapability[]> = {};
+
+      if (isExtension) {
+        // Load from chrome.storage.local (extension)
+        const result = await chrome.storage.local.get(['connectedDApps', 'capabilities']);
+        storedConnections = result.connectedDApps || [];
+        storedCapabilities = result.capabilities || {};
+        
+        // Also sync to localStorage for consistency
+        localStorage.setItem('connectedDApps', JSON.stringify(storedConnections));
+        localStorage.setItem('capabilities', JSON.stringify(storedCapabilities));
+      } else {
+        // Load from localStorage (web)
+        storedConnections = JSON.parse(localStorage.getItem('connectedDApps') || '[]');
+        storedCapabilities = JSON.parse(localStorage.getItem('capabilities') || '{}');
+      }
+
+      setConnections(storedConnections);
+      setCapabilities(storedCapabilities);
+    } catch (error) {
+      console.error('[ConnectedDAppsManager] Failed to load data:', error);
+      // Fallback to localStorage
+      const storedConnections = JSON.parse(localStorage.getItem('connectedDApps') || '[]');
+      const storedCapabilities = JSON.parse(localStorage.getItem('capabilities') || '{}');
+      setConnections(storedConnections);
+      setCapabilities(storedCapabilities);
+    } finally {
+      setIsRefreshing(false);
+    }
+  }, []);
 
   useEffect(() => {
     loadData();
-  }, []);
 
-  const loadData = () => {
-    // Load connections
-    const storedConnections = JSON.parse(localStorage.getItem('connectedDApps') || '[]');
-    setConnections(storedConnections);
+    // Listen for storage changes (extension)
+    if (isExtension) {
+      const handleStorageChange = (changes: { [key: string]: chrome.storage.StorageChange }, namespace: string) => {
+        if (namespace === 'local') {
+          if (changes.connectedDApps) {
+            setConnections(changes.connectedDApps.newValue || []);
+            localStorage.setItem('connectedDApps', JSON.stringify(changes.connectedDApps.newValue || []));
+          }
+          if (changes.capabilities) {
+            setCapabilities(changes.capabilities.newValue || {});
+            localStorage.setItem('capabilities', JSON.stringify(changes.capabilities.newValue || {}));
+          }
+        }
+      };
+      
+      chrome.storage.onChanged.addListener(handleStorageChange);
+      return () => chrome.storage.onChanged.removeListener(handleStorageChange);
+    }
 
-    // Load capabilities
-    const storedCapabilities = JSON.parse(localStorage.getItem('capabilities') || '{}');
-    setCapabilities(storedCapabilities);
+    // Listen for localStorage changes (web - cross-tab sync)
+    const handleStorageEvent = (e: StorageEvent) => {
+      if (e.key === 'connectedDApps' && e.newValue) {
+        setConnections(JSON.parse(e.newValue));
+      }
+      if (e.key === 'capabilities' && e.newValue) {
+        setCapabilities(JSON.parse(e.newValue));
+      }
+    };
+    
+    window.addEventListener('storage', handleStorageEvent);
+    return () => window.removeEventListener('storage', handleStorageEvent);
+  }, [loadData]);
+
+  const handleDisconnect = async (connection: StoredConnection) => {
+    try {
+      // Remove connection
+      const updatedConnections = connections.filter(
+        (c) => c.appOrigin !== connection.appOrigin
+      );
+
+      // Remove capabilities for this origin
+      const updatedCapabilities = { ...capabilities };
+      delete updatedCapabilities[connection.appOrigin];
+
+      // Save to both storages
+      localStorage.setItem('connectedDApps', JSON.stringify(updatedConnections));
+      localStorage.setItem('capabilities', JSON.stringify(updatedCapabilities));
+
+      if (isExtension) {
+        await chrome.storage.local.set({
+          connectedDApps: updatedConnections,
+          capabilities: updatedCapabilities,
+        });
+      }
+
+      setConnections(updatedConnections);
+      setCapabilities(updatedCapabilities);
+
+      toast({
+        title: 'Disconnected',
+        description: `${connection.appName} has been disconnected. The dApp will need to request connection again.`,
+      });
+    } catch (error) {
+      console.error('[ConnectedDAppsManager] Disconnect error:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to disconnect dApp',
+        variant: 'destructive',
+      });
+    }
   };
 
-  const handleDisconnect = (connection: StoredConnection) => {
-    // Remove connection
-    const updatedConnections = connections.filter(
-      (c) => c.appOrigin !== connection.appOrigin
-    );
-    localStorage.setItem('connectedDApps', JSON.stringify(updatedConnections));
+  const handleDisconnectAll = async () => {
+    try {
+      // Clear all connections and capabilities
+      localStorage.setItem('connectedDApps', '[]');
+      localStorage.setItem('capabilities', '{}');
 
-    // Remove capabilities for this origin
-    const updatedCapabilities = { ...capabilities };
-    delete updatedCapabilities[connection.appOrigin];
-    localStorage.setItem('capabilities', JSON.stringify(updatedCapabilities));
+      if (isExtension) {
+        await chrome.storage.local.set({
+          connectedDApps: [],
+          capabilities: {},
+        });
+      }
 
-    setConnections(updatedConnections);
-    setCapabilities(updatedCapabilities);
+      setConnections([]);
+      setCapabilities({});
 
-    toast({
-      title: 'Disconnected',
-      description: `${connection.appName} has been disconnected`,
-    });
+      toast({
+        title: 'All Disconnected',
+        description: 'All dApps have been disconnected. They will need to request connection again.',
+      });
+    } catch (error) {
+      console.error('[ConnectedDAppsManager] Disconnect all error:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to disconnect all dApps',
+        variant: 'destructive',
+      });
+    }
   };
 
-  const handleDisconnectAll = () => {
-    localStorage.setItem('connectedDApps', '[]');
-    localStorage.setItem('capabilities', '{}');
-    setConnections([]);
-    setCapabilities({});
-
+  const handleRefresh = async () => {
+    await loadData();
     toast({
-      title: 'All Disconnected',
-      description: 'All dApps have been disconnected',
+      title: 'Refreshed',
+      description: 'dApp connections list updated',
     });
   };
 
@@ -154,13 +263,13 @@ export function ConnectedDAppsManager({
   const getScopeColor = (scope: string) => {
     switch (scope) {
       case 'read':
-        return 'bg-green-100 text-green-800';
+        return 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200';
       case 'write':
-        return 'bg-amber-100 text-amber-800';
+        return 'bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200';
       case 'compute':
-        return 'bg-purple-100 text-purple-800';
+        return 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200';
       default:
-        return 'bg-gray-100 text-gray-800';
+        return 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200';
     }
   };
 
@@ -190,10 +299,12 @@ export function ConnectedDAppsManager({
             <Button
               variant="outline"
               size="sm"
-              onClick={loadData}
+              onClick={handleRefresh}
+              disabled={isRefreshing}
               className={isPopupMode ? 'h-7 w-7 p-0' : ''}
+              title="Refresh connections"
             >
-              <RefreshCw className={isPopupMode ? 'h-3 w-3' : 'h-4 w-4'} />
+              <RefreshCw className={`${isPopupMode ? 'h-3 w-3' : 'h-4 w-4'} ${isRefreshing ? 'animate-spin' : ''}`} />
             </Button>
             {connections.length > 0 && (
               <AlertDialog>
@@ -215,7 +326,8 @@ export function ConnectedDAppsManager({
                       Disconnect All dApps
                     </AlertDialogTitle>
                     <AlertDialogDescription className={isPopupMode ? 'text-xs' : ''}>
-                      This will disconnect all dApps and revoke all capabilities.
+                      This will disconnect all dApps and revoke all capabilities. 
+                      Each dApp will need to request a new connection to interact with your wallet.
                     </AlertDialogDescription>
                   </AlertDialogHeader>
                   <AlertDialogFooter>
@@ -292,6 +404,13 @@ export function ConnectedDAppsManager({
                             }`}
                           >
                             Circle: {connection.circle}
+                          </p>
+                          <p
+                            className={`text-muted-foreground truncate ${
+                              isPopupMode ? 'text-[10px]' : 'text-xs'
+                            }`}
+                          >
+                            Connected: {formatDate(connection.connectedAt)}
                           </p>
                         </div>
                       </div>

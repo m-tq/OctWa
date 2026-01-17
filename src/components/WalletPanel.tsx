@@ -5,7 +5,7 @@
  * Requirements: 6.1
  */
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -22,8 +22,19 @@ import {
 } from 'lucide-react';
 import { Wallet } from '../types/wallet';
 import { useToast } from '@/hooks/use-toast';
-import { getPermissionManager } from '../permissions/permissionManager';
-import { GrantedCapabilities } from '../permissions/types';
+
+// Connection stored in localStorage/chrome.storage
+interface StoredConnection {
+  circle: string;
+  appOrigin: string;
+  appName: string;
+  walletPubKey: string;
+  network: 'testnet' | 'mainnet';
+  connectedAt: number;
+}
+
+// Check if running in extension context
+const isExtension = typeof chrome !== 'undefined' && chrome.storage?.local;
 
 const CLIPBOARD_CLEAR_DELAY = 30000;
 
@@ -48,15 +59,59 @@ export function WalletPanel({
   className = '',
 }: WalletPanelProps) {
   const [showPrivateKey, setShowPrivateKey] = useState(false);
-  const [connectedDApps, setConnectedDApps] = useState<GrantedCapabilities[]>([]);
+  const [connectedDApps, setConnectedDApps] = useState<StoredConnection[]>([]);
   const { toast } = useToast();
   const clipboardTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Load connected dApps on mount
-  useEffect(() => {
-    const pm = getPermissionManager();
-    setConnectedDApps(pm.getAllGrantedCapabilities());
+  // Load connected dApps from storage
+  const loadConnectedDApps = useCallback(async () => {
+    try {
+      let connections: StoredConnection[] = [];
+      
+      if (isExtension) {
+        const result = await chrome.storage.local.get(['connectedDApps']);
+        connections = result.connectedDApps || [];
+        // Sync to localStorage
+        localStorage.setItem('connectedDApps', JSON.stringify(connections));
+      } else {
+        connections = JSON.parse(localStorage.getItem('connectedDApps') || '[]');
+      }
+      
+      setConnectedDApps(connections);
+    } catch (error) {
+      console.error('[WalletPanel] Failed to load connected dApps:', error);
+      // Fallback to localStorage
+      const connections = JSON.parse(localStorage.getItem('connectedDApps') || '[]');
+      setConnectedDApps(connections);
+    }
   }, []);
+
+  // Load connected dApps on mount and listen for changes
+  useEffect(() => {
+    loadConnectedDApps();
+
+    // Listen for storage changes
+    if (isExtension) {
+      const handleStorageChange = (changes: { [key: string]: chrome.storage.StorageChange }, namespace: string) => {
+        if (namespace === 'local' && changes.connectedDApps) {
+          setConnectedDApps(changes.connectedDApps.newValue || []);
+        }
+      };
+      
+      chrome.storage.onChanged.addListener(handleStorageChange);
+      return () => chrome.storage.onChanged.removeListener(handleStorageChange);
+    }
+
+    // Listen for localStorage changes (web - cross-tab sync)
+    const handleStorageEvent = (e: StorageEvent) => {
+      if (e.key === 'connectedDApps' && e.newValue) {
+        setConnectedDApps(JSON.parse(e.newValue));
+      }
+    };
+    
+    window.addEventListener('storage', handleStorageEvent);
+    return () => window.removeEventListener('storage', handleStorageEvent);
+  }, [loadConnectedDApps]);
 
   // Cleanup clipboard timeout on unmount
   useEffect(() => {
@@ -240,7 +295,7 @@ export function WalletPanel({
             <div className="space-y-2">
               {connectedDApps.slice(0, 3).map((dapp) => (
                 <div
-                  key={dapp.origin}
+                  key={dapp.appOrigin}
                   className="flex items-center justify-between p-2 bg-muted/50"
                 >
                   <div className="flex items-center gap-2">
@@ -250,7 +305,7 @@ export function WalletPanel({
                     </span>
                   </div>
                   <Badge variant="secondary" className="text-xs">
-                    {dapp.capabilities.length} permissions
+                    {dapp.network}
                   </Badge>
                 </div>
               ))}

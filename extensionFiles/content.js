@@ -50,8 +50,22 @@
     });
   };
 
+  // Handle messages from background (e.g., disconnect notifications)
+  const handleBackgroundMessage = (message) => {
+    if (message.type === 'WALLET_DISCONNECTED') {
+      console.log('[Content] Wallet disconnected for origin:', message.appOrigin);
+      // Forward disconnect event to provider
+      window.postMessage({
+        source: 'octra-content-script',
+        type: 'WALLET_DISCONNECTED',
+        appOrigin: message.appOrigin
+      }, '*');
+    }
+  };
+
   // Setup
   window.addEventListener('message', handleMessage);
+  chrome.runtime.onMessage.addListener(handleBackgroundMessage);
 
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', injectProvider);

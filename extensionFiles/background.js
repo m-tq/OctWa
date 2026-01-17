@@ -727,6 +727,22 @@ async function removeConnection(appOrigin) {
   const capabilities = await getStorageData('capabilities') || {};
   delete capabilities[appOrigin];
   await setStorageData('capabilities', capabilities);
+  
+  // Notify all tabs that connection was removed
+  // This allows dApps to detect disconnection and request new connection
+  try {
+    const tabs = await chrome.tabs.query({});
+    for (const tab of tabs) {
+      if (tab.id) {
+        chrome.tabs.sendMessage(tab.id, {
+          type: 'WALLET_DISCONNECTED',
+          appOrigin: appOrigin
+        }).catch(() => {}); // Ignore errors for tabs without content script
+      }
+    }
+  } catch (e) {
+    console.log('[Background] Could not notify tabs:', e);
+  }
 }
 
 async function getCapability(appOrigin, capabilityId) {

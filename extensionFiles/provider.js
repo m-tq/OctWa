@@ -216,7 +216,14 @@
     // =========================================================================
 
     _handleResponse(data) {
-      const { requestId, type, success, result, error } = data;
+      const { requestId, type, success, result, error, appOrigin } = data;
+
+      // Handle disconnect notification from wallet
+      if (type === 'WALLET_DISCONNECTED') {
+        console.log('[Octra Provider] Wallet disconnected notification received');
+        this._emit('disconnect', { appOrigin });
+        return;
+      }
 
       if (!this._pendingRequests || !this._pendingRequests[requestId]) {
         return;
