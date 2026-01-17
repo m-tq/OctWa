@@ -13,6 +13,9 @@ interface ReceiveDialogProps {
   isPopupMode?: boolean;
   isFullscreen?: boolean;
   onBack?: () => void;
+  customAddress?: string; // For EVM mode - show EVM address instead of Octra address
+  customTitle?: string; // For EVM mode - show "Receive ETH" instead of "Receive OCT"
+  customInfo?: string; // For EVM mode - custom info text
 }
 
 export function ReceiveDialog({ 
@@ -21,14 +24,22 @@ export function ReceiveDialog({
   onOpenChange, 
   isPopupMode = false,
   isFullscreen = false,
-  onBack
+  onBack,
+  customAddress,
+  customTitle,
+  customInfo
 }: ReceiveDialogProps) {
   const [copied, setCopied] = useState(false);
   const { toast } = useToast();
 
+  // Use custom address if provided (for EVM mode), otherwise use wallet address
+  const displayAddress = customAddress || wallet.address;
+  const title = customTitle || 'Receive OCT';
+  const infoText = customInfo || 'Share this address to receive OCT tokens. Only send OCT to this address.';
+
   const copyAddress = async () => {
     try {
-      await navigator.clipboard.writeText(wallet.address);
+      await navigator.clipboard.writeText(displayAddress);
       setCopied(true);
       // Only show toast in non-fullscreen mode (expanded view)
       if (!isFullscreen) {
@@ -52,7 +63,7 @@ export function ReceiveDialog({
       {/* QR Code - Generated offline */}
       <div className="bg-white p-4 shadow-sm border">
         <QRCodeSVG 
-          value={wallet.address}
+          value={displayAddress}
           size={192}
           bgColor="#ffffff"
           fgColor="#000000"
@@ -65,7 +76,7 @@ export function ReceiveDialog({
         <p className="text-xs text-muted-foreground text-center mb-2">Your Wallet Address</p>
         <div className="bg-muted/50  p-3 border">
           <p className="font-mono text-xs text-center break-all leading-relaxed">
-            {wallet.address}
+            {displayAddress}
           </p>
         </div>
       </div>
@@ -91,7 +102,7 @@ export function ReceiveDialog({
 
       {/* Info */}
       <p className="text-xs text-muted-foreground text-center mt-4 max-w-xs px-4">
-        Share this address to receive OCT tokens. Only send OCT to this address.
+        {infoText}
       </p>
     </div>
   );
@@ -107,7 +118,7 @@ export function ReceiveDialog({
           </Button>
           <div className="flex items-center gap-2">
             <QrCode className="h-5 w-5" />
-            <h2 className="font-semibold text-sm">Receive OCT</h2>
+            <h2 className="font-semibold text-sm">{title}</h2>
           </div>
         </div>
         
@@ -126,7 +137,7 @@ export function ReceiveDialog({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <QrCode className="h-5 w-5" />
-            Receive OCT
+            {title}
           </DialogTitle>
           <DialogDescription>
             Scan QR code or copy address to receive tokens

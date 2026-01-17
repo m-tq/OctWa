@@ -25,6 +25,7 @@ import {
   Plus,
   Trash2,
   Wifi,
+  WifiOff,
   Download,
   Menu,
   RotateCcw,
@@ -45,6 +46,10 @@ import {
   FileText,
   MessageSquare,
   Coins,
+  X,
+  RefreshCw,
+  Loader2,
+  AlertCircle,
 } from 'lucide-react';
 import { ExtensionStorageManager } from '../utils/extensionStorage';
 import { MultiSend } from './MultiSend';
@@ -67,10 +72,16 @@ import { AddressBook } from './AddressBook';
 import { OnboardingOverlay, useOnboarding, resetOnboardingState } from './OnboardingOverlay';
 import { WalletLabelEditor, WalletDisplayName } from './WalletLabelEditor';
 import { DraggableWalletList } from './DraggableWalletList';
-import { EVMAssets } from './EVMAssets';
 import { Wallet } from '../types/wallet';
 import { WalletManager } from '../utils/walletManager';
 import { fetchBalance, getTransactionHistory, fetchEncryptedBalance, fetchTransactionDetails, fetchPendingTransactionByHash, getPendingPrivateTransfers, apiCache } from '../utils/api';
+import { getEVMWalletData, EVMWalletData } from '../utils/evmDerive';
+import {
+  getEVMBalance, DEFAULT_EVM_NETWORKS, EVMNetwork, getActiveEVMNetwork,
+  setActiveEVMNetwork, checkEVMRpcStatus, getEVMRpcUrl, saveEVMProvider,
+  getEVMGasPrice, getRpcDisplayName, sendEVMTransaction, getEVMTransactions, EVMTransaction,
+  getETHPrice, calculateUSDValue,
+} from '../utils/evmRpc';
 
 import { useToast } from '@/hooks/use-toast';
 import { OperationMode, saveOperationMode, loadOperationMode, isPrivateModeAvailable } from '../utils/modeStorage';
@@ -207,6 +218,24 @@ export function WalletDashboard({
   const [addressBookPrefilledAddress, setAddressBookPrefilledAddress] = useState<string>('');
   // EVM Assets state
   const [showEVMAssets, setShowEVMAssets] = useState(false);
+  // EVM Mode state (integrated mode, not popup)
+  const [evmMode, setEvmMode] = useState(false);
+  const [evmWallets, setEvmWallets] = useState<(EVMWalletData & { balance: string | null; isLoading: boolean })[]>([]);
+  const [selectedEVMWallet, setSelectedEVMWallet] = useState<(EVMWalletData & { balance: string | null; isLoading: boolean }) | null>(null);
+  const [evmNetwork, setEvmNetwork] = useState<EVMNetwork>(getActiveEVMNetwork());
+  const [evmRpcStatus, setEvmRpcStatus] = useState<'connected' | 'disconnected' | 'checking'>('checking');
+  const [evmGasPrice, setEvmGasPrice] = useState<string | null>(null);
+  const [evmTransactions, setEvmTransactions] = useState<EVMTransaction[]>([]);
+  const [isLoadingEvmTxs, setIsLoadingEvmTxs] = useState(false);
+  const [ethPrice, setEthPrice] = useState<number | null>(null);
+  const [showEvmSendDialog, setShowEvmSendDialog] = useState(false);
+  const [evmSendTo, setEvmSendTo] = useState('');
+  const [evmSendAmount, setEvmSendAmount] = useState('');
+  const [isEvmSending, setIsEvmSending] = useState(false);
+  const [evmSendError, setEvmSendError] = useState<string | null>(null);
+  const [evmTxHash, setEvmTxHash] = useState<string | null>(null);
+  const [showEvmRpcManager, setShowEvmRpcManager] = useState(false);
+  const [evmCustomRpcUrl, setEvmCustomRpcUrl] = useState('');
   // Current epoch state
   const [currentEpoch, setCurrentEpoch] = useState<number>(0);
   const [isUpdatingEpoch, setIsUpdatingEpoch] = useState(false);
@@ -854,6 +883,168 @@ export function WalletDashboard({
     }
   };
 
+  // ============================================
+  // EVM MODE FUNCTIONS
+  // ============================================
+
+  // Initialize EVM wallets when entering EVM mode
+  const initializeEvmMode = async () => {
+    const derived = wallets.map((w) => {
+      const evmData = getEVMWalletData(w.address, w.privateKey);
+      return { ...evmData, balance: null, isLoading: false };
+    });
+    setEvmWallets(derived);
+    
+    const activeEVM = derived.find((e) => e.octraAddress === wallet.address);
+    setSelectedEVMWallet(activeEVM || derived[0] || null);
+    
+    // Check RPC status
+    setEvmRpcStatus('checking');
+    try {
+      const isConnected = await checkEVMRpcStatus(evmNetwork.id);
+      setEvmRpcStatus(isConnected ? 'connected' : 'disconnected');
+      if (isConnected) {
+        const price = await getEVMGasPrice(evmNetwork.id);
+        setEvmGasPrice(price);
+      }
+    } catch {
+      setEvmRpcStatus('disconnected');
+    }
+    
+    // Fetch ETH price
+    getETHPrice().then(setEthPrice);
+  };
+
+  // Enter EVM mode
+  const enterEvmMode = async () => {
+    setEvmMode(true);
+    await initializeEvmMode();
+  };
+
+  // Exit EVM mode
+  const exitEvmMode = () => {
+    setEvmMode(false);
+    setEvmWallets([]);
+    setSelectedEVMWallet(null);
+    setEvmTransactions([]);
+  };
+
+  // Fetch EVM wallet balance
+  const fetchEvmBalance = async () => {
+    if (!selectedEVMWallet || evmRpcStatus !== 'connected') return;
+    
+    setEvmWallets((prev) => prev.map((w) => 
+      w.evmAddress === selectedEVMWallet.evmAddress ? { ...w, isLoading: true } : w
+    ));
+    setSelectedEVMWallet((prev) => (prev ? { ...prev, isLoading: true } : null));
+    
+    try {
+      const balance = await getEVMBalance(selectedEVMWallet.evmAddress, evmNetwork.id);
+      setEvmWallets((prev) => prev.map((w) => 
+        w.evmAddress === selectedEVMWallet.evmAddress ? { ...w, balance, isLoading: false } : w
+      ));
+      setSelectedEVMWallet((prev) => (prev ? { ...prev, balance, isLoading: false } : null));
+    } catch {
+      setEvmWallets((prev) => prev.map((w) => 
+        w.evmAddress === selectedEVMWallet.evmAddress ? { ...w, balance: '0.000000', isLoading: false } : w
+      ));
+      setSelectedEVMWallet((prev) => (prev ? { ...prev, balance: '0.000000', isLoading: false } : null));
+    }
+  };
+
+  // Fetch EVM transactions
+  const fetchEvmTransactions = async () => {
+    if (!selectedEVMWallet) return;
+    setIsLoadingEvmTxs(true);
+    try {
+      const txs = await getEVMTransactions(selectedEVMWallet.evmAddress, evmNetwork.id);
+      setEvmTransactions(txs);
+    } catch (error) {
+      console.error('Failed to fetch EVM transactions:', error);
+      setEvmTransactions([]);
+    } finally {
+      setIsLoadingEvmTxs(false);
+    }
+  };
+
+  // Handle EVM wallet selection
+  const handleSelectEvmWallet = (evmWallet: typeof selectedEVMWallet) => {
+    if (!evmWallet) return;
+    setSelectedEVMWallet(evmWallet);
+    setEvmTransactions([]);
+    const octraWallet = wallets.find((w) => w.address === evmWallet.octraAddress);
+    if (octraWallet) onSwitchWallet(octraWallet);
+  };
+
+  // Handle EVM network change
+  const handleEvmNetworkChange = (networkId: string) => {
+    const network = DEFAULT_EVM_NETWORKS.find((n) => n.id === networkId);
+    if (network) {
+      setEvmNetwork(network);
+      setActiveEVMNetwork(networkId);
+      setEvmWallets((prev) => prev.map((w) => ({ ...w, balance: null, isLoading: false })));
+      if (selectedEVMWallet) setSelectedEVMWallet({ ...selectedEVMWallet, balance: null, isLoading: false });
+    }
+  };
+
+  // Handle EVM send transaction
+  const handleEvmSendTransaction = async () => {
+    if (!selectedEVMWallet || !evmSendTo || !evmSendAmount) {
+      setEvmSendError('Please fill all fields');
+      return;
+    }
+    setEvmSendError(null);
+    setIsEvmSending(true);
+    setEvmTxHash(null);
+    try {
+      const hash = await sendEVMTransaction(selectedEVMWallet.privateKeyHex, evmSendTo, evmSendAmount, evmNetwork.id);
+      setEvmTxHash(hash);
+      toast({ title: 'Success!', description: 'Transaction sent successfully' });
+      setEvmSendTo('');
+      setEvmSendAmount('');
+      await fetchEvmBalance();
+      await fetchEvmTransactions();
+    } catch (error: any) {
+      setEvmSendError(error.message || 'Transaction failed');
+      toast({ title: 'Error', description: error.message || 'Transaction failed', variant: 'destructive' });
+    } finally {
+      setIsEvmSending(false);
+    }
+  };
+
+  // Save custom EVM RPC
+  const handleSaveEvmCustomRpc = () => {
+    if (evmCustomRpcUrl.trim()) {
+      saveEVMProvider(evmNetwork.id, evmCustomRpcUrl.trim());
+      setShowEvmRpcManager(false);
+      setEvmCustomRpcUrl('');
+      // Re-check RPC status
+      initializeEvmMode();
+      toast({ title: 'Saved', description: 'Custom RPC URL saved' });
+    }
+  };
+
+  // Effect: Fetch EVM data when wallet changes in EVM mode
+  useEffect(() => {
+    if (!evmMode || !selectedEVMWallet) return;
+    if (evmRpcStatus === 'connected') {
+      fetchEvmBalance();
+    }
+    fetchEvmTransactions();
+  }, [evmMode, selectedEVMWallet?.evmAddress, evmNetwork.id]);
+
+  // Effect: Fetch balance when RPC becomes connected
+  useEffect(() => {
+    if (!evmMode || !selectedEVMWallet) return;
+    if (evmRpcStatus === 'connected' && selectedEVMWallet.balance === null) {
+      fetchEvmBalance();
+    }
+  }, [evmRpcStatus]);
+
+  // ============================================
+  // END EVM MODE FUNCTIONS
+  // ============================================
+
   const handleDisconnect = async () => {
     try {
       // Use WalletManager to properly lock wallets (this will handle encryption)
@@ -1259,17 +1450,6 @@ export function WalletDashboard({
         <OnboardingOverlay onComplete={() => setShowOnboarding(false)} />
       )}
 
-      {/* EVM Assets Full Screen Modal */}
-      {!isPopupMode && (
-        <EVMAssets
-          wallets={wallets}
-          activeWallet={wallet}
-          open={showEVMAssets}
-          onOpenChange={setShowEVMAssets}
-          onSwitchWallet={onSwitchWallet}
-        />
-      )}
-
       {/* ============================================ */}
       {/* POPUP MODE - NEW FULLSCREEN UI */}
       {/* ============================================ */}
@@ -1612,6 +1792,7 @@ export function WalletDashboard({
                     src={isPopupMode ? "/icons/octwa32x32.png" : "/icons/octwa48x48.png"}
                     alt="OctWa Logo" 
                     className="h-full w-full object-contain"
+                    style={evmMode ? { filter: 'sepia(1) saturate(2) hue-rotate(-5deg) brightness(1.1)' } : undefined}
                   />
                 </Avatar>
                 <div className={`flex flex-col ${!isPopupMode && showWalletSidebar ? 'justify-center' : ''}`}>
@@ -1619,8 +1800,14 @@ export function WalletDashboard({
                     <h1 className={`${isPopupMode ? 'text-sm' : 'text-xl'} font-semibold text-foreground`}>
                       {__APP_TITLE__}
                     </h1>
+                    {/* EVM Mode Badge */}
+                    {!isPopupMode && evmMode && (
+                      <Badge className="text-xs px-2 py-0.5 bg-orange-500 text-white">
+                        EVM Mode
+                      </Badge>
+                    )}
                     {/* Mode Badge - Only show when inline modal is open, except for decrypt (has corner badge) */}
-                    {!isPopupMode && (expandedSendModal || expandedPrivateModal === 'encrypt') && (
+                    {!isPopupMode && !evmMode && (expandedSendModal || expandedPrivateModal === 'encrypt') && (
                       <Badge 
                         className={`text-xs px-2 py-0.5 pointer-events-none ${
                           operationMode === 'private' 
@@ -1711,13 +1898,16 @@ export function WalletDashboard({
                       ) : (
                         /* Expanded mode - show label + address only when wallet sidebar is hidden */
                         <>
-                          <p className="text-sm text-[#0000db] font-medium whitespace-nowrap">
-                            {getWalletDisplayName(wallet.address)} - {truncateAddress(wallet.address)}
+                          <p className={`text-sm font-medium whitespace-nowrap ${evmMode ? 'text-orange-600 dark:text-orange-400' : 'text-[#0000db]'}`}>
+                            {evmMode && selectedEVMWallet 
+                              ? `${getWalletDisplayName(selectedEVMWallet.octraAddress)} - ${selectedEVMWallet.evmAddress.slice(0, 10)}...${selectedEVMWallet.evmAddress.slice(-6)}`
+                              : `${getWalletDisplayName(wallet.address)} - ${truncateAddress(wallet.address)}`
+                            }
                           </p>
                           <Button
                             variant="ghost"
                             size="sm"
-                            onClick={() => copyToClipboard(wallet.address, 'headerAddress')}
+                            onClick={() => copyToClipboard(evmMode && selectedEVMWallet ? selectedEVMWallet.evmAddress : wallet.address, 'headerAddress')}
                             className="h-6 w-6 p-0 flex-shrink-0"
                           >
                             {copiedField === 'headerAddress' ? <Check className="h-3 w-3 text-green-500" /> : <Copy className="h-3 w-3" />}
@@ -1868,93 +2058,132 @@ export function WalletDashboard({
               ) : (
                 // Expanded mode - Full layout
                 <>
-                  <ThemeToggle isPopupMode={false} />
-                  {/* Desktop Menu Items */}
-                  <div className="hidden lg:flex items-center space-x-2">
-                    {/* Buttons with caption: RPC, dApps, Address Book */}
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setShowRPCManager(true)}
-                      className="flex items-center gap-2"
-                    >
-                      <Wifi className="h-4 w-4" />
-                      RPC
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setShowDAppsManager(true)}
-                      className="flex items-center gap-2"
-                    >
-                      <Globe className="h-4 w-4" />
-                      dApps
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setShowAddressBook(true)}
-                      className="flex items-center gap-2"
-                    >
-                      <BookUser className="h-4 w-4" />
-                      Address Book
-                    </Button>
-                    
-                    {/* Text buttons: Export Private Keys, Lock Wallet, Reset All */}
-                    <Button 
-                      variant="destructive" 
-                      size="sm"
-                      className="flex items-center gap-2"
-                      onClick={() => setShowExportKeys(true)}
-                    >
-                      <Key className="h-4 w-4" />
-                      Export Keys
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="text-orange-600 hover:text-orange-700 dark:text-orange-400 dark:hover:text-orange-300 border-orange-600 hover:border-orange-700 dark:border-orange-400 dark:hover:border-orange-300 flex items-center gap-2"
-                      onClick={() => setShowLockConfirm(true)}
-                    >
-                      <Lock className="h-4 w-4" />
-                      Lock
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setShowResetConfirm(true)}
-                      className="text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 border-red-500 hover:border-red-700 dark:border-red-400 dark:hover:border-red-300 flex items-center gap-2"
-                    >
-                      <RotateCcw className="h-4 w-4" />
-                      Reset
-                    </Button>
-                  </div>
-
-                  {/* Mobile/Tablet Hamburger Menu */}
-                  <div className="lg:hidden">
-                    <Sheet open={showMobileMenu} onOpenChange={setShowMobileMenu}>
-                      <SheetTrigger asChild>
-                        <Button variant="outline" size="sm">
-                          <Menu className="h-4 w-4" />
+                  {/* EVM Mode Header Controls */}
+                  {evmMode ? (
+                    <>
+                      <ThemeToggle isPopupMode={false} className="h-9 w-9" />
+                      <div className="flex items-center gap-2">
+                        <select
+                          value={evmNetwork.id}
+                          onChange={(e) => handleEvmNetworkChange(e.target.value)}
+                          className="h-9 px-3 pr-8 text-xs bg-background border border-orange-500/30 rounded-md text-orange-600 dark:text-orange-400 focus:outline-none focus:ring-2 focus:ring-orange-500/50 appearance-none bg-[url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2224%22%20height%3D%2224%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22%23f97316%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpolyline%20points%3D%226%209%2012%2015%2018%209%22%3E%3C%2Fpolyline%3E%3C%2Fsvg%3E')] bg-[length:16px] bg-[right_8px_center] bg-no-repeat"
+                        >
+                          {DEFAULT_EVM_NETWORKS.map((network) => (
+                            <option key={network.id} value={network.id}>
+                              {network.name}
+                            </option>
+                          ))}
+                        </select>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setShowEvmRpcManager(true)}
+                          className="h-9 text-xs border-orange-500/30 text-orange-600 dark:text-orange-400 hover:bg-orange-500/10"
+                        >
+                          <Wifi className="h-3.5 w-3.5 mr-1.5" />
+                          RPC
                         </Button>
-                      </SheetTrigger>
-                      <SheetContent side="right" className="w-80">
-                        <SheetHeader>
-                          <SheetTitle>Additional Menu</SheetTitle>
-                          <SheetDescription className="sr-only">Additional wallet settings and actions</SheetDescription>
-                        </SheetHeader>
-                        <div className="mt-6 space-y-4">
-                          {/* RPC Provider */}
-                          <Button
-                            variant="outline"
-                            onClick={() => {
-                              setShowRPCManager(true);
-                              setShowMobileMenu(false);
-                            }}
-                            className="w-full justify-start gap-2"
-                          >
-                            <Wifi className="h-4 w-4" />
-                            RPC Provider
+                      </div>
+                      {/* Exit EVM Mode Button - Red color */}
+                      <Button
+                        variant="default"
+                        size="sm"
+                        onClick={exitEvmMode}
+                        className="h-9 px-4 bg-red-500 hover:bg-red-600 text-white font-medium"
+                      >
+                        <X className="h-4 w-4 mr-2" />
+                        Exit EVM Mode
+                      </Button>
+                    </>
+                  ) : (
+                    <>
+                      <ThemeToggle isPopupMode={false} />
+                      {/* Desktop Menu Items - Hidden in EVM mode */}
+                      <div className="hidden lg:flex items-center space-x-2">
+                        {/* Buttons with caption: RPC, dApps, Address Book */}
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setShowRPCManager(true)}
+                          className="flex items-center gap-2"
+                        >
+                          <Wifi className="h-4 w-4" />
+                          RPC
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setShowDAppsManager(true)}
+                          className="flex items-center gap-2"
+                        >
+                          <Globe className="h-4 w-4" />
+                          dApps
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setShowAddressBook(true)}
+                          className="flex items-center gap-2"
+                        >
+                          <BookUser className="h-4 w-4" />
+                          Address Book
+                        </Button>
+                        
+                        {/* Text buttons: Export Private Keys, Lock Wallet, Reset All */}
+                        <Button 
+                          variant="destructive" 
+                          size="sm"
+                          className="flex items-center gap-2"
+                          onClick={() => setShowExportKeys(true)}
+                        >
+                          <Key className="h-4 w-4" />
+                          Export Keys
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="text-orange-600 hover:text-orange-700 dark:text-orange-400 dark:hover:text-orange-300 border-orange-600 hover:border-orange-700 dark:border-orange-400 dark:hover:border-orange-300 flex items-center gap-2"
+                          onClick={() => setShowLockConfirm(true)}
+                        >
+                          <Lock className="h-4 w-4" />
+                          Lock
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setShowResetConfirm(true)}
+                          className="text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 border-red-500 hover:border-red-700 dark:border-red-400 dark:hover:border-red-300 flex items-center gap-2"
+                        >
+                          <RotateCcw className="h-4 w-4" />
+                          Reset
+                        </Button>
+                      </div>
+
+                      {/* Mobile/Tablet Hamburger Menu */}
+                      <div className="lg:hidden">
+                        <Sheet open={showMobileMenu} onOpenChange={setShowMobileMenu}>
+                          <SheetTrigger asChild>
+                            <Button variant="outline" size="sm">
+                              <Menu className="h-4 w-4" />
+                            </Button>
+                          </SheetTrigger>
+                          <SheetContent side="right" className="w-80">
+                            <SheetHeader>
+                              <SheetTitle>Additional Menu</SheetTitle>
+                              <SheetDescription className="sr-only">Additional wallet settings and actions</SheetDescription>
+                            </SheetHeader>
+                            <div className="mt-6 space-y-4">
+                              {/* RPC Provider */}
+                              <Button
+                                variant="outline"
+                                onClick={() => {
+                                  setShowRPCManager(true);
+                                  setShowMobileMenu(false);
+                                }}
+                                className="w-full justify-start gap-2"
+                              >
+                                <Wifi className="h-4 w-4" />
+                                RPC Provider
                           </Button>
 
                           {/* Connected dApps */}
@@ -2025,6 +2254,8 @@ export function WalletDashboard({
                       </SheetContent>
                     </Sheet>
                   </div>
+                    </>
+                  )}
                 </>
               )}
 
@@ -2139,6 +2370,9 @@ export function WalletDashboard({
                   onOpenChange={setShowReceiveDialog}
                   isPopupMode={false}
                   isFullscreen={false}
+                  customAddress={evmMode && selectedEVMWallet ? selectedEVMWallet.evmAddress : undefined}
+                  customTitle={evmMode ? `Receive ${evmNetwork.symbol}` : undefined}
+                  customInfo={evmMode ? `Share this address to receive ${evmNetwork.symbol} tokens on ${evmNetwork.name}. Only send ${evmNetwork.symbol} to this address.` : undefined}
                 />
               )}
               
@@ -2272,14 +2506,17 @@ export function WalletDashboard({
           }}
         >
           <div className="px-6 py-6 sm:px-8 lg:px-12">
-            <ModeToggle
-              currentMode={operationMode}
-              onModeChange={handleModeChange}
-              privateEnabled={privateEnabled}
-              encryptedBalance={encryptedBalance?.encrypted || 0}
-              pendingTransfersCount={pendingTransfersCount}
-              isCompact={false}
-            />
+            {/* Hide ModeToggle when in EVM mode */}
+            {!evmMode && (
+              <ModeToggle
+                currentMode={operationMode}
+                onModeChange={handleModeChange}
+                privateEnabled={privateEnabled}
+                encryptedBalance={encryptedBalance?.encrypted || 0}
+                pendingTransfersCount={pendingTransfersCount}
+                isCompact={false}
+              />
+            )}
           </div>
         </div>
       )}
@@ -2295,40 +2532,103 @@ export function WalletDashboard({
             }}
           >
             <div className="h-full flex flex-col pt-4 pb-4 pl-4 pr-3" style={{ width: `${sidebarWidth - 8}px` }}>
-              <div className="flex items-center justify-between mb-4 mt-2">
-                <h3 className="font-semibold text-base flex items-center gap-2">
-                  <WalletIcon className="h-5 w-5" />
-                  Wallets ({wallets.length})
-                </h3>
-              </div>
-              <ScrollArea className="flex-1 -ml-4 -mr-3" stabilizeGutter>
-                <ScrollAreaContent>
-                  <DraggableWalletList
-                    wallets={wallets}
-                    activeWallet={wallet}
-                    nonce={nonce}
-                    walletNonces={walletNonces}
-                    setWalletNonces={setWalletNonces}
-                    onSwitchWallet={onSwitchWallet}
-                    onCopyAddress={copyToClipboard}
-                    onDeleteWallet={setWalletToDelete}
-                    onReorderWallets={onReorderWallets}
-                    copiedField={copiedField}
-                    isPopupMode={false}
-                  />
-                </ScrollAreaContent>
-              </ScrollArea>
-              
-              <div className="pt-4 mt-auto">
-                <Button
-                  variant="outline"
-                  onClick={() => setShowAddWalletDialog(true)}
-                  className="w-full h-10 text-sm justify-center gap-2"
-                >
-                  <Plus className="h-4 w-4" />
-                  Add Wallet
-                </Button>
-              </div>
+              {/* EVM Mode Sidebar Content */}
+              {evmMode ? (
+                <>
+                  <div className="flex items-center justify-between mb-4 mt-2">
+                    <h3 className="font-semibold text-base flex items-center gap-2 text-orange-600 dark:text-orange-400">
+                      <Coins className="h-5 w-5" />
+                      EVM Wallets ({evmWallets.length})
+                    </h3>
+                  </div>
+                  <ScrollArea className="flex-1 -ml-4 -mr-3" stabilizeGutter>
+                    <ScrollAreaContent className="space-y-0">
+                      {evmWallets.map((evmWallet, index) => {
+                        const isActive = selectedEVMWallet?.evmAddress === evmWallet.evmAddress;
+                        return (
+                          <div key={evmWallet.evmAddress}>
+                            {/* Dashed separator between wallets */}
+                            {index > 0 && (
+                              <div className="border-t border-dashed border-border mx-4" />
+                            )}
+                            <div 
+                              className="relative p-4 cursor-pointer transition-all hover:bg-muted/50"
+                              onClick={() => handleSelectEvmWallet(evmWallet)}
+                            >
+                              {/* Active indicator bar - left side */}
+                              <div className={`absolute left-0 top-1/2 -translate-y-1/2 w-1 rounded-r-full bg-orange-500 transition-all duration-200 ${
+                                isActive ? 'h-10 opacity-100' : 'h-0 opacity-0'
+                              }`} />
+                              
+                              <div className="flex items-center justify-between mb-1">
+                                <div className="flex items-center gap-2">
+                                  <Badge variant="secondary" className={`text-[10px] px-1.5 ${isActive ? 'bg-orange-500/20 text-orange-600 dark:text-orange-400' : ''}`}>
+                                    #{index + 1}
+                                  </Badge>
+                                  <span className={`text-xs truncate max-w-[140px] ${isActive ? 'text-orange-600 dark:text-orange-400 font-medium' : 'text-muted-foreground'}`}>
+                                    <WalletDisplayName address={evmWallet.octraAddress} />
+                                  </span>
+                                </div>
+                                <Button 
+                                  variant="ghost" 
+                                  size="sm" 
+                                  className="h-6 w-6 p-0" 
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    copyToClipboard(evmWallet.evmAddress, `evm-${index}`);
+                                  }}
+                                >
+                                  {copiedField === `evm-${index}` ? <Check className="h-3 w-3 text-green-500" /> : <Copy className="h-3 w-3" />}
+                                </Button>
+                              </div>
+                              <p className={`font-mono text-sm ${isActive ? 'text-orange-600 dark:text-orange-400' : 'text-muted-foreground'}`}>
+                                {evmWallet.evmAddress.slice(0, 10)}...{evmWallet.evmAddress.slice(-8)}
+                              </p>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </ScrollAreaContent>
+                  </ScrollArea>
+                </>
+              ) : (
+                /* Normal Octra Wallet Sidebar */
+                <>
+                  <div className="flex items-center justify-between mb-4 mt-2">
+                    <h3 className="font-semibold text-base flex items-center gap-2">
+                      <WalletIcon className="h-5 w-5" />
+                      Wallets ({wallets.length})
+                    </h3>
+                  </div>
+                  <ScrollArea className="flex-1 -ml-4 -mr-3" stabilizeGutter>
+                    <ScrollAreaContent>
+                      <DraggableWalletList
+                        wallets={wallets}
+                        activeWallet={wallet}
+                        nonce={nonce}
+                        walletNonces={walletNonces}
+                        setWalletNonces={setWalletNonces}
+                        onSwitchWallet={onSwitchWallet}
+                        onCopyAddress={copyToClipboard}
+                        onDeleteWallet={setWalletToDelete}
+                        onReorderWallets={onReorderWallets}
+                        copiedField={copiedField}
+                        isPopupMode={false}
+                      />
+                    </ScrollAreaContent>
+                  </ScrollArea>
+                  <div className="pt-4 mt-auto">
+                    <Button
+                      variant="outline"
+                      onClick={() => setShowAddWalletDialog(true)}
+                      className="w-full h-10 text-sm justify-center gap-2"
+                    >
+                      <Plus className="h-4 w-4" />
+                      Add Wallet
+                    </Button>
+                  </div>
+                </>
+              )}
             </div>
             
             {/* Resize Handle - positioned outside content area */}
@@ -2349,8 +2649,11 @@ export function WalletDashboard({
               if (!showWalletSidebar && showHistorySidebar) setBothPanelsHidden(false);
               if (showWalletSidebar && !showHistorySidebar) setBothPanelsHidden(true);
             }}
-            className={`fixed top-1/2 -translate-y-1/2 z-[50] h-12 w-4 flex items-center justify-center bg-muted/80 hover:bg-accent border-y border-r border-border transition-all opacity-30 hover:opacity-100 ${isResizing ? 'duration-0' : 'duration-300'}`}
-            style={{ left: showWalletSidebar ? `${sidebarWidth}px` : '0px' }}
+            className={`fixed z-[50] h-12 w-4 flex items-center justify-center bg-muted/80 hover:bg-accent border-y border-r border-border transition-all opacity-30 hover:opacity-100 ${isResizing ? 'duration-0' : 'duration-300'}`}
+            style={{
+              left: showWalletSidebar ? `${sidebarWidth}px` : '0px',
+              top: showWalletSidebar ? '73px' : '87px'
+            }}
           >
             {showWalletSidebar ? <ChevronLeft className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
           </button>
@@ -2601,149 +2904,238 @@ export function WalletDashboard({
         <div className="flex flex-col h-[calc(100vh-165px)] sm:h-[calc(100vh-180px)]">
           {/* Main Content Area */}
           <div className="flex-1 flex flex-col items-center justify-start pt-20 pb-4 overflow-auto">
-            {/* Mode Label */}
-            <div className="text-sm text-muted-foreground mb-2">
-              {operationMode === 'private' ? 'Encrypted Balance' : 'Public Balance'}
-            </div>
-
-            {/* Balance Display */}
-            <div className="text-center mb-6">
-              {isLoadingBalance || isRefreshingData ? (
-                <div className="flex items-center justify-center gap-2">
-                  <div className="w-6 h-6 rounded-full border-2 border-transparent animate-spin" style={{ borderTopColor: '#0000db' }} />
+            {/* EVM Mode Content */}
+            {evmMode ? (
+              <>
+                {/* EVM Mode Label */}
+                <div className="text-sm text-orange-600 dark:text-orange-400 mb-2 flex items-center gap-2">
+                  <Coins className="h-4 w-4" />
+                  EVM Assets - {evmNetwork.name}
                 </div>
-              ) : (
-                <div className={`text-4xl font-bold tracking-tight ${operationMode === 'private' ? 'text-[#0000db]' : ''}`}>
-                  {operationMode === 'private' 
-                    ? `${(encryptedBalance?.encrypted || 0).toFixed(8)} OCT`
-                    : `${(balance || 0).toFixed(8)} OCT`
-                  }
-                </div>
-              )}
-            </div>
 
-            {/* Encrypt/Decrypt Button */}
-            {operationMode === 'public' ? (
-              <Button
-                variant="outline"
-                className="w-full max-w-lg h-12 mb-4 border border-border"
-                onClick={() => openPrivateModal('encrypt')}
-                disabled={!balance || balance <= 0.001}
-              >
-                <Lock className="h-4 w-4 mr-2" />
-                Encrypt
-              </Button>
-            ) : (
-              <Button
-                variant="outline"
-                className="w-full max-w-lg h-12 mb-4 border border-[#0000db]/30 text-[#0000db] hover:bg-[#0000db]/10"
-                onClick={() => openPrivateModal('decrypt')}
-                disabled={!encryptedBalance || encryptedBalance.encrypted <= 0}
-              >
-                <Unlock className="h-4 w-4 mr-2" />
-                Decrypt
-              </Button>
-            )}
-
-            {/* Action Buttons */}
-            {operationMode === 'public' ? (
-              /* Public Mode Actions */
-              <div className="grid grid-cols-3 gap-4 w-full max-w-lg">
-                {/* Standard Send */}
-                <Button
-                  variant="outline"
-                  className="flex flex-col items-center gap-3 h-auto py-6 border border-border hover:border-foreground/30 hover:bg-accent transition-all"
-                  onClick={() => openSendModal('standard')}
-                >
-                  <Send className="h-8 w-8" />
-                  <span className="text-sm font-medium">Send</span>
-                  <span className="text-[10px] text-muted-foreground">Single transfer</span>
-                </Button>
-                
-                {/* Multi Send */}
-                <Button
-                  variant="outline"
-                  className="flex flex-col items-center gap-3 h-auto py-6 border border-border hover:border-foreground/30 hover:bg-accent transition-all"
-                  onClick={() => openSendModal('multi')}
-                >
-                  <Layers className="h-8 w-8" />
-                  <span className="text-sm font-medium">Multi Send</span>
-                  <span className="text-[10px] text-muted-foreground">Multiple recipients</span>
-                </Button>
-                
-                {/* Bulk Send */}
-                <Button
-                  variant="outline"
-                  className="flex flex-col items-center gap-3 h-auto py-6 border border-border hover:border-foreground/30 hover:bg-accent transition-all"
-                  onClick={() => openSendModal('bulk')}
-                >
-                  <FileText className="h-8 w-8" />
-                  <span className="text-sm font-medium">Bulk Send</span>
-                  <span className="text-[10px] text-muted-foreground">Import from file</span>
-                </Button>
-              </div>
-            ) : (
-              /* Private Mode Actions */
-              <div className="grid grid-cols-3 gap-4 w-full max-w-lg">
-                {/* Send (Private Transfer) */}
-                <Button
-                  variant="outline"
-                  className="flex flex-col items-center gap-3 h-auto py-6 border border-[#0000db]/30 hover:border-[#0000db]/50 hover:bg-[#0000db]/5 transition-all text-[#0000db]"
-                  onClick={() => openSendModal('standard')}
-                >
-                  <Send className="h-8 w-8" />
-                  <span className="text-sm font-medium">Send</span>
-                  <span className="text-[10px] text-[#0000db]/70">Private transfer</span>
-                </Button>
-                
-                {/* Multi Send - Coming Soon */}
-                <Button
-                  variant="outline"
-                  className="flex flex-col items-center gap-3 h-auto py-6 border border-[#0000db]/20 opacity-50 cursor-not-allowed"
-                  disabled
-                >
-                  <Layers className="h-8 w-8 text-[#0000db]/50" />
-                  <span className="text-sm font-medium text-[#0000db]/50">Multi Send</span>
-                  <span className="text-[10px] text-[#0000db]/40">Coming soon</span>
-                </Button>
-                
-                {/* Claim */}
-                <Button
-                  variant="outline"
-                  className="flex flex-col items-center gap-3 h-auto py-6 border border-[#0000db]/30 hover:border-[#0000db]/50 hover:bg-[#0000db]/5 transition-all text-[#0000db] relative"
-                  onClick={openClaimScreen}
-                >
-                  <Gift className="h-8 w-8" />
-                  <span className="text-sm font-medium">Claim</span>
-                  <span className="text-[10px] text-[#0000db]/70">Pending transfers</span>
-                  {pendingTransfersCount > 0 && (
-                    <Badge className="absolute -top-2 -right-2 bg-[#0000db] text-white text-[10px] h-5 min-w-5 flex items-center justify-center">
-                      {pendingTransfersCount}
-                    </Badge>
+                {/* EVM Balance Display */}
+                <div className="text-center mb-6">
+                  {selectedEVMWallet?.isLoading ? (
+                    <div className="flex items-center justify-center gap-2">
+                      <div className="w-6 h-6 rounded-full border-2 border-transparent animate-spin" style={{ borderTopColor: '#f97316' }} />
+                    </div>
+                  ) : selectedEVMWallet?.balance !== null ? (
+                    <>
+                      <div className="flex items-center justify-center gap-3">
+                        <span className="text-4xl font-bold tracking-tight text-orange-600 dark:text-orange-400">
+                          {selectedEVMWallet?.balance || '0.000000'} {evmNetwork.symbol}
+                        </span>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-8 w-8 p-0 text-orange-600 dark:text-orange-400 hover:bg-orange-500/10"
+                          onClick={() => {
+                            fetchEvmBalance();
+                            fetchEvmTransactions();
+                          }}
+                          disabled={evmRpcStatus !== 'connected' || selectedEVMWallet?.isLoading}
+                        >
+                          <RefreshCw className={`h-4 w-4 ${selectedEVMWallet?.isLoading ? 'animate-spin' : ''}`} />
+                        </Button>
+                      </div>
+                      {ethPrice !== null && selectedEVMWallet?.balance && (
+                        <div className="text-lg text-muted-foreground mt-1">
+                          ≈ {calculateUSDValue(selectedEVMWallet.balance, ethPrice)}
+                          {evmNetwork.isTestnet && <span className="text-xs ml-2">(testnet)</span>}
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    <div className="text-xl text-muted-foreground">
+                      {evmRpcStatus === 'connected' ? 'Loading...' : 'RPC Disconnected'}
+                    </div>
                   )}
-                </Button>
-              </div>
-            )}
-            
-            {/* EVM Assets Section - Only in Public Mode */}
-            {operationMode === 'public' && (
-              <div className="w-full max-w-lg">
-                <div className="border-t border-dashed border-border my-4" />
-                <Button
-                  variant="outline"
-                  className="w-full flex items-center justify-center gap-3 h-14 border border-orange-500/30 hover:border-orange-500/50 hover:bg-orange-500/5 transition-all text-orange-600 dark:text-orange-400"
-                  onClick={() => setShowEVMAssets(true)}
-                >
-                  <Coins className="h-5 w-5" />
-                  <span className="text-sm font-medium">EVM Assets</span>
-                  <span className="text-xs text-orange-500/70 ml-2">ETH / ERC20</span>
-                </Button>
-              </div>
+                </div>
+
+                {/* EVM Address Display */}
+                {selectedEVMWallet && (
+                  <div className="w-full max-w-lg mb-6 space-y-3">
+                    <div className="p-4 bg-muted/50 rounded-lg">
+                      <Label className="text-xs text-muted-foreground">EVM Address</Label>
+                      <div className="flex items-center gap-2 mt-1">
+                        <code className="flex-1 text-sm font-mono break-all text-orange-600 dark:text-orange-400">
+                          {selectedEVMWallet.evmAddress}
+                        </code>
+                        <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => copyToClipboard(selectedEVMWallet.evmAddress, 'evm-main')}>
+                          {copiedField === 'evm-main' ? <Check className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4" />}
+                        </Button>
+                        <Button variant="ghost" size="sm" className="h-8 w-8 p-0" asChild>
+                          <a href={`${evmNetwork.explorer}/address/${selectedEVMWallet.evmAddress}`} target="_blank" rel="noopener noreferrer">
+                            <ExternalLink className="h-4 w-4" />
+                          </a>
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* EVM Action Button - Send Only */}
+                <div className="w-full max-w-lg">
+                  {/* Send ETH */}
+                  <Button
+                    variant="outline"
+                    className="w-full flex flex-col items-center gap-3 h-auto py-6 border border-orange-500/30 hover:border-orange-500/50 hover:bg-orange-500/5 transition-all text-orange-600 dark:text-orange-400"
+                    onClick={() => setShowEvmSendDialog(true)}
+                    disabled={evmRpcStatus !== 'connected'}
+                  >
+                    <Send className="h-8 w-8" />
+                    <span className="text-sm font-medium">Send {evmNetwork.symbol}</span>
+                    <span className="text-[10px] text-orange-500/70">Transfer ETH</span>
+                  </Button>
+                </div>
+              </>
+            ) : (
+              /* Normal Octra Wallet Content */
+              <>
+                {/* Mode Label */}
+                <div className="text-sm text-muted-foreground mb-2">
+                  {operationMode === 'private' ? 'Encrypted Balance' : 'Public Balance'}
+                </div>
+
+                {/* Balance Display */}
+                <div className="text-center mb-6">
+                  {isLoadingBalance || isRefreshingData ? (
+                    <div className="flex items-center justify-center gap-2">
+                      <div className="w-6 h-6 rounded-full border-2 border-transparent animate-spin" style={{ borderTopColor: '#0000db' }} />
+                    </div>
+                  ) : (
+                    <div className={`text-4xl font-bold tracking-tight ${operationMode === 'private' ? 'text-[#0000db]' : ''}`}>
+                      {operationMode === 'private' 
+                        ? `${(encryptedBalance?.encrypted || 0).toFixed(8)} OCT`
+                        : `${(balance || 0).toFixed(8)} OCT`
+                      }
+                    </div>
+                  )}
+                </div>
+
+                {/* Encrypt/Decrypt Button */}
+                {operationMode === 'public' ? (
+                  <Button
+                    variant="outline"
+                    className="w-full max-w-lg h-12 mb-4 border border-border"
+                    onClick={() => openPrivateModal('encrypt')}
+                    disabled={!balance || balance <= 0.001}
+                  >
+                    <Lock className="h-4 w-4 mr-2" />
+                    Encrypt
+                  </Button>
+                ) : (
+                  <Button
+                    variant="outline"
+                    className="w-full max-w-lg h-12 mb-4 border border-[#0000db]/30 text-[#0000db] hover:bg-[#0000db]/10"
+                    onClick={() => openPrivateModal('decrypt')}
+                    disabled={!encryptedBalance || encryptedBalance.encrypted <= 0}
+                  >
+                    <Unlock className="h-4 w-4 mr-2" />
+                    Decrypt
+                  </Button>
+                )}
+
+                {/* Action Buttons */}
+                {operationMode === 'public' ? (
+                  /* Public Mode Actions */
+                  <div className="grid grid-cols-3 gap-4 w-full max-w-lg">
+                    {/* Standard Send */}
+                    <Button
+                      variant="outline"
+                      className="flex flex-col items-center gap-3 h-auto py-6 border border-border hover:border-foreground/30 hover:bg-accent transition-all"
+                      onClick={() => openSendModal('standard')}
+                    >
+                      <Send className="h-8 w-8" />
+                      <span className="text-sm font-medium">Send</span>
+                      <span className="text-[10px] text-muted-foreground">Single transfer</span>
+                    </Button>
+                    
+                    {/* Multi Send */}
+                    <Button
+                      variant="outline"
+                      className="flex flex-col items-center gap-3 h-auto py-6 border border-border hover:border-foreground/30 hover:bg-accent transition-all"
+                      onClick={() => openSendModal('multi')}
+                    >
+                      <Layers className="h-8 w-8" />
+                      <span className="text-sm font-medium">Multi Send</span>
+                      <span className="text-[10px] text-muted-foreground">Multiple recipients</span>
+                    </Button>
+                    
+                    {/* Bulk Send */}
+                    <Button
+                      variant="outline"
+                      className="flex flex-col items-center gap-3 h-auto py-6 border border-border hover:border-foreground/30 hover:bg-accent transition-all"
+                      onClick={() => openSendModal('bulk')}
+                    >
+                      <FileText className="h-8 w-8" />
+                      <span className="text-sm font-medium">Bulk Send</span>
+                      <span className="text-[10px] text-muted-foreground">Import from file</span>
+                    </Button>
+                  </div>
+                ) : (
+                  /* Private Mode Actions */
+                  <div className="grid grid-cols-3 gap-4 w-full max-w-lg">
+                    {/* Send (Private Transfer) */}
+                    <Button
+                      variant="outline"
+                      className="flex flex-col items-center gap-3 h-auto py-6 border border-[#0000db]/30 hover:border-[#0000db]/50 hover:bg-[#0000db]/5 transition-all text-[#0000db]"
+                      onClick={() => openSendModal('standard')}
+                    >
+                      <Send className="h-8 w-8" />
+                      <span className="text-sm font-medium">Send</span>
+                      <span className="text-[10px] text-[#0000db]/70">Private transfer</span>
+                    </Button>
+                    
+                    {/* Multi Send - Coming Soon */}
+                    <Button
+                      variant="outline"
+                      className="flex flex-col items-center gap-3 h-auto py-6 border border-[#0000db]/20 opacity-50 cursor-not-allowed"
+                      disabled
+                    >
+                      <Layers className="h-8 w-8 text-[#0000db]/50" />
+                      <span className="text-sm font-medium text-[#0000db]/50">Multi Send</span>
+                      <span className="text-[10px] text-[#0000db]/40">Coming soon</span>
+                    </Button>
+                    
+                    {/* Claim */}
+                    <Button
+                      variant="outline"
+                      className="flex flex-col items-center gap-3 h-auto py-6 border border-[#0000db]/30 hover:border-[#0000db]/50 hover:bg-[#0000db]/5 transition-all text-[#0000db] relative"
+                      onClick={openClaimScreen}
+                    >
+                      <Gift className="h-8 w-8" />
+                      <span className="text-sm font-medium">Claim</span>
+                      <span className="text-[10px] text-[#0000db]/70">Pending transfers</span>
+                      {pendingTransfersCount > 0 && (
+                        <Badge className="absolute -top-2 -right-2 bg-[#0000db] text-white text-[10px] h-5 min-w-5 flex items-center justify-center">
+                          {pendingTransfersCount}
+                        </Badge>
+                      )}
+                    </Button>
+                  </div>
+                )}
+                
+                {/* EVM Assets Section - Only in Public Mode */}
+                {operationMode === 'public' && (
+                  <div className="w-full max-w-lg">
+                    <div className="border-t border-dashed border-border my-4" />
+                    <Button
+                      variant="outline"
+                      className="w-full flex items-center justify-center gap-3 h-14 border border-orange-500/30 hover:border-orange-500/50 hover:bg-orange-500/5 transition-all text-orange-600 dark:text-orange-400"
+                      onClick={enterEvmMode}
+                    >
+                      <Coins className="h-5 w-5" />
+                      <span className="text-sm font-medium">EVM Assets ETH</span>
+                    </Button>
+                  </div>
+                )}
+              </>
             )}
           </div>
 
           {/* Claim Inline Screen (Private Mode) */}
-          {operationMode === 'private' && activeTab === 'claim' && (
+          {operationMode === 'private' && activeTab === 'claim' && !evmMode && (
             <div 
               className={`fixed inset-0 z-[45] bg-background/95 backdrop-blur-sm flex flex-col transition-all duration-200 ${
                 claimAnimating ? 'animate-in slide-in-from-right-4 fade-in' : ''
@@ -3007,37 +3399,137 @@ export function WalletDashboard({
                 <div className={`h-full flex flex-col p-3 pl-5 pb-6 transition-all duration-200 ${
                   txDetailsClosing ? 'animate-in slide-in-from-left-4 fade-in' : ''
                 }`}>
-                  <div className="flex items-center justify-between mb-4 mt-2 mr-2 flex-shrink-0">
-                    <h3 className={`font-semibold text-base flex items-center gap-2 ${operationMode === 'private' ? 'text-[#0000db]' : ''}`}>
-                      <History className="h-5 w-5" />
-                      {operationMode === 'private' ? 'Encrypted Activity' : 'Public Activity'}
-                    </h3>
-                    <div className="flex items-center gap-1">
-                      <Button 
-                        variant="outline" 
-                        size="sm" 
-                        className="h-7 w-7 p-0"
-                        asChild
-                      >
-                        <a href={`https://octrascan.io/addresses/${wallet.address}`} target="_blank" rel="noopener noreferrer">
-                          <ExternalLink className="h-3.5 w-3.5" />
-                        </a>
-                      </Button>
-                    </div>
-                  </div>
-                  <div className="flex-1 min-h-0 overflow-hidden">
-                    <UnifiedHistory 
-                      wallet={wallet} 
-                      transactions={transactions}
-                      onTransactionsUpdate={handleTransactionsUpdate}
-                      isLoading={isLoadingTransactions}
-                      isPopupMode={false}
-                      hideBorder={true}
-                      operationMode={operationMode}
-                      isCompact={true}
-                      onViewTxDetails={handleViewTxDetails}
-                    />
-                  </div>
+                  {/* EVM Mode History */}
+                  {evmMode ? (
+                    <>
+                      <div className="flex items-center justify-between mb-4 mt-2 mr-2 flex-shrink-0">
+                        <h3 className="font-semibold text-base flex items-center gap-2 text-orange-600 dark:text-orange-400">
+                          <History className="h-5 w-5" />
+                          EVM Activity
+                        </h3>
+                        <div className="flex items-center gap-1">
+                          <Button 
+                            variant="ghost" 
+                            size="sm" 
+                            className="h-7 w-7 p-0"
+                            onClick={fetchEvmTransactions}
+                            disabled={isLoadingEvmTxs}
+                          >
+                            <RefreshCw className={`h-3.5 w-3.5 ${isLoadingEvmTxs ? 'animate-spin' : ''}`} />
+                          </Button>
+                          {selectedEVMWallet && (
+                            <Button 
+                              variant="outline" 
+                              size="sm" 
+                              className="h-7 w-7 p-0"
+                              asChild
+                            >
+                              <a href={`${evmNetwork.explorer}/address/${selectedEVMWallet.evmAddress}`} target="_blank" rel="noopener noreferrer">
+                                <ExternalLink className="h-3.5 w-3.5" />
+                              </a>
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex-1 min-h-0 overflow-hidden">
+                        <ScrollArea className="h-full">
+                          <ScrollAreaContent className="pr-2">
+                            {isLoadingEvmTxs ? (
+                              <div className="flex items-center justify-center py-12">
+                                <Loader2 className="h-8 w-8 animate-spin text-orange-500" />
+                              </div>
+                            ) : evmTransactions.length > 0 ? (
+                              evmTransactions.map((tx, index) => (
+                                <a 
+                                  key={tx.hash} 
+                                  href={`${evmNetwork.explorer}/tx/${tx.hash}`} 
+                                  target="_blank" 
+                                  rel="noopener noreferrer"
+                                  className="block"
+                                >
+                                  {index > 0 && (
+                                    <div className="border-t border-dashed border-border mx-2" />
+                                  )}
+                                  <div className="p-3 hover:bg-muted/50 transition-colors cursor-pointer">
+                                    <div className="flex items-center justify-between mb-1">
+                                      <div className="flex items-center gap-2">
+                                        {tx.type === 'sent' ? (
+                                          <ArrowUpRight className="h-4 w-4 text-red-500" />
+                                        ) : (
+                                          <ArrowDownLeft className="h-4 w-4 text-green-500" />
+                                        )}
+                                        <span className="text-sm font-medium capitalize">{tx.type}</span>
+                                      </div>
+                                      <p className={`text-sm font-semibold ${tx.type === 'sent' ? 'text-red-500' : 'text-green-500'}`}>
+                                        {tx.type === 'sent' ? '-' : '+'}{tx.value} {evmNetwork.symbol}
+                                      </p>
+                                    </div>
+                                    <div className="flex items-center justify-between">
+                                      <code className="text-[10px] font-mono text-muted-foreground truncate max-w-[150px]">
+                                        {tx.hash.slice(0, 10)}...{tx.hash.slice(-8)}
+                                      </code>
+                                      <span className="text-[10px] text-muted-foreground">
+                                        {new Date(tx.timestamp).toLocaleDateString()}
+                                      </span>
+                                    </div>
+                                  </div>
+                                </a>
+                              ))
+                            ) : (
+                              <div className="flex items-center justify-center py-12">
+                                <div className="text-center text-muted-foreground">
+                                  <AlertCircle className="h-12 w-12 mx-auto mb-3 opacity-20" />
+                                  <p className="text-sm font-medium">No transactions found</p>
+                                  {selectedEVMWallet && (
+                                    <Button variant="link" size="sm" className="mt-4 text-orange-600 dark:text-orange-400" asChild>
+                                      <a href={`${evmNetwork.explorer}/address/${selectedEVMWallet.evmAddress}`} target="_blank" rel="noopener noreferrer">
+                                        View on Explorer <ExternalLink className="h-3 w-3 ml-1" />
+                                      </a>
+                                    </Button>
+                                  )}
+                                </div>
+                              </div>
+                            )}
+                          </ScrollAreaContent>
+                        </ScrollArea>
+                      </div>
+                    </>
+                  ) : (
+                    /* Normal Octra History */
+                    <>
+                      <div className="flex items-center justify-between mb-4 mt-2 mr-2 flex-shrink-0">
+                        <h3 className={`font-semibold text-base flex items-center gap-2 ${operationMode === 'private' ? 'text-[#0000db]' : ''}`}>
+                          <History className="h-5 w-5" />
+                          {operationMode === 'private' ? 'Encrypted Activity' : 'Public Activity'}
+                        </h3>
+                        <div className="flex items-center gap-1">
+                          <Button 
+                            variant="outline" 
+                            size="sm" 
+                            className="h-7 w-7 p-0"
+                            asChild
+                          >
+                            <a href={`https://octrascan.io/addresses/${wallet.address}`} target="_blank" rel="noopener noreferrer">
+                              <ExternalLink className="h-3.5 w-3.5" />
+                            </a>
+                          </Button>
+                        </div>
+                      </div>
+                      <div className="flex-1 min-h-0 overflow-hidden">
+                        <UnifiedHistory 
+                          wallet={wallet} 
+                          transactions={transactions}
+                          onTransactionsUpdate={handleTransactionsUpdate}
+                          isLoading={isLoadingTransactions}
+                          isPopupMode={false}
+                          hideBorder={true}
+                          operationMode={operationMode}
+                          isCompact={true}
+                          onViewTxDetails={handleViewTxDetails}
+                        />
+                      </div>
+                    </>
+                  )}
                 </div>
               )}
             </div>
@@ -3060,8 +3552,11 @@ export function WalletDashboard({
               if (showWalletSidebar && !showHistorySidebar) setBothPanelsHidden(false);
               if (!showWalletSidebar && showHistorySidebar) setBothPanelsHidden(true);
             }}
-            className={`fixed top-1/2 -translate-y-1/2 z-[50] h-12 w-4 flex items-center justify-center bg-muted/80 hover:bg-accent border-y border-l border-border transition-all opacity-30 hover:opacity-100 ${isResizingHistory ? 'duration-0' : 'duration-300'}`}
-            style={{ right: showHistorySidebar ? `${historySidebarWidth}px` : '0px' }}
+            className={`fixed z-[50] h-12 w-4 flex items-center justify-center bg-muted/80 hover:bg-accent border-y border-l border-border transition-all opacity-30 hover:opacity-100 ${isResizingHistory ? 'duration-0' : 'duration-300'}`}
+            style={{
+              right: showHistorySidebar ? `${historySidebarWidth}px` : '0px',
+              top: showWalletSidebar ? '73px' : '87px'
+            }}
           >
             {showHistorySidebar ? <ChevronRight className="h-3 w-3" /> : <ChevronLeft className="h-3 w-3" />}
           </button>
@@ -3369,44 +3864,62 @@ export function WalletDashboard({
           style={{ left: sidebarLeftOffset, right: historySidebarRightOffset }}
         >
           {/* Left: Connection Status */}
-          <div className="flex items-center gap-1.5">
-            <div className={`w-1.5 h-1.5 rounded-full ${
-              rpcStatus === 'connected' ? 'bg-[#0000db]' : 
-              rpcStatus === 'disconnected' ? 'bg-red-500' : 
-              'bg-yellow-500 animate-pulse'
-            }`} />
-            <span className={`${
-              rpcStatus === 'connected' ? 'text-[#0000db]' : 
-              rpcStatus === 'disconnected' ? 'text-red-500' : 
-              'text-yellow-500'
-            }`}>
-              {rpcStatus === 'connected' ? `Connected (${activeNetwork.charAt(0).toUpperCase() + activeNetwork.slice(1)})` : 
-               rpcStatus === 'disconnected' ? 'Disconnected' : 
-               'Connecting...'}
-            </span>
-          </div>
+          {evmMode ? (
+            /* EVM Mode Footer - Left: RPC with wifi icon */
+            <div className="flex items-center gap-1.5 text-orange-600 dark:text-orange-400">
+              <Wifi className="h-3.5 w-3.5" />
+              <span>{getRpcDisplayName(getEVMRpcUrl(evmNetwork.id))}</span>
+            </div>
+          ) : (
+            /* Normal Octra Footer */
+            <div className="flex items-center gap-1.5">
+              <div className={`w-1.5 h-1.5 rounded-full ${
+                rpcStatus === 'connected' ? 'bg-[#0000db]' : 
+                rpcStatus === 'disconnected' ? 'bg-red-500' : 
+                'bg-yellow-500 animate-pulse'
+              }`} />
+              <span className={`${
+                rpcStatus === 'connected' ? 'text-[#0000db]' : 
+                rpcStatus === 'disconnected' ? 'text-red-500' : 
+                'text-yellow-500'
+              }`}>
+                {rpcStatus === 'connected' ? `Connected (${activeNetwork.charAt(0).toUpperCase() + activeNetwork.slice(1)})` : 
+                 rpcStatus === 'disconnected' ? 'Disconnected' : 
+                 'Connecting...'}
+              </span>
+            </div>
+          )}
           
-          {/* Center: Current Epoch */}
-          <span className="flex items-center justify-center gap-1.5">
-            {isUpdatingEpoch ? (
-              <>
-                <RotateCcw className="h-3 w-3 animate-spin text-[#0000db]" />
-                <span className="text-[#0000db]">updating data...</span>
-              </>
-            ) : (
-              <>
-                <span className="text-muted-foreground">Epoch:</span>
-                <a 
-                  href={currentEpoch ? `https://octrascan.io/epochs/${currentEpoch}` : '#'}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="font-mono text-[#0000db] hover:underline"
-                >
-                  #{currentEpoch || '...'}
-                </a>
-              </>
-            )}
-          </span>
+          {/* Center: Current Epoch (only for Octra mode) / Gas price (for EVM mode) */}
+          {evmMode ? (
+            /* EVM Mode - Center: Gas price */
+            evmGasPrice && (
+              <span className="text-orange-600 dark:text-orange-400">
+                Gas: <span className="font-medium">{evmGasPrice} Gwei</span>
+              </span>
+            )
+          ) : (
+            <span className="flex items-center justify-center gap-1.5">
+              {isUpdatingEpoch ? (
+                <>
+                  <RotateCcw className="h-3 w-3 animate-spin text-[#0000db]" />
+                  <span className="text-[#0000db]">updating data...</span>
+                </>
+              ) : (
+                <>
+                  <span className="text-muted-foreground">Epoch:</span>
+                  <a 
+                    href={currentEpoch ? `https://octrascan.io/epochs/${currentEpoch}` : '#'}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="font-mono text-[#0000db] hover:underline"
+                  >
+                    #{currentEpoch || '...'}
+                  </a>
+                </>
+              )}
+            </span>
+          )}
           
           {/* Right: GitHub + Version */}
           <div className="flex items-center gap-2">
@@ -3432,6 +3945,142 @@ export function WalletDashboard({
           </div>
         </footer>
       )}
+
+      {/* EVM Send Dialog */}
+      <Dialog open={showEvmSendDialog} onOpenChange={setShowEvmSendDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-orange-600 dark:text-orange-400">
+              <Send className="h-5 w-5" />
+              Send {evmNetwork.symbol}
+            </DialogTitle>
+            <DialogDescription>
+              Send ETH from your EVM wallet
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label>To Address</Label>
+              <Input
+                placeholder="0x..."
+                value={evmSendTo}
+                onChange={(e) => setEvmSendTo(e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Amount ({evmNetwork.symbol})</Label>
+              <Input
+                type="number"
+                placeholder="0.0"
+                value={evmSendAmount}
+                onChange={(e) => setEvmSendAmount(e.target.value)}
+              />
+              {selectedEVMWallet?.balance && (
+                <p className="text-xs text-muted-foreground">
+                  Available: {selectedEVMWallet.balance} {evmNetwork.symbol}
+                </p>
+              )}
+            </div>
+            {evmSendError && (
+              <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-lg">
+                <p className="text-sm text-red-500">{evmSendError}</p>
+              </div>
+            )}
+            {evmTxHash && (
+              <div className="p-3 bg-green-500/10 border border-green-500/30 rounded-lg">
+                <p className="text-sm text-green-600 dark:text-green-400 mb-2">Transaction sent!</p>
+                <a 
+                  href={`${evmNetwork.explorer}/tx/${evmTxHash}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-xs text-orange-600 dark:text-orange-400 hover:underline flex items-center gap-1"
+                >
+                  View on Explorer <ExternalLink className="h-3 w-3" />
+                </a>
+              </div>
+            )}
+          </div>
+          <div className="flex gap-3">
+            <Button
+              variant="outline"
+              className="flex-1"
+              onClick={() => {
+                setShowEvmSendDialog(false);
+                setEvmSendTo('');
+                setEvmSendAmount('');
+                setEvmSendError(null);
+                setEvmTxHash(null);
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              className="flex-1 bg-orange-500 hover:bg-orange-600 text-white"
+              onClick={handleEvmSendTransaction}
+              disabled={isEvmSending || !evmSendTo || !evmSendAmount}
+            >
+              {isEvmSending ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Sending...
+                </>
+              ) : (
+                'Send'
+              )}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* EVM RPC Manager Dialog */}
+      <Dialog open={showEvmRpcManager} onOpenChange={setShowEvmRpcManager}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-orange-600 dark:text-orange-400">
+              <Wifi className="h-5 w-5" />
+              EVM RPC Settings
+            </DialogTitle>
+            <DialogDescription>
+              Configure RPC provider for {evmNetwork.name}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label>Current RPC</Label>
+              <div className="p-3 bg-muted rounded-lg">
+                <code className="text-xs break-all">{getRpcDisplayName(getEVMRpcUrl(evmNetwork.id))}</code>
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label>Custom RPC URL</Label>
+              <Input
+                placeholder="https://..."
+                value={evmCustomRpcUrl}
+                onChange={(e) => setEvmCustomRpcUrl(e.target.value)}
+              />
+            </div>
+          </div>
+          <div className="flex gap-3">
+            <Button
+              variant="outline"
+              className="flex-1"
+              onClick={() => {
+                setShowEvmRpcManager(false);
+                setEvmCustomRpcUrl('');
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              className="flex-1 bg-orange-500 hover:bg-orange-600 text-white"
+              onClick={handleSaveEvmCustomRpc}
+              disabled={!evmCustomRpcUrl.trim()}
+            >
+              Save
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
