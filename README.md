@@ -106,16 +106,6 @@ Manage providers via UI (RPC Provider Manager) or seed `localStorage` key `rpcPr
 </p>
 
 <p align="center">
-  <img src="public/screenshot/onboarding_first.png" alt="Onboarding" width="400">
-  <br><em>Onboarding - Create Wallet</em>
-</p>
-
-<p align="center">
-  <img src="public/screenshot/onboarding_last.png" alt="Onboarding Complete" width="400">
-  <br><em>Onboarding - Backup Seed</em>
-</p>
-
-<p align="center">
   <img src="public/screenshot/password.png" alt="Password" width="400">
   <br><em>Password Setup</em>
 </p>
@@ -123,6 +113,16 @@ Manage providers via UI (RPC Provider Manager) or seed `localStorage` key `rpcPr
 <p align="center">
   <img src="public/screenshot/dashboard.png" alt="Dashboard" width="400">
   <br><em>Dashboard</em>
+</p>
+
+<p align="center">
+  <img src="public/screenshot/onboarding_first.png" alt="Onboarding" width="400">
+  <br><em>Onboarding - first</em>
+</p>
+
+<p align="center">
+  <img src="public/screenshot/onboarding_last.png" alt="Onboarding Complete" width="400">
+  <br><em>Onboarding - last</em>
 </p>
 
 <p align="center">
