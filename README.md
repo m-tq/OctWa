@@ -160,39 +160,36 @@ Manage providers via UI (RPC Provider Manager) or seed `localStorage` key `rpcPr
 <table>
   <tr>
     <td align="center">
-      <img src="public/screenshot/popup/locked.png" alt="Locked" width="280"><br>
+      <img src="public/screenshot/popup/locked.png" alt="Locked" width="180"><br>
       <em>Locked State</em>
     </td>
     <td align="center">
-      <img src="public/screenshot/popup/dashboard.png" alt="Popup Dashboard" width="280"><br>
+      <img src="public/screenshot/popup/dashboard.png" alt="Popup Dashboard" width="180"><br>
       <em>Dashboard</em>
     </td>
-  </tr>
-  <tr>
     <td align="center">
-      <img src="public/screenshot/popup/multiwallet.png" alt="Popup Multi Wallet" width="280"><br>
+      <img src="public/screenshot/popup/multiwallet.png" alt="Popup Multi Wallet" width="180"><br>
       <em>Multi Wallet</em>
     </td>
     <td align="center">
-      <img src="public/screenshot/popup/walletmenu.png" alt="Wallet Menu" width="280"><br>
+      <img src="public/screenshot/popup/walletmenu.png" alt="Wallet Menu" width="180"><br>
       <em>Wallet Menu</em>
     </td>
   </tr>
   <tr>
     <td align="center">
-      <img src="public/screenshot/popup/publicsend.png" alt="Public Send" width="280"><br>
+      <img src="public/screenshot/popup/publicsend.png" alt="Public Send" width="180"><br>
       <em>Public Send</em>
     </td>
     <td align="center">
-      <img src="public/screenshot/popup/privatedashboard.png" alt="Private Dashboard" width="280"><br>
+      <img src="public/screenshot/popup/privatedashboard.png" alt="Private Dashboard" width="180"><br>
       <em>Private Dashboard</em>
     </td>
-  </tr>
-  <tr>
-    <td align="center" colspan="2">
-      <img src="public/screenshot/popup/privatesend.png" alt="Private Send" width="280"><br>
+    <td align="center">
+      <img src="public/screenshot/popup/privatesend.png" alt="Private Send" width="180"><br>
       <em>Private Send</em>
     </td>
+    <td align="center"></td>
   </tr>
 </table>
 
