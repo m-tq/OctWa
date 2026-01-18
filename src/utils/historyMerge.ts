@@ -151,20 +151,25 @@ export function getUnifiedHistory(
 
 /**
  * Checks if a transaction is a private transfer based on its op_type or message.
+ * Includes: private transfers, encrypt balance, decrypt balance
  * 
  * @param tx - Transaction to check
- * @returns true if the transaction is a private transfer
+ * @returns true if the transaction is a private/encrypted activity
  */
 export function isPrivateTransfer(tx: Transaction): boolean {
   // Check op_type first (most reliable)
   if (tx.op_type) {
-    return tx.op_type === 'private';
+    return tx.op_type === 'private' || tx.op_type === 'encrypt' || tx.op_type === 'decrypt';
   }
   
   // Fallback to message-based detection for older transactions
   return (
     tx.message === 'PRIVATE_TRANSFER' ||
-    tx.message === '505249564154455f5452414e53464552' || // hex encoded
+    tx.message === '505249564154455f5452414e53464552' || // hex encoded PRIVATE_TRANSFER
+    tx.message === 'ENCRYPT_BALANCE' ||
+    tx.message === 'DECRYPT_BALANCE' ||
+    tx.message === '454e43525950545f42414c414e4345' || // hex encoded ENCRYPT_BALANCE
+    tx.message === '444543525950545f42414c414e4345' || // hex encoded DECRYPT_BALANCE
     (tx.amount === 0 && !!tx.message)
   );
 }

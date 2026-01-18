@@ -218,19 +218,23 @@ class AddressBookManager {
   // ============ AUTO-MIGRATION ============
 
   // Auto-add labels for existing wallets that don't have labels
-  // Simple labeling: Wallet 1, Wallet 2, etc.
+  // Also reorder wallet labels to match the wallet order
   async autoLabelWallets(wallets: { address: string; type?: string }[]): Promise<void> {
     let hasChanges = false;
+    const newWalletLabels: WalletLabel[] = [];
     
     for (let i = 0; i < wallets.length; i++) {
       const wallet = wallets[i];
       const existing = this.getWalletLabel(wallet.address);
       
-      if (!existing) {
+      if (existing) {
+        // Keep existing label but add to new ordered list
+        newWalletLabels.push(existing);
+      } else {
         // Simple default label: Wallet 1, Wallet 2, etc.
         const defaultName = `Wallet ${i + 1}`;
         
-        this.data.walletLabels.push({
+        newWalletLabels.push({
           address: wallet.address,
           name: defaultName,
           updatedAt: Date.now(),
@@ -239,7 +243,14 @@ class AddressBookManager {
       }
     }
     
-    if (hasChanges) {
+    // Check if order changed
+    const orderChanged = this.data.walletLabels.length !== newWalletLabels.length ||
+      this.data.walletLabels.some((label, index) => 
+        newWalletLabels[index]?.address.toLowerCase() !== label.address.toLowerCase()
+      );
+    
+    if (hasChanges || orderChanged) {
+      this.data.walletLabels = newWalletLabels;
       await this.save();
     }
   }

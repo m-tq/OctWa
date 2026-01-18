@@ -297,7 +297,7 @@ export function ConnectedDAppsManager({
           </CardTitle>
           <div className="flex items-center gap-1">
             <Button
-              variant="outline"
+              variant="ghost"
               size="sm"
               onClick={handleRefresh}
               disabled={isRefreshing}
@@ -351,14 +351,10 @@ export function ConnectedDAppsManager({
 
         <CardContent className={isPopupMode ? 'p-0' : ''}>
           {connections.length === 0 ? (
-            <Alert className={`${isPopupMode ? 'py-2' : ''}`}>
-              <div className="flex items-center gap-2">
-                <Globe className={`${isPopupMode ? 'h-3 w-3' : 'h-4 w-4'} shrink-0`} />
-                <AlertDescription className={`${isPopupMode ? 'text-xs' : ''}`}>
-                  No connected dApps. Connect to a dApp to see it here.
-                </AlertDescription>
-              </div>
-            </Alert>
+            <div className={`flex items-center gap-2 text-muted-foreground ${isPopupMode ? 'py-2 text-xs' : 'py-4'}`}>
+              <Globe className={`${isPopupMode ? 'h-3 w-3' : 'h-4 w-4'} shrink-0`} />
+              <span>No connected dApps. Connect to a dApp to see it here.</span>
+            </div>
           ) : (
             <div className={isPopupMode ? 'space-y-2' : 'space-y-4'}>
               {connections.map((connection) => {

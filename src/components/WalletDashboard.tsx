@@ -1747,7 +1747,7 @@ export function WalletDashboard({
                       ('parsed_tx' in selectedTxDetails && selectedTxDetails.parsed_tx.message)) && (
                       <div className="py-2">
                         <span className="text-[10px] text-muted-foreground">Message</span>
-                        <p className="text-xs mt-0.5 break-all">
+                        <p className="text-[10px] mt-0.5 break-all">
                           {'message' in selectedTxDetails ? selectedTxDetails.message : selectedTxDetails.parsed_tx.message}
                         </p>
                       </div>
@@ -1755,20 +1755,22 @@ export function WalletDashboard({
                   </div>
 
                   {/* View on Explorer - outside divide container */}
-                  <Button
-                    variant="outline"
-                    className="w-full h-10 mt-4"
-                    asChild
-                  >
-                    <a 
-                      href={`https://octrascan.io/transactions/${selectedTxHash}`} 
-                      target="_blank" 
-                      rel="noopener noreferrer"
+                  <div className="pt-4 mt-4 border-t border-dashed border-x-0 border-b-0 border-border">
+                    <Button
+                      variant="ghost"
+                      className="w-full h-10"
+                      asChild
                     >
-                      <ExternalLink className="h-4 w-4 mr-2" />
-                      View on Explorer
-                    </a>
-                  </Button>
+                      <a 
+                        href={`https://octrascan.io/transactions/${selectedTxHash}`} 
+                        target="_blank" 
+                        rel="noopener noreferrer"
+                      >
+                        <ExternalLink className="h-4 w-4 mr-2" />
+                        View on Explorer
+                      </a>
+                    </Button>
+                  </div>
                 </>
                 ) : (
                   <div className="text-center py-12 text-muted-foreground">
@@ -1784,7 +1786,7 @@ export function WalletDashboard({
       {/* Header - Fixed position for expanded mode */}
       <header className={`octra-header w-full ${isPopupMode ? 'sticky top-0' : 'fixed top-0 left-0 right-0'} z-50`}>
         <div className={`w-full ${isPopupMode ? 'px-3' : 'px-6'}`}>
-          <div className={`flex items-center justify-between ${isPopupMode ? 'py-1' : 'py-2 sm:py-4'}`}>
+          <div className={`flex items-center justify-between ${isPopupMode ? 'py-1' : 'py-2'}`}>
             <div className="flex items-center space-x-4">
               <div className={`flex ${isPopupMode ? 'items-center space-x-2' : 'items-center space-x-3'}`}>
                 <Avatar className={`${isPopupMode ? 'h-6 w-6' : 'h-10 w-10'} flex-shrink-0`}>
@@ -2066,7 +2068,7 @@ export function WalletDashboard({
                         <select
                           value={evmNetwork.id}
                           onChange={(e) => handleEvmNetworkChange(e.target.value)}
-                          className="h-9 px-3 pr-8 text-xs bg-background border border-orange-500/30 rounded-md text-orange-600 dark:text-orange-400 focus:outline-none focus:ring-2 focus:ring-orange-500/50 appearance-none bg-[url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2224%22%20height%3D%2224%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22%23f97316%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpolyline%20points%3D%226%209%2012%2015%2018%209%22%3E%3C%2Fpolyline%3E%3C%2Fsvg%3E')] bg-[length:16px] bg-[right_8px_center] bg-no-repeat"
+                          className="h-9 px-3 pr-8 text-xs bg-background rounded-md text-orange-600 dark:text-orange-400 focus:outline-none focus:ring-2 focus:ring-orange-500/50 appearance-none bg-[url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2224%22%20height%3D%2224%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22%23f97316%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpolyline%20points%3D%226%209%2012%2015%2018%209%22%3E%3C%2Fpolyline%3E%3C%2Fsvg%3E')] bg-[length:16px] bg-[right_8px_center] bg-no-repeat hover:bg-orange-500/10"
                         >
                           {DEFAULT_EVM_NETWORKS.map((network) => (
                             <option key={network.id} value={network.id}>
@@ -2075,21 +2077,23 @@ export function WalletDashboard({
                           ))}
                         </select>
                         <Button
-                          variant="outline"
+                          variant="ghost"
                           size="sm"
                           onClick={() => setShowEvmRpcManager(true)}
-                          className="h-9 text-xs border-orange-500/30 text-orange-600 dark:text-orange-400 hover:bg-orange-500/10"
+                          className="h-9 text-xs text-orange-600 dark:text-orange-400 hover:bg-orange-500/10"
                         >
                           <Wifi className="h-3.5 w-3.5 mr-1.5" />
                           RPC
                         </Button>
                       </div>
+                      {/* Dashed separator */}
+                      <div className="h-5 border-l border-dashed border-border mx-1" />
                       {/* Exit EVM Mode Button - Red color */}
                       <Button
-                        variant="default"
+                        variant="ghost"
                         size="sm"
                         onClick={exitEvmMode}
-                        className="h-9 px-4 bg-red-500 hover:bg-red-600 text-white font-medium"
+                        className="h-9 px-4 text-red-500 hover:text-red-600 hover:bg-red-500/10 font-medium"
                       >
                         <X className="h-4 w-4 mr-2" />
                         Exit EVM Mode
@@ -2102,7 +2106,7 @@ export function WalletDashboard({
                       <div className="hidden lg:flex items-center space-x-2">
                         {/* Buttons with caption: RPC, dApps, Address Book */}
                         <Button
-                          variant="outline"
+                          variant="ghost"
                           size="sm"
                           onClick={() => setShowRPCManager(true)}
                           className="flex items-center gap-2"
@@ -2111,7 +2115,7 @@ export function WalletDashboard({
                           RPC
                         </Button>
                         <Button
-                          variant="outline"
+                          variant="ghost"
                           size="sm"
                           onClick={() => setShowDAppsManager(true)}
                           className="flex items-center gap-2"
@@ -2120,7 +2124,7 @@ export function WalletDashboard({
                           dApps
                         </Button>
                         <Button
-                          variant="outline"
+                          variant="ghost"
                           size="sm"
                           onClick={() => setShowAddressBook(true)}
                           className="flex items-center gap-2"
@@ -2131,28 +2135,28 @@ export function WalletDashboard({
                         
                         {/* Text buttons: Export Private Keys, Lock Wallet, Reset All */}
                         <Button 
-                          variant="destructive" 
+                          variant="ghost" 
                           size="sm"
-                          className="flex items-center gap-2"
+                          className="text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 flex items-center gap-2"
                           onClick={() => setShowExportKeys(true)}
                         >
                           <Key className="h-4 w-4" />
                           Export Keys
                         </Button>
                         <Button
-                          variant="outline"
+                          variant="ghost"
                           size="sm"
-                          className="text-orange-600 hover:text-orange-700 dark:text-orange-400 dark:hover:text-orange-300 border-orange-600 hover:border-orange-700 dark:border-orange-400 dark:hover:border-orange-300 flex items-center gap-2"
+                          className="text-orange-600 hover:text-orange-700 dark:text-orange-400 dark:hover:text-orange-300 flex items-center gap-2"
                           onClick={() => setShowLockConfirm(true)}
                         >
                           <Lock className="h-4 w-4" />
                           Lock
                         </Button>
                         <Button
-                          variant="outline"
+                          variant="ghost"
                           size="sm"
                           onClick={() => setShowResetConfirm(true)}
-                          className="text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 border-red-500 hover:border-red-700 dark:border-red-400 dark:hover:border-red-300 flex items-center gap-2"
+                          className="text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 flex items-center gap-2"
                         >
                           <RotateCcw className="h-4 w-4" />
                           Reset
@@ -2163,7 +2167,7 @@ export function WalletDashboard({
                       <div className="lg:hidden">
                         <Sheet open={showMobileMenu} onOpenChange={setShowMobileMenu}>
                           <SheetTrigger asChild>
-                            <Button variant="outline" size="sm">
+                            <Button variant="ghost" size="sm">
                               <Menu className="h-4 w-4" />
                             </Button>
                           </SheetTrigger>
@@ -2502,7 +2506,7 @@ export function WalletDashboard({
           style={{ 
             left: sidebarLeftOffset, 
             right: historySidebarRightOffset,
-            top: showWalletSidebar ? '65px' : '85px'
+            top: showWalletSidebar ? '49px' : '69px'
           }}
         >
           <div className="px-6 py-6 sm:px-8 lg:px-12">
@@ -2528,7 +2532,7 @@ export function WalletDashboard({
             className={`fixed left-0 bottom-0 z-30 bg-background border-r border-border transition-all ${isResizing ? 'duration-0' : 'duration-300'} ${showWalletSidebar ? '' : 'w-0'} overflow-hidden`}
             style={{ 
               width: showWalletSidebar ? `${sidebarWidth}px` : '0px',
-              top: showWalletSidebar ? '65px' : '85px'
+              top: showWalletSidebar ? '49px' : '69px'
             }}
           >
             <div className="h-full flex flex-col pt-4 pb-4 pl-4 pr-3" style={{ width: `${sidebarWidth - 8}px` }}>
@@ -2617,9 +2621,9 @@ export function WalletDashboard({
                       />
                     </ScrollAreaContent>
                   </ScrollArea>
-                  <div className="pt-4 mt-auto">
+                  <div className="pt-4 mt-auto border-t border-dashed border-x-0 border-b-0 border-border">
                     <Button
-                      variant="outline"
+                      variant="ghost"
                       onClick={() => setShowAddWalletDialog(true)}
                       className="w-full h-10 text-sm justify-center gap-2"
                     >
@@ -2652,7 +2656,7 @@ export function WalletDashboard({
             className={`fixed z-[50] h-12 w-4 flex items-center justify-center bg-muted/80 hover:bg-accent border-y border-r border-border transition-all opacity-30 hover:opacity-100 ${isResizing ? 'duration-0' : 'duration-300'}`}
             style={{
               left: showWalletSidebar ? `${sidebarWidth}px` : '0px',
-              top: showWalletSidebar ? '73px' : '87px'
+              top: showWalletSidebar ? '57px' : '71px'
             }}
           >
             {showWalletSidebar ? <ChevronLeft className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
@@ -2665,7 +2669,7 @@ export function WalletDashboard({
         className={isPopupMode ? '' : `transition-[padding-left,padding-right] ${isResizing || isResizingHistory ? 'duration-0' : 'duration-300'} ease-out`}
         style={!isPopupMode ? { paddingLeft: sidebarLeftOffset, paddingRight: historySidebarRightOffset } : undefined}
       >
-        <main className={isPopupMode ? 'octra-container pt-0 pb-0 px-3 flex flex-col h-[calc(100vh-50px)] overflow-hidden' : 'pt-[149px] sm:pt-[165px] pb-16 px-6 sm:px-8 lg:px-12 sm:pb-20'}>
+        <main className={isPopupMode ? 'octra-container pt-0 pb-0 px-3 flex flex-col h-[calc(100vh-50px)] overflow-hidden' : 'pt-[149px] pb-16 px-6 sm:px-8 lg:px-12 sm:pb-20'}>
         {/* ============================================ */}
         {/* POPUP MODE - NEW MAIN UI */}
         {/* ============================================ */}
@@ -2901,7 +2905,7 @@ export function WalletDashboard({
         /* ============================================ */
         /* EXPANDED MODE - NEW DASHBOARD UI */
         /* ============================================ */
-        <div className="flex flex-col h-[calc(100vh-165px)] sm:h-[calc(100vh-180px)]">
+        <div className="flex flex-col h-[calc(100vh-149px)]">
           {/* Main Content Area */}
           <div className="flex-1 flex flex-col items-center justify-start pt-20 pb-4 overflow-auto">
             {/* EVM Mode Content */}
@@ -3141,7 +3145,7 @@ export function WalletDashboard({
                 claimAnimating ? 'animate-in slide-in-from-right-4 fade-in' : ''
               } ${claimClosing ? 'animate-out slide-out-to-right-4 fade-out' : ''}`}
               style={{ 
-                top: showWalletSidebar ? '65px' : '85px', 
+                top: showWalletSidebar ? '49px' : '69px', 
                 left: sidebarLeftOffset,
                 right: historySidebarRightOffset,
                 bottom: '40px'
@@ -3190,7 +3194,7 @@ export function WalletDashboard({
             className={`fixed right-0 bottom-0 z-30 bg-background border-l border-border transition-all ${isResizingHistory ? 'duration-0' : 'duration-300'} ${showHistorySidebar ? '' : 'w-0'} overflow-hidden`}
             style={{ 
               width: showHistorySidebar ? `${historySidebarWidth}px` : '0px',
-              top: showWalletSidebar ? '65px' : '85px'
+              top: showWalletSidebar ? '49px' : '69px'
             }}
           >
             <div className="h-full flex flex-col" style={{ width: `${historySidebarWidth}px` }}>
@@ -3358,7 +3362,7 @@ export function WalletDashboard({
                             ('parsed_tx' in selectedTxDetails && selectedTxDetails.parsed_tx.message)) && (
                             <div className="py-2.5">
                               <span className="text-xs text-muted-foreground">Message</span>
-                              <p className="text-sm mt-1 break-all">
+                              <p className="text-xs mt-1 break-all">
                                 {'message' in selectedTxDetails ? selectedTxDetails.message : selectedTxDetails.parsed_tx.message}
                               </p>
                             </div>
@@ -3370,20 +3374,22 @@ export function WalletDashboard({
 
                         {/* View on Explorer - outside divide container */}
                         {!('stage_status' in selectedTxDetails) && (
-                          <Button
-                            variant="outline"
-                            className="w-full h-10 text-sm mt-4"
-                            asChild
-                          >
-                            <a 
-                              href={`https://octrascan.io/transactions/${selectedTxHash}`} 
-                              target="_blank" 
-                              rel="noopener noreferrer"
+                          <div className="pt-4 border-t border-dashed border-x-0 border-b-0 border-border">
+                            <Button
+                              variant="ghost"
+                              className="w-full h-10 text-sm"
+                              asChild
                             >
-                              <ExternalLink className="h-4 w-4 mr-2" />
-                              View on Explorer
-                            </a>
-                          </Button>
+                              <a 
+                                href={`https://octrascan.io/transactions/${selectedTxHash}`} 
+                                target="_blank" 
+                                rel="noopener noreferrer"
+                              >
+                                <ExternalLink className="h-4 w-4 mr-2" />
+                                View on Explorer
+                              </a>
+                            </Button>
+                          </div>
                         )}
                       </>
                       ) : (
@@ -3419,7 +3425,7 @@ export function WalletDashboard({
                           </Button>
                           {selectedEVMWallet && (
                             <Button 
-                              variant="outline" 
+                              variant="ghost" 
                               size="sm" 
                               className="h-7 w-7 p-0"
                               asChild
@@ -3504,7 +3510,7 @@ export function WalletDashboard({
                         </h3>
                         <div className="flex items-center gap-1">
                           <Button 
-                            variant="outline" 
+                            variant="ghost" 
                             size="sm" 
                             className="h-7 w-7 p-0"
                             asChild
@@ -3555,7 +3561,7 @@ export function WalletDashboard({
             className={`fixed z-[50] h-12 w-4 flex items-center justify-center bg-muted/80 hover:bg-accent border-y border-l border-border transition-all opacity-30 hover:opacity-100 ${isResizingHistory ? 'duration-0' : 'duration-300'}`}
             style={{
               right: showHistorySidebar ? `${historySidebarWidth}px` : '0px',
-              top: showWalletSidebar ? '73px' : '87px'
+              top: showWalletSidebar ? '57px' : '71px'
             }}
           >
             {showHistorySidebar ? <ChevronRight className="h-3 w-3" /> : <ChevronLeft className="h-3 w-3" />}
@@ -3570,7 +3576,7 @@ export function WalletDashboard({
             sendModalAnimating ? 'animate-send-modal-enter' : ''
           } ${sendModalClosing ? 'animate-send-modal-exit' : ''}`}
           style={{ 
-            top: showWalletSidebar ? '65px' : '85px', 
+            top: showWalletSidebar ? '49px' : '69px', 
             left: sidebarLeftOffset,
             right: historySidebarRightOffset,
             bottom: '40px'
@@ -3712,7 +3718,7 @@ export function WalletDashboard({
             privateModalAnimating ? 'animate-send-modal-enter' : ''
           } ${privateModalClosing ? 'animate-send-modal-exit' : ''}`}
           style={{ 
-            top: showWalletSidebar ? '65px' : '85px', 
+            top: showWalletSidebar ? '49px' : '69px', 
             left: sidebarLeftOffset,
             right: historySidebarRightOffset,
             bottom: '40px'
@@ -3860,7 +3866,7 @@ export function WalletDashboard({
       {/* Footer Credit - Only for expanded mode */}
       {!isPopupMode && (
         <footer 
-          className={`fixed bottom-0 py-2 px-4 text-xs text-muted-foreground bg-background/80 backdrop-blur-sm border-t border-border flex items-center justify-between transition-[left,right] ${isResizing || isResizingHistory ? 'duration-0' : 'duration-300'} ease-out z-[46]`}
+          className={`fixed bottom-0 py-2 px-4 text-xs text-muted-foreground bg-background/80 backdrop-blur-sm border-t border-x-0 border-b-0 border-border flex items-center justify-between transition-[left,right] ${isResizing || isResizingHistory ? 'duration-0' : 'duration-300'} ease-out z-[46]`}
           style={{ left: sidebarLeftOffset, right: historySidebarRightOffset }}
         >
           {/* Left: Connection Status */}

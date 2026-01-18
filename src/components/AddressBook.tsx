@@ -253,7 +253,7 @@ export function AddressBook({
         <div className="flex items-center gap-1">
           <Button
             size="sm"
-            variant="outline"
+            variant="ghost"
             onClick={handleImport}
             className={isPopupMode ? 'h-6 w-6 p-0' : 'h-8 w-8 p-0'}
             title="Import contacts"
@@ -262,7 +262,7 @@ export function AddressBook({
           </Button>
           <Button
             size="sm"
-            variant="outline"
+            variant="ghost"
             onClick={handleExport}
             disabled={contacts.length === 0}
             className={isPopupMode ? 'h-6 w-6 p-0' : 'h-8 w-8 p-0'}
@@ -272,11 +272,12 @@ export function AddressBook({
           </Button>
           <Button
             size="sm"
+            variant="ghost"
             onClick={() => {
               resetForm();
               setShowAddDialog(true);
             }}
-            className={`bg-[#0000db] hover:bg-[#0000db]/90 ${isPopupMode ? 'h-6 text-[10px] px-2' : ''}`}
+            className={`text-[#0000db] hover:text-[#0000db] hover:bg-[#0000db]/10 ${isPopupMode ? 'h-6 text-[10px] px-2' : ''}`}
           >
             <Plus className={isPopupMode ? 'h-3 w-3 mr-0.5' : 'h-4 w-4 mr-1.5'} />
             {isPopupMode ? 'Add' : 'Add'}

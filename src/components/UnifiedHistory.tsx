@@ -247,7 +247,7 @@ export function UnifiedHistory({ wallet, transactions, onTransactionsUpdate, isL
         </div>
         <div className="flex items-center gap-1">
           {!isCompact && (
-            <Button variant="outline" size="sm" asChild className={isPopupMode ? 'h-7 px-2' : ''}>
+            <Button variant="ghost" size="sm" asChild className={isPopupMode ? 'h-7 px-2' : ''}>
               <a href={`https://octrascan.io/addresses/${wallet.address}`} target="_blank" rel="noopener noreferrer">
                 <ExternalLink className={`${isPopupMode ? 'h-3 w-3' : 'h-4 w-4'} ${isPopupMode ? '' : 'mr-2'}`} />
                 {!isPopupMode && 'View All'}
@@ -259,45 +259,53 @@ export function UnifiedHistory({ wallet, transactions, onTransactionsUpdate, isL
       <CardContent className={`${isPopupMode ? 'px-3 pb-3 pt-0' : ''} ${isCompact ? 'flex-1 overflow-hidden flex flex-col px-0 pb-0' : ''}`}>
         {/* Filter Buttons */}
         <div className={`flex ${isPopupMode ? 'flex-wrap gap-1 mb-2' : isCompact ? 'items-center justify-between gap-2 mb-4 flex-shrink-0' : 'items-center justify-between mb-3'}`}>
-          <div className={`flex flex-wrap ${isPopupMode ? 'gap-2' : 'gap-1.5'}`}>
+          <div className={`flex items-center ${isPopupMode ? 'flex-wrap gap-2' : 'gap-0'}`}>
             {/* All filter */}
             <Button
-              variant={activeFilter === 'all' ? 'default' : 'outline'}
+              variant="ghost"
               size="sm"
               onClick={() => setActiveFilter('all')}
               className={`${isPopupMode ? 'h-6 px-2 text-[10px]' : 'h-7 px-2.5 text-xs'} ${
-                activeFilter === 'all' && operationMode === 'private'
-                  ? 'bg-[#0000db] hover:bg-[#0000db]/90'
-                  : ''
+                activeFilter === 'all'
+                  ? operationMode === 'private'
+                    ? 'bg-[#0000db]/10 text-[#0000db] dark:bg-[#0000db]/20'
+                    : 'bg-accent text-accent-foreground'
+                  : 'text-muted-foreground'
               }`}
             >
               All
             </Button>
 
+            {/* Dashed separator */}
+            {!isPopupMode && <div className="h-4 border-l border-dashed border-border mx-1" />}
+
             {/* Sent filter with icon - red theme */}
             <Button
-              variant={activeFilter === 'sent' ? 'default' : 'outline'}
+              variant="ghost"
               size="sm"
               onClick={() => setActiveFilter('sent')}
               className={`${isPopupMode ? 'h-6 px-2 text-[10px]' : 'h-7 px-2.5 text-xs'} ${
                 activeFilter === 'sent'
-                  ? 'bg-red-500 hover:bg-red-600 text-white border-red-500'
-                  : 'border-red-300 text-red-600 hover:bg-red-50 hover:text-red-700 dark:border-red-800 dark:text-red-400 dark:hover:bg-red-950'
+                  ? 'bg-red-50 text-red-700 dark:bg-red-950 dark:text-red-400'
+                  : 'text-red-600 hover:bg-red-50 hover:text-red-700 dark:text-red-400 dark:hover:bg-red-950'
               }`}
             >
               <ArrowUpRight className={`${isPopupMode ? 'h-3 w-3' : 'h-3.5 w-3.5'} ${sentCount > 0 ? 'mr-1' : ''}`} />
               {sentCount > 0 && <span>{sentCount}</span>}
             </Button>
 
+            {/* Dashed separator */}
+            {!isPopupMode && <div className="h-4 border-l border-dashed border-border mx-1" />}
+
             {/* Received filter with icon - green theme */}
             <Button
-              variant={activeFilter === 'received' ? 'default' : 'outline'}
+              variant="ghost"
               size="sm"
               onClick={() => setActiveFilter('received')}
               className={`${isPopupMode ? 'h-6 px-2 text-[10px]' : 'h-7 px-2.5 text-xs'} ${
                 activeFilter === 'received'
-                  ? 'bg-green-500 hover:bg-green-600 text-white border-green-500'
-                  : 'border-green-300 text-green-600 hover:bg-green-50 hover:text-green-700 dark:border-green-800 dark:text-green-400 dark:hover:bg-green-950'
+                  ? 'bg-green-50 text-green-700 dark:bg-green-950 dark:text-green-400'
+                  : 'text-green-600 hover:bg-green-50 hover:text-green-700 dark:text-green-400 dark:hover:bg-green-950'
               }`}
             >
               <ArrowDownLeft className={`${isPopupMode ? 'h-3 w-3' : 'h-3.5 w-3.5'} ${receivedCount > 0 ? 'mr-1' : ''}`} />
@@ -306,24 +314,28 @@ export function UnifiedHistory({ wallet, transactions, onTransactionsUpdate, isL
 
             {/* Contract filter - only for public mode - purple theme */}
             {operationMode === 'public' && (
-              <Button
-                variant={activeFilter === 'contract' ? 'default' : 'outline'}
-                size="sm"
-                onClick={() => setActiveFilter('contract')}
-                className={`${isPopupMode ? 'h-6 px-2 text-[10px]' : 'h-7 px-2.5 text-xs'} ${
-                  activeFilter === 'contract'
-                    ? 'bg-purple-500 hover:bg-purple-600 text-white border-purple-500'
-                    : 'border-purple-300 text-purple-600 hover:bg-purple-50 hover:text-purple-700 dark:border-purple-800 dark:text-purple-400 dark:hover:bg-purple-950'
-                }`}
-              >
-                <Code className={`${isPopupMode ? 'h-3 w-3' : 'h-3.5 w-3.5'} ${contractCallCount > 0 ? 'mr-1' : ''}`} />
-                {contractCallCount > 0 && <span>{contractCallCount}</span>}
-              </Button>
+              <>
+                {/* Dashed separator */}
+                {!isPopupMode && <div className="h-4 border-l border-dashed border-border mx-1" />}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setActiveFilter('contract')}
+                  className={`${isPopupMode ? 'h-6 px-2 text-[10px]' : 'h-7 px-2.5 text-xs'} ${
+                    activeFilter === 'contract'
+                      ? 'bg-purple-50 text-purple-700 dark:bg-purple-950 dark:text-purple-400'
+                      : 'text-purple-600 hover:bg-purple-50 hover:text-purple-700 dark:text-purple-400 dark:hover:bg-purple-950'
+                  }`}
+                >
+                  <Code className={`${isPopupMode ? 'h-3 w-3' : 'h-3.5 w-3.5'} ${contractCallCount > 0 ? 'mr-1' : ''}`} />
+                  {contractCallCount > 0 && <span>{contractCallCount}</span>}
+                </Button>
+              </>
             )}
           </div>
           {/* Pending badge - right aligned for expanded and compact mode */}
           {!isPopupMode && pendingCount > 0 && (
-            <Badge variant="outline" className="text-xs px-2 py-0.5 border-yellow-500 text-yellow-600 dark:text-yellow-400">
+            <Badge variant="secondary" className="text-xs px-2 py-0.5 bg-yellow-500/20 text-yellow-600 dark:text-yellow-400">
               {pendingCount}
             </Badge>
           )}
@@ -340,15 +352,15 @@ export function UnifiedHistory({ wallet, transactions, onTransactionsUpdate, isL
             ))}
           </div>
         ) : unifiedHistory.length === 0 ? (
-          <Alert>
-            <AlertDescription>No history found for this filter.</AlertDescription>
-          </Alert>
+          <div className="text-center py-4 text-muted-foreground text-sm">
+            No history found for this filter.
+          </div>
         ) : (
           <ScrollArea className={isPopupMode ? 'h-auto' : isCompact ? 'flex-1 min-h-0' : 'h-[calc(100vh-450px)]'} stabilizeGutter>
             <ScrollAreaContent>
-              <div ref={historyListRef} className={`${isPopupMode ? 'space-y-2 mb-[110px]' : 'space-y-3 pb-1'}`}>
+              <div ref={historyListRef} className={`${isPopupMode ? 'space-y-2 mb-[110px]' : isCompact ? 'divide-y divide-dashed divide-border' : 'space-y-3 pb-1'}`}>
                 {unifiedHistory.map((item) => (
-                <div key={item.id} className={`border ${isPopupMode ? 'p-2' : isCompact ? 'p-2' : 'p-3'} space-y-2 ${isCompact ? 'rounded-lg' : ''}`}>
+                <div key={item.id} className={`${isPopupMode ? 'border p-2' : isCompact ? 'py-2.5' : 'border p-3'} space-y-2`}>
                   {item.type === 'transfer' && item.transaction && (
                     <TransferItem 
                       tx={item.transaction} 
