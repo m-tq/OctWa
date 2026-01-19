@@ -7,7 +7,7 @@
 (function() {
   'use strict';
 
-  const PROVIDER_VERSION = '2.0.0';
+  const PROVIDER_VERSION = '1.1.5';
 
   class OctraProvider {
     constructor() {

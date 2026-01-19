@@ -358,9 +358,9 @@ export function UnifiedHistory({ wallet, transactions, onTransactionsUpdate, isL
         ) : (
           <ScrollArea className={isPopupMode ? 'h-auto' : isCompact ? 'flex-1 min-h-0' : 'h-[calc(100vh-450px)]'} stabilizeGutter>
             <ScrollAreaContent>
-              <div ref={historyListRef} className={`${isPopupMode ? 'space-y-2 mb-[110px]' : isCompact ? 'divide-y divide-dashed divide-border' : 'space-y-3 pb-1'}`}>
+              <div ref={historyListRef} className={`${isPopupMode ? 'divide-y divide-dashed divide-border mb-[110px]' : isCompact ? 'divide-y divide-dashed divide-border' : 'space-y-3 pb-1'}`}>
                 {unifiedHistory.map((item) => (
-                <div key={item.id} className={`${isPopupMode ? 'border p-2' : isCompact ? 'py-2.5' : 'border p-3'} space-y-2`}>
+                <div key={item.id} className={`${isPopupMode ? 'py-2' : isCompact ? 'py-2.5' : 'border p-3'} space-y-2`}>
                   {item.type === 'transfer' && item.transaction && (
                     <TransferItem 
                       tx={item.transaction} 
@@ -631,49 +631,68 @@ function TransferItem({
     }
   };
   
-  // Popup mode: simplified compact view
+  // Popup mode: use same style as compact mode with date/time
   if (isPopupMode) {
     const hasMessage = tx.message && tx.message !== 'PRIVATE_TRANSFER' && tx.message !== '505249564154455f5452414e53464552';
+    const txDate = new Date(tx.timestamp * 1000);
+    const timeStr = txDate.toLocaleTimeString('en-US', { 
+      hour: '2-digit', 
+      minute: '2-digit', 
+      second: '2-digit', 
+      hour12: false,
+      timeZone: 'UTC'
+    });
+    const dateStr = txDate.toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      timeZone: 'UTC'
+    });
+    
     return (
-      <div className="relative flex items-center justify-between gap-2">
-        <div className="flex items-center gap-2 flex-1 min-w-0">
-          {isContract ? (
-            <Code className="h-3.5 w-3.5 text-purple-500 flex-shrink-0" />
-          ) : tx.type === 'sent' ? (
-            <ArrowUpRight className="h-3.5 w-3.5 text-red-500 flex-shrink-0" />
-          ) : (
-            <ArrowDownLeft className="h-3.5 w-3.5 text-green-500 flex-shrink-0" />
-          )}
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-1.5">
-              {isContract ? (
-                <span className="text-purple-500 font-medium text-xs">Contract Call</span>
-              ) : isPrivate ? (
-                <span className="text-[#0000db] font-medium text-xs">{tx.type === 'sent' ? '-' : '+'}Private</span>
-              ) : (
-                <span className={`font-mono text-xs truncate ${tx.type === 'sent' ? 'text-red-500' : 'text-green-500'}`}>{tx.type === 'sent' ? '-' : '+'}{tx.amount?.toFixed(4) || '0'} OCT</span>
-              )}
-              {getStatusIcon(tx.status, true)}
-              {hasMessage && !isContract && (
-                <MessageSquare className="h-3 w-3 text-muted-foreground flex-shrink-0" />
-              )}
-            </div>
-            <div className="text-[10px] text-muted-foreground truncate">
-              {isContract ? 'To: ' : tx.type === 'sent' ? 'To: ' : 'From: '}{truncateAddress(isContract ? tx.to : (tx.type === 'sent' ? tx.to : tx.from))}
+      <div 
+        className="cursor-pointer hover:bg-muted/50 transition-colors -mx-2 px-2 py-1 rounded"
+        onClick={() => onViewDetails(tx.hash, tx.status === 'pending')}
+      >
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2 flex-1 min-w-0">
+            {isContract ? (
+              <Code className="h-3.5 w-3.5 text-purple-500 flex-shrink-0" />
+            ) : tx.type === 'sent' ? (
+              <ArrowUpRight className="h-3.5 w-3.5 text-red-500 flex-shrink-0" />
+            ) : (
+              <ArrowDownLeft className="h-3.5 w-3.5 text-green-500 flex-shrink-0" />
+            )}
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-1.5">
+                {isContract ? (
+                  <span className="text-purple-500 font-medium text-xs">Contract Call</span>
+                ) : isPrivate ? (
+                  <span className="text-[#0000db] font-medium text-xs">{tx.type === 'sent' ? '-' : '+'}Private</span>
+                ) : (
+                  <span className={`font-mono text-xs ${tx.type === 'sent' ? 'text-red-500' : 'text-green-500'}`}>{tx.type === 'sent' ? '-' : '+'}{tx.amount?.toFixed(4) || '0'} OCT</span>
+                )}
+                {tx.status === 'confirmed' ? (
+                  <div className="h-1.5 w-1.5 bg-[#0000db]" />
+                ) : tx.status === 'pending' ? (
+                  <div className="h-1.5 w-1.5 bg-yellow-500 animate-pulse" />
+                ) : (
+                  <div className="h-2.5 w-2.5 bg-red-500/20 flex items-center justify-center">
+                    <div className="h-1 w-1 bg-red-500" />
+                  </div>
+                )}
+                {hasMessage && !isContract && (
+                  <MessageSquare className="h-3 w-3 text-muted-foreground flex-shrink-0" />
+                )}
+              </div>
+              <div className="text-[10px] text-muted-foreground truncate">
+                {isContract ? 'To: ' : tx.type === 'sent' ? 'To: ' : 'From: '}{truncateAddress(isContract ? tx.to : (tx.type === 'sent' ? tx.to : tx.from))}
+              </div>
             </div>
           </div>
-        </div>
-        <div className="flex items-center gap-0.5 flex-shrink-0">
-          <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => onViewDetails(tx.hash, tx.status === 'pending')}>
-            <Eye className="h-3.5 w-3.5" />
-          </Button>
-          {tx.status === 'confirmed' && (
-            <Button variant="ghost" size="sm" className="h-7 w-7 p-0" asChild>
-              <a href={`https://octrascan.io/transactions/${tx.hash}`} target="_blank" rel="noopener noreferrer">
-                <ExternalLink className="h-3.5 w-3.5" />
-              </a>
-            </Button>
-          )}
+          <div className="text-[10px] text-muted-foreground flex-shrink-0 text-right">
+            <div>{dateStr}</div>
+            <div>{timeStr} UTC</div>
+          </div>
         </div>
       </div>
     );

@@ -353,7 +353,7 @@ export function DAppRequestHandler({ wallets }: DAppRequestHandlerProps) {
         chrome.storage.local.remove('pendingConnectionRequest');
       }
 
-      toast({ title: 'Connected', description: `Connected to ${connectionRequest.appName || 'dApp'}` });
+      // Success - close popup immediately (no toast needed)
       window.close();
     } catch (error) {
       console.error('Connection error:', error);
@@ -448,8 +448,7 @@ export function DAppRequestHandler({ wallets }: DAppRequestHandlerProps) {
         console.log('[DAppRequestHandler] Removed pendingCapabilityRequest from storage');
       }
 
-      toast({ title: 'Capability Granted', description: `Granted ${capabilityRequest.scope} access` });
-      
+      // Success - close popup immediately (no toast needed)
       console.log('[DAppRequestHandler] Closing window...');
       setTimeout(() => {
         window.close();
@@ -570,10 +569,7 @@ export function DAppRequestHandler({ wallets }: DAppRequestHandlerProps) {
           chrome.storage.local.remove('pendingInvokeRequest');
         }
         
-        toast({ 
-          title: 'Transaction Sent', 
-          description: `Sent ${txParams.amount} OCT to ${txParams.to.slice(0, 12)}...` 
-        });
+        // Success - close popup immediately (no toast needed)
       } else if (invokeRequest.method === 'send_evm_transaction') {
         // Handle EVM transaction (ETH on Sepolia)
         console.log('[DAppRequestHandler] Executing send_evm_transaction...');
@@ -655,10 +651,7 @@ export function DAppRequestHandler({ wallets }: DAppRequestHandlerProps) {
           chrome.storage.local.remove('pendingInvokeRequest');
         }
         
-        toast({ 
-          title: 'ETH Transaction Sent', 
-          description: `Sent ${evmTxParams.amount} ETH to ${evmTxParams.to.slice(0, 12)}...` 
-        });
+        // Success - close popup immediately (no toast needed)
       } else {
         // For other methods, return mock success (to be implemented)
         console.log('[DAppRequestHandler] Executing other method:', invokeRequest.method);
@@ -673,7 +666,7 @@ export function DAppRequestHandler({ wallets }: DAppRequestHandlerProps) {
           chrome.storage.local.remove('pendingInvokeRequest');
         }
         
-        toast({ title: 'Invocation Complete', description: `Executed ${invokeRequest.method}` });
+        // Success - close popup immediately (no toast needed)
       }
       
       window.close();

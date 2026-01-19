@@ -813,8 +813,11 @@ function PopupApp() {
     );
   }
 
-  // Show welcome screen if no wallets
-  if (wallets.length === 0) {
+  // Check if wallet exists in storage (prevents WelcomeScreen flash after unlock)
+  const hasStoredWallet = localStorage.getItem('walletPasswordHash') && localStorage.getItem('encryptedWallets');
+
+  // Show welcome screen ONLY if no wallets AND no stored wallet data
+  if (wallets.length === 0 && !hasStoredWallet) {
     return (
       <ThemeProvider defaultTheme="dark" storageKey="octra-wallet-theme">
         <div className="w-[400px] h-[600px] bg-background popup-view overflow-hidden">
@@ -822,6 +825,26 @@ function PopupApp() {
             <PageTransition variant="fade-slide">
               <WelcomeScreen onWalletCreated={addWallet} />
             </PageTransition>
+          </div>
+          <Toaster />
+        </div>
+      </ThemeProvider>
+    );
+  }
+
+  // Show loading if we have stored wallets but wallet state is not ready yet
+  if (wallets.length === 0 && hasStoredWallet) {
+    return (
+      <ThemeProvider defaultTheme="dark" storageKey="octra-wallet-theme">
+        <div className="w-[400px] h-[600px] bg-background popup-view overflow-hidden">
+          <div className="popup-container h-full overflow-y-auto flex items-center justify-center">
+            <div className="text-center">
+              <div
+                className="w-8 h-8 mx-auto rounded-full border-3 border-transparent animate-spin mb-3"
+                style={{ borderTopColor: '#0000db', borderRightColor: '#0000db' }}
+              />
+              <div className="text-sm text-muted-foreground">Loading wallet...</div>
+            </div>
           </div>
           <Toaster />
         </div>

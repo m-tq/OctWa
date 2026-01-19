@@ -440,31 +440,46 @@ export function ConnectedDAppsManager({
                       </DropdownMenu>
                     </div>
 
-                    {/* Active Capabilities */}
-                    {activeCapabilities.length > 0 && (
-                      <div className={`mt-2 pt-2 border-t ${isPopupMode ? 'space-y-1' : 'space-y-2'}`}>
-                        <p className={`text-muted-foreground ${isPopupMode ? 'text-[10px]' : 'text-xs'}`}>
-                          Active Capabilities:
-                        </p>
-                        <div className="flex flex-wrap gap-1">
-                          {activeCapabilities.map((cap) => (
-                            <Badge
-                              key={cap.id}
-                              variant="secondary"
-                              className={`${getScopeColor(cap.scope)} ${
-                                isPopupMode ? 'text-[8px] px-1' : 'text-xs'
-                              }`}
-                            >
-                              {getScopeIcon(cap.scope)}
-                              <span className="ml-1">{cap.scope}</span>
-                              <span className="ml-1 opacity-70">
-                                ({cap.methods.length} methods)
-                              </span>
-                            </Badge>
-                          ))}
+                    {/* Active Capabilities - deduplicated by scope */}
+                    {activeCapabilities.length > 0 && (() => {
+                      // Deduplicate by scope, keep the latest one
+                      const deduped = activeCapabilities.reduce((acc, cap) => {
+                        const existing = acc.find(c => c.scope === cap.scope);
+                        if (!existing || cap.issuedAt > existing.issuedAt) {
+                          return [...acc.filter(c => c.scope !== cap.scope), cap];
+                        }
+                        return acc;
+                      }, [] as StoredCapability[]);
+                      
+                      return (
+                        <div className={`mt-2 pt-2 ${isPopupMode ? 'space-y-1' : 'space-y-2'}`}>
+                          <p className={`text-muted-foreground ${isPopupMode ? 'text-[10px]' : 'text-xs'}`}>
+                            Active Capabilities:
+                          </p>
+                          <div className="flex flex-col gap-1">
+                            {deduped.map((cap) => (
+                              <div key={cap.id} className="flex flex-col">
+                                <Badge
+                                  variant="secondary"
+                                  className={`${getScopeColor(cap.scope)} w-fit ${
+                                    isPopupMode ? 'text-[8px] px-1' : 'text-xs'
+                                  }`}
+                                >
+                                  {getScopeIcon(cap.scope)}
+                                  <span className="ml-1">{cap.scope}</span>
+                                  <span className="ml-1 opacity-70">
+                                    ({cap.methods.length} methods)
+                                  </span>
+                                </Badge>
+                                <p className={`text-muted-foreground ml-1 ${isPopupMode ? 'text-[8px]' : 'text-[10px]'}`}>
+                                  {cap.methods.join(', ')}
+                                </p>
+                              </div>
+                            ))}
+                          </div>
                         </div>
-                      </div>
-                    )}
+                      );
+                    })()}
                   </div>
                 );
               })}

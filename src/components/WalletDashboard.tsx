@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger, SheetDescription } from '@/components/ui/sheet';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Avatar } from '@/components/ui/avatar';
@@ -8,6 +8,8 @@ import { Badge } from '@/components/ui/badge';
 import { ScrollArea, ScrollAreaContent } from '@/components/ui/scroll-area';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 import {
   Send,
@@ -50,6 +52,8 @@ import {
   RefreshCw,
   Loader2,
   AlertCircle,
+  Image,
+  Settings,
 } from 'lucide-react';
 import { ExtensionStorageManager } from '../utils/extensionStorage';
 import { MultiSend } from './MultiSend';
@@ -80,7 +84,11 @@ import {
   getEVMBalance, DEFAULT_EVM_NETWORKS, EVMNetwork, getActiveEVMNetwork,
   setActiveEVMNetwork, checkEVMRpcStatus, getEVMRpcUrl, saveEVMProvider,
   getEVMGasPrice, getRpcDisplayName, sendEVMTransaction, getEVMTransactions, EVMTransaction,
-  getETHPrice, calculateUSDValue,
+  getETHPrice, calculateUSDValue, getAllNetworks, getNativeTokenPrice,
+  ERC20Token, NFTToken, getCustomTokens, saveCustomToken, getCustomNFTs, saveCustomNFT,
+  getERC20Balance, getERC20TokenInfo, getNFTMetadata, checkNFTOwnership,
+  sendERC20Transaction, sendNFTTransaction, COMMON_TOKENS,
+  saveCustomNetwork, removeCustomNetwork,
 } from '../utils/evmRpc';
 
 import { useToast } from '@/hooks/use-toast';
@@ -216,13 +224,12 @@ export function WalletDashboard({
   // Address Book state
   const [showAddressBook, setShowAddressBook] = useState(false);
   const [addressBookPrefilledAddress, setAddressBookPrefilledAddress] = useState<string>('');
-  // EVM Assets state
-  const [showEVMAssets, setShowEVMAssets] = useState(false);
   // EVM Mode state (integrated mode, not popup)
   const [evmMode, setEvmMode] = useState(false);
   const [evmWallets, setEvmWallets] = useState<(EVMWalletData & { balance: string | null; isLoading: boolean })[]>([]);
   const [selectedEVMWallet, setSelectedEVMWallet] = useState<(EVMWalletData & { balance: string | null; isLoading: boolean }) | null>(null);
   const [evmNetwork, setEvmNetwork] = useState<EVMNetwork>(getActiveEVMNetwork());
+  const [allEvmNetworks, setAllEvmNetworks] = useState<EVMNetwork[]>(getAllNetworks());
   const [evmRpcStatus, setEvmRpcStatus] = useState<'connected' | 'disconnected' | 'checking'>('checking');
   const [evmGasPrice, setEvmGasPrice] = useState<string | null>(null);
   const [evmTransactions, setEvmTransactions] = useState<EVMTransaction[]>([]);
@@ -236,11 +243,34 @@ export function WalletDashboard({
   const [evmTxHash, setEvmTxHash] = useState<string | null>(null);
   const [showEvmRpcManager, setShowEvmRpcManager] = useState(false);
   const [evmCustomRpcUrl, setEvmCustomRpcUrl] = useState('');
+  // EVM Tokens & NFTs state
+  const [evmTokens, setEvmTokens] = useState<ERC20Token[]>([]);
+  const [evmNfts, setEvmNfts] = useState<NFTToken[]>([]);
+  const [isLoadingEvmTokens, setIsLoadingEvmTokens] = useState(false);
+  const [evmActiveTab, setEvmActiveTab] = useState<'tokens' | 'nfts'>('tokens');
+  const [showEvmImportToken, setShowEvmImportToken] = useState(false);
+  const [showEvmImportNFT, setShowEvmImportNFT] = useState(false);
+  const [evmImportTokenAddress, setEvmImportTokenAddress] = useState('');
+  const [evmImportTokenInfo, setEvmImportTokenInfo] = useState<{ name: string; symbol: string; decimals: number } | null>(null);
+  const [isLoadingEvmTokenInfo, setIsLoadingEvmTokenInfo] = useState(false);
+  const [evmImportNFTAddress, setEvmImportNFTAddress] = useState('');
+  const [evmImportNFTTokenId, setEvmImportNFTTokenId] = useState('');
+  const [evmImportNFTInfo, setEvmImportNFTInfo] = useState<{ name: string; symbol: string; imageUrl?: string } | null>(null);
+  const [isLoadingEvmNFTInfo, setIsLoadingEvmNFTInfo] = useState(false);
+  const [evmSendType, setEvmSendType] = useState<'native' | 'token' | 'nft'>('native');
+  const [selectedEvmToken, setSelectedEvmToken] = useState<ERC20Token | null>(null);
+  const [selectedEvmNFT, setSelectedEvmNFT] = useState<NFTToken | null>(null);
+  // Add Network state
+  const [showEvmAddNetwork, setShowEvmAddNetwork] = useState(false);
+  const [newEvmNetwork, setNewEvmNetwork] = useState({ name: '', rpcUrl: '', chainId: '', symbol: '', explorer: '' });
+  const [isAddingEvmNetwork, setIsAddingEvmNetwork] = useState(false);
   // Current epoch state
   const [currentEpoch, setCurrentEpoch] = useState<number>(0);
   const [isUpdatingEpoch, setIsUpdatingEpoch] = useState(false);
   // Track history panel state before hiding for multi/bulk send
   const [historyPanelWasOpen, setHistoryPanelWasOpen] = useState(false);
+  // Message expansion state for transaction details
+  const [showFullMessage, setShowFullMessage] = useState(false);
   const { autoLabelWallets, getWalletDisplayName } = useAddressBook();
   const { shouldShow: shouldShowOnboarding } = useOnboarding();
   const [showOnboarding, setShowOnboarding] = useState(false);
@@ -894,6 +924,7 @@ export function WalletDashboard({
       return { ...evmData, balance: null, isLoading: false };
     });
     setEvmWallets(derived);
+    setAllEvmNetworks(getAllNetworks());
     
     const activeEVM = derived.find((e) => e.octraAddress === wallet.address);
     setSelectedEVMWallet(activeEVM || derived[0] || null);
@@ -911,8 +942,8 @@ export function WalletDashboard({
       setEvmRpcStatus('disconnected');
     }
     
-    // Fetch ETH price
-    getETHPrice().then(setEthPrice);
+    // Fetch native token price
+    getNativeTokenPrice(evmNetwork.symbol).then(setEthPrice);
   };
 
   // Enter EVM mode
@@ -927,6 +958,8 @@ export function WalletDashboard({
     setEvmWallets([]);
     setSelectedEVMWallet(null);
     setEvmTransactions([]);
+    setEvmTokens([]);
+    setEvmNfts([]);
   };
 
   // Fetch EVM wallet balance
@@ -952,6 +985,41 @@ export function WalletDashboard({
     }
   };
 
+  // Fetch EVM tokens
+  const fetchEvmTokens = async () => {
+    if (!selectedEVMWallet || evmRpcStatus !== 'connected') return;
+    setIsLoadingEvmTokens(true);
+    try {
+      const chainId = evmNetwork.chainId;
+      const commonTokens = COMMON_TOKENS[chainId] || [];
+      const customTokens = getCustomTokens(chainId);
+      const allTokenAddresses = [...commonTokens.map(t => ({ ...t, chainId })), ...customTokens];
+      
+      const tokenBalances = await Promise.all(
+        allTokenAddresses.map(async (token) => {
+          try {
+            const balance = await getERC20Balance(token.address, selectedEVMWallet.evmAddress, token.decimals, evmNetwork.id);
+            return { ...token, balance, isLoading: false };
+          } catch { return { ...token, balance: '0.000000', isLoading: false }; }
+        })
+      );
+      setEvmTokens(tokenBalances.filter(t => parseFloat(t.balance) > 0 || customTokens.some(ct => ct.address.toLowerCase() === t.address.toLowerCase())));
+    } catch { setEvmTokens([]); } finally { setIsLoadingEvmTokens(false); }
+  };
+
+  // Fetch EVM NFTs
+  const fetchEvmNfts = async () => {
+    if (!selectedEVMWallet) return;
+    const customNFTs = getCustomNFTs(evmNetwork.chainId);
+    const verifiedNFTs = await Promise.all(
+      customNFTs.map(async (nft) => {
+        const isOwner = await checkNFTOwnership(nft.contractAddress, nft.tokenId, selectedEVMWallet.evmAddress, evmNetwork.id);
+        return isOwner ? nft : null;
+      })
+    );
+    setEvmNfts(verifiedNFTs.filter((n): n is NFTToken => n !== null));
+  };
+
   // Fetch EVM transactions
   const fetchEvmTransactions = async () => {
     if (!selectedEVMWallet) return;
@@ -972,24 +1040,30 @@ export function WalletDashboard({
     if (!evmWallet) return;
     setSelectedEVMWallet(evmWallet);
     setEvmTransactions([]);
+    setEvmTokens([]);
+    setEvmNfts([]);
     const octraWallet = wallets.find((w) => w.address === evmWallet.octraAddress);
     if (octraWallet) onSwitchWallet(octraWallet);
   };
 
   // Handle EVM network change
   const handleEvmNetworkChange = (networkId: string) => {
-    const network = DEFAULT_EVM_NETWORKS.find((n) => n.id === networkId);
+    const network = allEvmNetworks.find((n) => n.id === networkId);
     if (network) {
       setEvmNetwork(network);
       setActiveEVMNetwork(networkId);
       setEvmWallets((prev) => prev.map((w) => ({ ...w, balance: null, isLoading: false })));
       if (selectedEVMWallet) setSelectedEVMWallet({ ...selectedEVMWallet, balance: null, isLoading: false });
+      setEvmTokens([]);
+      setEvmNfts([]);
+      // Fetch new price for the network's native token
+      getNativeTokenPrice(network.symbol).then(setEthPrice);
     }
   };
 
-  // Handle EVM send transaction
+  // Handle EVM send transaction (native, token, or NFT)
   const handleEvmSendTransaction = async () => {
-    if (!selectedEVMWallet || !evmSendTo || !evmSendAmount) {
+    if (!selectedEVMWallet || !evmSendTo) {
       setEvmSendError('Please fill all fields');
       return;
     }
@@ -997,12 +1071,27 @@ export function WalletDashboard({
     setIsEvmSending(true);
     setEvmTxHash(null);
     try {
-      const hash = await sendEVMTransaction(selectedEVMWallet.privateKeyHex, evmSendTo, evmSendAmount, evmNetwork.id);
+      let hash: string;
+      if (evmSendType === 'native') {
+        if (!evmSendAmount) { setEvmSendError('Please enter amount'); setIsEvmSending(false); return; }
+        hash = await sendEVMTransaction(selectedEVMWallet.privateKeyHex, evmSendTo, evmSendAmount, evmNetwork.id);
+      } else if (evmSendType === 'token' && selectedEvmToken) {
+        if (!evmSendAmount) { setEvmSendError('Please enter amount'); setIsEvmSending(false); return; }
+        hash = await sendERC20Transaction(selectedEVMWallet.privateKeyHex, selectedEvmToken.address, evmSendTo, evmSendAmount, selectedEvmToken.decimals, evmNetwork.id);
+      } else if (evmSendType === 'nft' && selectedEvmNFT) {
+        hash = await sendNFTTransaction(selectedEVMWallet.privateKeyHex, selectedEvmNFT.contractAddress, evmSendTo, selectedEvmNFT.tokenId, evmNetwork.id);
+      } else {
+        setEvmSendError('Invalid send type');
+        setIsEvmSending(false);
+        return;
+      }
       setEvmTxHash(hash);
       toast({ title: 'Success!', description: 'Transaction sent successfully' });
       setEvmSendTo('');
       setEvmSendAmount('');
       await fetchEvmBalance();
+      await fetchEvmTokens();
+      await fetchEvmNfts();
       await fetchEvmTransactions();
     } catch (error: any) {
       setEvmSendError(error.message || 'Transaction failed');
@@ -1010,6 +1099,94 @@ export function WalletDashboard({
     } finally {
       setIsEvmSending(false);
     }
+  };
+
+  // Open EVM send dialog
+  const openEvmSendDialog = (type: 'native' | 'token' | 'nft', token?: ERC20Token, nft?: NFTToken) => {
+    setEvmSendType(type);
+    setSelectedEvmToken(token || null);
+    setSelectedEvmNFT(nft || null);
+    setEvmSendTo('');
+    setEvmSendAmount('');
+    setEvmSendError(null);
+    setEvmTxHash(null);
+    setShowEvmSendDialog(true);
+  };
+
+  // Import EVM token
+  const handleEvmLookupToken = async () => {
+    if (!evmImportTokenAddress || !evmImportTokenAddress.startsWith('0x')) {
+      toast({ title: 'Error', description: 'Please enter a valid contract address', variant: 'destructive' }); return;
+    }
+    setIsLoadingEvmTokenInfo(true); setEvmImportTokenInfo(null);
+    try {
+      const info = await getERC20TokenInfo(evmImportTokenAddress, evmNetwork.id);
+      if (info) setEvmImportTokenInfo(info);
+      else toast({ title: 'Error', description: 'Could not fetch token info', variant: 'destructive' });
+    } catch (error: any) { toast({ title: 'Error', description: error.message || 'Failed to fetch token info', variant: 'destructive' }); }
+    finally { setIsLoadingEvmTokenInfo(false); }
+  };
+
+  const handleEvmImportToken = async () => {
+    if (!evmImportTokenInfo || !selectedEVMWallet) return;
+    try {
+      const balance = await getERC20Balance(evmImportTokenAddress, selectedEVMWallet.evmAddress, evmImportTokenInfo.decimals, evmNetwork.id);
+      const token: ERC20Token = { address: evmImportTokenAddress, name: evmImportTokenInfo.name, symbol: evmImportTokenInfo.symbol, decimals: evmImportTokenInfo.decimals, balance, isLoading: false, chainId: evmNetwork.chainId };
+      saveCustomToken(token); await fetchEvmTokens();
+      setShowEvmImportToken(false); setEvmImportTokenAddress(''); setEvmImportTokenInfo(null);
+      toast({ title: 'Success', description: `${evmImportTokenInfo.symbol} imported successfully` });
+    } catch (error: any) { toast({ title: 'Error', description: error.message || 'Failed to import token', variant: 'destructive' }); }
+  };
+
+  // Import EVM NFT
+  const handleEvmLookupNFT = async () => {
+    if (!evmImportNFTAddress || !evmImportNFTAddress.startsWith('0x') || !evmImportNFTTokenId) {
+      toast({ title: 'Error', description: 'Please enter contract address and token ID', variant: 'destructive' }); return;
+    }
+    if (!selectedEVMWallet) return;
+    setIsLoadingEvmNFTInfo(true); setEvmImportNFTInfo(null);
+    try {
+      const isOwner = await checkNFTOwnership(evmImportNFTAddress, evmImportNFTTokenId, selectedEVMWallet.evmAddress, evmNetwork.id);
+      if (!isOwner) { toast({ title: 'Error', description: 'You do not own this NFT', variant: 'destructive' }); setIsLoadingEvmNFTInfo(false); return; }
+      const metadata = await getNFTMetadata(evmImportNFTAddress, evmImportNFTTokenId, evmNetwork.id);
+      if (metadata) setEvmImportNFTInfo({ name: metadata.name, symbol: metadata.symbol, imageUrl: metadata.imageUrl });
+      else setEvmImportNFTInfo({ name: 'Unknown NFT', symbol: 'NFT' });
+    } catch (error: any) { toast({ title: 'Error', description: error.message || 'Failed to fetch NFT info', variant: 'destructive' }); }
+    finally { setIsLoadingEvmNFTInfo(false); }
+  };
+
+  const handleEvmImportNFT = () => {
+    if (!evmImportNFTInfo) return;
+    const nft: NFTToken = { contractAddress: evmImportNFTAddress, tokenId: evmImportNFTTokenId, name: evmImportNFTInfo.name, symbol: evmImportNFTInfo.symbol, imageUrl: evmImportNFTInfo.imageUrl, chainId: evmNetwork.chainId };
+    saveCustomNFT(nft); fetchEvmNfts();
+    setShowEvmImportNFT(false); setEvmImportNFTAddress(''); setEvmImportNFTTokenId(''); setEvmImportNFTInfo(null);
+    toast({ title: 'Success', description: 'NFT imported successfully' });
+  };
+
+  // Add custom EVM network
+  const handleAddEvmNetwork = async () => {
+    if (!newEvmNetwork.name || !newEvmNetwork.rpcUrl || !newEvmNetwork.chainId || !newEvmNetwork.symbol) {
+      toast({ title: 'Error', description: 'Please fill all required fields', variant: 'destructive' }); return;
+    }
+    setIsAddingEvmNetwork(true);
+    try {
+      const network: EVMNetwork = {
+        id: `custom-${newEvmNetwork.chainId}`, name: newEvmNetwork.name, chainId: parseInt(newEvmNetwork.chainId),
+        rpcUrl: newEvmNetwork.rpcUrl, symbol: newEvmNetwork.symbol, explorer: newEvmNetwork.explorer || '',
+        isTestnet: false, isCustom: true,
+      };
+      saveCustomNetwork(network); setAllEvmNetworks(getAllNetworks());
+      setShowEvmAddNetwork(false); setNewEvmNetwork({ name: '', rpcUrl: '', chainId: '', symbol: '', explorer: '' });
+      toast({ title: 'Success', description: 'Network added successfully' });
+    } catch (error: any) { toast({ title: 'Error', description: error.message || 'Failed to add network', variant: 'destructive' }); }
+    finally { setIsAddingEvmNetwork(false); }
+  };
+
+  // Remove custom EVM network
+  const handleRemoveEvmNetwork = (networkId: string) => {
+    removeCustomNetwork(networkId); setAllEvmNetworks(getAllNetworks());
+    if (evmNetwork.id === networkId) { setEvmNetwork(DEFAULT_EVM_NETWORKS[0]); setActiveEVMNetwork(DEFAULT_EVM_NETWORKS[0].id); }
+    toast({ title: 'Removed', description: 'Network removed' });
   };
 
   // Save custom EVM RPC
@@ -1029,7 +1206,9 @@ export function WalletDashboard({
     if (!evmMode || !selectedEVMWallet) return;
     if (evmRpcStatus === 'connected') {
       fetchEvmBalance();
+      fetchEvmTokens();
     }
+    fetchEvmNfts();
     fetchEvmTransactions();
   }, [evmMode, selectedEVMWallet?.evmAddress, evmNetwork.id]);
 
@@ -1038,6 +1217,7 @@ export function WalletDashboard({
     if (!evmMode || !selectedEVMWallet) return;
     if (evmRpcStatus === 'connected' && selectedEVMWallet.balance === null) {
       fetchEvmBalance();
+      fetchEvmTokens();
     }
   }, [evmRpcStatus]);
 
@@ -1368,10 +1548,17 @@ export function WalletDashboard({
     return `${address.slice(0, 8)}...${address.slice(-5)}`;
   };
 
+  // Helper to truncate long messages
+  const truncateMessage = (message: string, maxLength: number = 250) => {
+    if (message.length <= maxLength) return message;
+    return `${message.slice(0, 100)}...${message.slice(-100)}`;
+  };
+
   // Handler for viewing transaction details
   const handleViewTxDetails = async (txHash: string, isPending: boolean = false) => {
     setSelectedTxHash(txHash);
     setLoadingTxDetails(true);
+    setShowFullMessage(false); // Reset message expansion state
     
     // For popup mode, use fullscreen; for expanded mode, use inline screen
     if (isPopupMode) {
@@ -1710,10 +1897,10 @@ export function WalletDashboard({
                       </div>
                     )}
 
-                    {/* Amount, OU (Gas), Nonce */}
+                    {/* Amount, OU (Gas), Nonce - 3 columns: left, center, right */}
                     <div className="grid grid-cols-3 gap-0 py-2">
                       {('amount' in selectedTxDetails || 'parsed_tx' in selectedTxDetails) && (
-                        <div className="pr-2">
+                        <div className="text-left">
                           <span className="text-[10px] text-muted-foreground">Amount</span>
                           <p className="font-mono text-xs mt-0.5">
                             {'amount' in selectedTxDetails ? selectedTxDetails.amount : selectedTxDetails.parsed_tx.amount} OCT
@@ -1725,7 +1912,7 @@ export function WalletDashboard({
                         const ouNum = parseInt(ouValue) || 0;
                         const feeOct = (ouNum * 0.0000001).toFixed(7);
                         return (
-                          <div className="px-2">
+                          <div className="text-center">
                             <span className="text-[10px] text-muted-foreground">OU (Gas)</span>
                             <p className="font-mono text-[10px] mt-0.5">{ouValue}</p>
                             <p className="text-[9px] text-muted-foreground">≈ {feeOct} OCT</p>
@@ -1733,7 +1920,7 @@ export function WalletDashboard({
                         );
                       })()}
                       {('nonce' in selectedTxDetails || 'parsed_tx' in selectedTxDetails) && (
-                        <div className="pl-2">
+                        <div className="text-right">
                           <span className="text-[10px] text-muted-foreground">Nonce</span>
                           <p className="font-mono text-xs mt-0.5">
                             {'nonce' in selectedTxDetails ? selectedTxDetails.nonce : selectedTxDetails.parsed_tx.nonce}
@@ -1744,18 +1931,33 @@ export function WalletDashboard({
 
                     {/* Message */}
                     {(('message' in selectedTxDetails && selectedTxDetails.message) || 
-                      ('parsed_tx' in selectedTxDetails && selectedTxDetails.parsed_tx.message)) && (
-                      <div className="py-2">
-                        <span className="text-[10px] text-muted-foreground">Message</span>
-                        <p className="text-[10px] mt-0.5 break-all">
-                          {'message' in selectedTxDetails ? selectedTxDetails.message : selectedTxDetails.parsed_tx.message}
-                        </p>
-                      </div>
-                    )}
+                      ('parsed_tx' in selectedTxDetails && selectedTxDetails.parsed_tx.message)) && (() => {
+                      const message = 'message' in selectedTxDetails ? selectedTxDetails.message : selectedTxDetails.parsed_tx.message;
+                      const isLongMessage = message.length > 100;
+                      const truncatedMsg = isLongMessage ? `${message.slice(0, 30)}...${message.slice(-30)}` : message;
+                      return (
+                        <div className="py-2">
+                          <span className="text-[10px] text-muted-foreground">Message</span>
+                          <p className="text-[10px] mt-0.5 break-all">
+                            {isLongMessage && !showFullMessage ? truncatedMsg : message}
+                          </p>
+                          {isLongMessage && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => setShowFullMessage(!showFullMessage)}
+                              className="h-5 px-1 text-[9px] text-muted-foreground hover:text-foreground mt-1"
+                            >
+                              {showFullMessage ? 'Show less' : 'Show all'}
+                            </Button>
+                          )}
+                        </div>
+                      );
+                    })()}
                   </div>
 
                   {/* View on Explorer - outside divide container */}
-                  <div className="pt-4 mt-4 border-t border-dashed border-x-0 border-b-0 border-border">
+                  <div className="mt-4 border-t border-dashed border-x-0 border-b-0 border-border">
                     <Button
                       variant="ghost"
                       className="w-full h-10"
@@ -1866,11 +2068,13 @@ export function WalletDashboard({
                                       closeSelector={() => setShowWalletSelector(false)}
                                     />
                                   </ScrollAreaContent>
-                              </ScrollArea>
+                            </ScrollArea>
                             </div>
+                            {/* Dashed separator */}
+                            <div className="border-t border-dashed border-border mx-4 mt-3" />
                             <div className="mt-3 flex-shrink-0 px-4">
                               <Button
-                                variant="outline"
+                                variant="ghost"
                                 size="sm"
                                 onClick={() => {
                                   setShowAddWalletDialog(true);
@@ -1940,7 +2144,7 @@ export function WalletDashboard({
                   {/* Mobile Hamburger Menu with expanded functionality */}
                   <Sheet open={showMobileMenu} onOpenChange={setShowMobileMenu}>
                     <SheetTrigger asChild>
-                      <Button variant="outline" size="sm" className="h-7 w-7 p-0">
+                      <Button variant="ghost" size="sm" className="h-7 w-7 p-0">
                         <Menu className="h-3.5 w-3.5" />
                       </Button>
                     </SheetTrigger>
@@ -1953,7 +2157,7 @@ export function WalletDashboard({
                         {/* Expand View Button */}
                         {typeof chrome !== 'undefined' && chrome.tabs && (
                           <Button
-                            variant="outline"
+                            variant="ghost"
                             size="sm"
                             onClick={() => {
                               chrome.tabs.create({
@@ -1972,7 +2176,7 @@ export function WalletDashboard({
 
                         {/* RPC Provider */}
                         <Button
-                          variant="outline"
+                          variant="ghost"
                           size="sm"
                           onClick={() => {
                             setShowRPCManager(true);
@@ -1986,7 +2190,7 @@ export function WalletDashboard({
 
                         {/* Connected dApps */}
                         <Button
-                          variant="outline"
+                          variant="ghost"
                           size="sm"
                           onClick={() => {
                             setShowDAppsManager(true);
@@ -2000,7 +2204,7 @@ export function WalletDashboard({
 
                         {/* Address Book */}
                         <Button
-                          variant="outline"
+                          variant="ghost"
                           size="sm"
                           onClick={() => {
                             setShowAddressBook(true);
@@ -2014,27 +2218,27 @@ export function WalletDashboard({
 
                         {/* Export Private Keys */}
                         <Button
-                          variant="destructive"
+                          variant="ghost"
                           size="sm"
                           onClick={() => {
                             setShowExportKeys(true);
                             setShowMobileMenu(false);
                           }}
-                          className="w-full justify-start gap-1.5 text-xs h-10"
+                          className="w-full justify-start gap-1.5 text-xs h-10 text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300"
                         >
                           <Key className="h-3.5 w-3.5" />
-                          Export Private Keys
+                          Export Keys
                         </Button>
 
                         {/* Lock Wallet */}
                         <Button
-                          variant="outline"
+                          variant="ghost"
                           size="sm"
                           onClick={() => {
                             setShowLockConfirm(true);
                             setShowMobileMenu(false);
                           }}
-                          className="w-full justify-start gap-1.5 text-xs h-10 text-orange-600 hover:text-orange-700 dark:text-orange-400 dark:hover:text-orange-300 border-orange-600 hover:border-orange-700 dark:border-orange-400 dark:hover:border-orange-300"
+                          className="w-full justify-start gap-1.5 text-xs h-10 text-orange-600 hover:text-orange-700 dark:text-orange-400 dark:hover:text-orange-300"
                         >
                           <Lock className="h-3.5 w-3.5" />
                           Lock Wallet
@@ -2042,13 +2246,13 @@ export function WalletDashboard({
 
                         {/* Reset All */}
                         <Button
-                          variant="outline"
+                          variant="ghost"
                           size="sm"
                           onClick={() => {
                             setShowResetConfirm(true);
                             setShowMobileMenu(false);
                           }}
-                          className="w-full justify-start gap-1.5 text-xs h-10 text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 border-red-500 hover:border-red-700 dark:border-red-400 dark:hover:border-red-300"
+                          className="w-full justify-start gap-1.5 text-xs h-10 text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300"
                         >
                           <RotateCcw className="h-3.5 w-3.5" />
                           Reset All
@@ -2810,7 +3014,7 @@ export function WalletDashboard({
 
             {/* Transaction List - Scrollable area */}
             <ScrollArea className="flex-1 min-h-0" stabilizeGutter>
-              <ScrollAreaContent className="space-y-1.5 pb-6">
+              <ScrollAreaContent className="divide-y divide-dashed divide-border pb-6">
                 {isLoadingTransactions ? (
                   <div className="flex items-center justify-center py-4">
                     <div className="w-4 h-4 rounded-full border-2 border-transparent animate-spin" style={{ borderTopColor: '#0000db' }} />
@@ -2852,9 +3056,7 @@ export function WalletDashboard({
                     return (
                       <div 
                         key={tx.hash} 
-                        className={`border  p-2.5 cursor-pointer hover:bg-muted/50 transition-colors ${
-                          operationMode === 'private' ? 'border-[#0000db]/20' : 'border-border'
-                        }`}
+                        className={`py-2.5 px-1 cursor-pointer hover:bg-muted/50 transition-colors`}
                         onClick={() => handleViewTxDetails(tx.hash, tx.status === 'pending')}
                       >
                         <div className="flex items-center justify-between gap-2">
@@ -2911,14 +3113,16 @@ export function WalletDashboard({
             {/* EVM Mode Content */}
             {evmMode ? (
               <>
-                {/* EVM Mode Label */}
-                <div className="text-sm text-orange-600 dark:text-orange-400 mb-2 flex items-center gap-2">
-                  <Coins className="h-4 w-4" />
-                  EVM Assets - {evmNetwork.name}
+                {/* EVM Mode Header */}
+                <div className="w-full max-w-lg mb-4">
+                  <div className="text-sm text-orange-600 dark:text-orange-400 flex items-center gap-2">
+                    <Coins className="h-4 w-4" />
+                    Balance
+                  </div>
                 </div>
 
                 {/* EVM Balance Display */}
-                <div className="text-center mb-6">
+                <div className="text-center mb-4">
                   {selectedEVMWallet?.isLoading ? (
                     <div className="flex items-center justify-center gap-2">
                       <div className="w-6 h-6 rounded-full border-2 border-transparent animate-spin" style={{ borderTopColor: '#f97316' }} />
@@ -2929,16 +3133,9 @@ export function WalletDashboard({
                         <span className="text-4xl font-bold tracking-tight text-orange-600 dark:text-orange-400">
                           {selectedEVMWallet?.balance || '0.000000'} {evmNetwork.symbol}
                         </span>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-8 w-8 p-0 text-orange-600 dark:text-orange-400 hover:bg-orange-500/10"
-                          onClick={() => {
-                            fetchEvmBalance();
-                            fetchEvmTransactions();
-                          }}
-                          disabled={evmRpcStatus !== 'connected' || selectedEVMWallet?.isLoading}
-                        >
+                        <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-orange-600 dark:text-orange-400 hover:bg-orange-500/10"
+                          onClick={() => { fetchEvmBalance(); fetchEvmTokens(); fetchEvmNfts(); fetchEvmTransactions(); }}
+                          disabled={evmRpcStatus !== 'connected' || selectedEVMWallet?.isLoading}>
                           <RefreshCw className={`h-4 w-4 ${selectedEVMWallet?.isLoading ? 'animate-spin' : ''}`} />
                         </Button>
                       </div>
@@ -2958,39 +3155,92 @@ export function WalletDashboard({
 
                 {/* EVM Address Display */}
                 {selectedEVMWallet && (
-                  <div className="w-full max-w-lg mb-6 space-y-3">
-                    <div className="p-4 bg-muted/50 rounded-lg">
-                      <Label className="text-xs text-muted-foreground">EVM Address</Label>
-                      <div className="flex items-center gap-2 mt-1">
-                        <code className="flex-1 text-sm font-mono break-all text-orange-600 dark:text-orange-400">
-                          {selectedEVMWallet.evmAddress}
-                        </code>
-                        <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => copyToClipboard(selectedEVMWallet.evmAddress, 'evm-main')}>
-                          {copiedField === 'evm-main' ? <Check className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4" />}
+                  <div className="w-full max-w-lg mb-4">
+                    <div className="p-3 bg-muted/50 rounded-lg">
+                      <div className="flex items-center gap-2">
+                        <code className="flex-1 text-xs font-mono break-all text-orange-600 dark:text-orange-400">{selectedEVMWallet.evmAddress}</code>
+                        <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => copyToClipboard(selectedEVMWallet.evmAddress, 'evm-main')}>
+                          {copiedField === 'evm-main' ? <Check className="h-3.5 w-3.5 text-green-500" /> : <Copy className="h-3.5 w-3.5" />}
                         </Button>
-                        <Button variant="ghost" size="sm" className="h-8 w-8 p-0" asChild>
-                          <a href={`${evmNetwork.explorer}/address/${selectedEVMWallet.evmAddress}`} target="_blank" rel="noopener noreferrer">
-                            <ExternalLink className="h-4 w-4" />
-                          </a>
-                        </Button>
+                        {evmNetwork.explorer && (
+                          <Button variant="ghost" size="sm" className="h-7 w-7 p-0" asChild>
+                            <a href={`${evmNetwork.explorer}/address/${selectedEVMWallet.evmAddress}`} target="_blank" rel="noopener noreferrer"><ExternalLink className="h-3.5 w-3.5" /></a>
+                          </Button>
+                        )}
                       </div>
                     </div>
                   </div>
                 )}
 
-                {/* EVM Action Button - Send Only */}
-                <div className="w-full max-w-lg">
-                  {/* Send ETH */}
-                  <Button
-                    variant="outline"
-                    className="w-full flex flex-col items-center gap-3 h-auto py-6 border border-orange-500/30 hover:border-orange-500/50 hover:bg-orange-500/5 transition-all text-orange-600 dark:text-orange-400"
-                    onClick={() => setShowEvmSendDialog(true)}
-                    disabled={evmRpcStatus !== 'connected'}
-                  >
-                    <Send className="h-8 w-8" />
-                    <span className="text-sm font-medium">Send {evmNetwork.symbol}</span>
-                    <span className="text-[10px] text-orange-500/70">Transfer ETH</span>
+                {/* Send Native Token Button */}
+                <div className="w-full max-w-lg mb-4">
+                  <Button variant="outline" className="w-full h-12 gap-2 border-orange-500/30 hover:border-orange-500/50 hover:bg-orange-500/5 text-orange-600 dark:text-orange-400"
+                    onClick={() => openEvmSendDialog('native')} disabled={evmRpcStatus !== 'connected'}>
+                    <Send className="h-4 w-4" />Send {evmNetwork.symbol}
                   </Button>
+                </div>
+
+                {/* Tokens & NFTs Tabs */}
+                <div className="w-full max-w-lg">
+                  <Tabs value={evmActiveTab} onValueChange={(v) => setEvmActiveTab(v as 'tokens' | 'nfts')}>
+                    <div className="flex items-center justify-between mb-2">
+                      <TabsList className="h-8">
+                        <TabsTrigger value="tokens" className="text-xs h-7 px-3 gap-1"><Coins className="h-3 w-3" />Tokens ({evmTokens.length})</TabsTrigger>
+                        <TabsTrigger value="nfts" className="text-xs h-7 px-3 gap-1"><Image className="h-3 w-3" />NFTs ({evmNfts.length})</TabsTrigger>
+                      </TabsList>
+                      <Button variant="outline" size="sm" className="h-7 text-xs gap-1 border-orange-500/30" onClick={() => evmActiveTab === 'tokens' ? setShowEvmImportToken(true) : setShowEvmImportNFT(true)}>
+                        <Plus className="h-3 w-3" />Import
+                      </Button>
+                    </div>
+                    
+                    <TabsContent value="tokens" className="mt-0">
+                      <div className="space-y-2 max-h-[200px] overflow-auto">
+                        {isLoadingEvmTokens ? (
+                          <div className="flex items-center justify-center py-6"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
+                        ) : evmTokens.length > 0 ? (
+                          evmTokens.map((token) => (
+                            <div key={`${token.address}-${token.chainId}`} className="p-2.5 bg-muted/50 rounded-lg border border-border hover:border-orange-500/30 transition-colors flex items-center justify-between">
+                              <div className="flex items-center gap-2">
+                                <div className="w-8 h-8 rounded-full bg-orange-500/10 flex items-center justify-center text-xs font-bold text-orange-600">{token.symbol.slice(0, 2)}</div>
+                                <div><p className="text-sm font-medium">{token.name}</p><p className="text-xs text-muted-foreground">{token.symbol}</p></div>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <p className="text-sm font-semibold">{token.balance}</p>
+                                <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => openEvmSendDialog('token', token)} disabled={parseFloat(token.balance) <= 0}><Send className="h-3 w-3" /></Button>
+                              </div>
+                            </div>
+                          ))
+                        ) : (
+                          <div className="flex flex-col items-center justify-center py-6 text-muted-foreground">
+                            <Coins className="h-8 w-8 mb-2 opacity-20" /><p className="text-xs">No tokens found</p>
+                            <Button variant="link" size="sm" className="text-xs" onClick={() => setShowEvmImportToken(true)}>Import Token</Button>
+                          </div>
+                        )}
+                      </div>
+                    </TabsContent>
+                    
+                    <TabsContent value="nfts" className="mt-0">
+                      <div className="grid grid-cols-3 gap-2 max-h-[200px] overflow-auto">
+                        {evmNfts.length > 0 ? (
+                          evmNfts.map((nft) => (
+                            <div key={`${nft.contractAddress}-${nft.tokenId}`} className="p-2 bg-muted/50 rounded-lg border border-border hover:border-orange-500/30 transition-colors">
+                              <div className="aspect-square bg-muted rounded mb-1.5 flex items-center justify-center overflow-hidden">
+                                {nft.imageUrl ? <img src={nft.imageUrl} alt={nft.name} className="w-full h-full object-cover" /> : <Image className="h-6 w-6 text-muted-foreground/30" />}
+                              </div>
+                              <p className="text-xs font-medium truncate">{nft.name}</p>
+                              <p className="text-[10px] text-muted-foreground">#{nft.tokenId}</p>
+                              <Button variant="outline" size="sm" className="w-full mt-1.5 h-6 text-[10px]" onClick={() => openEvmSendDialog('nft', undefined, nft)}><Send className="h-2.5 w-2.5 mr-1" />Send</Button>
+                            </div>
+                          ))
+                        ) : (
+                          <div className="col-span-3 flex flex-col items-center justify-center py-6 text-muted-foreground">
+                            <Image className="h-8 w-8 mb-2 opacity-20" /><p className="text-xs">No NFTs found</p>
+                            <Button variant="link" size="sm" className="text-xs" onClick={() => setShowEvmImportNFT(true)}>Import NFT</Button>
+                          </div>
+                        )}
+                      </div>
+                    </TabsContent>
+                  </Tabs>
                 </div>
               </>
             ) : (
@@ -3130,7 +3380,7 @@ export function WalletDashboard({
                       onClick={enterEvmMode}
                     >
                       <Coins className="h-5 w-5" />
-                      <span className="text-sm font-medium">EVM Assets ETH</span>
+                      <span className="text-sm font-medium">EVM Assets</span>
                     </Button>
                   </div>
                 )}
@@ -3359,14 +3609,28 @@ export function WalletDashboard({
 
                           {/* Message */}
                           {(('message' in selectedTxDetails && selectedTxDetails.message) || 
-                            ('parsed_tx' in selectedTxDetails && selectedTxDetails.parsed_tx.message)) && (
-                            <div className="py-2.5">
-                              <span className="text-xs text-muted-foreground">Message</span>
-                              <p className="text-xs mt-1 break-all">
-                                {'message' in selectedTxDetails ? selectedTxDetails.message : selectedTxDetails.parsed_tx.message}
-                              </p>
-                            </div>
-                          )}
+                            ('parsed_tx' in selectedTxDetails && selectedTxDetails.parsed_tx.message)) && (() => {
+                            const message = 'message' in selectedTxDetails ? selectedTxDetails.message : selectedTxDetails.parsed_tx.message;
+                            const isLongMessage = message.length > 250;
+                            return (
+                              <div className="py-2.5">
+                                <span className="text-xs text-muted-foreground">Message</span>
+                                <p className="text-xs mt-1 break-all">
+                                  {isLongMessage && !showFullMessage ? truncateMessage(message) : message}
+                                </p>
+                                {isLongMessage && (
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => setShowFullMessage(!showFullMessage)}
+                                    className="h-6 px-2 text-[10px] text-muted-foreground hover:text-foreground mt-1"
+                                  >
+                                    {showFullMessage ? 'Show less' : 'Show all'}
+                                  </Button>
+                                )}
+                              </div>
+                            );
+                          })()}
                         </div>
 
                         {/* Spacer to push button to bottom */}
@@ -4038,53 +4302,230 @@ export function WalletDashboard({
         </DialogContent>
       </Dialog>
 
-      {/* EVM RPC Manager Dialog */}
+      {/* EVM RPC Manager Dialog - Network Management */}
       <Dialog open={showEvmRpcManager} onOpenChange={setShowEvmRpcManager}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-lg max-h-[85vh] overflow-hidden flex flex-col">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-orange-600 dark:text-orange-400">
-              <Wifi className="h-5 w-5" />
-              EVM RPC Settings
+              <Settings className="h-5 w-5" />
+              EVM Network Settings
             </DialogTitle>
-            <DialogDescription>
-              Configure RPC provider for {evmNetwork.name}
-            </DialogDescription>
+            <DialogDescription>Manage networks and RPC endpoints</DialogDescription>
           </DialogHeader>
-          <div className="space-y-4 py-4">
+          
+          <div className="flex-1 overflow-auto space-y-4 px-0.5">
+            {/* Network List */}
             <div className="space-y-2">
-              <Label>Current RPC</Label>
-              <div className="p-3 bg-muted rounded-lg">
-                <code className="text-xs break-all">{getRpcDisplayName(getEVMRpcUrl(evmNetwork.id))}</code>
+              <Label className="text-sm font-medium">Networks</Label>
+              <ScrollArea className="h-[180px]">
+                <ScrollAreaContent className="space-y-1">
+                  {allEvmNetworks.map((network) => (
+                    <div 
+                      key={network.id} 
+                      className={`flex items-center justify-between p-2.5 rounded cursor-pointer transition-colors ${evmNetwork.id === network.id ? 'bg-orange-500/10' : 'bg-muted/30 hover:bg-muted/50'}`}
+                      onClick={() => { handleEvmNetworkChange(network.id); }}
+                    >
+                      <div className="flex items-center gap-2 flex-1 min-w-0">
+                        <div className="flex flex-col min-w-0">
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-sm font-medium truncate">{network.name}</span>
+                            <Badge variant="outline" className="text-[9px] shrink-0">{network.symbol}</Badge>
+                            {network.isCustom && <Badge variant="secondary" className="text-[9px] shrink-0">Custom</Badge>}
+                            {network.isTestnet && <Badge variant="outline" className="text-[9px] shrink-0 border-yellow-500/50 text-yellow-600">Testnet</Badge>}
+                          </div>
+                          <span className="text-[10px] text-muted-foreground truncate">{getRpcDisplayName(getEVMRpcUrl(network.id))}</span>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1 shrink-0">
+                        <span className="text-xs text-muted-foreground">ID: {network.chainId}</span>
+                        {evmNetwork.id === network.id && (
+                          evmRpcStatus === 'connected' ? <Wifi className="h-3.5 w-3.5 text-green-500 ml-1" /> : 
+                          evmRpcStatus === 'checking' ? <Loader2 className="h-3.5 w-3.5 animate-spin ml-1" /> : 
+                          <WifiOff className="h-3.5 w-3.5 text-red-500 ml-1" />
+                        )}
+                        {network.isCustom && (
+                          <Button 
+                            variant="ghost" 
+                            size="sm" 
+                            className="h-6 w-6 p-0 text-red-500 ml-1" 
+                            onClick={(e) => { e.stopPropagation(); handleRemoveEvmNetwork(network.id); }}
+                          >
+                            <Trash2 className="h-3 w-3" />
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </ScrollAreaContent>
+              </ScrollArea>
+            </div>
+            
+            <div className="border-t border-dashed border-border" />
+            
+            {/* Custom RPC for current network */}
+            <div className="space-y-2">
+              <Label className="text-sm">Custom RPC for {evmNetwork.name} (optional)</Label>
+              <div className="flex gap-2">
+                <Input placeholder="https://your-rpc-endpoint.com" value={evmCustomRpcUrl} onChange={(e) => setEvmCustomRpcUrl(e.target.value)} className="flex-1 h-9 text-sm" />
+                <Button size="sm" onClick={handleSaveEvmCustomRpc} disabled={!evmCustomRpcUrl.trim()}>Save</Button>
               </div>
             </div>
-            <div className="space-y-2">
-              <Label>Custom RPC URL</Label>
-              <Input
-                placeholder="https://..."
-                value={evmCustomRpcUrl}
-                onChange={(e) => setEvmCustomRpcUrl(e.target.value)}
-              />
+            
+            <div className="border-t border-dashed border-border" />
+            
+            {/* Add Custom Network */}
+            <div className="space-y-3">
+              <Label className="text-sm font-medium">Add Custom Network</Label>
+              <div className="grid grid-cols-2 gap-2">
+                <Input placeholder="Network Name *" value={newEvmNetwork.name} onChange={(e) => setNewEvmNetwork({ ...newEvmNetwork, name: e.target.value })} className="h-8 text-sm" />
+                <Input placeholder="Symbol *" value={newEvmNetwork.symbol} onChange={(e) => setNewEvmNetwork({ ...newEvmNetwork, symbol: e.target.value })} className="h-8 text-sm" />
+              </div>
+              <Input placeholder="RPC URL *" value={newEvmNetwork.rpcUrl} onChange={(e) => setNewEvmNetwork({ ...newEvmNetwork, rpcUrl: e.target.value })} className="h-8 text-sm" />
+              <div className="grid grid-cols-2 gap-2">
+                <Input placeholder="Chain ID *" value={newEvmNetwork.chainId} onChange={(e) => setNewEvmNetwork({ ...newEvmNetwork, chainId: e.target.value })} className="h-8 text-sm" />
+                <Input placeholder="Explorer URL" value={newEvmNetwork.explorer} onChange={(e) => setNewEvmNetwork({ ...newEvmNetwork, explorer: e.target.value })} className="h-8 text-sm" />
+              </div>
+              <Button onClick={handleAddEvmNetwork} disabled={isAddingEvmNetwork} className="w-full bg-orange-500 hover:bg-orange-600">
+                {isAddingEvmNetwork ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Plus className="h-4 w-4 mr-2" />}Add Network
+              </Button>
             </div>
           </div>
-          <div className="flex gap-3">
-            <Button
-              variant="outline"
-              className="flex-1"
-              onClick={() => {
-                setShowEvmRpcManager(false);
-                setEvmCustomRpcUrl('');
-              }}
-            >
-              Cancel
-            </Button>
-            <Button
-              className="flex-1 bg-orange-500 hover:bg-orange-600 text-white"
-              onClick={handleSaveEvmCustomRpc}
-              disabled={!evmCustomRpcUrl.trim()}
-            >
-              Save
-            </Button>
+        </DialogContent>
+      </Dialog>
+
+      {/* EVM Import Token Dialog */}
+      <Dialog open={showEvmImportToken} onOpenChange={setShowEvmImportToken}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="text-orange-600 dark:text-orange-400">Import Token</DialogTitle>
+            <DialogDescription>Import an ERC20 token on {evmNetwork.name}</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label>Token Contract Address</Label>
+              <div className="flex gap-2">
+                <Input placeholder="0x..." value={evmImportTokenAddress} onChange={(e) => setEvmImportTokenAddress(e.target.value)} className="flex-1" />
+                <Button onClick={handleEvmLookupToken} disabled={isLoadingEvmTokenInfo || !evmImportTokenAddress}>{isLoadingEvmTokenInfo ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Lookup'}</Button>
+              </div>
+            </div>
+            {evmImportTokenInfo && (
+              <div className="p-3 bg-muted rounded-lg flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full bg-orange-500/10 flex items-center justify-center text-sm font-bold text-orange-600">{evmImportTokenInfo.symbol.slice(0, 2)}</div>
+                <div><p className="font-medium">{evmImportTokenInfo.name}</p><p className="text-sm text-muted-foreground">{evmImportTokenInfo.symbol} • {evmImportTokenInfo.decimals} decimals</p></div>
+              </div>
+            )}
           </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setShowEvmImportToken(false); setEvmImportTokenAddress(''); setEvmImportTokenInfo(null); }}>Cancel</Button>
+            <Button onClick={handleEvmImportToken} disabled={!evmImportTokenInfo} className="bg-orange-500 hover:bg-orange-600">Import Token</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* EVM Import NFT Dialog */}
+      <Dialog open={showEvmImportNFT} onOpenChange={setShowEvmImportNFT}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="text-orange-600 dark:text-orange-400">Import NFT</DialogTitle>
+            <DialogDescription>Import an ERC721 NFT on {evmNetwork.name}</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label>NFT Contract Address</Label>
+              <Input placeholder="0x..." value={evmImportNFTAddress} onChange={(e) => setEvmImportNFTAddress(e.target.value)} />
+            </div>
+            <div className="space-y-2">
+              <Label>Token ID</Label>
+              <div className="flex gap-2">
+                <Input placeholder="1" value={evmImportNFTTokenId} onChange={(e) => setEvmImportNFTTokenId(e.target.value)} className="flex-1" />
+                <Button onClick={handleEvmLookupNFT} disabled={isLoadingEvmNFTInfo || !evmImportNFTAddress || !evmImportNFTTokenId}>{isLoadingEvmNFTInfo ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Lookup'}</Button>
+              </div>
+            </div>
+            {evmImportNFTInfo && (
+              <div className="p-3 bg-muted rounded-lg flex items-center gap-3">
+                <div className="w-14 h-14 rounded-lg bg-muted-foreground/10 flex items-center justify-center overflow-hidden">
+                  {evmImportNFTInfo.imageUrl ? <img src={evmImportNFTInfo.imageUrl} alt={evmImportNFTInfo.name} className="w-full h-full object-cover" /> : <Image className="h-6 w-6 text-muted-foreground/30" />}
+                </div>
+                <div><p className="font-medium">{evmImportNFTInfo.name}</p><p className="text-sm text-muted-foreground">{evmImportNFTInfo.symbol} #{evmImportNFTTokenId}</p></div>
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setShowEvmImportNFT(false); setEvmImportNFTAddress(''); setEvmImportNFTTokenId(''); setEvmImportNFTInfo(null); }}>Cancel</Button>
+            <Button onClick={handleEvmImportNFT} disabled={!evmImportNFTInfo} className="bg-orange-500 hover:bg-orange-600">Import NFT</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* EVM Send Transaction Dialog - Updated for tokens/NFTs */}
+      <Dialog open={showEvmSendDialog} onOpenChange={setShowEvmSendDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-orange-600 dark:text-orange-400">
+              Send {evmSendType === 'native' ? evmNetwork.symbol : evmSendType === 'token' ? selectedEvmToken?.symbol : `NFT #${selectedEvmNFT?.tokenId}`}
+            </DialogTitle>
+            <DialogDescription>
+              {evmSendType === 'native' ? `Send ${evmNetwork.symbol} from your wallet` : evmSendType === 'token' ? `Send ${selectedEvmToken?.name} tokens` : `Transfer NFT ${selectedEvmNFT?.name}`}
+            </DialogDescription>
+          </DialogHeader>
+          
+          {!evmTxHash ? (
+            <div className="space-y-4 py-2">
+              <div className="space-y-2">
+                <Label>Recipient Address</Label>
+                <Input placeholder="0x..." value={evmSendTo} onChange={(e) => setEvmSendTo(e.target.value)} disabled={isEvmSending} />
+              </div>
+              {evmSendType !== 'nft' && (
+                <div className="space-y-2">
+                  <Label>Amount ({evmSendType === 'native' ? evmNetwork.symbol : selectedEvmToken?.symbol})</Label>
+                  <Input type="number" step="0.000001" placeholder="0.0" value={evmSendAmount} onChange={(e) => setEvmSendAmount(e.target.value)} disabled={isEvmSending} />
+                </div>
+              )}
+              {evmSendType === 'nft' && selectedEvmNFT && (
+                <div className="p-3 bg-muted rounded-lg flex items-center gap-3">
+                  <div className="w-12 h-12 rounded-lg bg-muted-foreground/10 flex items-center justify-center overflow-hidden">
+                    {selectedEvmNFT.imageUrl ? <img src={selectedEvmNFT.imageUrl} alt={selectedEvmNFT.name} className="w-full h-full object-cover" /> : <Image className="h-5 w-5 text-muted-foreground/30" />}
+                  </div>
+                  <div><p className="font-medium">{selectedEvmNFT.name}</p><p className="text-sm text-muted-foreground">Token ID: {selectedEvmNFT.tokenId}</p></div>
+                </div>
+              )}
+              {evmSendError && <div className="text-sm text-destructive bg-destructive/10 p-2 rounded">{evmSendError}</div>}
+              {evmSendType === 'native' && selectedEVMWallet?.balance && <div className="text-sm text-muted-foreground">Available: {selectedEVMWallet.balance} {evmNetwork.symbol}</div>}
+              {evmSendType === 'token' && selectedEvmToken && <div className="text-sm text-muted-foreground">Available: {selectedEvmToken.balance} {selectedEvmToken.symbol}</div>}
+              {evmGasPrice && <div className="text-xs text-muted-foreground">Gas: ~{evmGasPrice} Gwei</div>}
+            </div>
+          ) : (
+            <div className="py-4">
+              <div className="w-16 h-16 bg-green-500/10 rounded-full flex items-center justify-center mx-auto mb-3"><Check className="h-8 w-8 text-green-500" /></div>
+              <p className="text-lg font-semibold mb-1 text-center">Transaction Sent!</p>
+              <p className="text-sm text-muted-foreground mb-4 text-center">Your transaction has been broadcast</p>
+              <div className="space-y-2">
+                <div className="bg-muted p-3 rounded-lg">
+                  <Label className="text-xs text-muted-foreground">Transaction Hash</Label>
+                  <div className="flex items-center gap-2 mt-1">
+                    <code className="flex-1 text-xs font-mono break-all">{evmTxHash}</code>
+                    <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => copyToClipboard(evmTxHash!, 'evmtxhash')}>{copiedField === 'evmtxhash' ? <Check className="h-3 w-3 text-green-500" /> : <Copy className="h-3 w-3" />}</Button>
+                  </div>
+                </div>
+                {evmNetwork.explorer && (
+                  <Button variant="outline" className="w-full" asChild><a href={`${evmNetwork.explorer}/tx/${evmTxHash}`} target="_blank" rel="noopener noreferrer"><ExternalLink className="h-4 w-4 mr-2" />View on Explorer</a></Button>
+                )}
+              </div>
+            </div>
+          )}
+          
+          <DialogFooter>
+            {!evmTxHash ? (
+              <>
+                <Button variant="outline" onClick={() => setShowEvmSendDialog(false)} disabled={isEvmSending}>Cancel</Button>
+                <Button onClick={handleEvmSendTransaction} disabled={isEvmSending || !evmSendTo || (evmSendType !== 'nft' && !evmSendAmount)} className="bg-orange-500 hover:bg-orange-600">
+                  {isEvmSending ? <><Loader2 className="h-4 w-4 animate-spin mr-2" />Sending...</> : 'Send'}
+                </Button>
+              </>
+            ) : (
+              <Button onClick={() => { setShowEvmSendDialog(false); setEvmTxHash(null); setEvmSendTo(''); setEvmSendAmount(''); }}>Close</Button>
+            )}
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

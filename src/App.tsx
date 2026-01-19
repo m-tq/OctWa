@@ -644,6 +644,26 @@ function App() {
     );
   }
 
+  // Check if wallet exists in storage but not loaded yet (prevents WelcomeScreen flash)
+  const hasStoredWallet = localStorage.getItem('walletPasswordHash') && localStorage.getItem('encryptedWallets');
+  
+  // Show loading if we have stored wallets but wallet state is not ready yet
+  if (!wallet && hasStoredWallet) {
+    return (
+      <ThemeProvider defaultTheme="dark" storageKey="octra-wallet-theme">
+        <div className="min-h-screen bg-background flex items-center justify-center overflow-hidden">
+          <div className="flex flex-col items-center space-y-4">
+            <div
+              className="w-10 h-10 rounded-full border-4 border-transparent animate-spin"
+              style={{ borderTopColor: '#0000db', borderRightColor: '#0000db' }}
+            />
+            <p className="text-muted-foreground">Loading wallet...</p>
+          </div>
+        </div>
+      </ThemeProvider>
+    );
+  }
+
   return (
     <ThemeProvider defaultTheme="dark" storageKey="octra-wallet-theme">
       <div className="min-h-screen bg-background">

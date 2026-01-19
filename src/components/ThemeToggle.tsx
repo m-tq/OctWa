@@ -16,7 +16,7 @@ export function ThemeToggle({ isPopupMode = false, className = '' }: ThemeToggle
 
   return (
     <Button 
-      variant={isPopupMode ? 'outline' : 'ghost'} 
+      variant="ghost" 
       size="sm"
       onClick={toggleTheme} 
       className={`flex items-center justify-center ${isPopupMode ? 'h-7 w-7 p-0' : ''} ${className}`}
