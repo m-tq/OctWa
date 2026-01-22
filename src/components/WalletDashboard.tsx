@@ -89,6 +89,7 @@ import {
   getERC20Balance, getERC20TokenInfo, getNFTMetadata, checkNFTOwnership,
   sendERC20Transaction, sendNFTTransaction, COMMON_TOKENS,
   saveCustomNetwork, removeCustomNetwork,
+  getAllEVMTransactions,
 } from '../utils/evmRpc';
 
 import { useToast } from '@/hooks/use-toast';
@@ -137,6 +138,7 @@ export function WalletDashboard({
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [isLoadingBalance, setIsLoadingBalance] = useState(true);
   const [isLoadingTransactions, setIsLoadingTransactions] = useState(true);
+  const [isRefreshingOctraHistory, setIsRefreshingOctraHistory] = useState(false);
   const [nonce, setNonce] = useState(0);
   const [walletNonces, setWalletNonces] = useState<Record<string, number | null>>({});
   const [showAddWalletDialog, setShowAddWalletDialog] = useState(false);
@@ -1020,12 +1022,15 @@ export function WalletDashboard({
     setEvmNfts(verifiedNFTs.filter((n): n is NFTToken => n !== null));
   };
 
-  // Fetch EVM transactions
+  // Fetch EVM transactions (including ERC20 token transfers for imported tokens)
   const fetchEvmTransactions = async () => {
     if (!selectedEVMWallet) return;
     setIsLoadingEvmTxs(true);
     try {
-      const txs = await getEVMTransactions(selectedEVMWallet.evmAddress, evmNetwork.id);
+      // Get custom token addresses for the current chain
+      const customTokenAddresses = getCustomTokens(evmNetwork.chainId).map(t => t.address);
+      // Fetch all transactions including ERC20 transfers
+      const txs = await getAllEVMTransactions(selectedEVMWallet.evmAddress, customTokenAddresses, evmNetwork.id);
       setEvmTransactions(txs);
     } catch (error) {
       console.error('Failed to fetch EVM transactions:', error);
@@ -1077,7 +1082,9 @@ export function WalletDashboard({
         hash = await sendEVMTransaction(selectedEVMWallet.privateKeyHex, evmSendTo, evmSendAmount, evmNetwork.id);
       } else if (evmSendType === 'token' && selectedEvmToken) {
         if (!evmSendAmount) { setEvmSendError('Please enter amount'); setIsEvmSending(false); return; }
-        hash = await sendERC20Transaction(selectedEVMWallet.privateKeyHex, selectedEvmToken.address, evmSendTo, evmSendAmount, selectedEvmToken.decimals, evmNetwork.id);
+        // Convert amount to smallest units using token decimals
+        const amountInSmallestUnits = (parseFloat(evmSendAmount) * Math.pow(10, selectedEvmToken.decimals)).toString();
+        hash = await sendERC20Transaction(selectedEVMWallet.privateKeyHex, selectedEvmToken.address, evmSendTo, amountInSmallestUnits, evmNetwork.id);
       } else if (evmSendType === 'nft' && selectedEvmNFT) {
         hash = await sendNFTTransaction(selectedEVMWallet.privateKeyHex, selectedEvmNFT.contractAddress, evmSendTo, selectedEvmNFT.tokenId, evmNetwork.id);
       } else {
@@ -1133,6 +1140,8 @@ export function WalletDashboard({
       const balance = await getERC20Balance(evmImportTokenAddress, selectedEVMWallet.evmAddress, evmImportTokenInfo.decimals, evmNetwork.id);
       const token: ERC20Token = { address: evmImportTokenAddress, name: evmImportTokenInfo.name, symbol: evmImportTokenInfo.symbol, decimals: evmImportTokenInfo.decimals, balance, isLoading: false, chainId: evmNetwork.chainId };
       saveCustomToken(token); await fetchEvmTokens();
+      // Also refresh transactions to include the new token's history
+      await fetchEvmTransactions();
       setShowEvmImportToken(false); setEvmImportTokenAddress(''); setEvmImportTokenInfo(null);
       toast({ title: 'Success', description: `${evmImportTokenInfo.symbol} imported successfully` });
     } catch (error: any) { toast({ title: 'Error', description: error.message || 'Failed to import token', variant: 'destructive' }); }
@@ -1513,6 +1522,57 @@ export function WalletDashboard({
     setTransactions(newTransactions);
   };
 
+  // Refresh Octra history - updates history first, then other data in background
+  const refreshOctraHistory = async () => {
+    if (!wallet || isRefreshingOctraHistory) return;
+    
+    setIsRefreshingOctraHistory(true);
+    
+    try {
+      // 1. Fetch transaction history FIRST (priority)
+      const result = await getTransactionHistory(wallet.address, {}, true); // force refresh
+      
+      if (Array.isArray(result.transactions)) {
+        const transformedTxs = result.transactions.map((tx) => ({
+          ...tx,
+          type: tx.from?.toLowerCase() === wallet.address.toLowerCase() ? 'sent' : 'received'
+        } as Transaction));
+        setTransactions(transformedTxs);
+      }
+      
+      // 2. Update other data in background (don't await)
+      Promise.all([
+        // Refresh balance
+        fetchBalance(wallet.address, true).then(balanceData => {
+          setBalance(balanceData.balance);
+          setNonce(balanceData.nonce);
+        }).catch(console.error),
+        
+        // Refresh encrypted balance if in private mode
+        operationMode === 'private' && wallet.privateKey
+          ? fetchEncryptedBalance(wallet.address, wallet.privateKey, true).then(setEncryptedBalance).catch(console.error)
+          : Promise.resolve(),
+        
+        // Refresh pending transfers count
+        wallet.privateKey
+          ? getPendingPrivateTransfers(wallet.address, wallet.privateKey, true).then(transfers => {
+              setPendingTransfersCount(transfers.length);
+            }).catch(console.error)
+          : Promise.resolve(),
+      ]);
+      
+    } catch (error) {
+      console.error('Failed to refresh Octra history:', error);
+      toast({
+        title: "Error",
+        description: "Failed to refresh history",
+        variant: "destructive",
+      });
+    } finally {
+      setIsRefreshingOctraHistory(false);
+    }
+  };
+
   const handleTransactionSuccess = async () => {
     // Refresh session timeout on transaction activity
     WalletManager.refreshSessionTimeout();
@@ -1551,7 +1611,7 @@ export function WalletDashboard({
   // Helper to truncate long messages
   const truncateMessage = (message: string, maxLength: number = 250) => {
     if (message.length <= maxLength) return message;
-    return `${message.slice(0, 100)}...${message.slice(-100)}`;
+    return `${message.slice(0, 30)}...${message.slice(-30)}`;
   };
 
   // Handler for viewing transaction details
@@ -2274,7 +2334,7 @@ export function WalletDashboard({
                           onChange={(e) => handleEvmNetworkChange(e.target.value)}
                           className="h-9 px-3 pr-8 text-xs bg-background rounded-md text-orange-600 dark:text-orange-400 focus:outline-none focus:ring-2 focus:ring-orange-500/50 appearance-none bg-[url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2224%22%20height%3D%2224%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22%23f97316%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpolyline%20points%3D%226%209%2012%2015%2018%209%22%3E%3C%2Fpolyline%3E%3C%2Fsvg%3E')] bg-[length:16px] bg-[right_8px_center] bg-no-repeat hover:bg-orange-500/10"
                         >
-                          {DEFAULT_EVM_NETWORKS.map((network) => (
+                          {allEvmNetworks.map((network) => (
                             <option key={network.id} value={network.id}>
                               {network.name}
                             </option>
@@ -3711,7 +3771,7 @@ export function WalletDashboard({
                             ) : evmTransactions.length > 0 ? (
                               evmTransactions.map((tx, index) => (
                                 <a 
-                                  key={tx.hash} 
+                                  key={`${tx.hash}-${index}`} 
                                   href={`${evmNetwork.explorer}/tx/${tx.hash}`} 
                                   target="_blank" 
                                   rel="noopener noreferrer"
@@ -3728,10 +3788,13 @@ export function WalletDashboard({
                                         ) : (
                                           <ArrowDownLeft className="h-4 w-4 text-green-500" />
                                         )}
-                                        <span className="text-sm font-medium capitalize">{tx.type}</span>
+                                        <span className="text-sm font-medium capitalize">
+                                          {tx.type}
+                                          {tx.tokenSymbol && <span className="text-xs text-muted-foreground ml-1">({tx.tokenSymbol})</span>}
+                                        </span>
                                       </div>
                                       <p className={`text-sm font-semibold ${tx.type === 'sent' ? 'text-red-500' : 'text-green-500'}`}>
-                                        {tx.type === 'sent' ? '-' : '+'}{tx.value} {evmNetwork.symbol}
+                                        {tx.type === 'sent' ? '-' : '+'}{tx.value} {tx.tokenSymbol || evmNetwork.symbol}
                                       </p>
                                     </div>
                                     <div className="flex items-center justify-between">
@@ -3773,6 +3836,15 @@ export function WalletDashboard({
                           {operationMode === 'private' ? 'Encrypted Activity' : 'Public Activity'}
                         </h3>
                         <div className="flex items-center gap-1">
+                          <Button 
+                            variant="ghost" 
+                            size="sm" 
+                            className="h-7 w-7 p-0"
+                            onClick={refreshOctraHistory}
+                            disabled={isRefreshingOctraHistory}
+                          >
+                            <RefreshCw className={`h-3.5 w-3.5 ${isRefreshingOctraHistory ? 'animate-spin' : ''}`} />
+                          </Button>
                           <Button 
                             variant="ghost" 
                             size="sm" 

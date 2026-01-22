@@ -36,6 +36,7 @@ import {
 import { WalletManager } from '../utils/walletManager';
 import { createTransaction, sendTransaction, fetchBalance } from '../utils/api';
 import { sendEVMTransaction } from '../utils/evmRpc';
+import { deriveEvmFromOctraKey } from '../utils/evmDerive';
 import nacl from 'tweetnacl';
 
 // Types
@@ -72,8 +73,18 @@ interface TransactionPayload {
 
 interface EVMTransactionPayload {
   to: string;
-  amount: string; // ETH amount as string
-  data?: string; // Hex encoded intent payload
+  amount?: string; // ETH amount as string (optional, use value if not provided)
+  value?: string;  // Wei amount as string (alternative to amount)
+  data?: string;   // Hex encoded intent payload
+}
+
+interface ERC20TransactionPayload {
+  tokenContract: string; // ERC20 contract address
+  to: string;            // Recipient address
+  amount: string;        // Amount in smallest units (e.g., 6 decimals for USDC)
+  decimals: number;      // Token decimals
+  symbol: string;        // Token symbol (e.g., "USDC")
+  metadata?: unknown;    // Optional metadata for the transaction
 }
 
 interface InvokeRequest {
@@ -111,6 +122,7 @@ export function DAppRequestHandler({ wallets }: DAppRequestHandlerProps) {
   const [invokeRequest, setInvokeRequest] = useState<InvokeRequest | null>(null);
   const [parsedTxPayload, setParsedTxPayload] = useState<TransactionPayload | null>(null);
   const [parsedEvmTxPayload, setParsedEvmTxPayload] = useState<EVMTransactionPayload | null>(null);
+  const [parsedErc20TxPayload, setParsedErc20TxPayload] = useState<ERC20TransactionPayload | null>(null);
   const [selectedWallet, setSelectedWallet] = useState<Wallet | null>(wallets[0] || null);
   const [isProcessing, setIsProcessing] = useState(false);
   const { toast } = useToast();
@@ -255,6 +267,40 @@ export function DAppRequestHandler({ wallets }: DAppRequestHandlerProps) {
             console.error('[DAppRequestHandler] Failed to parse EVM tx payload for display:', e);
           }
         }
+        
+        // Parse ERC20 transaction payload for send_erc20_transaction method
+        if (pending.pendingInvokeRequest.method === 'send_erc20_transaction') {
+          try {
+            const payload = pending.pendingInvokeRequest.payload;
+            let erc20TxParams: ERC20TransactionPayload | null = null;
+            
+            if (payload && typeof payload === 'object' && '_type' in payload && (payload as { _type: string })._type === 'Uint8Array') {
+              const payloadWithData = payload as unknown as { _type: string; data: number[] };
+              const bytes = new Uint8Array(payloadWithData.data);
+              erc20TxParams = JSON.parse(new TextDecoder().decode(bytes));
+            } else if (payload instanceof Uint8Array) {
+              erc20TxParams = JSON.parse(new TextDecoder().decode(payload));
+            } else if (typeof payload === 'object' && payload !== null && '0' in payload) {
+              const obj = payload as Record<string, number>;
+              const keys = Object.keys(obj).filter((k) => !isNaN(Number(k)));
+              const length = keys.length;
+              const bytes = new Uint8Array(length);
+              for (let i = 0; i < length; i++) {
+                bytes[i] = obj[i.toString()];
+              }
+              erc20TxParams = JSON.parse(new TextDecoder().decode(bytes));
+            } else if (payload) {
+              erc20TxParams = payload as ERC20TransactionPayload;
+            }
+            
+            if (erc20TxParams) {
+              setParsedErc20TxPayload(erc20TxParams);
+              console.log('[DAppRequestHandler] Parsed ERC20 tx payload:', erc20TxParams);
+            }
+          } catch (e) {
+            console.error('[DAppRequestHandler] Failed to parse ERC20 tx payload for display:', e);
+          }
+        }
       }
     }
   };
@@ -326,18 +372,39 @@ export function DAppRequestHandler({ wallets }: DAppRequestHandlerProps) {
 
       // Send response - include both field names for compatibility
       if (typeof chrome !== 'undefined' && chrome.runtime) {
-        // Get EVM address from storage (safe - no private key needed)
-        const evmAddress = WalletManager.getEvmAddress(selectedWallet.address);
-        console.log('[DAppRequestHandler] Got EVM address from storage:', {
-          octraAddress: selectedWallet.address,
-          evmAddress: evmAddress || '(not found)'
-        });
+        let evmAddress = '';
+
+        // Always derive EVM address from privateKey if available (most reliable)
+        if (selectedWallet.privateKey) {
+          try {
+            const derived = deriveEvmFromOctraKey(selectedWallet.privateKey);
+            evmAddress = derived.evmAddress;
+            console.log('[DAppRequestHandler] Derived EVM address from privateKey:', evmAddress);
+          } catch (e) {
+            console.error('[DAppRequestHandler] Failed to derive EVM address:', e);
+          }
+        } else {
+          console.warn('[DAppRequestHandler] No privateKey in selectedWallet!');
+          // Fallback: try from storage
+          evmAddress = WalletManager.getEvmAddress(selectedWallet.address);
+          if (evmAddress) {
+            console.log('[DAppRequestHandler] Got EVM address from storage:', evmAddress);
+          }
+        }
+
+        if (!evmAddress) {
+          console.error('[DAppRequestHandler] ERROR: Could not get EVM address!');
+          console.error('[DAppRequestHandler] selectedWallet:', {
+            address: selectedWallet.address,
+            hasPrivateKey: !!selectedWallet.privateKey,
+          });
+        }
 
         console.log('[DAppRequestHandler] Sending CONNECTION_RESULT:', {
           appOrigin: connectionRequest.appOrigin,
           walletPubKey: selectedWallet.address,
-          evmAddress,
-          network: currentNetwork
+          evmAddress: evmAddress || '(MISSING!)',
+          network: currentNetwork,
         });
         
         chrome.runtime.sendMessage({
@@ -602,9 +669,23 @@ export function DAppRequestHandler({ wallets }: DAppRequestHandlerProps) {
           throw new Error('Failed to parse EVM transaction payload');
         }
         
+        // Convert value (wei) to amount (ETH) if amount not provided
+        let amountEth = evmTxParams.amount;
+        if (!amountEth && evmTxParams.value) {
+          // Convert wei to ETH
+          const weiValue = BigInt(evmTxParams.value);
+          amountEth = (Number(weiValue) / 1e18).toString();
+          console.log('[DAppRequestHandler] Converted value (wei) to amount (ETH):', evmTxParams.value, '->', amountEth);
+        }
+        
+        if (!amountEth) {
+          throw new Error('No amount or value provided for EVM transaction');
+        }
+        
         console.log('[DAppRequestHandler] EVM Transaction params:', evmTxParams);
         console.log('[DAppRequestHandler]   to:', evmTxParams.to);
-        console.log('[DAppRequestHandler]   amount:', evmTxParams.amount, 'ETH');
+        console.log('[DAppRequestHandler]   amount:', amountEth, 'ETH');
+        console.log('[DAppRequestHandler]   value (wei):', evmTxParams.value || '(not provided)');
         console.log('[DAppRequestHandler]   data:', evmTxParams.data ? '(present)' : '(empty)');
         
         // Validate wallet has private key
@@ -624,7 +705,7 @@ export function DAppRequestHandler({ wallets }: DAppRequestHandlerProps) {
         const txHash = await sendEVMTransaction(
           evmPrivateKey,
           evmTxParams.to,
-          evmTxParams.amount,
+          amountEth,
           'eth-sepolia', // Network ID for Sepolia
           evmTxParams.data // Intent payload as hex data
         );
@@ -637,7 +718,100 @@ export function DAppRequestHandler({ wallets }: DAppRequestHandlerProps) {
           txHash,
           from: WalletManager.getEvmAddress(selectedWallet.address),
           to: evmTxParams.to,
-          amount: evmTxParams.amount,
+          amount: amountEth,
+          timestamp: Date.now(),
+        };
+        
+        if (typeof chrome !== 'undefined' && chrome.runtime) {
+          chrome.runtime.sendMessage({
+            type: 'INVOKE_RESULT',
+            appOrigin: invokeRequest.appOrigin,
+            approved: true,
+            data: new TextEncoder().encode(JSON.stringify(resultData))
+          });
+          chrome.storage.local.remove('pendingInvokeRequest');
+        }
+        
+        // Success - close popup immediately (no toast needed)
+      } else if (invokeRequest.method === 'send_erc20_transaction') {
+        // Handle ERC20 token transfer (e.g., USDC on Sepolia)
+        console.log('[DAppRequestHandler] Executing send_erc20_transaction...');
+        
+        // Parse the ERC20 transaction payload
+        let erc20TxParams: ERC20TransactionPayload;
+        const payload = invokeRequest.payload;
+        
+        try {
+          if (payload && typeof payload === 'object' && '_type' in payload && (payload as { _type: string })._type === 'Uint8Array') {
+            const payloadWithData = payload as unknown as { _type: string; data: number[] };
+            const bytes = new Uint8Array(payloadWithData.data);
+            erc20TxParams = JSON.parse(new TextDecoder().decode(bytes));
+          } else if (payload instanceof Uint8Array) {
+            erc20TxParams = JSON.parse(new TextDecoder().decode(payload));
+          } else if (typeof payload === 'object' && payload !== null && '0' in payload) {
+            const obj = payload as Record<string, number>;
+            const keys = Object.keys(obj).filter((k) => !isNaN(Number(k)));
+            const length = keys.length;
+            const bytes = new Uint8Array(length);
+            for (let i = 0; i < length; i++) {
+              bytes[i] = obj[i.toString()];
+            }
+            erc20TxParams = JSON.parse(new TextDecoder().decode(bytes));
+          } else {
+            erc20TxParams = payload as ERC20TransactionPayload;
+          }
+        } catch (e) {
+          console.error('[DAppRequestHandler] Failed to parse ERC20 tx payload:', e);
+          throw new Error('Failed to parse ERC20 transaction payload');
+        }
+        
+        // Calculate human-readable amount
+        const amountHuman = Number(erc20TxParams.amount) / (10 ** erc20TxParams.decimals);
+        
+        console.log('[DAppRequestHandler] ERC20 Transaction params:', erc20TxParams);
+        console.log('[DAppRequestHandler]   tokenContract:', erc20TxParams.tokenContract);
+        console.log('[DAppRequestHandler]   to:', erc20TxParams.to);
+        console.log('[DAppRequestHandler]   amount (raw):', erc20TxParams.amount);
+        console.log('[DAppRequestHandler]   amount (human):', amountHuman, erc20TxParams.symbol);
+        console.log('[DAppRequestHandler]   decimals:', erc20TxParams.decimals);
+        
+        // Validate wallet has private key
+        if (!selectedWallet.privateKey) {
+          throw new Error('Wallet private key not available. Please unlock your wallet.');
+        }
+        
+        // Get EVM private key from WalletManager
+        const evmPrivateKey = await WalletManager.getEvmPrivateKey(selectedWallet.address);
+        if (!evmPrivateKey) {
+          throw new Error('EVM private key not found. Please re-import your wallet.');
+        }
+        
+        console.log('[DAppRequestHandler] Sending ERC20 transfer to Sepolia...');
+        
+        // Import sendERC20Transaction dynamically
+        const { sendERC20Transaction } = await import('../utils/evmRpc');
+        
+        // Send ERC20 transaction
+        const txHash = await sendERC20Transaction(
+          evmPrivateKey,
+          erc20TxParams.tokenContract,
+          erc20TxParams.to,
+          erc20TxParams.amount,
+          'eth-sepolia'
+        );
+        
+        console.log('[DAppRequestHandler] ✅ ERC20 Transaction sent! txHash:', txHash);
+        
+        // Return the result to dApp
+        const resultData = {
+          success: true,
+          txHash,
+          from: WalletManager.getEvmAddress(selectedWallet.address),
+          to: erc20TxParams.to,
+          tokenContract: erc20TxParams.tokenContract,
+          amount: erc20TxParams.amount,
+          amountHuman,
+          symbol: erc20TxParams.symbol,
           timestamp: Date.now(),
         };
         
@@ -924,7 +1098,14 @@ export function DAppRequestHandler({ wallets }: DAppRequestHandlerProps) {
                     </div>
                     <div className="flex items-center justify-between">
                       <span className="text-xs text-blue-700">Amount</span>
-                      <span className="font-bold text-sm text-blue-900">{parsedEvmTxPayload.amount} ETH</span>
+                      <span className="font-bold text-sm text-blue-900">
+                        {parsedEvmTxPayload.amount 
+                          ? `${parsedEvmTxPayload.amount} ETH`
+                          : parsedEvmTxPayload.value 
+                            ? `${(Number(parsedEvmTxPayload.value) / 1e18).toFixed(8)} ETH`
+                            : '0 ETH'
+                        }
+                      </span>
                     </div>
                     {parsedEvmTxPayload.data && (
                       <div className="pt-1 border-t border-blue-200">
@@ -940,7 +1121,34 @@ export function DAppRequestHandler({ wallets }: DAppRequestHandlerProps) {
                 </div>
               )}
 
-              <Alert className={invokeRequest.method === 'send_transaction' || invokeRequest.method === 'send_evm_transaction' ? "border-amber-200 bg-amber-50 py-2" : "py-2"}>
+              {/* ERC20 Transaction Details for send_erc20_transaction */}
+              {invokeRequest.method === 'send_erc20_transaction' && parsedErc20TxPayload && (
+                <div className="p-3 bg-green-50 border border-green-200 rounded-lg space-y-2">
+                  <h4 className="font-medium text-sm text-green-800">{parsedErc20TxPayload.symbol} Transfer Details</h4>
+                  <div className="space-y-1">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-green-700">Network</span>
+                      <span className="font-medium text-xs text-green-900">Sepolia Testnet</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-green-700">Token</span>
+                      <span className="font-mono text-xs text-green-900">{parsedErc20TxPayload.symbol}</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-green-700">To</span>
+                      <span className="font-mono text-xs text-green-900 truncate max-w-[180px]">{parsedErc20TxPayload.to}</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-green-700">Amount</span>
+                      <span className="font-bold text-sm text-green-900">
+                        {(Number(parsedErc20TxPayload.amount) / (10 ** parsedErc20TxPayload.decimals)).toFixed(2)} {parsedErc20TxPayload.symbol}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              <Alert className={invokeRequest.method === 'send_transaction' || invokeRequest.method === 'send_evm_transaction' || invokeRequest.method === 'send_erc20_transaction' ? "border-amber-200 bg-amber-50 py-2" : "py-2"}>
                 {invokeRequest.method === 'send_transaction' ? (
                   <>
                     <AlertTriangle className="h-3 w-3 text-amber-600" />
@@ -953,6 +1161,13 @@ export function DAppRequestHandler({ wallets }: DAppRequestHandlerProps) {
                     <AlertTriangle className="h-3 w-3 text-amber-600" />
                     <AlertDescription className="text-xs text-amber-800">
                       This will send ETH from your wallet on Sepolia. Make sure you trust this dApp.
+                    </AlertDescription>
+                  </>
+                ) : invokeRequest.method === 'send_erc20_transaction' ? (
+                  <>
+                    <AlertTriangle className="h-3 w-3 text-amber-600" />
+                    <AlertDescription className="text-xs text-amber-800">
+                      This will transfer {parsedErc20TxPayload?.symbol || 'tokens'} from your wallet. Make sure you trust this dApp.
                     </AlertDescription>
                   </>
                 ) : (

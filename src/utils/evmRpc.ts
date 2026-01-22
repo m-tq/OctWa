@@ -799,6 +799,106 @@ export async function getEVMTransactions(
   }
 }
 
+/**
+ * Get ERC20 token transfer history for specific tokens (using Etherscan API V2)
+ * @param address - Wallet address
+ * @param tokenAddresses - Array of ERC20 token contract addresses to filter
+ * @param networkId - Network ID (optional)
+ */
+export async function getERC20Transactions(
+  address: string,
+  tokenAddresses: string[],
+  networkId?: string
+): Promise<EVMTransaction[]> {
+  if (tokenAddresses.length === 0) return [];
+  
+  const network = networkId 
+    ? getAllNetworks().find(n => n.id === networkId) || getActiveEVMNetwork()
+    : getActiveEVMNetwork();
+  
+  const apiKey = import.meta.env.VITE_ETHERSCAN_API_KEY || '';
+  
+  try {
+    // Etherscan API V2 with tokentx action for ERC20 transfers
+    const url = `https://api.etherscan.io/v2/api?chainid=${network.chainId}&module=account&action=tokentx&address=${address}&startblock=0&endblock=99999999&page=1&offset=100&sort=desc${apiKey ? `&apikey=${apiKey}` : ''}`;
+    
+    const response = await fetch(url);
+    
+    if (!response.ok) {
+      console.error('ERC20 Transactions API response not ok:', response.status);
+      return [];
+    }
+    
+    const data = await response.json();
+    
+    if (data.status === '0' && data.message === 'No transactions found') {
+      return [];
+    }
+    
+    if (data.status !== '1' || !Array.isArray(data.result)) {
+      console.error('ERC20 Transactions API error:', data.message || data.result || 'Unknown error');
+      return [];
+    }
+    
+    // Filter by token addresses (case-insensitive)
+    const lowerTokenAddresses = tokenAddresses.map(a => a.toLowerCase());
+    const filteredTxs = data.result.filter((tx: any) => 
+      lowerTokenAddresses.includes(tx.contractAddress?.toLowerCase())
+    );
+    
+    return filteredTxs.map((tx: any) => {
+      const decimals = parseInt(tx.tokenDecimal) || 18;
+      const value = (Number(tx.value) / Math.pow(10, decimals)).toFixed(6);
+      
+      return {
+        hash: tx.hash,
+        from: tx.from,
+        to: tx.to || '',
+        value,
+        timestamp: Number(tx.timeStamp) * 1000,
+        status: 'confirmed' as const,
+        type: tx.from.toLowerCase() === address.toLowerCase() ? 'sent' : 'received',
+        tokenSymbol: tx.tokenSymbol || 'TOKEN',
+        tokenAddress: tx.contractAddress,
+      };
+    });
+  } catch (error) {
+    console.error('Failed to fetch ERC20 transactions:', error);
+    return [];
+  }
+}
+
+/**
+ * Get all EVM transactions including ERC20 token transfers for imported tokens
+ * @param address - Wallet address
+ * @param customTokenAddresses - Array of custom/imported token addresses
+ * @param networkId - Network ID (optional)
+ */
+export async function getAllEVMTransactions(
+  address: string,
+  customTokenAddresses: string[] = [],
+  networkId?: string
+): Promise<EVMTransaction[]> {
+  try {
+    // Fetch native transactions and ERC20 transactions in parallel
+    const [nativeTxs, erc20Txs] = await Promise.all([
+      getEVMTransactions(address, networkId),
+      customTokenAddresses.length > 0 
+        ? getERC20Transactions(address, customTokenAddresses, networkId)
+        : Promise.resolve([])
+    ]);
+    
+    // Merge and sort by timestamp (newest first)
+    const allTxs = [...nativeTxs, ...erc20Txs];
+    allTxs.sort((a, b) => b.timestamp - a.timestamp);
+    
+    return allTxs;
+  } catch (error) {
+    console.error('Failed to fetch all EVM transactions:', error);
+    return [];
+  }
+}
+
 
 /**
  * Get display name for RPC URL (hide API keys)
@@ -939,13 +1039,17 @@ export async function sendEVMTransaction(
 
 /**
  * Send ERC20 token transaction
+ * @param privateKeyHex - Private key in hex format
+ * @param tokenAddress - ERC20 contract address
+ * @param to - Recipient address
+ * @param amount - Amount in smallest units (e.g., for USDC with 6 decimals, 1000000 = 1 USDC)
+ * @param networkId - Network ID (optional, defaults to active network)
  */
 export async function sendERC20Transaction(
   privateKeyHex: string,
   tokenAddress: string,
   to: string,
   amount: string,
-  decimals: number = 18,
   networkId?: string
 ): Promise<string> {
   const network = networkId 
@@ -964,11 +1068,11 @@ export async function sendERC20Transaction(
     const erc20Abi = ['function transfer(address to, uint256 amount) returns (bool)'];
     const contract = new ethers.Contract(tokenAddress, erc20Abi, wallet);
     
-    // Parse amount with correct decimals
-    const amountWei = ethers.parseUnits(amount, decimals);
+    // Amount is already in smallest units (e.g., 1000000 for 1 USDC)
+    const amountBigInt = BigInt(amount);
     
     // Send transaction
-    const tx = await contract.transfer(to, amountWei);
+    const tx = await contract.transfer(to, amountBigInt);
     await tx.wait();
     
     return tx.hash;

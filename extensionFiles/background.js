@@ -354,8 +354,8 @@ async function handleInvokeRequest(data, sender) {
   // 2. Read scope doesn't modify state
   // 3. Data is bound to the capability's origin
   // 
-  // NOTE: send_transaction and send_evm_transaction are NOT auto-execute
-  // They require popup approval as they transfer funds
+  // SECURITY: send_transaction and send_evm_transaction are NOT auto-execute
+  // They ALWAYS require popup approval as they transfer funds
   // ==========================================================================
   const autoExecuteMethods = ['get_balance', 'get_quote', 'sign_intent', 'create_intent', 'submit_intent', 'get_intent_status'];
   
@@ -460,7 +460,12 @@ async function handleInvokeRequest(data, sender) {
 // =============================================================================
 
 const RPC_URL = 'https://octra.network';
+const ETH_RPC_URL = 'https://ethereum-sepolia-rpc.publicnode.com';
 const MU_FACTOR = 1_000_000;
+
+// USDC Contract on Sepolia (Circle's official testnet USDC)
+const USDC_CONTRACT = '0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238';
+const USDC_DECIMALS = 6;
 
 async function executeMethod(method, payload, connection, capability) {
   switch (method) {
@@ -475,6 +480,9 @@ async function executeMethod(method, payload, connection, capability) {
 
     case 'send_transaction':
       return await executeSendTransaction(payload, connection);
+
+    case 'send_evm_transaction':
+      return await executeSendEvmTransaction(payload, connection);
 
     case 'create_intent':
     case 'submit_intent':
@@ -533,37 +541,101 @@ async function executeSignIntent(payload, connection) {
 
 // Get balance from RPC (wallet-side, not dApp-side)
 async function executeGetBalance(connection) {
-  const address = connection.walletPubKey;
+  const octAddress = connection.walletPubKey;
+  const evmAddress = connection.evmAddress || '';
   
-  console.log('[Background] Fetching balance for:', address);
+  console.log('[Background] Fetching balances for:', { octAddress, evmAddress });
   
+  let octBalance = 0;
+  let ethBalance = 0;
+  let usdcBalance = 0;
+  
+  // Fetch OCT balance
   try {
-    const response = await fetch(`${RPC_URL}/address/${address}`);
+    const response = await fetch(`${RPC_URL}/address/${octAddress}`);
     
-    if (!response.ok) {
-      throw new Error(`RPC error: ${response.status}`);
+    if (response.ok) {
+      const data = await response.json();
+      octBalance = parseFloat(data.balance) || 0;
+      console.log('[Background] OCT balance:', octBalance);
+    }
+  } catch (error) {
+    console.error('[Background] OCT balance fetch error:', error);
+  }
+  
+  // Fetch ETH balance (Sepolia)
+  if (evmAddress) {
+    try {
+      const response = await fetch(ETH_RPC_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          method: 'eth_getBalance',
+          params: [evmAddress, 'latest'],
+          id: 1
+        })
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        if (data.result) {
+          // Convert from wei (hex) to ETH
+          const weiBalance = BigInt(data.result);
+          ethBalance = Number(weiBalance) / 1e18;
+          console.log('[Background] ETH balance:', ethBalance);
+        }
+      }
+    } catch (error) {
+      console.error('[Background] ETH balance fetch error:', error);
     }
     
-    const data = await response.json();
-    console.log('[Background] RPC response:', data);
-    
-    // Balance from RPC is already in OCT (not micro-units)
-    const balanceInOct = parseFloat(data.balance) || 0;
-    
-    console.log('[Background] Balance fetched:', { oct: balanceInOct });
-    
-    // Return as Uint8Array (SDK format)
-    const result = {
-      address: address,
-      balance: balanceInOct,
-      network: connection.network || 'mainnet'
-    };
-    
-    return new TextEncoder().encode(JSON.stringify(result));
-  } catch (error) {
-    console.error('[Background] Balance fetch error:', error);
-    throw new Error(`Failed to fetch balance: ${error.message}`);
+    // Fetch USDC balance (ERC20 on Sepolia)
+    try {
+      // balanceOf(address) function selector: 0x70a08231
+      const balanceOfData = '0x70a08231' + evmAddress.slice(2).toLowerCase().padStart(64, '0');
+      
+      const response = await fetch(ETH_RPC_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          method: 'eth_call',
+          params: [
+            { to: USDC_CONTRACT, data: balanceOfData },
+            'latest'
+          ],
+          id: 2
+        })
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        if (data.result && data.result !== '0x') {
+          // Convert from smallest units to USDC (6 decimals)
+          const rawBalance = BigInt(data.result);
+          usdcBalance = Number(rawBalance) / Math.pow(10, USDC_DECIMALS);
+          console.log('[Background] USDC balance:', usdcBalance);
+        }
+      }
+    } catch (error) {
+      console.error('[Background] USDC balance fetch error:', error);
+    }
   }
+  
+  console.log('[Background] Balances fetched:', { octBalance, ethBalance, usdcBalance });
+  
+  // Return as Uint8Array (SDK format)
+  const result = {
+    octAddress: octAddress,
+    evmAddress: evmAddress,
+    octBalance: octBalance,
+    ethBalance: ethBalance,
+    usdcBalance: usdcBalance,
+    network: connection.network || 'mainnet'
+  };
+  
+  return new TextEncoder().encode(JSON.stringify(result));
 }
 
 // Get swap quote (simulated for demo)
@@ -615,12 +687,15 @@ async function executeGetQuote(payload) {
 async function executeSendTransaction(payload, connection) {
   let txParams;
   try {
+    // Decode payload from various formats
+    let payloadStr;
     if (payload && payload._type === 'Uint8Array') {
       const bytes = new Uint8Array(payload.data);
-      txParams = JSON.parse(new TextDecoder().decode(bytes));
+      payloadStr = new TextDecoder().decode(bytes);
     } else if (payload instanceof Uint8Array) {
-      txParams = JSON.parse(new TextDecoder().decode(payload));
+      payloadStr = new TextDecoder().decode(payload);
     } else if (typeof payload === 'object' && payload !== null && '0' in payload) {
+      // Object with numeric keys (serialized Uint8Array)
       const obj = payload;
       const keys = Object.keys(obj).filter((k) => !isNaN(Number(k)));
       const length = keys.length;
@@ -628,20 +703,41 @@ async function executeSendTransaction(payload, connection) {
       for (let i = 0; i < length; i++) {
         bytes[i] = obj[i.toString()];
       }
-      txParams = JSON.parse(new TextDecoder().decode(bytes));
-    } else {
+      payloadStr = new TextDecoder().decode(bytes);
+    } else if (typeof payload === 'string') {
+      payloadStr = payload;
+    } else if (typeof payload === 'object') {
+      // Already an object
       txParams = payload;
     }
+
+    // Parse JSON string
+    if (payloadStr && !txParams) {
+      txParams = JSON.parse(payloadStr);
+    }
+    
+    console.log('[Background] Parsed OCT tx payload:', txParams);
   } catch (e) {
+    console.error('[Background] Failed to parse transaction payload:', e, 'payload:', payload);
     throw new Error('Failed to parse transaction payload');
   }
 
-  console.log('[Background] Sending transaction:', txParams);
+  if (!txParams) {
+    throw new Error('Empty transaction payload');
+  }
 
-  const { to, amount, message } = txParams;
+  console.log('[Background] Sending OCT transaction:', txParams);
+
+  const { to, amount, type, message } = txParams;
+
+  // Validate amount is a number
+  if (typeof amount !== 'number' || amount <= 0) {
+    console.error('[Background] Invalid amount:', amount, typeof amount);
+    throw new Error('Invalid amount');
+  }
 
   // In production, this would:
-  // 1. Build the actual Octra transaction
+  // 1. Build the actual Octra transaction with message field
   // 2. Sign with wallet's private key
   // 3. Broadcast to Octra network
   // 4. Return the transaction hash
@@ -654,7 +750,88 @@ async function executeSendTransaction(payload, connection) {
     txHash,
     from: connection.walletPubKey,
     to,
-    amount,
+    amount, // decimal OCT amount
+    message: message || null, // encoded message for backend verification
+    timestamp: Date.now(),
+  };
+
+  return new TextEncoder().encode(JSON.stringify(result));
+}
+
+// Send EVM transaction (ETH to escrow for BUY orders)
+async function executeSendEvmTransaction(payload, connection) {
+  let txParams;
+  try {
+    // Decode payload from various formats
+    let payloadStr;
+    if (payload && payload._type === 'Uint8Array') {
+      const bytes = new Uint8Array(payload.data);
+      payloadStr = new TextDecoder().decode(bytes);
+    } else if (payload instanceof Uint8Array) {
+      payloadStr = new TextDecoder().decode(payload);
+    } else if (typeof payload === 'object' && payload !== null && '0' in payload) {
+      // Object with numeric keys (serialized Uint8Array)
+      const obj = payload;
+      const keys = Object.keys(obj).filter((k) => !isNaN(Number(k)));
+      const length = keys.length;
+      const bytes = new Uint8Array(length);
+      for (let i = 0; i < length; i++) {
+        bytes[i] = obj[i.toString()];
+      }
+      payloadStr = new TextDecoder().decode(bytes);
+    } else if (typeof payload === 'string') {
+      payloadStr = payload;
+    } else if (typeof payload === 'object') {
+      // Already an object
+      txParams = payload;
+    }
+
+    // Parse JSON string
+    if (payloadStr && !txParams) {
+      txParams = JSON.parse(payloadStr);
+    }
+    
+    console.log('[Background] Parsed ETH tx payload:', txParams);
+  } catch (e) {
+    console.error('[Background] Failed to parse EVM transaction payload:', e, 'payload:', payload);
+    throw new Error('Failed to parse EVM transaction payload');
+  }
+
+  if (!txParams) {
+    throw new Error('Empty EVM transaction payload');
+  }
+
+  console.log('[Background] Sending ETH transaction:', txParams);
+
+  const { to, value, data } = txParams;
+
+  // Validate params
+  if (!value || !to) {
+    console.error('[Background] Invalid EVM params:', { to, value });
+    throw new Error('Invalid EVM transaction params');
+  }
+
+  // Convert wei string to ETH for display
+  const ethAmount = Number(BigInt(value)) / 1e18;
+  console.log('[Background] ETH amount:', ethAmount);
+
+  // In production, this would:
+  // 1. Build the actual EVM transaction with data field (encoded message)
+  // 2. Sign with wallet's EVM private key
+  // 3. Broadcast to Ethereum network
+  // 4. Return the transaction hash
+
+  // Simulated transaction hash
+  const txHash = '0x' + Date.now().toString(16) + Math.random().toString(16).slice(2, 18);
+
+  const result = {
+    success: true,
+    txHash,
+    from: connection.evmAddress,
+    to,
+    value, // wei string
+    ethAmount, // decimal ETH for reference
+    data: data || null, // encoded message for backend verification
     timestamp: Date.now(),
   };
 
