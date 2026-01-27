@@ -82,7 +82,7 @@ export function PasswordSetup({ wallet, onPasswordSet, onBack }: PasswordSetupPr
       
       // Get existing encrypted wallets (if any)
       const existingEncryptedData = localStorage.getItem('encryptedWallets');
-      let encryptedWallets: any[] = existingEncryptedData ? JSON.parse(existingEncryptedData) : [];
+      const encryptedWallets: any[] = existingEncryptedData ? JSON.parse(existingEncryptedData) : [];
       
       // Check if wallet already exists in encrypted storage
       const walletExists = encryptedWallets.some((w: any) => w.address === wallet.address);

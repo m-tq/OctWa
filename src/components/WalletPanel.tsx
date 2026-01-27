@@ -252,7 +252,7 @@ export function WalletPanel({
               <div className="space-y-2">
                 {wallets
                   .filter((w) => w.address !== wallet.address)
-                  .map((w, i) => (
+                  .map((w) => (
                     <div
                       key={w.address}
                       className="flex items-center justify-between p-2 hover:bg-muted/50 cursor-pointer"

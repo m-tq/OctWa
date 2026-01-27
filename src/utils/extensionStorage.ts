@@ -176,7 +176,7 @@ export class ExtensionStorageManager {
     // Also clear sessionStorage just in case (cleanup legacy data)
     try {
       sessionStorage.removeItem(key);
-    } catch (e) {
+    } catch {
       // Ignore
     }
   }
@@ -194,7 +194,7 @@ export class ExtensionStorageManager {
     // Also clear browser sessionStorage
     try {
       sessionStorage.clear();
-    } catch (e) {
+    } catch {
       // Ignore
     }
   }

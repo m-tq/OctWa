@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -57,7 +57,6 @@ export function UnifiedHistory({ wallet, transactions, onTransactionsUpdate, isL
   const [selectedTx, setSelectedTx] = useState<TransactionDetails | PendingTransaction | null>(null);
   const [loadingDetails, setLoadingDetails] = useState(false);
   const [showDetailsDialog, setShowDetailsDialog] = useState(false);
-  const [contractHistory, setContractHistory] = useState<ContractInteraction[]>([]);
   const [activeFilter, setActiveFilter] = useState<HistoryFilter>('all');
   const [currentPage, setCurrentPage] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
@@ -84,27 +83,7 @@ export function UnifiedHistory({ wallet, transactions, onTransactionsUpdate, isL
   const sentCount = filteredTransactions.filter(tx => tx.type === 'sent' && !isContractCall(tx)).length;
   const receivedCount = filteredTransactions.filter(tx => tx.type === 'received' && !isContractCall(tx)).length;
 
-  // Load contract history when wallet changes
-  useEffect(() => {
-    if (wallet) {
-      loadContractHistory();
-    }
-  }, [wallet]);
 
-  const loadContractHistory = () => {
-    if (!wallet) return;
-    
-    try {
-      const history = JSON.parse(localStorage.getItem('contractHistory') || '[]');
-      const walletHistory = history.filter((interaction: ContractInteraction) => 
-        interaction.walletAddress === wallet.address
-      );
-      setContractHistory(walletHistory);
-    } catch (error) {
-      console.error('Failed to load contract history:', error);
-      setContractHistory([]);
-    }
-  };
 
   const fetchTransactions = async (page: number = 1) => {
     if (!wallet) return;
@@ -129,7 +108,6 @@ export function UnifiedHistory({ wallet, transactions, onTransactionsUpdate, isL
       } as Transaction));
       
       onTransactionsUpdate(transformedTxs);
-      loadContractHistory();
     } catch (error) {
       toast({
         title: "Error",
@@ -612,11 +590,9 @@ interface TransferItemProps {
 function TransferItem({ 
   tx, 
   onViewDetails, 
-  truncateHash, 
+  truncateHash,
   truncateAddress, 
-  getStatusIcon, 
-  getStatusColor,
-  copyToClipboard,
+  getStatusIcon,
   isPopupMode = false,
   isCompact = false,
   onItemClick
@@ -835,7 +811,7 @@ interface ContractItemProps {
   isPopupMode?: boolean;
 }
 
-function ContractItem({ contract, truncateAddress, copyToClipboard, isPopupMode = false }: ContractItemProps) {
+function ContractItem({ contract, truncateAddress, isPopupMode = false }: ContractItemProps) {
   // Popup mode: simplified compact view
   if (isPopupMode) {
     return (

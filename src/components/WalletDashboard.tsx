@@ -9,26 +9,22 @@ import { ScrollArea, ScrollAreaContent } from '@/components/ui/scroll-area';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+
 
 import {
   Send,
   History,
   Lock,
   Copy,
-  PieChart,
-  Shield,
   Gift,
   Globe,
   ChevronDown,
-  ChevronUp,
   ChevronLeft,
   ChevronRight,
   Plus,
   Trash2,
   Wifi,
   WifiOff,
-  Download,
   Menu,
   RotateCcw,
   Eye,
@@ -40,8 +36,6 @@ import {
   ArrowUpRight,
   ArrowDownLeft,
   Check,
-  PanelLeftClose,
-  PanelLeft,
   Wallet as WalletIcon,
   BookUser,
   Layers,
@@ -74,8 +68,8 @@ import { EncryptBalanceDialog } from './EncryptBalanceDialog';
 import { DecryptBalanceDialog } from './DecryptBalanceDialog';
 import { AddressBook } from './AddressBook';
 import { OnboardingOverlay, useOnboarding, resetOnboardingState } from './OnboardingOverlay';
-import { WalletLabelEditor, WalletDisplayName } from './WalletLabelEditor';
 import { DraggableWalletList } from './DraggableWalletList';
+import { WalletDisplayName } from './WalletLabelEditor';
 import { Wallet } from '../types/wallet';
 import { WalletManager } from '../utils/walletManager';
 import { fetchBalance, getTransactionHistory, fetchEncryptedBalance, fetchTransactionDetails, fetchPendingTransactionByHash, getPendingPrivateTransfers, apiCache } from '../utils/api';
@@ -83,8 +77,8 @@ import { getEVMWalletData, EVMWalletData } from '../utils/evmDerive';
 import {
   getEVMBalance, DEFAULT_EVM_NETWORKS, EVMNetwork, getActiveEVMNetwork,
   setActiveEVMNetwork, checkEVMRpcStatus, getEVMRpcUrl, saveEVMProvider,
-  getEVMGasPrice, getRpcDisplayName, sendEVMTransaction, getEVMTransactions, EVMTransaction,
-  getETHPrice, calculateUSDValue, getAllNetworks, getNativeTokenPrice,
+  getEVMGasPrice, getRpcDisplayName, sendEVMTransaction, EVMTransaction,
+  calculateUSDValue, getAllNetworks, getNativeTokenPrice,
   ERC20Token, NFTToken, getCustomTokens, saveCustomToken, getCustomNFTs, saveCustomNFT,
   getERC20Balance, getERC20TokenInfo, getNFTMetadata, checkNFTOwnership,
   sendERC20Transaction, sendNFTTransaction, COMMON_TOKENS,
@@ -187,8 +181,6 @@ export function WalletDashboard({
   // Popup mode fullscreen states
   const [popupScreen, setPopupScreen] = useState<'main' | 'encrypt' | 'decrypt' | 'send' | 'receive' | 'claim' | 'txDetail'>('main');
   const [showReceiveDialog, setShowReceiveDialog] = useState(false);
-  const [showEncryptDialog, setShowEncryptDialog] = useState(false);
-  const [showDecryptDialog, setShowDecryptDialog] = useState(false);
   const [selectedTxHash, setSelectedTxHash] = useState<string | null>(null);
   const [selectedTxDetails, setSelectedTxDetails] = useState<any>(null);
   const [loadingTxDetails, setLoadingTxDetails] = useState(false);
@@ -202,8 +194,6 @@ export function WalletDashboard({
   const [showResetPassword, setShowResetPassword] = useState(false);
   const [isVerifyingReset, setIsVerifyingReset] = useState(false);
   const [showExportKeys, setShowExportKeys] = useState(false);
-  const [showScrollIndicator, setShowScrollIndicator] = useState(false);
-  const [showScrollUpIndicator, setShowScrollUpIndicator] = useState(false);
   // Expanded mode send modal states
   const [expandedSendModal, setExpandedSendModal] = useState<'standard' | 'multi' | 'bulk' | null>(null);
   const [sendModalAnimating, setSendModalAnimating] = useState(false);
@@ -263,7 +253,6 @@ export function WalletDashboard({
   const [selectedEvmToken, setSelectedEvmToken] = useState<ERC20Token | null>(null);
   const [selectedEvmNFT, setSelectedEvmNFT] = useState<NFTToken | null>(null);
   // Add Network state
-  const [showEvmAddNetwork, setShowEvmAddNetwork] = useState(false);
   const [newEvmNetwork, setNewEvmNetwork] = useState({ name: '', rpcUrl: '', chainId: '', symbol: '', explorer: '' });
   const [isAddingEvmNetwork, setIsAddingEvmNetwork] = useState(false);
   // Current epoch state
@@ -486,37 +475,7 @@ export function WalletDashboard({
     }
   }, [wallet?.address, encryptedBalance, balance, expandedPrivateModal]);
 
-  // Check if content is scrollable (for popup mode scroll indicator in history tab)
-  useEffect(() => {
-    if (!isPopupMode || activeTab !== 'history') {
-      setShowScrollIndicator(false);
-      setShowScrollUpIndicator(false);
-      return;
-    }
 
-    const scrollContainer = document.querySelector('.popup-container');
-    if (!scrollContainer) return;
-
-    const checkScrollPosition = () => {
-      const { scrollTop, scrollHeight, clientHeight } = scrollContainer;
-      const isAtTop = scrollTop < 50;
-      const isAtBottom = scrollTop + clientHeight >= scrollHeight - 20;
-      const hasScrollableContent = scrollHeight > clientHeight;
-
-      setShowScrollIndicator(hasScrollableContent && !isAtBottom);
-      setShowScrollUpIndicator(hasScrollableContent && !isAtTop);
-    };
-
-    const timer = setTimeout(checkScrollPosition, 100);
-    scrollContainer.addEventListener('scroll', checkScrollPosition);
-    window.addEventListener('resize', checkScrollPosition);
-
-    return () => {
-      clearTimeout(timer);
-      scrollContainer.removeEventListener('scroll', checkScrollPosition);
-      window.removeEventListener('resize', checkScrollPosition);
-    };
-  }, [isPopupMode, activeTab, transactions.length]);
 
   // Check RPC status with shared cache (prevents duplicate fetching between popup/expanded)
   const [activeNetwork, setActiveNetwork] = useState<string>('mainnet');
@@ -524,7 +483,7 @@ export function WalletDashboard({
   useEffect(() => {
     // Import dynamically to avoid circular deps
     const initRPCStatus = async () => {
-      const { checkRPCStatus, onRPCStatusChange, getActiveRPCProvider } = await import('../utils/rpcStatus');
+      const { checkRPCStatus, onRPCStatusChange } = await import('../utils/rpcStatus');
       
       // Get initial status (uses cache if available)
       const status = await checkRPCStatus();
@@ -922,7 +881,7 @@ export function WalletDashboard({
   // Initialize EVM wallets when entering EVM mode
   const initializeEvmMode = async () => {
     const derived = wallets.map((w) => {
-      const evmData = getEVMWalletData(w.address, w.privateKey);
+      const evmData = getEVMWalletData(w.address, w.privateKey, w.type);
       return { ...evmData, balance: null, isLoading: false };
     });
     setEvmWallets(derived);
@@ -1031,7 +990,8 @@ export function WalletDashboard({
       const customTokenAddresses = getCustomTokens(evmNetwork.chainId).map(t => t.address);
       // Fetch all transactions including ERC20 transfers
       const txs = await getAllEVMTransactions(selectedEVMWallet.evmAddress, customTokenAddresses, evmNetwork.id);
-      setEvmTransactions(txs);
+      // Limit to last 20 recent transactions
+      setEvmTransactions(txs.slice(0, 20));
     } catch (error) {
       console.error('Failed to fetch EVM transactions:', error);
       setEvmTransactions([]);
@@ -1185,7 +1145,7 @@ export function WalletDashboard({
         isTestnet: false, isCustom: true,
       };
       saveCustomNetwork(network); setAllEvmNetworks(getAllNetworks());
-      setShowEvmAddNetwork(false); setNewEvmNetwork({ name: '', rpcUrl: '', chainId: '', symbol: '', explorer: '' });
+      setNewEvmNetwork({ name: '', rpcUrl: '', chainId: '', symbol: '', explorer: '' });
       toast({ title: 'Success', description: 'Network added successfully' });
     } catch (error: any) { toast({ title: 'Error', description: error.message || 'Failed to add network', variant: 'destructive' }); }
     finally { setIsAddingEvmNetwork(false); }
@@ -2347,7 +2307,7 @@ export function WalletDashboard({
                           className="h-9 text-xs text-orange-600 dark:text-orange-400 hover:bg-orange-500/10"
                         >
                           <Wifi className="h-3.5 w-3.5 mr-1.5" />
-                          RPC
+                          Network
                         </Button>
                       </div>
                       {/* Dashed separator */}
@@ -2852,6 +2812,13 @@ export function WalletDashboard({
                               <p className={`font-mono text-sm ${isActive ? 'text-orange-600 dark:text-orange-400' : 'text-muted-foreground'}`}>
                                 {evmWallet.evmAddress.slice(0, 10)}...{evmWallet.evmAddress.slice(-8)}
                               </p>
+                              {/* Wallet type label */}
+                              <div className={`mt-1 text-[10px] ${isActive ? 'text-orange-500/70' : 'text-muted-foreground/70'}`}>
+                                {evmWallet.type === 'generated' ? 'Generated' 
+                                  : evmWallet.type === 'imported-mnemonic' ? 'Imported (Mnemonic)' 
+                                  : evmWallet.type === 'imported-private-key' ? 'Imported (Key)' 
+                                  : ''}
+                              </div>
                             </div>
                           </div>
                         );
@@ -3169,7 +3136,7 @@ export function WalletDashboard({
         /* ============================================ */
         <div className="flex flex-col h-[calc(100vh-149px)]">
           {/* Main Content Area */}
-          <div className="flex-1 flex flex-col items-center justify-start pt-20 pb-4 overflow-auto">
+          <div className={`flex-1 flex flex-col items-center justify-start ${evmMode ? 'pt-2' : 'pt-20'} pb-4 overflow-auto`}>
             {/* EVM Mode Content */}
             {evmMode ? (
               <>
@@ -3212,25 +3179,6 @@ export function WalletDashboard({
                     </div>
                   )}
                 </div>
-
-                {/* EVM Address Display */}
-                {selectedEVMWallet && (
-                  <div className="w-full max-w-lg mb-4">
-                    <div className="p-3 bg-muted/50 rounded-lg">
-                      <div className="flex items-center gap-2">
-                        <code className="flex-1 text-xs font-mono break-all text-orange-600 dark:text-orange-400">{selectedEVMWallet.evmAddress}</code>
-                        <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => copyToClipboard(selectedEVMWallet.evmAddress, 'evm-main')}>
-                          {copiedField === 'evm-main' ? <Check className="h-3.5 w-3.5 text-green-500" /> : <Copy className="h-3.5 w-3.5" />}
-                        </Button>
-                        {evmNetwork.explorer && (
-                          <Button variant="ghost" size="sm" className="h-7 w-7 p-0" asChild>
-                            <a href={`${evmNetwork.explorer}/address/${selectedEVMWallet.evmAddress}`} target="_blank" rel="noopener noreferrer"><ExternalLink className="h-3.5 w-3.5" /></a>
-                          </Button>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                )}
 
                 {/* Send Native Token Button */}
                 <div className="w-full max-w-lg mb-4">

@@ -169,19 +169,6 @@ export function TxHistory({ wallet, transactions, onTransactionsUpdate, isLoadin
     return `${address.slice(0, 6)}...${address.slice(-4)}`;
   };
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'confirmed':
-        return 'default';
-      case 'pending':
-        return 'secondary';
-      case 'failed':
-        return 'destructive';
-      default:
-        return 'secondary';
-    }
-  };
-
   const getStatusIcon = (status: string) => {
     switch (status) {
       case 'confirmed':

@@ -1,7 +1,7 @@
 // Shared RPC Status Manager
 // Prevents duplicate fetching between popup and expanded modes
 
-import { ExtensionStorageManager } from './extensionStorage';
+
 
 export interface RPCStatusData {
   status: 'connected' | 'disconnected' | 'checking' | 'connecting';
@@ -176,7 +176,7 @@ export function onRPCStatusChange(callback: (data: RPCStatusData) => void): () =
         try {
           const newData = JSON.parse(changes[STATUS_CACHE_KEY].newValue) as RPCStatusData;
           callback(newData);
-        } catch (e) {
+        } catch {
           // Ignore parse errors
         }
       }

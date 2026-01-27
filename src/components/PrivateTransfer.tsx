@@ -53,11 +53,11 @@ function validateRecipientInput(input: string): { isValid: boolean; error?: stri
 
 export function PrivateTransfer({
   wallet,
-  balance,
-  nonce,
+  balance: _balance,
+  nonce: _nonce,
   encryptedBalance: propEncryptedBalance,
-  onBalanceUpdate,
-  onNonceUpdate,
+  onBalanceUpdate: _onBalanceUpdate,
+  onNonceUpdate: _onNonceUpdate,
   onTransactionSuccess,
   isCompact = false,
   onAddToAddressBook

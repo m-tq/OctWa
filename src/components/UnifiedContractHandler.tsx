@@ -84,7 +84,6 @@ interface UnifiedContractHandlerProps {
 
 export function UnifiedContractHandler({ 
   request, 
-  wallets, 
   selectedWallet, 
   connectedWallet,
   onWalletSelect, 

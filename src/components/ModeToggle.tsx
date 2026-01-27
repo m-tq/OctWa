@@ -3,7 +3,6 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { Globe, Shield, Check, AlertTriangle } from 'lucide-react';
 import { OperationMode } from '../utils/modeStorage';
 import { ModeSwitchConfirmDialog, isModeSwitchReminderDisabled } from './ModeSwitchConfirmDialog';
-import { InfoTooltip } from './InfoTooltip';
 
 interface ModeToggleProps {
   currentMode: OperationMode;

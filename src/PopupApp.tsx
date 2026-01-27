@@ -643,68 +643,7 @@ function PopupApp() {
     }
   };
 
-  const handleConnectionApprove = async (selectedWallet: Wallet) => {
-    if (!connectionRequest) return;
-    
-    // Send approval message to background script
-    chrome.runtime.sendMessage({
-      type: 'CONNECTION_RESULT',
-      origin: connectionRequest.origin,
-      approved: true,
-      address: selectedWallet.address
-    });
-    
-    // Clear pending request and close popup
-    await ExtensionStorageManager.remove('pendingConnectionRequest');
-    window.close();
-  };
 
-  const handleConnectionReject = async () => {
-    if (!connectionRequest) return;
-    
-    // Send rejection message to background script
-    chrome.runtime.sendMessage({
-      type: 'CONNECTION_RESULT',
-      origin: connectionRequest.origin,
-      approved: false
-    });
-    
-    // Clear pending request and close popup
-    await ExtensionStorageManager.remove('pendingConnectionRequest');
-    window.close();
-  };
-
-  const handleContractApprove = async (result: any) => {
-    if (!contractRequest) return;
-    
-    // Send success response
-    chrome.runtime.sendMessage({
-      type: 'CONTRACT_RESULT',
-      origin: contractRequest.origin,
-      approved: true,
-      result: result
-    });
-    
-    // Clear pending request and close popup
-    await ExtensionStorageManager.remove('pendingContractRequest');
-    window.close();
-  };
-
-  const handleContractReject = async (error?: string) => {
-    if (!contractRequest) return;
-    
-    // Send rejection response
-    chrome.runtime.sendMessage({
-      type: 'CONTRACT_RESULT',
-      origin: contractRequest.origin,
-      approved: false,
-      error: error
-    });
-    
-    // Clear pending request and close popup
-    await ExtensionStorageManager.remove('pendingContractRequest');
-    window.close();
-  };
 
   // Show splash screen first (shorter duration for popup)
   if (showSplash) {

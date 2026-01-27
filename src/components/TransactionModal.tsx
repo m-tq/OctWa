@@ -13,16 +13,6 @@ export interface TransactionResult {
   error?: string;
 }
 
-interface TransactionModalProps {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  status: TransactionStatus;
-  result: TransactionResult;
-  type: 'send' | 'transfer' | 'claim' | 'encrypt' | 'decrypt';
-  onClose?: () => void;
-  isPopupMode?: boolean;
-}
-
 // Bouncing Logo Animation for loading state
 const BouncingLogo = ({ size = 80 }: { size?: number }) => (
   <svg
@@ -62,7 +52,7 @@ export function TransactionModal({
   status,
   result,
   type,
-  onClose,
+  onClose: _onClose,
   isPopupMode = false
 }: TransactionModalProps) {
   const [copied, setCopied] = useState(false);

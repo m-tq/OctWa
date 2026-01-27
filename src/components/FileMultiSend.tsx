@@ -315,7 +315,6 @@ export function FileMultiSend({ wallet, balance, onBalanceUpdate, onNonceUpdate,
 
     let startTime = 0; // Will be set when first transaction is submitted
     const BATCH_SIZE = 50; // Send 50 transactions per batch
-    const EPOCH_CHECK_INTERVAL = 5000; // Check epoch every 5 seconds
     const BATCH_RETRY_DELAY = 5000; // 5 seconds delay before retrying failed batch
 
     // Helper function to fetch nonce with retry
@@ -352,26 +351,7 @@ export function FileMultiSend({ wallet, balance, onBalanceUpdate, onNonceUpdate,
       throw new Error('Failed to fetch epoch');
     };
 
-    // Helper function to wait for epoch change (waits indefinitely until epoch changes)
-    const waitForEpochChange = async (currentEpoch: number): Promise<number> => {
-      console.log(`[Epoch] Waiting for epoch to change from ${currentEpoch}...`);
-      let checkCount = 0;
-      while (true) {
-        await new Promise(resolve => setTimeout(resolve, EPOCH_CHECK_INTERVAL));
-        checkCount++;
-        try {
-          const newEpoch = await fetchCurrentEpoch();
-          if (newEpoch > currentEpoch) {
-            console.log(`[Epoch] Epoch changed: ${currentEpoch} -> ${newEpoch} (after ${checkCount} checks)`);
-            return newEpoch;
-          }
-          console.log(`[Epoch] Still at epoch ${newEpoch}, waiting... (check #${checkCount})`);
-        } catch (error) {
-          console.error(`[Epoch] Error checking epoch (check #${checkCount}):`, error);
-          // Continue waiting even on error
-        }
-      }
-    };
+
 
     // Helper function to send a batch and return results
     const sendBatch = async (

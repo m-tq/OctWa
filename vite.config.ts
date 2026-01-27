@@ -60,9 +60,22 @@ export default defineConfig({
         entryFileNames: 'assets/[name].js',
         chunkFileNames: 'assets/[name].js',
         assetFileNames: 'assets/[name].[ext]',
-        manualChunks: undefined
+        manualChunks: (id) => {
+          if (id.includes('node_modules')) {
+            if (id.includes('ethers')) {
+              return 'ethers';
+            }
+            if (id.includes('three')) {
+              return 'three';
+            }
+            return 'vendor';
+          }
+        }
       }
     }
+  },
+  esbuild: {
+    drop: ['console', 'debugger'],
   },
   server: {
     host: true,
@@ -73,9 +86,9 @@ export default defineConfig({
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api/, ''),
         secure: true,
-        configure: (proxy, _options) => {
+        configure: (proxy) => {
           // Handle dynamic target based on X-RPC-URL header
-          proxy.on('proxyReq', (proxyReq, req, _res) => {
+          proxy.on('proxyReq', (proxyReq, req) => {
             // Get RPC URL from X-RPC-URL header
             const rpcUrl = req.headers['x-rpc-url'];
             if (rpcUrl && typeof rpcUrl === 'string') {
@@ -87,7 +100,7 @@ export default defineConfig({
                 
                 // Log the dynamic routing
                 // console.log(`Proxying request to: ${url.protocol}//${url.host}${req.url}`);
-              } catch (error) {
+              } catch {
                 console.warn('Invalid RPC URL in header:', rpcUrl);
                 // Keep default host
                 proxyReq.setHeader('host', 'octra.network');

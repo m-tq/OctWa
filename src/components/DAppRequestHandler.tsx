@@ -35,7 +35,7 @@ import {
 } from '../utils/capability';
 import { WalletManager } from '../utils/walletManager';
 import { createTransaction, sendTransaction, fetchBalance } from '../utils/api';
-import { sendEVMTransaction } from '../utils/evmRpc';
+import { sendEVMTransaction, sendERC20Transaction } from '../utils/evmRpc';
 import { deriveEvmFromOctraKey } from '../utils/evmDerive';
 import nacl from 'tweetnacl';
 
@@ -139,6 +139,21 @@ export function DAppRequestHandler({ wallets }: DAppRequestHandlerProps) {
       }
     }
   }, [wallets, selectedWallet]);
+
+  // IMPORTANT: Select the correct wallet based on invoke request's connection
+  // This ensures we use the wallet that was originally connected to the dApp
+  useEffect(() => {
+    if (invokeRequest?.connection?.walletPubKey && wallets.length > 0) {
+      const connectedWallet = wallets.find(w => w.address === invokeRequest.connection!.walletPubKey);
+      if (connectedWallet) {
+        console.log('[DAppRequestHandler] Using connected wallet:', connectedWallet.address);
+        setSelectedWallet(connectedWallet);
+      } else {
+        console.warn('[DAppRequestHandler] Connected wallet not found:', invokeRequest.connection.walletPubKey);
+        console.warn('[DAppRequestHandler] Available wallets:', wallets.map(w => w.address));
+      }
+    }
+  }, [invokeRequest, wallets]);
 
   useEffect(() => {
     loadPendingRequest();
@@ -787,9 +802,6 @@ export function DAppRequestHandler({ wallets }: DAppRequestHandlerProps) {
         }
         
         console.log('[DAppRequestHandler] Sending ERC20 transfer to Sepolia...');
-        
-        // Import sendERC20Transaction dynamically
-        const { sendERC20Transaction } = await import('../utils/evmRpc');
         
         // Send ERC20 transaction
         const txHash = await sendERC20Transaction(

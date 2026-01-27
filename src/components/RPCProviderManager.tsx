@@ -17,7 +17,7 @@ interface RPCProviderManagerProps {
   isPopupMode?: boolean;
 }
 
-export function RPCProviderManager({ onClose, onRPCChange, isPopupMode = false }: RPCProviderManagerProps) {
+export function RPCProviderManager({ onRPCChange, isPopupMode = false }: RPCProviderManagerProps) {
   const [providers, setProviders] = useState<RPCProvider[]>([]);
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [editingProvider, setEditingProvider] = useState<RPCProvider | null>(null);

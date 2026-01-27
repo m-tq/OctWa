@@ -7,7 +7,6 @@ import { keccak256 } from './keccak256';
 
 // secp256k1 curve parameters
 const P = BigInt('0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEFFFFFC2F');
-const N = BigInt('0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141');
 const Gx = BigInt('0x79BE667EF9DCBBAC55A06295CE870B07029BFCDB2DCE28D959F2815B16F81798');
 const Gy = BigInt('0x483ADA7726A3C4655DA4FBFC0E1108A8FD17B448A68554199C47D08FFB10D4B8');
 
@@ -15,7 +14,7 @@ type Point = [bigint, bigint] | null;
 
 function modInverse(a: bigint, m: bigint): bigint {
   if (a < 0n) a = ((a % m) + m) % m;
-  let [g, x] = extendedGcd(a, m);
+  const [g, x] = extendedGcd(a, m);
   if (g !== 1n) throw new Error('Modular inverse does not exist');
   return ((x % m) + m) % m;
 }
@@ -165,13 +164,15 @@ export interface EVMWalletData {
   octraAddress: string;
   evmAddress: string;
   privateKeyHex: string;
+  type?: 'generated' | 'imported-mnemonic' | 'imported-private-key';
 }
 
-export function getEVMWalletData(octraAddress: string, privateKeyB64: string): EVMWalletData {
+export function getEVMWalletData(octraAddress: string, privateKeyB64: string, type?: 'generated' | 'imported-mnemonic' | 'imported-private-key'): EVMWalletData {
   const { privateKeyHex, evmAddress } = deriveEvmFromOctraKey(privateKeyB64);
   return {
     octraAddress,
     evmAddress,
-    privateKeyHex
+    privateKeyHex,
+    type
   };
 }

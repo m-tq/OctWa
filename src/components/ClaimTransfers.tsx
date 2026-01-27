@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
@@ -284,7 +284,7 @@ export function ClaimTransfers({ wallet, onTransactionSuccess, isPopupMode = fal
                 </div>
               )}
               
-              {transfers.map((transfer, index) => (
+              {transfers.map((transfer) => (
                 <div key={transfer.id} className={`border  ${isPopupMode ? 'p-2 space-y-1.5' : 'p-4 space-y-3'}`}>
                   <div className="flex items-center justify-between">
                     <div className={isPopupMode ? 'space-y-0.5' : 'space-y-1'}>

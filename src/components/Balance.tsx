@@ -142,22 +142,6 @@ export function Balance({ wallet, balance, encryptedBalance: propEncryptedBalanc
     }
   }, [wallet]);
 
-  const copyToClipboard = async (text: string, label: string) => {
-    try {
-      await navigator.clipboard.writeText(text);
-      toast({
-        title: "Copied!",
-        description: `${label} copied to clipboard`,
-      });
-    } catch (error) {
-      toast({
-        title: "Error",
-        description: "Copy failed",
-        variant: "destructive",
-      });
-    }
-  };
-
   const handleEncryptSuccess = () => {
     setShowEncryptDialog(false);
     fetchWalletBalance();

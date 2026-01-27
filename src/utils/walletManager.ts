@@ -1,5 +1,5 @@
 import { ExtensionStorageManager } from './extensionStorage';
-import { verifyPassword, decryptWalletData, encryptWalletData, secureWipe, isRateLimited, getRemainingAttempts, generateSessionKey, encryptSessionData, decryptSessionData } from './password';
+import { verifyPassword, decryptWalletData, encryptWalletData, isRateLimited, getRemainingAttempts, generateSessionKey, encryptSessionData, decryptSessionData } from './password';
 import { Wallet } from '../types/wallet';
 import { deriveEvmFromOctraKey } from './evmDerive';
 
@@ -13,7 +13,6 @@ export class WalletManager {
   private static sessionEncryptionKey: string | null = null;
   private static sessionTimeout: ReturnType<typeof setTimeout> | null = null;
   private static SESSION_TIMEOUT_MS = 15 * 60 * 1000; // 15 minutes auto-lock (industry standard)
-  private static lastActivity: number = Date.now();
   private static onAutoLockCallback: (() => void) | null = null;
   private static isAutoLockEnabled: boolean = true;
   private static timerStartTime: number = 0;
@@ -298,7 +297,6 @@ export class WalletManager {
     }
     
     this.sessionPassword = password;
-    this.lastActivity = Date.now();
     
     // Generate new session encryption key for encrypting session storage
     this.sessionEncryptionKey = generateSessionKey();
@@ -380,7 +378,6 @@ export class WalletManager {
       console.log('🔑 WalletManager: Restored session password and encryption key from session storage');
       this.sessionPassword = storedPassword;
       this.sessionEncryptionKey = storedEncKey;
-      this.lastActivity = Date.now();
       this.startAutoLockTimer();
       return storedPassword;
     }
@@ -437,8 +434,6 @@ export class WalletManager {
   
   // Refresh session timeout (call on user activity)
   static refreshSessionTimeout(): void {
-    const now = Date.now();
-    this.lastActivity = now;
     
     // Only refresh if session is active
     if (this.sessionPassword) {
@@ -1116,7 +1111,6 @@ export class WalletManager {
       }
       
       // Derive EVM private key from Octra private key
-      const { deriveEvmFromOctraKey } = await import('./evmDerive');
       const { privateKeyHex } = deriveEvmFromOctraKey(wallet.privateKey);
       
       return privateKeyHex;

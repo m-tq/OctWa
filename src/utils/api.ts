@@ -30,7 +30,6 @@ const RETRY_BACKOFF_MULTIPLIER = 2; // Exponential backoff
 // TTL is fallback if epoch check fails
 
 const EPOCH_CHECK_INTERVAL = 5 * 1000; // Check epoch every 5 seconds
-const CACHE_TTL_FALLBACK = 60 * 1000; // 1 minute fallback if epoch check fails
 const CACHE_STORAGE_KEY = 'octwa_api_cache';
 
 interface CacheEntry<T> {
@@ -371,7 +370,7 @@ class APICache {
       
       const data = await safeJsonParse(response);
       return data;
-    } catch (error) {
+    } catch {
       return null;
     }
   }
@@ -1366,7 +1365,7 @@ export async function getBalance(address: string): Promise<number> {
 
 export async function sendMultipleTransactions(transactions: any[]): Promise<string[]> {
   try {
-    const promises = transactions.map(async (txData, index) => {
+    const promises = transactions.map(async (txData) => {
       // Convert the transaction data to the proper format
       const transaction = createTransaction(
         txData.from,

@@ -4,39 +4,24 @@
  * Syncs with both localStorage (web) and chrome.storage.local (extension)
  */
 
-import React, { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
-import { Alert, AlertDescription } from '@/components/ui/alert';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from '@/components/ui/alert-dialog';
-import {
-  Globe,
-  MoreVertical,
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
+
+import { 
+  Globe, 
+  Shield, 
   ExternalLink,
-  Shield,
-  RefreshCw,
+  MoreVertical,
   Unplug,
   Eye,
   Edit,
   Cpu,
+  RefreshCw
 } from 'lucide-react';
 import { Wallet } from '../types/wallet';
 import { useToast } from '@/hooks/use-toast';
@@ -78,8 +63,6 @@ interface ConnectedDAppsManagerProps {
 const isExtension = typeof chrome !== 'undefined' && chrome.storage?.local;
 
 export function ConnectedDAppsManager({
-  wallets,
-  onClose,
   isPopupMode = false,
 }: ConnectedDAppsManagerProps) {
   const [connections, setConnections] = useState<StoredConnection[]>([]);
@@ -235,9 +218,6 @@ export function ConnectedDAppsManager({
       description: 'dApp connections list updated',
     });
   };
-
-  const truncateAddress = (address: string) =>
-    `${address.slice(0, 8)}...${address.slice(-6)}`;
 
   const formatDate = (timestamp: number) =>
     new Date(timestamp).toLocaleDateString('en-US', {

@@ -164,7 +164,9 @@ export function getActiveEVMNetwork(): EVMNetwork {
       const network = allNetworks.find(n => n.id === stored);
       if (network) return network;
     }
-  } catch {}
+  } catch {
+    // Ignore
+  }
   return DEFAULT_EVM_NETWORKS[0];
 }
 
@@ -687,14 +689,6 @@ export async function getUSDTBalance(
   }
 }
 
-/**
- * Get explorer API URL for a network (Etherscan API V2)
- */
-function getExplorerApiUrl(chainId: number): string {
-  // Etherscan API V2 uses a unified endpoint with chainid parameter
-  // https://docs.etherscan.io/v2-migration
-  return 'https://api.etherscan.io/v2/api';
-}
 
 /**
  * Get USDT token transactions using Etherscan API V2
@@ -1099,14 +1093,14 @@ export async function sendNFTTransaction(
   const rpcUrl = getEVMRpcUrl(network.id);
   
   try {
-    const { ethers } = await import('ethers');
+    const { JsonRpcProvider, Wallet, Contract } = await import('ethers');
     
-    const provider = new ethers.JsonRpcProvider(rpcUrl);
-    const wallet = new ethers.Wallet(privateKeyHex.startsWith('0x') ? privateKeyHex : `0x${privateKeyHex}`, provider);
+    const provider = new JsonRpcProvider(rpcUrl);
+    const wallet = new Wallet(privateKeyHex.startsWith('0x') ? privateKeyHex : `0x${privateKeyHex}`, provider);
     
     // ERC721 transferFrom function ABI
     const erc721Abi = ['function transferFrom(address from, address to, uint256 tokenId)'];
-    const contract = new ethers.Contract(contractAddress, erc721Abi, wallet);
+    const contract = new Contract(contractAddress, erc721Abi, wallet);
     
     // Send transaction
     const tx = await contract.transferFrom(wallet.address, to, tokenId);

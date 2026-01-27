@@ -27,7 +27,7 @@ export async function generateWallet(): Promise<Wallet> {
 }
 
 export async function importWalletFromPrivateKey(privateKey: string): Promise<Wallet> {
-  let cleanKey = privateKey.trim();
+  const cleanKey = privateKey.trim();
   
   // Handle base64 format only
   let keyBuffer: Buffer;
@@ -38,7 +38,7 @@ export async function importWalletFromPrivateKey(privateKey: string): Promise<Wa
     if (keyBuffer.length !== 32) {
       throw new Error('Invalid private key length');
     }
-  } catch (error) {
+  } catch {
     throw new Error('Invalid private key format');
   }
   
@@ -54,7 +54,7 @@ export async function importWalletFromPrivateKey(privateKey: string): Promise<Wa
       publicKey: bufferToHex(publicKey),
       type: 'imported-private-key'
     };
-  } catch (error) {
+  } catch {
     throw new Error('Failed to create wallet from private key');
   }
 }
@@ -81,7 +81,7 @@ export async function importWalletFromMnemonic(mnemonic: string): Promise<Wallet
   };
 }
 
-export function getWalletBalance(address: string): Promise<number> {
+export function getWalletBalance(): Promise<number> {
   // This would connect to the actual blockchain
   // For now, return a mock balance
   return Promise.resolve(Math.random() * 100);

@@ -14,7 +14,6 @@ import { fetchBalance, sendTransaction, createTransaction, invalidateCacheAfterT
 import { useToast } from '@/hooks/use-toast';
 import { useAddressBook } from '@/hooks/useAddressBook';
 import { TransactionModal, TransactionStatus, TransactionResult } from './TransactionModal';
-import { AnimatedIcon } from './AnimatedIcon';
 import { AddressInput } from './AddressInput';
 
 // Threshold for confirmation dialog (500 OCT)
@@ -23,7 +22,7 @@ const LARGE_TRANSACTION_THRESHOLD = 500;
 interface SendTransactionProps {
   wallet: Wallet | null;
   balance: number | null;
-  nonce: number;
+  nonce?: number;
   onBalanceUpdate: (balance: number) => void;
   onNonceUpdate: (nonce: number) => void;
   onTransactionSuccess: () => void;
@@ -57,7 +56,17 @@ function validateRecipientInput(input: string): { isValid: boolean; error?: stri
   };
 }
 
-export function SendTransaction({ wallet, balance, nonce, onBalanceUpdate, onNonceUpdate, onTransactionSuccess, onModalClose, isCompact = false, onAddToAddressBook }: SendTransactionProps) {
+export function SendTransaction({
+  wallet,
+  balance,
+  nonce: _nonce,
+  onBalanceUpdate,
+  onNonceUpdate,
+  onTransactionSuccess,
+  onModalClose,
+  isCompact = false,
+  onAddToAddressBook
+}: SendTransactionProps) {
   const [recipientAddress, setRecipientAddress] = useState('');
   const [addressValidation, setAddressValidation] = useState<{ isValid: boolean; error?: string } | null>(null);
   const [amount, setAmount] = useState('');
@@ -154,21 +163,7 @@ export function SendTransaction({ wallet, balance, nonce, onBalanceUpdate, onNon
     return ou * 0.0000001;
   };
 
-  const copyToClipboard = async (text: string, label: string) => {
-    try {
-      await navigator.clipboard.writeText(text);
-      toast({
-        title: "Copied!",
-        description: `${label} copied to clipboard`,
-      });
-    } catch (error) {
-      toast({
-        title: "Error",
-        description: "Copy failed",
-        variant: "destructive",
-      });
-    }
-  };
+
 
   // Pre-validation before showing confirmation or sending
   const validateBeforeSend = (): boolean => {

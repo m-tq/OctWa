@@ -118,9 +118,6 @@ export function AddressInput({
   const containerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // Expose method to open dropdown externally
-  const openDropdown = () => setShowDropdown(true);
-  
   // Call onOpenContacts callback when dropdown opens (for external control)
   useEffect(() => {
     if (onOpenContacts && showDropdown) {

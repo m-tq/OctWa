@@ -95,11 +95,6 @@ async function main() {
   // Inject version and copy provider.js
   await injectVersionToProvider(extDir, distDir);
 
-  const iconsSrc = path.join(extDir, 'icons');
-  if (await exists(iconsSrc)) {
-    await copyDir(iconsSrc, path.join(distDir, 'icons'));
-  }
-
   process.stdout.write('Extension files copied to dist\n');
 }
 

@@ -31,7 +31,6 @@ function App() {
     if (action === 'connect') {
       const origin = urlParams.get('origin');
       const appName = urlParams.get('appName');
-      const appIcon = urlParams.get('appIcon');
       const permissions = urlParams.get('permissions');
       
       if (origin && permissions) {
