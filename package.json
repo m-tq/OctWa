@@ -14,6 +14,7 @@
     "deploy": "npm run build:prod && ./deploy.sh"
   },
   "dependencies": {
+    "@bitcoinerlab/secp256k1": "^1.2.0",
     "@dnd-kit/core": "^6.3.1",
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",
@@ -47,14 +48,19 @@
     "@radix-ui/react-toggle-group": "^1.1.0",
     "@radix-ui/react-tooltip": "^1.1.2",
     "@types/three": "^0.182.0",
+    "bech32": "^2.0.0",
+    "bip32": "^5.0.0",
     "bip39": "3.1.0",
+    "bs58": "^6.0.0",
     "buffer": "6.0.3",
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.1.1",
     "cmdk": "^1.0.0",
     "date-fns": "^3.6.0",
+    "ed25519-hd-key": "^1.3.0",
     "embla-carousel-react": "^8.3.0",
     "ethers": "^6.16.0",
+    "events": "^3.3.0",
     "input-otp": "^1.2.4",
     "lucide-react": "^0.446.0",
     "next-themes": "^0.3.0",
@@ -66,6 +72,7 @@
     "react-resizable-panels": "^2.1.3",
     "recharts": "^2.12.7",
     "sonner": "^1.5.0",
+    "stream-browserify": "^3.0.0",
     "tailwind-merge": "^2.5.2",
     "tailwindcss-animate": "^1.0.7",
     "three": "^0.182.0",
@@ -91,6 +98,9 @@
     "terser": "^5.29.2",
     "typescript": "^5.5.3",
     "typescript-eslint": "^8.54.0",
-    "vite": "^7.3.0"
+    "vite": "^7.3.0",
+    "vite-plugin-node-polyfills": "^0.25.0",
+    "vite-plugin-top-level-await": "^1.6.0",
+    "vite-plugin-wasm": "^3.5.0"
   }
 }
