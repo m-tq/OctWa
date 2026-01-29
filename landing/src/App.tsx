@@ -16,21 +16,21 @@ const apps = [
     description: 'Intent-based DEX for OCT ⇄ ETH swaps. Preview version using Sepolia testnet.',
     appUrl: 'https://octwa-dex.vercel.app/',
     repoUrl: 'https://github.com/m-tq/OctWa-DEX',
-    screenshotUrl: '/octwa-dex.png',
+    screenshotUrl: 'octwa-dex.png',
   },
   {
     name: 'OctWa-OTC',
     description: 'Secure P2P OTC trading platform for OCT ⇄ USDC swaps with unique escrow per order.',
     appUrl: 'https://octra-otc.vercel.app/',
     repoUrl: '',
-    screenshotUrl: '/octwa-otc.png',
+    screenshotUrl: 'octwa-otc.png',
   },
   {
     name: 'Octra Poker',
     description: "Multiplayer Texas Hold'em Poker with OCT token betting, powered by the Octra Network.",
     appUrl: 'https://octra-poker.vercel.app/',
     repoUrl: '',
-    screenshotUrl: '/octra-poker.png',
+    screenshotUrl: 'octra-poker.png',
   },
 ];
 
