@@ -1,8 +1,10 @@
 import { defineConfig, Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
-import { NodeGlobalsPolyfillPlugin } from '@esbuild-plugins/node-globals-polyfill';
+import { nodePolyfills } from 'vite-plugin-node-polyfills';
 import path from 'path';
 import fs from 'fs';
+import wasm from 'vite-plugin-wasm';
+import topLevelAwait from 'vite-plugin-top-level-await';
 
 // Read version and name from manifest.json
 const manifestPath = path.resolve(__dirname, 'extensionFiles/manifest.json');
@@ -37,7 +39,21 @@ function injectAppTitlePlugin(): Plugin {
 
 // https://vitejs.dev/config/
 export default defineConfig({
-  plugins: [react(), excludeScreenshotPlugin(), injectAppTitlePlugin()],
+  plugins: [
+    nodePolyfills({
+      globals: {
+        Buffer: true,
+        global: true,
+        process: true,
+      },
+      protocolImports: true,
+    }),
+    wasm(),
+    topLevelAwait(),
+    react(), 
+    excludeScreenshotPlugin(), 
+    injectAppTitlePlugin(),
+  ],
   base: './',
   define: {
     __APP_VERSION__: JSON.stringify(APP_VERSION),
@@ -45,12 +61,18 @@ export default defineConfig({
     __APP_TITLE__: JSON.stringify(APP_TITLE),
   },
   build: {
+    target: 'esnext',
     outDir: 'dist',
-    sourcemap: false,
-    minify: 'terser',
+    sourcemap: true,
+    minify: false,
     chunkSizeWarningLimit: 1000,
     copyPublicDir: true,
     rollupOptions: {
+      onwarn(warning, warn) {
+        // Ignore eval warning from vm-browserify as it's expected for polyfills
+        if (warning.code === 'EVAL' && warning.id?.includes('vm-browserify')) return;
+        warn(warning);
+      },
       input: {
         main: path.resolve(__dirname, 'index.html'),
         popup: path.resolve(__dirname, 'src/popup.tsx'),
@@ -122,21 +144,12 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
-      buffer: 'buffer/',
+      stream: 'stream-browserify',
+      events: 'events',
+      '@noble/hashes': path.resolve(__dirname, 'node_modules/@noble/hashes'),
     },
   },
   optimizeDeps: {
     exclude: ['lucide-react'],
-    esbuildOptions: {
-      define: {
-        global: 'globalThis',
-      },
-      plugins: [
-        NodeGlobalsPolyfillPlugin({
-          buffer: true,
-          process: true,
-        }),
-      ],
-    },
   },
 });

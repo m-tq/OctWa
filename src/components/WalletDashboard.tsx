@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger, SheetDescription } from '@/components/ui/sheet';
@@ -51,6 +51,16 @@ import {
 } from 'lucide-react';
 import { ExtensionStorageManager } from '../utils/extensionStorage';
 import { MultiSend } from './MultiSend';
+import { ChainType, ChainWalletData } from '../types/chain';
+import { KeyManager } from '../utils/keyManager';
+import { ChainSelector } from './ChainSelector';
+import { CHAIN_CONFIGS, CHAIN_NETWORKS } from '../utils/chainConfig';
+import { EvmAdapter } from '../adapters/chain/EvmAdapter';
+import { SolanaAdapter } from '../adapters/chain/SolanaAdapter';
+import { BitcoinAdapter } from '../adapters/chain/BitcoinAdapter';
+import { TronAdapter } from '../adapters/chain/TronAdapter';
+import { CosmosAdapter } from '../adapters/chain/CosmosAdapter';
+import { ChainAdapter, ChainTransaction, ChainToken } from '../adapters/chain/types';
 import { SendTransaction } from './SendTransaction';
 import { PrivateTransfer } from './PrivateTransfer';
 import { ClaimTransfers } from './ClaimTransfers';
@@ -74,6 +84,10 @@ import { Wallet } from '../types/wallet';
 import { WalletManager } from '../utils/walletManager';
 import { fetchBalance, getTransactionHistory, fetchEncryptedBalance, fetchTransactionDetails, fetchPendingTransactionByHash, getPendingPrivateTransfers, apiCache } from '../utils/api';
 import { getEVMWalletData, EVMWalletData } from '../utils/evmDerive';
+import { b64ToHex } from '../utils/evmDerive';
+import { base64ToBuffer } from '../utils/crypto';
+import * as nacl from 'tweetnacl';
+import bs58 from 'bs58';
 import {
   getEVMBalance, DEFAULT_EVM_NETWORKS, EVMNetwork, getActiveEVMNetwork,
   setActiveEVMNetwork, checkEVMRpcStatus, getEVMRpcUrl, saveEVMProvider,
@@ -218,6 +232,53 @@ export function WalletDashboard({
   const [addressBookPrefilledAddress, setAddressBookPrefilledAddress] = useState<string>('');
   // EVM Mode state (integrated mode, not popup)
   const [evmMode, setEvmMode] = useState(false);
+  
+  // Multi-Chain State
+  const [selectedChainType, setSelectedChainType] = useState<ChainType>(ChainType.EVM);
+  const [chainWallets, setChainWallets] = useState<ChainWalletData[]>([]);
+  const [selectedChainWallet, setSelectedChainWallet] = useState<ChainWalletData | null>(null);
+  const [chainTransactions, setChainTransactions] = useState<ChainTransaction[]>([]);
+  const [isLoadingChainTxs, setIsLoadingChainTxs] = useState(false);
+  const [chainTokens, setChainTokens] = useState<ChainToken[]>([]);
+  const [isLoadingChainTokens, setIsLoadingChainTokens] = useState(false);
+  type NonEvmType = Exclude<ChainType, ChainType.EVM>;
+  type NonEvmNetwork = { id: string; name: string; rpcUrl: string; explorer?: string; isTestnet?: boolean; isCustom?: boolean };
+  const nonEvmCustomNetworksStorageKey = 'non_evm_custom_networks';
+  const emptyNonEvmCustomNetworks: Record<NonEvmType, NonEvmNetwork[]> = {
+    [ChainType.SOLANA]: [],
+    [ChainType.BITCOIN]: [],
+    [ChainType.TRON]: [],
+    [ChainType.COSMOS]: [],
+  };
+  const initialNonEvmNetworks: Record<NonEvmType, NonEvmNetwork> = {
+    [ChainType.SOLANA]: CHAIN_NETWORKS[ChainType.SOLANA][0],
+    [ChainType.BITCOIN]: CHAIN_NETWORKS[ChainType.BITCOIN][0],
+    [ChainType.TRON]: CHAIN_NETWORKS[ChainType.TRON][0],
+    [ChainType.COSMOS]: CHAIN_NETWORKS[ChainType.COSMOS][0],
+  };
+  const [nonEvmNetworks, setNonEvmNetworks] = useState<Record<NonEvmType, NonEvmNetwork>>(initialNonEvmNetworks);
+  const [nonEvmCustomNetworks, setNonEvmCustomNetworks] = useState<Record<NonEvmType, NonEvmNetwork[]>>(emptyNonEvmCustomNetworks);
+  const [showNonEvmNetworkManager, setShowNonEvmNetworkManager] = useState(false);
+  const [nonEvmCustomRpcUrl, setNonEvmCustomRpcUrl] = useState('');
+  const [newNonEvmNetwork, setNewNonEvmNetwork] = useState({ name: '', rpcUrl: '', explorer: '', isTestnet: false });
+  const [isAddingNonEvmNetwork, setIsAddingNonEvmNetwork] = useState(false);
+  
+  // Multi-Chain Send State
+  const [showChainSendDialog, setShowChainSendDialog] = useState(false);
+  const [chainSendTo, setChainSendTo] = useState('');
+  const [chainSendAmount, setChainSendAmount] = useState('');
+  const [isChainSending, setIsChainSending] = useState(false);
+  const [chainSendError, setChainSendError] = useState<string | null>(null);
+  const [chainTxHash, setChainTxHash] = useState<string | null>(null);
+  
+  // Adapters
+  const chainAdapters = useRef<Record<ChainType, ChainAdapter>>({
+    [ChainType.EVM]: new EvmAdapter(CHAIN_CONFIGS[ChainType.EVM]),
+    [ChainType.SOLANA]: new SolanaAdapter(CHAIN_CONFIGS[ChainType.SOLANA]),
+    [ChainType.BITCOIN]: new BitcoinAdapter(CHAIN_CONFIGS[ChainType.BITCOIN]),
+    [ChainType.TRON]: new TronAdapter(CHAIN_CONFIGS[ChainType.TRON]),
+    [ChainType.COSMOS]: new CosmosAdapter(CHAIN_CONFIGS[ChainType.COSMOS])
+  });
   const [evmWallets, setEvmWallets] = useState<(EVMWalletData & { balance: string | null; isLoading: boolean })[]>([]);
   const [selectedEVMWallet, setSelectedEVMWallet] = useState<(EVMWalletData & { balance: string | null; isLoading: boolean }) | null>(null);
   const [evmNetwork, setEvmNetwork] = useState<EVMNetwork>(getActiveEVMNetwork());
@@ -874,9 +935,412 @@ export function WalletDashboard({
     }
   };
 
+  const getNonEvmCustomRpcKey = (type: NonEvmType, networkId: string) => `non_evm_custom_rpc_${type}_${networkId}`;
+
+  const getBaseNonEvmNetworks = (type: NonEvmType): NonEvmNetwork[] => (
+    (CHAIN_NETWORKS[type] || []).map((n) => ({ ...n, isCustom: false }))
+  );
+
+  const buildNonEvmNetworkList = (type: NonEvmType, customList: NonEvmNetwork[]) => [
+    ...getBaseNonEvmNetworks(type),
+    ...(customList || [])
+  ];
+
+  const getAllNonEvmNetworks = (type: NonEvmType) => buildNonEvmNetworkList(type, nonEvmCustomNetworks[type] || []);
+
+  const getNonEvmRpcUrl = (type: NonEvmType, network: NonEvmNetwork) => {
+    try {
+      const stored = localStorage.getItem(getNonEvmCustomRpcKey(type, network.id));
+      if (stored) return stored;
+    } catch {}
+    return network.rpcUrl;
+  };
+
+  useEffect(() => {
+    let storedCustom = emptyNonEvmCustomNetworks;
+    try {
+      const stored = localStorage.getItem(nonEvmCustomNetworksStorageKey);
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        storedCustom = { ...emptyNonEvmCustomNetworks, ...parsed };
+      }
+    } catch {}
+    setNonEvmCustomNetworks(storedCustom);
+    const updated: Record<NonEvmType, NonEvmNetwork> = { ...initialNonEvmNetworks };
+    ([ChainType.SOLANA, ChainType.BITCOIN, ChainType.TRON, ChainType.COSMOS] as NonEvmType[]).forEach((type) => {
+      let storedId: string | null = null;
+      try { storedId = localStorage.getItem(`active_non_evm_network_${type}`); } catch {}
+      const list = buildNonEvmNetworkList(type, storedCustom[type] || []);
+      const match = list.find((n) => n.id === storedId) || list[0];
+      if (match) updated[type] = match;
+    });
+    setNonEvmNetworks(updated);
+  }, []);
+
+  useEffect(() => {
+    if (!showNonEvmNetworkManager || selectedChainType === ChainType.EVM) return;
+    const type = selectedChainType as NonEvmType;
+    const network = nonEvmNetworks[type];
+    if (!network) { setNonEvmCustomRpcUrl(''); return; }
+    try {
+      const stored = localStorage.getItem(getNonEvmCustomRpcKey(type, network.id));
+      setNonEvmCustomRpcUrl(stored || '');
+    } catch {
+      setNonEvmCustomRpcUrl('');
+    }
+  }, [showNonEvmNetworkManager, selectedChainType, nonEvmNetworks]);
+
   // ============================================
   // EVM MODE FUNCTIONS
   // ============================================
+
+  // Initialize Chain Mode (Multi-Chain)
+  const initializeChainMode = async (chainType: ChainType) => {
+    setSelectedChainType(chainType);
+    
+    // If EVM, use existing logic but also sync to chainWallets for unified UI
+    if (chainType === ChainType.EVM) {
+      await initializeEvmMode();
+      // We will rely on evmWallets state for EVM mode for now to avoid breaking existing EVM features
+      // But we can sync to chainWallets if needed
+      return;
+    }
+
+    // For other chains, derive from mnemonic using index
+    const derived: ChainWalletData[] = [];
+    const mnemonicCounts: Record<string, number> = {};
+    
+    for (const w of wallets) {
+      if (w.mnemonic) {
+        // Track index for this mnemonic to ensure deterministic derivation
+        const currentIndex = mnemonicCounts[w.mnemonic] || 0;
+        mnemonicCounts[w.mnemonic] = currentIndex + 1;
+        
+        try {
+          const keyManager = new KeyManager(w.mnemonic);
+          let keyPair;
+          
+          switch (chainType) {
+            case ChainType.SOLANA: keyPair = keyManager.getSolanaKey(currentIndex); break;
+            case ChainType.BITCOIN: keyPair = keyManager.getBitcoinKey(currentIndex); break;
+            case ChainType.TRON: keyPair = keyManager.getTronKey(currentIndex); break;
+            case ChainType.COSMOS: keyPair = keyManager.getCosmosKey(currentIndex); break;
+          }
+          
+          if (keyPair) {
+            derived.push({
+              octraAddress: w.address,
+              address: keyPair.address,
+              balance: null,
+              privateKey: keyPair.privateKey,
+              publicKey: keyPair.publicKey,
+              isLoading: false,
+              chainType: chainType,
+              name: w.type
+            });
+          }
+        } catch (e) {
+          console.error(`Error deriving ${chainType} key for wallet ${w.address}:`, e);
+        }
+      } else if (w.privateKey) {
+        // Fallback derivation from Base64 private key when mnemonic is unavailable
+        try {
+          let address = '';
+          let privOut = '';
+          let pubOut = '';
+          
+          if (chainType === ChainType.SOLANA) {
+            // Derive Solana address from Octra 32-byte Base64 seed using Ed25519
+            const seed = base64ToBuffer(w.privateKey);
+            const keyPair = nacl.sign.keyPair.fromSeed(seed);
+            address = bs58.encode(Buffer.from(keyPair.publicKey));
+            privOut = bs58.encode(Buffer.from(keyPair.secretKey));
+            pubOut = address;
+          } else {
+            // Secp256k1-based chains: derive using hex converted from Base64
+            const hexPriv = b64ToHex(w.privateKey);
+            const km = new KeyManager(hexPriv);
+            let keyPair;
+            switch (chainType) {
+              case ChainType.TRON: keyPair = km.getTronKey(0); break;
+              case ChainType.BITCOIN: keyPair = km.getBitcoinKey(0); break;
+              case ChainType.COSMOS: keyPair = km.getCosmosKey(0); break;
+              default: keyPair = undefined;
+            }
+            if (keyPair) {
+              address = keyPair.address;
+              privOut = keyPair.privateKey;
+              pubOut = keyPair.publicKey;
+            }
+          }
+          
+          if (address) {
+            derived.push({
+              octraAddress: w.address,
+              address,
+              balance: null,
+              privateKey: privOut,
+              publicKey: pubOut,
+              isLoading: false,
+              chainType: chainType,
+              name: w.type
+            });
+          }
+        } catch (e) {
+          console.error(`Fallback derivation failed for ${chainType} using Base64 key on wallet ${w.address}:`, e);
+        }
+      }
+    }
+    
+    setChainWallets(derived);
+    
+    // Select active wallet (try to match current Octra wallet)
+    const active = derived.find(d => d.octraAddress === wallet.address);
+    setSelectedChainWallet(active || derived[0] || null);
+    
+    const type = chainType as NonEvmType;
+    const net = nonEvmNetworks[type] || getAllNonEvmNetworks(type)[0];
+    const base = CHAIN_CONFIGS[chainType];
+    const cfg = { ...base, rpcUrl: getNonEvmRpcUrl(type, net), explorer: net.explorer || base.explorer };
+    switch (chainType) {
+      case ChainType.SOLANA: chainAdapters.current[chainType] = new SolanaAdapter(cfg); break;
+      case ChainType.BITCOIN: chainAdapters.current[chainType] = new BitcoinAdapter(cfg); break;
+      case ChainType.TRON: chainAdapters.current[chainType] = new TronAdapter(cfg); break;
+      case ChainType.COSMOS: chainAdapters.current[chainType] = new CosmosAdapter(cfg); break;
+    }
+    try { localStorage.setItem(`active_non_evm_network_${chainType}`, net.id); } catch {}
+    
+    // Fetch balances
+    fetchChainBalances(derived, chainType);
+  };
+
+  const fetchChainBalances = async (currentWallets: ChainWalletData[], type: ChainType) => {
+    const adapter = chainAdapters.current[type];
+    if (!adapter) return;
+    
+    // Set loading state
+    setChainWallets(prev => prev.map(w => ({ ...w, isLoading: true })));
+    setIsLoadingChainTxs(true);
+    
+    const updated = await Promise.all(currentWallets.map(async (w) => {
+      try {
+        const balance = await adapter.getBalance(w.address);
+        return { ...w, balance, isLoading: false };
+      } catch (e) {
+        return { ...w, balance: 'Error', isLoading: false };
+      }
+    }));
+    
+    setChainWallets(updated);
+    
+    // Update selected wallet if it exists
+    if (selectedChainWallet) {
+      const updatedSelected = updated.find(w => w.address === selectedChainWallet.address);
+      if (updatedSelected) {
+        setSelectedChainWallet(updatedSelected);
+      }
+    }
+    
+    setIsLoadingChainTxs(false);
+  };
+
+  const fetchChainTransactions = async () => {
+    if (!selectedChainWallet) return;
+    setIsLoadingChainTxs(true);
+    setIsLoadingChainTokens(true);
+    try {
+      const adapter = chainAdapters.current[selectedChainType];
+      if (adapter) {
+        // Fetch txs and tokens in parallel
+        const [txs, tokens] = await Promise.all([
+          adapter.getTransactions(selectedChainWallet.address),
+          adapter.getTokens(selectedChainWallet.address)
+        ]);
+        setChainTransactions(txs);
+        setChainTokens(tokens);
+      }
+    } catch (error) {
+      console.error('Failed to fetch chain data:', error);
+      setChainTransactions([]);
+      setChainTokens([]);
+    } finally {
+      setIsLoadingChainTxs(false);
+      setIsLoadingChainTokens(false);
+    }
+  };
+
+  // Effect: Fetch chain transactions when selected chain wallet changes
+  useEffect(() => {
+    if (selectedChainType === ChainType.EVM || !selectedChainWallet) return;
+    fetchChainTransactions();
+  }, [selectedChainWallet?.address, selectedChainType]);
+
+  const handleChainSendTransaction = async () => {
+    if (!selectedChainWallet || !selectedChainWallet.privateKey) return;
+    
+    setIsChainSending(true);
+    setChainSendError(null);
+    setChainTxHash(null);
+    
+    try {
+      const adapter = chainAdapters.current[selectedChainType];
+      if (!adapter) throw new Error('Adapter not found');
+      
+      const hash = await adapter.sendTransaction(
+        selectedChainWallet.privateKey,
+        chainSendTo,
+        chainSendAmount
+      );
+      
+      setChainTxHash(hash);
+      toast({ title: 'Success!', description: 'Transaction sent successfully' });
+      
+      // Refresh data
+      await fetchChainBalances(chainWallets, selectedChainType);
+      await fetchChainTransactions();
+      
+      // Clear form
+      setChainSendTo('');
+      setChainSendAmount('');
+      setShowChainSendDialog(false);
+      
+    } catch (error: any) {
+      setChainSendError(error.message || 'Transaction failed');
+      toast({ title: 'Error', description: error.message || 'Transaction failed', variant: 'destructive' });
+    } finally {
+      setIsChainSending(false);
+    }
+  };
+
+  const handleChainChange = (type: ChainType) => {
+    if (type === selectedChainType) return;
+    initializeChainMode(type);
+  };
+
+  const handleNonEvmNetworkChange = (networkId: string) => {
+    if (selectedChainType === ChainType.EVM) return;
+    const type = selectedChainType as NonEvmType;
+    const networkList = getAllNonEvmNetworks(type);
+    const network = networkList.find((n) => n.id === networkId) || networkList[0];
+    if (!network) return;
+    setNonEvmNetworks((prev) => ({ ...prev, [type]: network }));
+    const base = CHAIN_CONFIGS[selectedChainType];
+    const cfg = { ...base, rpcUrl: getNonEvmRpcUrl(type, network), explorer: network.explorer || base.explorer };
+    switch (selectedChainType) {
+      case ChainType.SOLANA: chainAdapters.current[selectedChainType] = new SolanaAdapter(cfg); break;
+      case ChainType.BITCOIN: chainAdapters.current[selectedChainType] = new BitcoinAdapter(cfg); break;
+      case ChainType.TRON: chainAdapters.current[selectedChainType] = new TronAdapter(cfg); break;
+      case ChainType.COSMOS: chainAdapters.current[selectedChainType] = new CosmosAdapter(cfg); break;
+    }
+    try { localStorage.setItem(`active_non_evm_network_${selectedChainType}`, network.id); } catch {}
+    if (selectedChainWallet) {
+      fetchChainBalances(chainWallets, selectedChainType);
+      fetchChainTransactions();
+    }
+  };
+
+  const handleSaveNonEvmCustomRpc = () => {
+    if (selectedChainType === ChainType.EVM) return;
+    const type = selectedChainType as NonEvmType;
+    const network = nonEvmNetworks[type];
+    if (!network || !nonEvmCustomRpcUrl.trim()) return;
+    try {
+      localStorage.setItem(getNonEvmCustomRpcKey(type, network.id), nonEvmCustomRpcUrl.trim());
+      const base = CHAIN_CONFIGS[selectedChainType];
+      const cfg = { ...base, rpcUrl: nonEvmCustomRpcUrl.trim(), explorer: network.explorer || base.explorer };
+      switch (selectedChainType) {
+        case ChainType.SOLANA: chainAdapters.current[selectedChainType] = new SolanaAdapter(cfg); break;
+        case ChainType.BITCOIN: chainAdapters.current[selectedChainType] = new BitcoinAdapter(cfg); break;
+        case ChainType.TRON: chainAdapters.current[selectedChainType] = new TronAdapter(cfg); break;
+        case ChainType.COSMOS: chainAdapters.current[selectedChainType] = new CosmosAdapter(cfg); break;
+      }
+      setShowNonEvmNetworkManager(false);
+      setNonEvmCustomRpcUrl('');
+      if (selectedChainWallet) {
+        fetchChainBalances(chainWallets, selectedChainType);
+        fetchChainTransactions();
+      }
+      toast({ title: 'Saved', description: 'Custom RPC URL saved' });
+    } catch (error: any) {
+      toast({ title: 'Error', description: error.message || 'Failed to save RPC', variant: 'destructive' });
+    }
+  };
+
+  const handleAddNonEvmNetwork = () => {
+    if (selectedChainType === ChainType.EVM) return;
+    const type = selectedChainType as NonEvmType;
+    if (!newNonEvmNetwork.name.trim() || !newNonEvmNetwork.rpcUrl.trim()) {
+      toast({ title: 'Error', description: 'Please fill required fields', variant: 'destructive' });
+      return;
+    }
+    setIsAddingNonEvmNetwork(true);
+    try {
+      const id = `custom-${type}-${Date.now()}`;
+      const network: NonEvmNetwork = {
+        id,
+        name: newNonEvmNetwork.name.trim(),
+        rpcUrl: newNonEvmNetwork.rpcUrl.trim(),
+        explorer: newNonEvmNetwork.explorer.trim() || undefined,
+        isTestnet: !!newNonEvmNetwork.isTestnet,
+        isCustom: true,
+      };
+      const updatedCustom = { ...(nonEvmCustomNetworks || emptyNonEvmCustomNetworks) };
+      updatedCustom[type] = [...(updatedCustom[type] || []), network];
+      setNonEvmCustomNetworks(updatedCustom);
+      try { localStorage.setItem(nonEvmCustomNetworksStorageKey, JSON.stringify(updatedCustom)); } catch {}
+      setNewNonEvmNetwork({ name: '', rpcUrl: '', explorer: '', isTestnet: false });
+      toast({ title: 'Success', description: 'Network added successfully' });
+    } catch (error: any) {
+      toast({ title: 'Error', description: error.message || 'Failed to add network', variant: 'destructive' });
+    } finally {
+      setIsAddingNonEvmNetwork(false);
+    }
+  };
+
+  const handleRemoveNonEvmNetwork = (networkId: string) => {
+    if (selectedChainType === ChainType.EVM) return;
+    const type = selectedChainType as NonEvmType;
+    const updatedCustom = { ...(nonEvmCustomNetworks || emptyNonEvmCustomNetworks) };
+    updatedCustom[type] = (updatedCustom[type] || []).filter(n => n.id !== networkId);
+    setNonEvmCustomNetworks(updatedCustom);
+    try { localStorage.setItem(nonEvmCustomNetworksStorageKey, JSON.stringify(updatedCustom)); } catch {}
+    try { localStorage.removeItem(getNonEvmCustomRpcKey(type, networkId)); } catch {}
+    const currentActive = nonEvmNetworks[type];
+    if (currentActive?.id === networkId) {
+      const fallback = buildNonEvmNetworkList(type, updatedCustom[type] || [])[0];
+      if (fallback) {
+        setNonEvmNetworks(prev => ({ ...prev, [type]: fallback }));
+        const base = CHAIN_CONFIGS[selectedChainType];
+        const cfg = { ...base, rpcUrl: getNonEvmRpcUrl(type, fallback), explorer: fallback.explorer || base.explorer };
+        switch (selectedChainType) {
+          case ChainType.SOLANA: chainAdapters.current[selectedChainType] = new SolanaAdapter(cfg); break;
+          case ChainType.BITCOIN: chainAdapters.current[selectedChainType] = new BitcoinAdapter(cfg); break;
+          case ChainType.TRON: chainAdapters.current[selectedChainType] = new TronAdapter(cfg); break;
+          case ChainType.COSMOS: chainAdapters.current[selectedChainType] = new CosmosAdapter(cfg); break;
+        }
+        try { localStorage.setItem(`active_non_evm_network_${selectedChainType}`, fallback.id); } catch {}
+        if (selectedChainWallet) {
+          fetchChainBalances(chainWallets, selectedChainType);
+          fetchChainTransactions();
+        }
+      }
+    }
+    toast({ title: 'Removed', description: 'Network removed' });
+  };
+  // Override enterEvmMode to be enterChainMode
+  const enterChainMode = async () => {
+    setEvmMode(true); // Toggle the mode UI
+    await initializeChainMode(ChainType.EVM); // Default to EVM
+  };
+
+  // Override exitEvmMode
+  // const exitChainMode = () => {
+  //   setEvmMode(false);
+  //   setEvmWallets([]);
+  //   setSelectedEVMWallet(null);
+  //   setChainWallets([]);
+  //   setSelectedChainWallet(null);
+  // };
 
   // Initialize EVM wallets when entering EVM mode
   const initializeEvmMode = async () => {
@@ -907,10 +1371,10 @@ export function WalletDashboard({
     getNativeTokenPrice(evmNetwork.symbol).then(setEthPrice);
   };
 
-  // Enter EVM mode
+  // Enter EVM mode (Chain Mode)
   const enterEvmMode = async () => {
-    setEvmMode(true);
-    await initializeEvmMode();
+    // This is now an alias for enterChainMode
+    await enterChainMode();
   };
 
   // Exit EVM mode
@@ -1702,7 +2166,7 @@ export function WalletDashboard({
                 <Button variant="ghost" size="sm" onClick={() => setPopupScreen('main')} className="h-8 w-8 p-0">
                   <ChevronDown className="h-4 w-4 rotate-90" />
                 </Button>
-                <div className="flex items-center gap-2 text-[#0000db]">
+                <div className="flex items-center gap-2 text-orange-600 dark:text-orange-400">
                   <Unlock className="h-5 w-5" />
                   <h2 className="font-semibold text-sm">Decrypt OCT</h2>
                 </div>
@@ -1735,7 +2199,7 @@ export function WalletDashboard({
                 <Button variant="ghost" size="sm" onClick={() => setPopupScreen('main')} className="h-8 w-8 p-0">
                   <ChevronDown className="h-4 w-4 rotate-90" />
                 </Button>
-                <div className={`flex items-center gap-2 ${operationMode === 'private' ? 'text-[#0000db]' : ''}`}>
+                <div className={`flex items-center gap-2 ${operationMode === 'private' ? 'text-orange-600 dark:text-orange-400' : ''}`}>
                   <Send className="h-5 w-5" />
                   <h2 className="font-semibold text-sm">
                     {operationMode === 'private' ? 'Private Transfer' : 'Send OCT'}
@@ -1782,6 +2246,27 @@ export function WalletDashboard({
               isPopupMode={true}
               isFullscreen={true}
               onBack={() => setPopupScreen('main')}
+              customAddress={
+                evmMode 
+                  ? (selectedChainType === ChainType.EVM 
+                      ? selectedEVMWallet?.evmAddress 
+                      : selectedChainWallet?.address)
+                  : undefined
+              }
+              customTitle={
+                evmMode
+                  ? (selectedChainType === ChainType.EVM
+                      ? `Receive ${evmNetwork.symbol}`
+                      : `Receive ${CHAIN_CONFIGS[selectedChainType]?.symbol}`)
+                  : undefined
+              }
+              customInfo={
+                evmMode
+                  ? (selectedChainType === ChainType.EVM
+                      ? `Share this address to receive ${evmNetwork.symbol} tokens on ${evmNetwork.name}. Only send ${evmNetwork.symbol} to this address.`
+                      : `Share this address to receive ${CHAIN_CONFIGS[selectedChainType]?.symbol} tokens on ${(nonEvmNetworks[selectedChainType as NonEvmType]?.name || CHAIN_CONFIGS[selectedChainType]?.name)}${nonEvmNetworks[selectedChainType as NonEvmType]?.isTestnet ? ' (testnet)' : ''}. Only send ${CHAIN_CONFIGS[selectedChainType]?.symbol} to this address.`)
+                  : undefined
+              }
             />
           )}
 
@@ -2027,7 +2512,7 @@ export function WalletDashboard({
                     {/* EVM Mode Badge */}
                     {!isPopupMode && evmMode && (
                       <Badge className="text-xs px-2 py-0.5 bg-orange-500 text-white">
-                        EVM Mode
+                        {CHAIN_CONFIGS[selectedChainType].name} Mode
                       </Badge>
                     )}
                     {/* Mode Badge - Only show when inline modal is open, except for decrypt (has corner badge) */}
@@ -2284,35 +2769,76 @@ export function WalletDashboard({
               ) : (
                 // Expanded mode - Full layout
                 <>
-                  {/* EVM Mode Header Controls */}
+                  {/* Multi-Chain Mode Header Controls */}
                   {evmMode ? (
                     <>
                       <ThemeToggle isPopupMode={false} className="h-9 w-9" />
-                      <div className="flex items-center gap-2">
-                        <select
-                          value={evmNetwork.id}
-                          onChange={(e) => handleEvmNetworkChange(e.target.value)}
-                          className="h-9 px-3 pr-8 text-xs bg-background rounded-md text-orange-600 dark:text-orange-400 focus:outline-none focus:ring-2 focus:ring-orange-500/50 appearance-none bg-[url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2224%22%20height%3D%2224%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22%23f97316%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpolyline%20points%3D%226%209%2012%2015%2018%209%22%3E%3C%2Fpolyline%3E%3C%2Fsvg%3E')] bg-[length:16px] bg-[right_8px_center] bg-no-repeat hover:bg-orange-500/10"
-                        >
-                          {allEvmNetworks.map((network) => (
-                            <option key={network.id} value={network.id}>
-                              {network.name}
-                            </option>
-                          ))}
-                        </select>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => setShowEvmRpcManager(true)}
-                          className="h-9 text-xs text-orange-600 dark:text-orange-400 hover:bg-orange-500/10"
-                        >
-                          <Wifi className="h-3.5 w-3.5 mr-1.5" />
-                          Network
-                        </Button>
+                      
+                      {/* Chain Selector */}
+                      <div className="w-[180px]">
+                        <ChainSelector 
+                          selectedChain={selectedChainType} 
+                          onSelectChain={handleChainChange} 
+                          className="w-full h-9"
+                        />
                       </div>
+
+                      {/* EVM Network Selector - Only for EVM */}
+                      {selectedChainType === ChainType.EVM && (
+                        <div className="flex items-center gap-2">
+                          <select
+                            value={evmNetwork.id}
+                            onChange={(e) => handleEvmNetworkChange(e.target.value)}
+                            className="h-9 px-3 pr-8 text-xs bg-background rounded-md text-orange-600 dark:text-orange-400 focus:outline-none focus:ring-2 focus:ring-orange-500/50 appearance-none bg-[url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2224%22%20height%3D%2224%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22%23f97316%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpolyline%20points%3D%226%209%2012%2015%2018%209%22%3E%3C%2Fpolyline%3E%3C%2Fsvg%3E')] bg-[length:16px] bg-[right_8px_center] bg-no-repeat hover:bg-orange-500/10"
+                          >
+                            {allEvmNetworks.map((network) => (
+                              <option key={network.id} value={network.id}>
+                                {network.name}
+                              </option>
+                            ))}
+                          </select>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setShowEvmRpcManager(true)}
+                            className="h-9 text-xs text-orange-600 dark:text-orange-400 hover:bg-orange-500/10"
+                          >
+                            <Wifi className="h-3.5 w-3.5 mr-1.5" />
+                            Network
+                          </Button>
+                        </div>
+                      )}
+                      
+                      {/* Non-EVM Network Selector */}
+                      {selectedChainType !== ChainType.EVM && (
+                        <div className="flex items-center gap-2">
+                          <select
+                            value={nonEvmNetworks[selectedChainType as NonEvmType]?.id}
+                            onChange={(e) => handleNonEvmNetworkChange(e.target.value)}
+                            className="h-9 px-3 pr-8 text-xs bg-background rounded-md text-orange-600 dark:text-orange-400 focus:outline-none focus:ring-2 focus:ring-orange-500/50 appearance-none bg-[url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2224%22%20height%3D%2224%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22%23f97316%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpolyline%20points%3D%226%209%2012%2015%2018%209%22%3E%3C%2Fpolyline%3E%3C%2Fsvg%3E')] bg-[length:16px] bg-[right_8px_center] bg-no-repeat hover:bg-orange-500/10"
+                          >
+                            {(CHAIN_NETWORKS[selectedChainType as NonEvmType] || []).map((network) => (
+                              <option key={network.id} value={network.id}>
+                                {network.name}
+                              </option>
+                            ))}
+                          </select>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setShowNonEvmNetworkManager(true)}
+                            className="h-9 text-xs text-orange-600 dark:text-orange-400 hover:bg-orange-500/10"
+                          >
+                            <Wifi className="h-3.5 w-3.5 mr-1.5" />
+                            Network
+                          </Button>
+                        </div>
+                      )}
+                      
                       {/* Dashed separator */}
                       <div className="h-5 border-l border-dashed border-border mx-1" />
-                      {/* Exit EVM Mode Button - Red color */}
+                      
+                      {/* Exit Multi-Chain Mode Button - Red color */}
                       <Button
                         variant="ghost"
                         size="sm"
@@ -2320,7 +2846,7 @@ export function WalletDashboard({
                         className="h-9 px-4 text-red-500 hover:text-red-600 hover:bg-red-500/10 font-medium"
                       >
                         <X className="h-4 w-4 mr-2" />
-                        Exit EVM Mode
+                        Exit Multi-Chain Mode
                       </Button>
                     </>
                   ) : (
@@ -2598,9 +3124,27 @@ export function WalletDashboard({
                   onOpenChange={setShowReceiveDialog}
                   isPopupMode={false}
                   isFullscreen={false}
-                  customAddress={evmMode && selectedEVMWallet ? selectedEVMWallet.evmAddress : undefined}
-                  customTitle={evmMode ? `Receive ${evmNetwork.symbol}` : undefined}
-                  customInfo={evmMode ? `Share this address to receive ${evmNetwork.symbol} tokens on ${evmNetwork.name}. Only send ${evmNetwork.symbol} to this address.` : undefined}
+                  customAddress={
+                    evmMode 
+                      ? (selectedChainType === ChainType.EVM 
+                          ? selectedEVMWallet?.evmAddress 
+                          : selectedChainWallet?.address)
+                      : undefined
+                  }
+                  customTitle={
+                    evmMode
+                      ? (selectedChainType === ChainType.EVM
+                          ? `Receive ${evmNetwork.symbol}`
+                          : `Receive ${CHAIN_CONFIGS[selectedChainType]?.symbol}`)
+                      : undefined
+                  }
+                  customInfo={
+                    evmMode
+                      ? (selectedChainType === ChainType.EVM
+                          ? `Share this address to receive ${evmNetwork.symbol} tokens on ${evmNetwork.name}. Only send ${evmNetwork.symbol} to this address.`
+                          : `Share this address to receive ${CHAIN_CONFIGS[selectedChainType]?.symbol} tokens on ${CHAIN_CONFIGS[selectedChainType]?.name} Mainnet. Only send ${CHAIN_CONFIGS[selectedChainType]?.symbol} to this address.`)
+                      : undefined
+                  }
                 />
               )}
               
@@ -2760,71 +3304,103 @@ export function WalletDashboard({
             }}
           >
             <div className="h-full flex flex-col pt-4 pb-4 pl-4 pr-3" style={{ width: `${sidebarWidth - 8}px` }}>
-              {/* EVM Mode Sidebar Content */}
+              {/* Chain Mode Sidebar Content */}
               {evmMode ? (
                 <>
-                  <div className="flex items-center justify-between mb-4 mt-2">
-                    <h3 className="font-semibold text-base flex items-center gap-2 text-orange-600 dark:text-orange-400">
-                      <Coins className="h-5 w-5" />
-                      EVM Wallets ({evmWallets.length})
-                    </h3>
-                  </div>
-                  <ScrollArea className="flex-1 -ml-4 -mr-3" stabilizeGutter>
-                    <ScrollAreaContent className="space-y-0">
-                      {evmWallets.map((evmWallet, index) => {
-                        const isActive = selectedEVMWallet?.evmAddress === evmWallet.evmAddress;
-                        return (
-                          <div key={evmWallet.evmAddress}>
-                            {/* Dashed separator between wallets */}
-                            {index > 0 && (
-                              <div className="border-t border-dashed border-border mx-4" />
-                            )}
-                            <div 
-                              className="relative p-4 cursor-pointer transition-all hover:bg-muted/50"
-                              onClick={() => handleSelectEvmWallet(evmWallet)}
-                            >
-                              {/* Active indicator bar - left side */}
-                              <div className={`absolute left-0 top-1/2 -translate-y-1/2 w-1 rounded-r-full bg-orange-500 transition-all duration-200 ${
-                                isActive ? 'h-10 opacity-100' : 'h-0 opacity-0'
-                              }`} />
-                              
-                              <div className="flex items-center justify-between mb-1">
-                                <div className="flex items-center gap-2">
-                                  <Badge variant="secondary" className={`text-[10px] px-1.5 ${isActive ? 'bg-orange-500/20 text-orange-600 dark:text-orange-400' : ''}`}>
-                                    #{index + 1}
-                                  </Badge>
-                                  <span className={`text-xs truncate max-w-[140px] ${isActive ? 'text-orange-600 dark:text-orange-400 font-medium' : 'text-muted-foreground'}`}>
-                                    <WalletDisplayName address={evmWallet.octraAddress} />
-                                  </span>
-                                </div>
-                                <Button 
-                                  variant="ghost" 
-                                  size="sm" 
-                                  className="h-6 w-6 p-0" 
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    copyToClipboard(evmWallet.evmAddress, `evm-${index}`);
-                                  }}
+                  {selectedChainType === ChainType.EVM ? (
+                    /* EVM WALLETS LIST */
+                    <>
+                      <div className="flex items-center justify-between mb-4">
+                        <h3 className="font-semibold text-base flex items-center gap-2 text-orange-600 dark:text-orange-400">
+                          <Coins className="h-5 w-5" />
+                          EVM Wallets ({evmWallets.length})
+                        </h3>
+                      </div>
+                      <ScrollArea className="flex-1 -ml-4 -mr-3" stabilizeGutter>
+                        <ScrollAreaContent className="space-y-0">
+                          {evmWallets.map((evmWallet, index) => {
+                            const isActive = selectedEVMWallet?.evmAddress === evmWallet.evmAddress;
+                            return (
+                              <div key={evmWallet.evmAddress}>
+                                {index > 0 && <div className="border-t border-dashed border-border mx-4" />}
+                                <div 
+                                  className="relative p-4 cursor-pointer transition-all hover:bg-muted/50"
+                                  onClick={() => handleSelectEvmWallet(evmWallet)}
                                 >
-                                  {copiedField === `evm-${index}` ? <Check className="h-3 w-3 text-green-500" /> : <Copy className="h-3 w-3" />}
-                                </Button>
+                                  <div className={`absolute left-0 top-1/2 -translate-y-1/2 w-1 rounded-r-full bg-orange-500 transition-all duration-200 ${isActive ? 'h-10 opacity-100' : 'h-0 opacity-0'}`} />
+                                  <div className="flex items-center justify-between mb-1">
+                                    <div className="flex items-center gap-2">
+                                      <Badge variant="secondary" className={`text-[10px] px-1.5 ${isActive ? 'bg-orange-500/20 text-orange-600 dark:text-orange-400' : ''}`}>#{index + 1}</Badge>
+                                      <span className={`text-xs truncate max-w-[140px] ${isActive ? 'text-orange-600 dark:text-orange-400 font-medium' : 'text-muted-foreground'}`}>
+                                        <WalletDisplayName address={evmWallet.octraAddress} />
+                                      </span>
+                                    </div>
+                                    <Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={(e) => { e.stopPropagation(); copyToClipboard(evmWallet.evmAddress, `evm-${index}`); }}>
+                                      {copiedField === `evm-${index}` ? <Check className="h-3 w-3 text-green-500" /> : <Copy className="h-3 w-3" />}
+                                    </Button>
+                                  </div>
+                                  <p className={`font-mono text-sm ${isActive ? 'text-orange-600 dark:text-orange-400' : 'text-muted-foreground'}`}>
+                                    {evmWallet.evmAddress.slice(0, 10)}...{evmWallet.evmAddress.slice(-8)}
+                                  </p>
+                                  <div className={`mt-1 text-[10px] ${isActive ? 'text-orange-500/70' : 'text-muted-foreground/70'}`}>
+                                    {evmWallet.type === 'generated' ? 'Generated' : evmWallet.type === 'imported-mnemonic' ? 'Imported (Mnemonic)' : evmWallet.type === 'imported-private-key' ? 'Imported (Key)' : ''}
+                                  </div>
+                                </div>
                               </div>
-                              <p className={`font-mono text-sm ${isActive ? 'text-orange-600 dark:text-orange-400' : 'text-muted-foreground'}`}>
-                                {evmWallet.evmAddress.slice(0, 10)}...{evmWallet.evmAddress.slice(-8)}
-                              </p>
-                              {/* Wallet type label */}
-                              <div className={`mt-1 text-[10px] ${isActive ? 'text-orange-500/70' : 'text-muted-foreground/70'}`}>
-                                {evmWallet.type === 'generated' ? 'Generated' 
-                                  : evmWallet.type === 'imported-mnemonic' ? 'Imported (Mnemonic)' 
-                                  : evmWallet.type === 'imported-private-key' ? 'Imported (Key)' 
-                                  : ''}
+                            );
+                          })}
+                        </ScrollAreaContent>
+                      </ScrollArea>
+                    </>
+                  ) : (
+                    /* NON-EVM CHAINS WALLET LIST */
+                    <>
+                      <div className="flex items-center justify-between mb-4">
+                        <h3 className="font-semibold text-base flex items-center gap-2 text-orange-600 dark:text-orange-400">
+                          <Coins className="h-5 w-5" />
+                          {CHAIN_CONFIGS[selectedChainType].name} Wallets ({chainWallets.length})
+                        </h3>
+                      </div>
+                      <ScrollArea className="flex-1 -ml-4 -mr-3" stabilizeGutter>
+                        <ScrollAreaContent className="space-y-0">
+                          {chainWallets.map((walletItem, index) => {
+                            const isActive = selectedChainWallet?.address === walletItem.address;
+                            return (
+                              <div key={walletItem.address}>
+                                {index > 0 && <div className="border-t border-dashed border-border mx-4" />}
+                                <div 
+                                  className="relative p-4 cursor-pointer transition-all hover:bg-muted/50"
+                                  onClick={() => setSelectedChainWallet(walletItem)}
+                                >
+                                  <div className={`absolute left-0 top-1/2 -translate-y-1/2 w-1 rounded-r-full bg-orange-500 transition-all duration-200 ${isActive ? 'h-10 opacity-100' : 'h-0 opacity-0'}`} />
+                                  <div className="flex items-center justify-between mb-1">
+                                    <div className="flex items-center gap-2">
+                                      <Badge variant="secondary" className={`text-[10px] px-1.5 ${isActive ? 'bg-orange-500/20 text-orange-600 dark:text-orange-400' : ''}`}>#{index + 1}</Badge>
+                                      <span className={`text-xs truncate max-w-[140px] ${isActive ? 'text-orange-600 dark:text-orange-400 font-medium' : 'text-muted-foreground'}`}>
+                                        <WalletDisplayName address={walletItem.octraAddress} />
+                                      </span>
+                                    </div>
+                                    <Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={(e) => { e.stopPropagation(); copyToClipboard(walletItem.address, `chain-${index}`); }}>
+                                      {copiedField === `chain-${index}` ? <Check className="h-3 w-3 text-green-500" /> : <Copy className="h-3 w-3" />}
+                                    </Button>
+                                  </div>
+                                  <p className={`font-mono text-sm ${isActive ? 'text-orange-600 dark:text-orange-400' : 'text-muted-foreground'}`}>
+                                    {walletItem.address.slice(0, 10)}...{walletItem.address.slice(-8)}
+                                  </p>
+                                  <div className={`mt-1 text-[10px] flex justify-between ${isActive ? 'text-orange-500/70 dark:text-orange-400/70' : 'text-muted-foreground/70'}`}>
+                                    <span>{walletItem.name}</span>
+                                    <span>
+                                      {walletItem.balance ? `${parseFloat(walletItem.balance).toFixed(4)} ${CHAIN_CONFIGS[walletItem.chainType].symbol}` : 'Loading...'}
+                                    </span>
+                                  </div>
+                                </div>
                               </div>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </ScrollAreaContent>
-                  </ScrollArea>
+                            );
+                          })}
+                        </ScrollAreaContent>
+                      </ScrollArea>
+                    </>
+                  )}
                 </>
               ) : (
                 /* Normal Octra Wallet Sidebar */
@@ -2928,17 +3504,17 @@ export function WalletDashboard({
                   </p>
                   {isLoadingBalance ? (
                     <div className="h-10 flex items-center justify-center">
-                      <div className="w-5 h-5 rounded-full border-2 border-transparent animate-spin" style={{ borderTopColor: '#0000db' }} />
+                      <div className="w-5 h-5 rounded-full border-2 border-transparent animate-spin" style={{ borderTopColor: '#f97316' }} />
                     </div>
                   ) : (
                     <div className="flex items-center justify-center gap-2">
-                      <span className={`text-2xl font-bold ${operationMode === 'private' ? 'text-[#0000db]' : ''}`}>
+                      <span className={`text-2xl font-bold ${operationMode === 'private' ? 'text-orange-600 dark:text-orange-400' : ''}`}>
                         {operationMode === 'private' 
                           ? (encryptedBalance?.encrypted || 0).toFixed(8)
                           : (balance || 0).toFixed(8)
                         }
                       </span>
-                      <Badge variant="outline" className={`text-lg font-bold px-2 py-0.5 border-0 ${operationMode === 'private' ? 'text-[#0000db]' : ''}`}>
+                      <Badge variant="outline" className={`text-lg font-bold px-2 py-0.5 border-0 ${operationMode === 'private' ? 'text-orange-600 dark:text-orange-400' : ''}`}>
                         OCT
                       </Badge>
                     </div>
@@ -2983,7 +3559,7 @@ export function WalletDashboard({
                     {/* Decrypt Button */}
                     <Button
                       variant="outline"
-                      className="flex flex-col items-center gap-0.5 h-auto py-2 px-2  border border-[#0000db]/30 text-[#0000db] hover:bg-[#0000db]/5"
+                      className="flex flex-col items-center gap-0.5 h-auto py-2 px-2  border border-orange-500/30 text-orange-600 dark:text-orange-400 hover:bg-orange-500/5"
                       onClick={() => setPopupScreen('decrypt')}
                     >
                       <Unlock className="h-3.5 w-3.5" />
@@ -2992,7 +3568,7 @@ export function WalletDashboard({
                     {/* Send Button */}
                     <Button
                       variant="outline"
-                      className="flex flex-col items-center gap-0.5 h-auto py-2 px-2  border border-[#0000db]/30 text-[#0000db] hover:bg-[#0000db]/5"
+                      className="flex flex-col items-center gap-0.5 h-auto py-2 px-2  border border-orange-500/30 text-orange-600 dark:text-orange-400 hover:bg-orange-500/5"
                       onClick={() => setPopupScreen('send')}
                     >
                       <Send className="h-3.5 w-3.5" />
@@ -3001,7 +3577,7 @@ export function WalletDashboard({
                     {/* Receive Button */}
                     <Button
                       variant="outline"
-                      className="flex flex-col items-center gap-0.5 h-auto py-2 px-2  border border-[#0000db]/30 text-[#0000db] hover:bg-[#0000db]/5"
+                      className="flex flex-col items-center gap-0.5 h-auto py-2 px-2  border border-orange-500/30 text-orange-600 dark:text-orange-400 hover:bg-orange-500/5"
                       onClick={() => setPopupScreen('receive')}
                     >
                       <QrCode className="h-3.5 w-3.5" />
@@ -3010,7 +3586,7 @@ export function WalletDashboard({
                     {/* Claim Button */}
                     <Button
                       variant="outline"
-                      className="flex flex-col items-center gap-0.5 h-auto py-2 px-2  border border-[#0000db]/30 text-[#0000db] hover:bg-[#0000db]/5"
+                      className="flex flex-col items-center gap-0.5 h-auto py-2 px-2  border border-orange-500/30 text-orange-600 dark:text-orange-400 hover:bg-orange-500/5"
                       onClick={() => setPopupScreen('claim')}
                     >
                       <Gift className="h-3.5 w-3.5" />
@@ -3022,7 +3598,7 @@ export function WalletDashboard({
 
               {/* Recent Activity Header */}
               <div className="flex items-center justify-between pt-1 pb-2">
-                <h3 className={`text-xs font-semibold ${operationMode === 'private' ? 'text-[#0000db]' : ''}`}>
+                <h3 className={`text-xs font-semibold ${operationMode === 'private' ? 'text-orange-600 dark:text-orange-400' : ''}`}>
                   Recent Activity
                 </h3>
                 <div className="flex items-center gap-1.5">
@@ -3137,120 +3713,263 @@ export function WalletDashboard({
         <div className="flex flex-col h-[calc(100vh-149px)]">
           {/* Main Content Area */}
           <div className={`flex-1 flex flex-col items-center justify-start ${evmMode ? 'pt-2' : 'pt-20'} pb-4 overflow-auto`}>
-            {/* EVM Mode Content */}
+            {/* EVM / Chain Mode Content */}
             {evmMode ? (
-              <>
-                {/* EVM Mode Header */}
-                <div className="w-full max-w-lg mb-4">
-                  <div className="text-sm text-orange-600 dark:text-orange-400 flex items-center gap-2">
-                    <Coins className="h-4 w-4" />
-                    Balance
+              selectedChainType === ChainType.EVM ? (
+                /* EVM Mode Content */
+                <>
+                  {/* EVM Balance Display */}
+                  <div className="text-center mb-4">
+                    {selectedEVMWallet?.isLoading ? (
+                      <div className="flex items-center justify-center gap-2">
+                        <div className="w-6 h-6 rounded-full border-2 border-transparent animate-spin" style={{ borderTopColor: '#f97316' }} />
+                      </div>
+                    ) : selectedEVMWallet?.balance !== null ? (
+                      <>
+                        <div className="flex items-center justify-center gap-3">
+                          <span className="text-4xl font-bold tracking-tight text-orange-600 dark:text-orange-400">
+                            {selectedEVMWallet?.balance || '0.000000'} {evmNetwork.symbol}
+                          </span>
+                          <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-orange-600 dark:text-orange-400 hover:bg-orange-500/10"
+                            onClick={() => { fetchEvmBalance(); fetchEvmTokens(); fetchEvmNfts(); fetchEvmTransactions(); }}
+                            disabled={evmRpcStatus !== 'connected' || selectedEVMWallet?.isLoading}>
+                            <RefreshCw className={`h-4 w-4 ${selectedEVMWallet?.isLoading ? 'animate-spin' : ''}`} />
+                          </Button>
+                        </div>
+                        {ethPrice !== null && selectedEVMWallet?.balance && (
+                          <div className="text-lg text-muted-foreground mt-1">
+                            ≈ {calculateUSDValue(selectedEVMWallet.balance, ethPrice)}
+                            {evmNetwork.isTestnet && <span className="text-xs ml-2">(testnet)</span>}
+                          </div>
+                        )}
+                      </>
+                    ) : (
+                      <div className="text-xl text-muted-foreground">
+                        {evmRpcStatus === 'connected' ? 'Loading...' : 'RPC Disconnected'}
+                      </div>
+                    )}
                   </div>
-                </div>
 
-                {/* EVM Balance Display */}
-                <div className="text-center mb-4">
-                  {selectedEVMWallet?.isLoading ? (
-                    <div className="flex items-center justify-center gap-2">
-                      <div className="w-6 h-6 rounded-full border-2 border-transparent animate-spin" style={{ borderTopColor: '#f97316' }} />
-                    </div>
-                  ) : selectedEVMWallet?.balance !== null ? (
-                    <>
-                      <div className="flex items-center justify-center gap-3">
-                        <span className="text-4xl font-bold tracking-tight text-orange-600 dark:text-orange-400">
-                          {selectedEVMWallet?.balance || '0.000000'} {evmNetwork.symbol}
-                        </span>
-                        <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-orange-600 dark:text-orange-400 hover:bg-orange-500/10"
-                          onClick={() => { fetchEvmBalance(); fetchEvmTokens(); fetchEvmNfts(); fetchEvmTransactions(); }}
-                          disabled={evmRpcStatus !== 'connected' || selectedEVMWallet?.isLoading}>
-                          <RefreshCw className={`h-4 w-4 ${selectedEVMWallet?.isLoading ? 'animate-spin' : ''}`} />
+                  {/* Send & Receive Buttons */}
+                  <div className="w-full max-w-lg mb-4 grid grid-cols-2 gap-4">
+                    <Button variant="outline" className="h-12 gap-2 border-orange-500/30 hover:border-orange-500/50 hover:bg-orange-500/5 text-orange-600 dark:text-orange-400"
+                      onClick={() => openEvmSendDialog('native')} disabled={evmRpcStatus !== 'connected'}>
+                      <Send className="h-4 w-4" />Send
+                    </Button>
+                    <Button variant="outline" className="h-12 gap-2 border-orange-500/30 hover:border-orange-500/50 hover:bg-orange-500/5 text-orange-600 dark:text-orange-400"
+                      onClick={() => setShowReceiveDialog(true)}>
+                      <ArrowDownLeft className="h-4 w-4" />Receive
+                    </Button>
+                  </div>
+
+                  {/* Tokens & NFTs Tabs */}
+                  <div className="w-full max-w-lg">
+                    <Tabs value={evmActiveTab} onValueChange={(v) => setEvmActiveTab(v as 'tokens' | 'nfts')}>
+                      <div className="flex items-center justify-between mb-2">
+                        <TabsList className="h-8">
+                          <TabsTrigger value="tokens" className="text-xs h-7 px-3 gap-1"><Coins className="h-3 w-3" />Tokens ({evmTokens.length})</TabsTrigger>
+                          <TabsTrigger value="nfts" className="text-xs h-7 px-3 gap-1"><Image className="h-3 w-3" />NFTs ({evmNfts.length})</TabsTrigger>
+                        </TabsList>
+                        <Button variant="outline" size="sm" className="h-7 text-xs gap-1 border-orange-500/30" onClick={() => evmActiveTab === 'tokens' ? setShowEvmImportToken(true) : setShowEvmImportNFT(true)}>
+                          <Plus className="h-3 w-3" />Import
                         </Button>
                       </div>
-                      {ethPrice !== null && selectedEVMWallet?.balance && (
-                        <div className="text-lg text-muted-foreground mt-1">
-                          ≈ {calculateUSDValue(selectedEVMWallet.balance, ethPrice)}
-                          {evmNetwork.isTestnet && <span className="text-xs ml-2">(testnet)</span>}
+                      
+                      <TabsContent value="tokens" className="mt-0">
+                        <div className="space-y-2 max-h-[200px] overflow-auto">
+                          {isLoadingEvmTokens ? (
+                            <div className="flex items-center justify-center py-6"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
+                          ) : evmTokens.length > 0 ? (
+                            evmTokens.map((token) => (
+                              <div key={`${token.address}-${token.chainId}`} className="p-2.5 bg-muted/50 rounded-lg border border-border hover:border-orange-500/30 transition-colors flex items-center justify-between">
+                                <div className="flex items-center gap-2">
+                                  <div className="w-8 h-8 rounded-full bg-orange-500/10 flex items-center justify-center text-xs font-bold text-orange-600">{token.symbol.slice(0, 2)}</div>
+                                  <div><p className="text-sm font-medium">{token.name}</p><p className="text-xs text-muted-foreground">{token.symbol}</p></div>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <p className="text-sm font-semibold">{token.balance}</p>
+                                  <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => openEvmSendDialog('token', token)} disabled={parseFloat(token.balance) <= 0}><Send className="h-3 w-3" /></Button>
+                                </div>
+                              </div>
+                            ))
+                          ) : (
+                            <div className="flex flex-col items-center justify-center py-6 text-muted-foreground">
+                              <Coins className="h-8 w-8 mb-2 opacity-20" /><p className="text-xs">No tokens found</p>
+                              <Button variant="link" size="sm" className="text-xs" onClick={() => setShowEvmImportToken(true)}>Import Token</Button>
+                            </div>
+                          )}
                         </div>
-                      )}
-                    </>
-                  ) : (
-                    <div className="text-xl text-muted-foreground">
-                      {evmRpcStatus === 'connected' ? 'Loading...' : 'RPC Disconnected'}
-                    </div>
-                  )}
-                </div>
-
-                {/* Send Native Token Button */}
-                <div className="w-full max-w-lg mb-4">
-                  <Button variant="outline" className="w-full h-12 gap-2 border-orange-500/30 hover:border-orange-500/50 hover:bg-orange-500/5 text-orange-600 dark:text-orange-400"
-                    onClick={() => openEvmSendDialog('native')} disabled={evmRpcStatus !== 'connected'}>
-                    <Send className="h-4 w-4" />Send {evmNetwork.symbol}
-                  </Button>
-                </div>
-
-                {/* Tokens & NFTs Tabs */}
-                <div className="w-full max-w-lg">
-                  <Tabs value={evmActiveTab} onValueChange={(v) => setEvmActiveTab(v as 'tokens' | 'nfts')}>
-                    <div className="flex items-center justify-between mb-2">
-                      <TabsList className="h-8">
-                        <TabsTrigger value="tokens" className="text-xs h-7 px-3 gap-1"><Coins className="h-3 w-3" />Tokens ({evmTokens.length})</TabsTrigger>
-                        <TabsTrigger value="nfts" className="text-xs h-7 px-3 gap-1"><Image className="h-3 w-3" />NFTs ({evmNfts.length})</TabsTrigger>
-                      </TabsList>
-                      <Button variant="outline" size="sm" className="h-7 text-xs gap-1 border-orange-500/30" onClick={() => evmActiveTab === 'tokens' ? setShowEvmImportToken(true) : setShowEvmImportNFT(true)}>
-                        <Plus className="h-3 w-3" />Import
-                      </Button>
-                    </div>
-                    
-                    <TabsContent value="tokens" className="mt-0">
-                      <div className="space-y-2 max-h-[200px] overflow-auto">
-                        {isLoadingEvmTokens ? (
-                          <div className="flex items-center justify-center py-6"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
-                        ) : evmTokens.length > 0 ? (
-                          evmTokens.map((token) => (
-                            <div key={`${token.address}-${token.chainId}`} className="p-2.5 bg-muted/50 rounded-lg border border-border hover:border-orange-500/30 transition-colors flex items-center justify-between">
-                              <div className="flex items-center gap-2">
-                                <div className="w-8 h-8 rounded-full bg-orange-500/10 flex items-center justify-center text-xs font-bold text-orange-600">{token.symbol.slice(0, 2)}</div>
-                                <div><p className="text-sm font-medium">{token.name}</p><p className="text-xs text-muted-foreground">{token.symbol}</p></div>
+                      </TabsContent>
+                      
+                      <TabsContent value="nfts" className="mt-0">
+                        <div className="grid grid-cols-3 gap-2 max-h-[200px] overflow-auto">
+                          {evmNfts.length > 0 ? (
+                            evmNfts.map((nft) => (
+                              <div key={`${nft.contractAddress}-${nft.tokenId}`} className="p-2 bg-muted/50 rounded-lg border border-border hover:border-orange-500/30 transition-colors">
+                                <div className="aspect-square bg-muted rounded mb-1.5 flex items-center justify-center overflow-hidden">
+                                  {nft.imageUrl ? <img src={nft.imageUrl} alt={nft.name} className="w-full h-full object-cover" /> : <Image className="h-6 w-6 text-muted-foreground/30" />}
+                                </div>
+                                <p className="text-xs font-medium truncate">{nft.name}</p>
+                                <p className="text-[10px] text-muted-foreground">#{nft.tokenId}</p>
+                                <Button variant="outline" size="sm" className="w-full mt-1.5 h-6 text-[10px]" onClick={() => openEvmSendDialog('nft', undefined, nft)}><Send className="h-2.5 w-2.5 mr-1" />Send</Button>
                               </div>
-                              <div className="flex items-center gap-2">
-                                <p className="text-sm font-semibold">{token.balance}</p>
-                                <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => openEvmSendDialog('token', token)} disabled={parseFloat(token.balance) <= 0}><Send className="h-3 w-3" /></Button>
-                              </div>
+                            ))
+                          ) : (
+                            <div className="col-span-3 flex flex-col items-center justify-center py-6 text-muted-foreground">
+                              <Image className="h-8 w-8 mb-2 opacity-20" /><p className="text-xs">No NFTs found</p>
+                              <Button variant="link" size="sm" className="text-xs" onClick={() => setShowEvmImportNFT(true)}>Import NFT</Button>
                             </div>
-                          ))
-                        ) : (
-                          <div className="flex flex-col items-center justify-center py-6 text-muted-foreground">
-                            <Coins className="h-8 w-8 mb-2 opacity-20" /><p className="text-xs">No tokens found</p>
-                            <Button variant="link" size="sm" className="text-xs" onClick={() => setShowEvmImportToken(true)}>Import Token</Button>
-                          </div>
-                        )}
+                          )}
+                        </div>
+                      </TabsContent>
+                    </Tabs>
+                  </div>
+                </>
+              ) : (
+                /* Non-EVM Chain Mode Content */
+                <>
+                  {/* Balance Display */}
+                  <div className="text-center mb-4">
+                    {selectedChainWallet?.isLoading ? (
+                      <div className="flex items-center justify-center gap-2">
+                        <div className="w-6 h-6 rounded-full border-2 border-transparent animate-spin" style={{ borderTopColor: '#f97316' }} />
                       </div>
-                    </TabsContent>
-                    
-                    <TabsContent value="nfts" className="mt-0">
-                      <div className="grid grid-cols-3 gap-2 max-h-[200px] overflow-auto">
-                        {evmNfts.length > 0 ? (
-                          evmNfts.map((nft) => (
-                            <div key={`${nft.contractAddress}-${nft.tokenId}`} className="p-2 bg-muted/50 rounded-lg border border-border hover:border-orange-500/30 transition-colors">
-                              <div className="aspect-square bg-muted rounded mb-1.5 flex items-center justify-center overflow-hidden">
-                                {nft.imageUrl ? <img src={nft.imageUrl} alt={nft.name} className="w-full h-full object-cover" /> : <Image className="h-6 w-6 text-muted-foreground/30" />}
+                    ) : selectedChainWallet?.balance !== null ? (
+                      <>
+                        <div className="flex items-center justify-center gap-3">
+                          <span className="text-4xl font-bold tracking-tight text-orange-600 dark:text-orange-400">
+                            {selectedChainWallet?.balance || '0.000000'} {CHAIN_CONFIGS[selectedChainType].symbol}
+                          </span>
+                          <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-orange-600 dark:text-orange-400 hover:bg-orange-500/10"
+                            onClick={() => fetchChainBalances(chainWallets, selectedChainType)}
+                            disabled={selectedChainWallet?.isLoading}>
+                            <RefreshCw className={`h-4 w-4 ${selectedChainWallet?.isLoading ? 'animate-spin' : ''}`} />
+                          </Button>
+                        </div>
+                        <div className="text-lg text-muted-foreground mt-1">
+                           {CHAIN_CONFIGS[selectedChainType].name} Mainnet
+                        </div>
+                      </>
+                    ) : (
+                      <div className="text-xl text-muted-foreground">
+                        Loading...
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Send & Receive Buttons */}
+                  <div className="w-full max-w-lg mb-4 grid grid-cols-2 gap-4">
+                    <Button variant="outline" className="h-12 gap-2 border-orange-500/30 hover:border-orange-500/50 hover:bg-orange-500/5 text-orange-600 dark:text-orange-400"
+                      onClick={() => {
+                        alert(`Send functionality for ${CHAIN_CONFIGS[selectedChainType].name} is coming soon!`);
+                      }}>
+                      <Send className="h-4 w-4" />Send
+                    </Button>
+                    <Button variant="outline" className="h-12 gap-2 border-orange-500/30 hover:border-orange-500/50 hover:bg-orange-500/5 text-orange-600 dark:text-orange-400"
+                      onClick={() => setShowReceiveDialog(true)}>
+                      <ArrowDownLeft className="h-4 w-4" />Receive
+                    </Button>
+                  </div>
+
+                  {/* Tabs */}
+                  <div className="w-full max-w-lg">
+                    <Tabs defaultValue="tokens">
+                      <div className="flex items-center justify-between mb-2">
+                        <TabsList className="h-8">
+                          <TabsTrigger value="tokens" className="text-xs h-7 px-3 gap-1"><Coins className="h-3 w-3" />Tokens ({chainTokens.length})</TabsTrigger>
+                          <TabsTrigger value="history" className="text-xs h-7 px-3 gap-1"><History className="h-3 w-3" />History</TabsTrigger>
+                        </TabsList>
+                      </div>
+                      
+                      <TabsContent value="tokens" className="mt-0">
+                        <div className="space-y-2 max-h-[200px] overflow-auto">
+                          {isLoadingChainTokens ? (
+                            <div className="flex items-center justify-center py-6"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
+                          ) : chainTokens.length > 0 ? (
+                            chainTokens.map((token, index) => (
+                              <div key={`${token.address}-${index}`} className="p-2.5 bg-muted/50 rounded-lg border border-border hover:border-orange-500/30 transition-colors flex items-center justify-between">
+                                <div className="flex items-center gap-2">
+                                  {token.logoUrl ? (
+                                    <img src={token.logoUrl} alt={token.symbol} className="w-8 h-8 rounded-full" />
+                                  ) : (
+                                    <div className="w-8 h-8 rounded-full bg-orange-500/10 flex items-center justify-center text-xs font-bold text-orange-600 dark:text-orange-400">{token.symbol.slice(0, 2)}</div>
+                                  )}
+                                  <div><p className="text-sm font-medium">{token.name}</p><p className="text-xs text-muted-foreground">{token.symbol}</p></div>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <p className="text-sm font-semibold">{token.balance}</p>
+                                  <Button variant="ghost" size="sm" className="h-7 w-7 p-0" 
+                                    onClick={() => alert(`Sending ${token.symbol} is coming soon!`)} 
+                                    disabled={false}>
+                                    <Send className="h-3 w-3" />
+                                  </Button>
+                                </div>
                               </div>
-                              <p className="text-xs font-medium truncate">{nft.name}</p>
-                              <p className="text-[10px] text-muted-foreground">#{nft.tokenId}</p>
-                              <Button variant="outline" size="sm" className="w-full mt-1.5 h-6 text-[10px]" onClick={() => openEvmSendDialog('nft', undefined, nft)}><Send className="h-2.5 w-2.5 mr-1" />Send</Button>
+                            ))
+                          ) : (
+                            <div className="flex flex-col items-center justify-center py-6 text-muted-foreground">
+                              <Coins className="h-8 w-8 mb-2 opacity-20" /><p className="text-xs">No tokens found</p>
                             </div>
-                          ))
-                        ) : (
-                          <div className="col-span-3 flex flex-col items-center justify-center py-6 text-muted-foreground">
-                            <Image className="h-8 w-8 mb-2 opacity-20" /><p className="text-xs">No NFTs found</p>
-                            <Button variant="link" size="sm" className="text-xs" onClick={() => setShowEvmImportNFT(true)}>Import NFT</Button>
-                          </div>
-                        )}
-                      </div>
-                    </TabsContent>
-                  </Tabs>
-                </div>
-              </>
+                          )}
+                        </div>
+                      </TabsContent>
+                      
+                      <TabsContent value="history" className="mt-0">
+                        <div className="space-y-2 max-h-[200px] overflow-auto">
+                          {isLoadingChainTxs ? (
+                            <div className="flex items-center justify-center py-6"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
+                          ) : chainTransactions.length > 0 ? (
+                            chainTransactions.map((tx, index) => (
+                              <a 
+                                key={`${tx.hash}-${index}`} 
+                                href={`${CHAIN_CONFIGS[selectedChainType].explorer}/tx/${tx.hash}`} 
+                                target="_blank" 
+                                rel="noopener noreferrer"
+                                className="block"
+                              >
+                                <div className="p-2.5 bg-muted/50 rounded-lg border border-border hover:border-orange-500/30 transition-colors cursor-pointer">
+                                  <div className="flex items-center justify-between mb-1">
+                                    <div className="flex items-center gap-2">
+                                      {tx.type === 'sent' ? (
+                                        <ArrowUpRight className="h-4 w-4 text-red-500" />
+                                      ) : (
+                                        <ArrowDownLeft className="h-4 w-4 text-green-500" />
+                                      )}
+                                      <span className="text-sm font-medium capitalize">
+                                        {tx.type}
+                                      </span>
+                                    </div>
+                                    <p className={`text-sm font-semibold ${tx.type === 'sent' ? 'text-red-500' : 'text-green-500'}`}>
+                                      {tx.type === 'sent' ? '-' : '+'}{tx.amount} {CHAIN_CONFIGS[selectedChainType].symbol}
+                                    </p>
+                                  </div>
+                                  <div className="flex items-center justify-between">
+                                    <code className="text-[10px] font-mono text-muted-foreground truncate max-w-[150px]">
+                                      {tx.hash.slice(0, 10)}...{tx.hash.slice(-8)}
+                                    </code>
+                                    <span className="text-[10px] text-muted-foreground">
+                                      {new Date(tx.timestamp).toLocaleDateString()}
+                                    </span>
+                                  </div>
+                                </div>
+                              </a>
+                            ))
+                          ) : (
+                            <div className="flex flex-col items-center justify-center py-6 text-muted-foreground">
+                              <History className="h-8 w-8 mb-2 opacity-20" /><p className="text-xs">No transactions found</p>
+                              <Button variant="link" size="sm" className="text-xs" asChild>
+                                <a href={`${CHAIN_CONFIGS[selectedChainType].explorer}/address/${selectedChainWallet?.address}`} target="_blank" rel="noopener noreferrer">
+                                  View on Explorer <ExternalLink className="h-3 w-3 ml-1" />
+                                </a>
+                              </Button>
+                            </div>
+                          )}
+                        </div>
+                      </TabsContent>
+                    </Tabs>
+                  </div>
+                </>
+              )
             ) : (
               /* Normal Octra Wallet Content */
               <>
@@ -3387,8 +4106,8 @@ export function WalletDashboard({
                       className="w-full flex items-center justify-center gap-3 h-14 border border-orange-500/30 hover:border-orange-500/50 hover:bg-orange-500/5 transition-all text-orange-600 dark:text-orange-400"
                       onClick={enterEvmMode}
                     >
-                      <Coins className="h-5 w-5" />
-                      <span className="text-sm font-medium">EVM Assets</span>
+                      <Globe className="h-5 w-5" />
+                      <span className="text-sm font-medium">Multi-Chain Assets</span>
                     </Button>
                   </div>
                 )}
@@ -4413,6 +5132,93 @@ export function WalletDashboard({
         </DialogContent>
       </Dialog>
 
+      <Dialog open={showNonEvmNetworkManager} onOpenChange={setShowNonEvmNetworkManager}>
+        <DialogContent className="sm:max-w-lg max-h-[85vh] overflow-hidden flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-orange-600 dark:text-orange-400">
+              <Settings className="h-5 w-5" />
+              {CHAIN_CONFIGS[selectedChainType]?.name} Network Settings
+            </DialogTitle>
+            <DialogDescription>Manage networks and RPC endpoints</DialogDescription>
+          </DialogHeader>
+          
+          {selectedChainType !== ChainType.EVM && (
+            <div className="flex-1 overflow-auto space-y-4 px-0.5">
+              <div className="space-y-2">
+                <Label className="text-sm font-medium">Networks</Label>
+                <ScrollArea className="h-[180px]">
+                  <ScrollAreaContent className="space-y-1">
+                    {getAllNonEvmNetworks(selectedChainType as NonEvmType).map((network) => (
+                      <div 
+                        key={network.id} 
+                        className={`flex items-center justify-between p-2.5 rounded cursor-pointer transition-colors ${nonEvmNetworks[selectedChainType as NonEvmType]?.id === network.id ? 'bg-orange-500/10' : 'bg-muted/30 hover:bg-muted/50'}`}
+                        onClick={() => { handleNonEvmNetworkChange(network.id); }}
+                      >
+                        <div className="flex items-center gap-2 flex-1 min-w-0">
+                          <div className="flex flex-col min-w-0">
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-sm font-medium truncate">{network.name}</span>
+                              <Badge variant="outline" className="text-[9px] shrink-0">{CHAIN_CONFIGS[selectedChainType].symbol}</Badge>
+                              {network.isCustom && <Badge variant="secondary" className="text-[9px] shrink-0">Custom</Badge>}
+                              {network.isTestnet && <Badge variant="outline" className="text-[9px] shrink-0 border-yellow-500/50 text-yellow-600">Testnet</Badge>}
+                            </div>
+                            <span className="text-[10px] text-muted-foreground truncate">{getNonEvmRpcUrl(selectedChainType as NonEvmType, network)}</span>
+                          </div>
+                        </div>
+                        {network.isCustom && (
+                          <Button 
+                            variant="ghost" 
+                            size="sm" 
+                            className="h-6 w-6 p-0 text-red-500 ml-1" 
+                            onClick={(e) => { e.stopPropagation(); handleRemoveNonEvmNetwork(network.id); }}
+                          >
+                            <Trash2 className="h-3 w-3" />
+                          </Button>
+                        )}
+                      </div>
+                    ))}
+                  </ScrollAreaContent>
+                </ScrollArea>
+              </div>
+              
+              <div className="border-t border-dashed border-border" />
+              
+              <div className="space-y-2">
+                <Label className="text-sm">Custom RPC for {nonEvmNetworks[selectedChainType as NonEvmType]?.name} (optional)</Label>
+                <div className="flex gap-2">
+                  <Input placeholder="https://your-rpc-endpoint.com" value={nonEvmCustomRpcUrl} onChange={(e) => setNonEvmCustomRpcUrl(e.target.value)} className="flex-1 h-9 text-sm" />
+                  <Button size="sm" onClick={handleSaveNonEvmCustomRpc} disabled={!nonEvmCustomRpcUrl.trim()}>Save</Button>
+                </div>
+              </div>
+              
+              <div className="border-t border-dashed border-border" />
+              
+              <div className="space-y-3">
+                <Label className="text-sm font-medium">Add Custom Network</Label>
+                <div className="grid grid-cols-2 gap-2">
+                  <Input placeholder="Network Name *" value={newNonEvmNetwork.name} onChange={(e) => setNewNonEvmNetwork({ ...newNonEvmNetwork, name: e.target.value })} className="h-8 text-sm" />
+                  <Input placeholder="Explorer URL" value={newNonEvmNetwork.explorer} onChange={(e) => setNewNonEvmNetwork({ ...newNonEvmNetwork, explorer: e.target.value })} className="h-8 text-sm" />
+                </div>
+                <Input placeholder="RPC URL *" value={newNonEvmNetwork.rpcUrl} onChange={(e) => setNewNonEvmNetwork({ ...newNonEvmNetwork, rpcUrl: e.target.value })} className="h-8 text-sm" />
+                <select
+                  value={newNonEvmNetwork.isTestnet ? 'testnet' : 'mainnet'}
+                  onChange={(e) => setNewNonEvmNetwork({ ...newNonEvmNetwork, isTestnet: e.target.value === 'testnet' })}
+                  className="h-8 px-2 text-xs bg-background rounded-md border border-border"
+                >
+                  <option value="mainnet">Mainnet</option>
+                  <option value="testnet">Testnet</option>
+                </select>
+                <div className="flex items-center gap-2">
+                  <Button onClick={handleAddNonEvmNetwork} disabled={isAddingNonEvmNetwork} className="w-full bg-orange-500 hover:bg-orange-600">
+                    {isAddingNonEvmNetwork ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Plus className="h-4 w-4 mr-2" />}Add Network
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
       {/* EVM Import Token Dialog */}
       <Dialog open={showEvmImportToken} onOpenChange={setShowEvmImportToken}>
         <DialogContent>
@@ -4544,6 +5350,66 @@ export function WalletDashboard({
               </>
             ) : (
               <Button onClick={() => { setShowEvmSendDialog(false); setEvmTxHash(null); setEvmSendTo(''); setEvmSendAmount(''); }}>Close</Button>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Chain Send Transaction Dialog */}
+      <Dialog open={showChainSendDialog} onOpenChange={setShowChainSendDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-orange-600 dark:text-orange-400">
+              Send {CHAIN_CONFIGS[selectedChainType].symbol} ({CHAIN_CONFIGS[selectedChainType].name})
+            </DialogTitle>
+            <DialogDescription>
+              Send funds on {CHAIN_CONFIGS[selectedChainType].name} network
+            </DialogDescription>
+          </DialogHeader>
+          
+          {!chainTxHash ? (
+            <div className="space-y-4 py-2">
+              <div className="space-y-2">
+                <Label>Recipient Address</Label>
+                <Input placeholder="Address..." value={chainSendTo} onChange={(e) => setChainSendTo(e.target.value)} disabled={isChainSending} />
+              </div>
+              <div className="space-y-2">
+                <Label>Amount ({CHAIN_CONFIGS[selectedChainType].symbol})</Label>
+                <Input type="number" step="0.000001" placeholder="0.0" value={chainSendAmount} onChange={(e) => setChainSendAmount(e.target.value)} disabled={isChainSending} />
+              </div>
+              {chainSendError && <div className="text-sm text-destructive bg-destructive/10 p-2 rounded">{chainSendError}</div>}
+              {selectedChainWallet?.balance && <div className="text-sm text-muted-foreground">Available: {selectedChainWallet.balance} {CHAIN_CONFIGS[selectedChainType].symbol}</div>}
+            </div>
+          ) : (
+            <div className="py-4">
+              <div className="w-16 h-16 bg-green-500/10 rounded-full flex items-center justify-center mx-auto mb-3"><Check className="h-8 w-8 text-green-500" /></div>
+              <p className="text-lg font-semibold mb-1 text-center">Transaction Sent!</p>
+              <p className="text-sm text-muted-foreground mb-4 text-center">Your transaction has been broadcast</p>
+              <div className="space-y-2">
+                <div className="bg-muted p-3 rounded-lg">
+                  <Label className="text-xs text-muted-foreground">Transaction Hash</Label>
+                  <div className="flex items-center gap-2 mt-1">
+                    <code className="flex-1 text-xs font-mono break-all">{chainTxHash}</code>
+                    <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => copyToClipboard(chainTxHash!, 'chaintxhash')}>{copiedField === 'chaintxhash' ? <Check className="h-3 w-3 text-green-500" /> : <Copy className="h-3 w-3" />}</Button>
+                  </div>
+                </div>
+                {CHAIN_CONFIGS[selectedChainType].explorer && (
+                  <Button variant="outline" className="w-full" asChild><a href={`${CHAIN_CONFIGS[selectedChainType].explorer}/tx/${chainTxHash}`} target="_blank" rel="noopener noreferrer"><ExternalLink className="h-4 w-4 mr-2" />View on Explorer</a></Button>
+                )}
+              </div>
+            </div>
+          )}
+          
+          <DialogFooter>
+            {!chainTxHash ? (
+              <>
+                <Button variant="outline" onClick={() => setShowChainSendDialog(false)} disabled={isChainSending}>Cancel</Button>
+                <Button onClick={handleChainSendTransaction} disabled={isChainSending || !chainSendTo || !chainSendAmount} className="bg-orange-500 hover:bg-orange-600">
+                  {isChainSending ? <><Loader2 className="h-4 w-4 animate-spin mr-2" />Sending...</> : 'Send'}
+                </Button>
+              </>
+            ) : (
+              <Button onClick={() => { setShowChainSendDialog(false); setChainTxHash(null); setChainSendTo(''); setChainSendAmount(''); }}>Close</Button>
             )}
           </DialogFooter>
         </DialogContent>
