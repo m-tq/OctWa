@@ -591,6 +591,8 @@ h1, h2, h3 {
 
 .page {
   padding-top: 56px;
+  position: relative;
+  z-index: 1;
 }
 
 .sdk-page .page-content {
@@ -649,7 +651,17 @@ h1, h2, h3 {
   max-width: 1100px;
 }
 
-.app-card, .tool-card {
+.app-card {
+  background-color: #1f1f1f;
+  border: 1px solid var(--border);
+  padding: 1.5rem;
+  transition: all 0.3s ease;
+  display: flex;
+  flex-direction: column;
+  cursor: pointer;
+}
+
+.tool-card {
   background: var(--card);
   border: 1px solid var(--border);
   padding: 1.5rem;
@@ -792,7 +804,7 @@ h1, h2, h3 {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 1.5rem;
+  padding: 2rem;
   opacity: 0.3;
   transform: scale(0.96);
   transition: opacity 0.6s ease, transform 0.6s ease;
@@ -821,7 +833,7 @@ h1, h2, h3 {
 }
 
 .sdk-card {
-  background: var(--card);
+  background-color: #1f1f1f;
   border: 1px solid var(--border);
   padding: 1.5rem;
   display: flex;
@@ -832,7 +844,7 @@ h1, h2, h3 {
   margin: 0 auto;
   cursor: pointer;
   max-height: 520px;
-  overflow: hidden;
+  overflow-y: auto;
   transition: all 0.3s ease;
 }
 
@@ -905,7 +917,6 @@ h1, h2, h3 {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
-  max-height: 220px;
   overflow: hidden;
 }
 
@@ -953,8 +964,6 @@ h1, h2, h3 {
   margin: 0;
   white-space: pre-wrap;
   word-break: break-word;
-  overflow: auto;
-  max-height: 140px;
   font-size: 0.76rem;
   color: var(--foreground);
 }
@@ -1002,6 +1011,12 @@ h1, h2, h3 {
   overflow: auto;
   max-height: calc(85vh - 3rem);
   padding-right: 0.5rem;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.sdk-modal-body::-webkit-scrollbar {
+  display: none;
 }
 
 .sdk-modal-body .sdk-list {
