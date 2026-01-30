@@ -36,7 +36,7 @@ const apps = [
     name: 'OctWa Analyzer',
     description: 'A lightweight web UI for browsing Octra transactions, addresses, and epochs.',
     appUrl: 'https://octlook.vercel.app/',
-    repoUrl: '',
+    repoUrl: 'https://github.com/m-tq/OctWa-Analyzer',
     screenshotUrl: 'octlook.png',
   },
 ];
