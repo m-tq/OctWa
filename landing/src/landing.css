@@ -628,6 +628,11 @@ h1, h2, h3 {
   overflow: hidden;
 }
 
+.apps-page .page-content {
+  max-width: 1400px;
+  width: 100%;
+}
+
 .apps-page .slide-title,
 .tools-page .slide-title {
   margin-top: 0;
@@ -643,7 +648,15 @@ h1, h2, h3 {
   max-width: 600px;
 }
 
-.apps-grid, .tools-grid {
+.apps-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1.5rem;
+  width: 100%;
+  max-width: 1400px;
+}
+
+.tools-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
   gap: 1.5rem;
@@ -781,7 +794,16 @@ h1, h2, h3 {
   transform: scale(1);
 }
 
-.apps-slide-content,
+.apps-slide-content {
+  width: 100%;
+  max-width: 1400px;
+  margin: 0 auto;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 100%;
+}
+
 .tools-slide-content {
   width: 100%;
   max-width: 900px;
