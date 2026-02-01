@@ -198,7 +198,9 @@ export class IntentsClient {
  * @deprecated EVM address is now derived by the wallet and returned in Connection.evmAddress
  * This function is kept for backward compatibility but should not be used.
  */
-export function deriveEvmAddress(_octraPubKey: string): string {
-  console.warn('deriveEvmAddress is deprecated. Use connection.evmAddress from wallet instead.');
-  return '';
+export function deriveEvmAddress(octraPubKey: string): string {
+  if (!octraPubKey) {
+    throw new Error('Octra public key is required');
+  }
+  throw new Error('deriveEvmAddress is deprecated. Use connection.evmAddress from wallet instead.');
 }

@@ -78,8 +78,12 @@ export function UnlockWallet({
     e.preventDefault();
 
     // Check rate limit before attempting
-    checkRateLimit();
-    if (rateLimitInfo?.limited) {
+    const rateInfo = WalletManager.checkRateLimit();
+    setRateLimitInfo(rateInfo);
+    if (rateInfo.limited) {
+      if (rateInfo.remainingMs) {
+        setCountdown(Math.ceil(rateInfo.remainingMs / 1000));
+      }
       return;
     }
 

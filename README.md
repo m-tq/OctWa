@@ -11,7 +11,6 @@ octwa/
 ├── src/                    # Main wallet application
 ├── extensionFiles/         # Browser extension files
 ├── packages/sdk/           # @octwa/sdk - dApp integration SDK
-├── landing/                # Landing page
 └── scripts/                # Build scripts
 ```
 
@@ -64,7 +63,9 @@ See [packages/sdk/README.md](packages/sdk/README.md) for documentation.
 ### dApp Integration
 - Web3 provider (`window.octra`)
 - Connection approval flow
+- Capability-based permissions
 - Transaction signing
+- Intent-based swaps (OCT ⇄ ETH)
 - Smart contract interaction
 
 ## Quick Start
@@ -95,6 +96,10 @@ npm run build:extension
 Default RPC: `https://octra.network`
 
 Manage providers via UI (RPC Provider Manager) or seed `localStorage` key `rpcProviders`.
+
+## Network Determination
+
+The active network is determined by the wallet/extension and returned in `connection.network`. dApps must follow this value for API selection, explorer links, and transaction behavior. If a dApp requires a specific network, it should prompt the user to switch networks in the wallet and then reconnect.
 
 ## Screenshots
 

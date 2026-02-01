@@ -16,12 +16,12 @@ import {
   Shield,
   Copy,
   Eye,
-  EyeOff,
   Globe,
   ChevronRight,
 } from 'lucide-react';
 import { Wallet } from '../types/wallet';
 import { useToast } from '@/hooks/use-toast';
+import { ExportPrivateKeys } from './ExportPrivateKeys';
 
 // Connection stored in localStorage/chrome.storage
 interface StoredConnection {
@@ -58,7 +58,7 @@ export function WalletPanel({
   onOpenDAppsManager,
   className = '',
 }: WalletPanelProps) {
-  const [showPrivateKey, setShowPrivateKey] = useState(false);
+  const [showExportDialog, setShowExportDialog] = useState(false);
   const [connectedDApps, setConnectedDApps] = useState<StoredConnection[]>([]);
   const { toast } = useToast();
   const clipboardTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -206,34 +206,21 @@ export function WalletPanel({
             </label>
             <div className="flex items-center gap-2">
               <code className="flex-1 text-sm font-mono bg-muted px-2 py-1 truncate">
-                {showPrivateKey ? wallet.privateKey : '••••••••••••••••'}
+                {'••••••••••••••••'}
               </code>
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => setShowPrivateKey(!showPrivateKey)}
+                onClick={() => setShowExportDialog(true)}
                 className="h-8 w-8 p-0"
               >
-                {showPrivateKey ? (
-                  <EyeOff className="h-3 w-3" />
-                ) : (
-                  <Eye className="h-3 w-3" />
-                )}
+                <Eye className="h-3 w-3" />
               </Button>
-              {showPrivateKey && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => copyToClipboard(wallet.privateKey, 'Private Key', true)}
-                  className="h-8 w-8 p-0"
-                >
-                  <Copy className="h-3 w-3" />
-                </Button>
-              )}
             </div>
           </div>
         </CardContent>
       </Card>
+      <ExportPrivateKeys wallet={wallet} open={showExportDialog} onOpenChange={setShowExportDialog} />
 
       {/* Other Wallets */}
       {wallets.length > 1 && (

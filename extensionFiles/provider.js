@@ -18,6 +18,7 @@
 
       window.addEventListener('message', (event) => {
         if (event.source !== window) return;
+        if (!this._isSameOrigin(event)) return;
         if (event.data.source !== 'octra-content-script') return;
         this._handleResponse(event.data);
       });
@@ -84,7 +85,7 @@
             appIcon: this._getAppIcon(),
             requestedCapabilities: request.requestedCapabilities || []
           }
-        }, '*');
+        }, this._getTargetOrigin());
 
         setTimeout(() => {
           if (this._pendingRequests[requestId]) {
@@ -104,7 +105,7 @@
         source: 'octra-provider',
         type: 'DISCONNECT_REQUEST',
         data: { appOrigin: window.location.origin }
-      }, '*');
+      }, this._getTargetOrigin());
     }
 
     /**
@@ -144,7 +145,7 @@
             appName: document.title || window.location.hostname,
             appIcon: this._getAppIcon()
           }
-        }, '*');
+        }, this._getTargetOrigin());
 
         setTimeout(() => {
           if (this._pendingRequests[requestId]) {
@@ -200,7 +201,7 @@
             appOrigin: window.location.origin,
             appName: document.title || window.location.hostname
           }
-        }, '*');
+        }, this._getTargetOrigin());
 
         setTimeout(() => {
           if (this._pendingRequests[requestId]) {
@@ -277,6 +278,15 @@
       return 'req_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
     }
 
+    _getTargetOrigin() {
+      return window.location.origin === 'null' ? '*' : window.location.origin;
+    }
+
+    _isSameOrigin(event) {
+      const origin = window.location.origin;
+      return origin === 'null' || event.origin === origin;
+    }
+
     _getAppIcon() {
       const iconSelectors = [
         'link[rel="icon"]',
@@ -313,7 +323,7 @@
     window.postMessage({
       type: 'OCTRA_EXTENSION_AVAILABLE',
       version: PROVIDER_VERSION
-    }, '*');
+    }, window.location.origin === 'null' ? '*' : window.location.origin);
 
     console.log(`[Octra] Wallet Provider v${PROVIDER_VERSION} injected (Capability-based model)`);
   }

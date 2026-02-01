@@ -17,6 +17,7 @@
   // Handle messages from provider
   const handleMessage = (event) => {
     if (event.source !== window) return;
+    if (!isSameOrigin(event)) return;
     if (event.data.source !== 'octra-provider') return;
 
     console.log('[Content] Received:', event.data.type);
@@ -26,7 +27,10 @@
       source: 'octra-content-script',
       type: event.data.type,
       requestId: event.data.requestId,
-      data: event.data.data
+      data: {
+        ...(event.data.data || {}),
+        appOrigin: window.location.origin
+      }
     }).then(response => {
       console.log('[Content] Response:', response);
       // Forward back to provider
@@ -37,7 +41,7 @@
         success: response.success,
         result: response.result,
         error: response.error
-      }, '*');
+      }, getTargetOrigin());
     }).catch(error => {
       console.error('[Content] Error:', error);
       window.postMessage({
@@ -46,7 +50,7 @@
         type: 'ERROR_RESPONSE',
         success: false,
         error: error.message || 'Extension communication error'
-      }, '*');
+      }, getTargetOrigin());
     });
   };
 
@@ -59,7 +63,7 @@
         source: 'octra-content-script',
         type: 'WALLET_DISCONNECTED',
         appOrigin: message.appOrigin
-      }, '*');
+      }, getTargetOrigin());
     }
   };
 
@@ -72,6 +76,15 @@
   } else {
     injectProvider();
   }
+
+  const getTargetOrigin = () => {
+    return window.location.origin === 'null' ? '*' : window.location.origin;
+  };
+
+  const isSameOrigin = (event) => {
+    const origin = window.location.origin;
+    return origin === 'null' || event.origin === origin;
+  };
 
   // Cleanup
   window.addEventListener('beforeunload', () => {

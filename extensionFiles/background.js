@@ -67,23 +67,32 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
 async function handleDAppRequest(message, sender) {
   const { type, requestId, data } = message;
+  const senderOrigin = getSenderOrigin(sender);
+  if (!senderOrigin) {
+    throw new Error('Unable to determine sender origin');
+  }
+  const appOrigin = data?.appOrigin || senderOrigin;
+  if (senderOrigin !== appOrigin) {
+    throw new Error('Origin mismatch');
+  }
+  const normalizedData = { ...(data || {}), appOrigin };
 
   console.log('[Background] handleDAppRequest called:', type, requestId);
 
   try {
     switch (type) {
       case 'CONNECTION_REQUEST':
-        return await handleConnectionRequest(data, sender);
+        return await handleConnectionRequest(normalizedData, sender);
 
       case 'CAPABILITY_REQUEST':
-        return await handleCapabilityRequest(data, sender);
+        return await handleCapabilityRequest(normalizedData, sender);
 
       case 'INVOKE_REQUEST':
         console.log('[Background] Processing INVOKE_REQUEST');
-        return await handleInvokeRequest(data, sender);
+        return await handleInvokeRequest(normalizedData, sender);
 
       case 'DISCONNECT_REQUEST':
-        return await handleDisconnectRequest(data, sender);
+        return await handleDisconnectRequest(normalizedData, sender);
 
       default:
         throw new Error(`Unknown request type: ${type}`);
@@ -91,6 +100,15 @@ async function handleDAppRequest(message, sender) {
   } catch (error) {
     console.error('[Background] Request error:', error);
     throw error;
+  }
+}
+
+function getSenderOrigin(sender) {
+  try {
+    if (!sender || !sender.url) return null;
+    return new URL(sender.url).origin;
+  } catch {
+    return null;
   }
 }
 
@@ -357,12 +375,12 @@ async function handleInvokeRequest(data, sender) {
   // SECURITY: send_transaction and send_evm_transaction are NOT auto-execute
   // They ALWAYS require popup approval as they transfer funds
   // ==========================================================================
-  const autoExecuteMethods = ['get_balance', 'get_quote', 'sign_intent', 'create_intent', 'submit_intent', 'get_intent_status'];
+  const autoExecuteMethods = ['get_balance', 'get_quote', 'create_intent', 'submit_intent', 'get_intent_status'];
   
   console.log('[Background] Checking auto-execute for method:', method, 'scope:', capability.scope);
   console.log('[Background] autoExecuteMethods includes:', autoExecuteMethods.includes(method));
   
-  if (capability.scope === 'read' || autoExecuteMethods.includes(method)) {
+  if (autoExecuteMethods.includes(method)) {
     console.log('[Background] Auto-executing read method:', method);
     
     try {
@@ -475,9 +493,6 @@ async function executeMethod(method, payload, connection, capability) {
     case 'get_quote':
       return await executeGetQuote(payload);
 
-    case 'sign_intent':
-      return await executeSignIntent(payload, connection);
-
     case 'send_transaction':
       return await executeSendTransaction(payload, connection);
 
@@ -485,58 +500,17 @@ async function executeMethod(method, payload, connection, capability) {
       return await executeSendEvmTransaction(payload, connection);
 
     case 'create_intent':
+      return await executeCreateIntent(payload);
+
     case 'submit_intent':
+      return await executeSubmitIntent(payload);
+
     case 'get_intent_status':
-      // These would be implemented with actual solver network
-      // For now, return success
-      return new TextEncoder().encode(JSON.stringify({ success: true }));
+      return await executeGetIntentStatus(payload);
     
     default:
       throw new Error(`Unknown auto-execute method: ${method}`);
   }
-}
-
-// Sign swap intent (simulated - in production would use actual signing)
-async function executeSignIntent(payload, connection) {
-  let intentPayload;
-  try {
-    if (payload && payload._type === 'Uint8Array') {
-      const bytes = new Uint8Array(payload.data);
-      intentPayload = JSON.parse(new TextDecoder().decode(bytes));
-    } else if (payload instanceof Uint8Array) {
-      intentPayload = JSON.parse(new TextDecoder().decode(payload));
-    } else if (typeof payload === 'object' && payload !== null && '0' in payload) {
-      const obj = payload;
-      const keys = Object.keys(obj).filter((k) => !isNaN(Number(k)));
-      const length = keys.length;
-      const bytes = new Uint8Array(length);
-      for (let i = 0; i < length; i++) {
-        bytes[i] = obj[i.toString()];
-      }
-      intentPayload = JSON.parse(new TextDecoder().decode(bytes));
-    } else {
-      intentPayload = payload;
-    }
-  } catch (e) {
-    throw new Error('Failed to parse intent payload');
-  }
-
-  console.log('[Background] Signing intent:', intentPayload);
-
-  // In production, this would:
-  // 1. Validate the intent payload
-  // 2. Sign with wallet's private key
-  // 3. Return signed intent
-
-  const result = {
-    success: true,
-    intentId: `intent-${Date.now()}`,
-    payload: intentPayload,
-    issuerPubKey: connection.walletPubKey,
-    signature: 'simulated_signature_' + Date.now(),
-  };
-
-  return new TextEncoder().encode(JSON.stringify(result));
 }
 
 // Get balance from RPC (wallet-side, not dApp-side)
@@ -638,9 +612,8 @@ async function executeGetBalance(connection) {
   return new TextEncoder().encode(JSON.stringify(result));
 }
 
-// Get swap quote (simulated for demo)
+// Get swap quote
 async function executeGetQuote(payload) {
-  // Parse payload
   let params;
   try {
     if (payload && payload._type === 'Uint8Array') {
@@ -652,190 +625,150 @@ async function executeGetQuote(payload) {
       params = payload || {};
     }
   } catch (e) {
-    params = {};
+    throw new Error('Failed to parse quote payload');
   }
   
-  const { from = 'OCT', to = 'USDT', amount = 0 } = params;
-  
-  // Simulated rate (in production, this would come from AMM/oracle)
-  const rates = {
-    'OCT/USDT': 2.5,
-    'USDT/OCT': 0.4
+  const { apiUrl, from = 'OCT', to = 'ETH', amount } = params;
+  if (!apiUrl || typeof apiUrl !== 'string') {
+    throw new Error('apiUrl is required for get_quote');
+  }
+  if (typeof amount !== 'number' || amount <= 0) {
+    throw new Error('Invalid amount for get_quote');
+  }
+
+  const response = await fetch(`${apiUrl.replace(/\/$/, '')}/quote?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&amount=${encodeURIComponent(amount)}`);
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(error.error || `Quote failed: ${response.status}`);
+  }
+  const result = await response.json();
+  return new TextEncoder().encode(JSON.stringify(result));
+}
+
+async function executeCreateIntent(payload) {
+  let params;
+  try {
+    if (payload && payload._type === 'Uint8Array') {
+      const bytes = new Uint8Array(payload.data);
+      params = JSON.parse(new TextDecoder().decode(bytes));
+    } else if (payload instanceof Uint8Array) {
+      params = JSON.parse(new TextDecoder().decode(payload));
+    } else {
+      params = payload || {};
+    }
+  } catch (e) {
+    throw new Error('Failed to parse create_intent payload');
+  }
+
+  const { quote, targetAddress, slippageBps = 50 } = params;
+  if (!quote || typeof quote !== 'object') {
+    throw new Error('quote is required for create_intent');
+  }
+  if (!/^0x[a-fA-F0-9]{40}$/.test(targetAddress || '')) {
+    throw new Error('Invalid targetAddress');
+  }
+  if (typeof slippageBps !== 'number' || slippageBps < 0 || slippageBps > 5000) {
+    throw new Error('Invalid slippageBps');
+  }
+
+  const slippageMultiplier = 1 - slippageBps / 10000;
+  const minAmountOut = Number(quote.estimatedOut) * slippageMultiplier;
+
+  const intentPayload = {
+    version: 1,
+    intentType: 'swap',
+    fromAsset: quote.from || 'OCT',
+    toAsset: quote.to || 'ETH',
+    amountIn: Number(quote.amountIn),
+    minAmountOut,
+    targetChain: quote.network || 'ethereum_sepolia',
+    targetAddress,
+    expiry: Date.now() + 5 * 60 * 1000,
+    nonce: crypto.randomUUID()
   };
-  
-  const pair = `${from}/${to}`;
-  const rate = rates[pair] || 1;
-  const fee = amount * 0.003; // 0.3% fee
-  const toAmount = (amount - fee) * rate;
-  const priceImpact = amount > 1000 ? 0.5 : amount > 100 ? 0.2 : 0.1;
-  
-  const result = {
-    from,
-    to,
-    fromAmount: amount,
-    toAmount,
-    rate,
-    fee,
-    priceImpact,
-    timestamp: Date.now()
-  };
-  
+
+  return new TextEncoder().encode(JSON.stringify(intentPayload));
+}
+
+async function executeSubmitIntent(payload) {
+  let params;
+  try {
+    if (payload && payload._type === 'Uint8Array') {
+      const bytes = new Uint8Array(payload.data);
+      params = JSON.parse(new TextDecoder().decode(bytes));
+    } else if (payload instanceof Uint8Array) {
+      params = JSON.parse(new TextDecoder().decode(payload));
+    } else {
+      params = payload || {};
+    }
+  } catch (e) {
+    throw new Error('Failed to parse submit_intent payload');
+  }
+
+  const { apiUrl, octraTxHash } = params;
+  if (!apiUrl || typeof apiUrl !== 'string') {
+    throw new Error('apiUrl is required for submit_intent');
+  }
+  if (!octraTxHash || typeof octraTxHash !== 'string') {
+    throw new Error('octraTxHash is required for submit_intent');
+  }
+
+  const response = await fetch(`${apiUrl.replace(/\/$/, '')}/swap/submit`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ octraTxHash })
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(error.error || error.message || `Submit failed: ${response.status}`);
+  }
+
+  const result = await response.json();
+  return new TextEncoder().encode(JSON.stringify(result));
+}
+
+async function executeGetIntentStatus(payload) {
+  let params;
+  try {
+    if (payload && payload._type === 'Uint8Array') {
+      const bytes = new Uint8Array(payload.data);
+      params = JSON.parse(new TextDecoder().decode(bytes));
+    } else if (payload instanceof Uint8Array) {
+      params = JSON.parse(new TextDecoder().decode(payload));
+    } else {
+      params = payload || {};
+    }
+  } catch (e) {
+    throw new Error('Failed to parse get_intent_status payload');
+  }
+
+  const { apiUrl, intentId } = params;
+  if (!apiUrl || typeof apiUrl !== 'string') {
+    throw new Error('apiUrl is required for get_intent_status');
+  }
+  if (!intentId || typeof intentId !== 'string') {
+    throw new Error('intentId is required for get_intent_status');
+  }
+
+  const response = await fetch(`${apiUrl.replace(/\/$/, '')}/swap/${encodeURIComponent(intentId)}`);
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(error.error || `Status check failed: ${response.status}`);
+  }
+
+  const result = await response.json();
   return new TextEncoder().encode(JSON.stringify(result));
 }
 
 // Send transaction to escrow (for intent-based swaps)
 async function executeSendTransaction(payload, connection) {
-  let txParams;
-  try {
-    // Decode payload from various formats
-    let payloadStr;
-    if (payload && payload._type === 'Uint8Array') {
-      const bytes = new Uint8Array(payload.data);
-      payloadStr = new TextDecoder().decode(bytes);
-    } else if (payload instanceof Uint8Array) {
-      payloadStr = new TextDecoder().decode(payload);
-    } else if (typeof payload === 'object' && payload !== null && '0' in payload) {
-      // Object with numeric keys (serialized Uint8Array)
-      const obj = payload;
-      const keys = Object.keys(obj).filter((k) => !isNaN(Number(k)));
-      const length = keys.length;
-      const bytes = new Uint8Array(length);
-      for (let i = 0; i < length; i++) {
-        bytes[i] = obj[i.toString()];
-      }
-      payloadStr = new TextDecoder().decode(bytes);
-    } else if (typeof payload === 'string') {
-      payloadStr = payload;
-    } else if (typeof payload === 'object') {
-      // Already an object
-      txParams = payload;
-    }
-
-    // Parse JSON string
-    if (payloadStr && !txParams) {
-      txParams = JSON.parse(payloadStr);
-    }
-    
-    console.log('[Background] Parsed OCT tx payload:', txParams);
-  } catch (e) {
-    console.error('[Background] Failed to parse transaction payload:', e, 'payload:', payload);
-    throw new Error('Failed to parse transaction payload');
-  }
-
-  if (!txParams) {
-    throw new Error('Empty transaction payload');
-  }
-
-  console.log('[Background] Sending OCT transaction:', txParams);
-
-  const { to, amount, type, message } = txParams;
-
-  // Validate amount is a number
-  if (typeof amount !== 'number' || amount <= 0) {
-    console.error('[Background] Invalid amount:', amount, typeof amount);
-    throw new Error('Invalid amount');
-  }
-
-  // In production, this would:
-  // 1. Build the actual Octra transaction with message field
-  // 2. Sign with wallet's private key
-  // 3. Broadcast to Octra network
-  // 4. Return the transaction hash
-
-  // Simulated transaction hash
-  const txHash = '0x' + Date.now().toString(16) + Math.random().toString(16).slice(2, 18);
-
-  const result = {
-    success: true,
-    txHash,
-    from: connection.walletPubKey,
-    to,
-    amount, // decimal OCT amount
-    message: message || null, // encoded message for backend verification
-    timestamp: Date.now(),
-  };
-
-  return new TextEncoder().encode(JSON.stringify(result));
+  throw new Error('send_transaction requires user approval');
 }
 
 // Send EVM transaction (ETH to escrow for BUY orders)
 async function executeSendEvmTransaction(payload, connection) {
-  let txParams;
-  try {
-    // Decode payload from various formats
-    let payloadStr;
-    if (payload && payload._type === 'Uint8Array') {
-      const bytes = new Uint8Array(payload.data);
-      payloadStr = new TextDecoder().decode(bytes);
-    } else if (payload instanceof Uint8Array) {
-      payloadStr = new TextDecoder().decode(payload);
-    } else if (typeof payload === 'object' && payload !== null && '0' in payload) {
-      // Object with numeric keys (serialized Uint8Array)
-      const obj = payload;
-      const keys = Object.keys(obj).filter((k) => !isNaN(Number(k)));
-      const length = keys.length;
-      const bytes = new Uint8Array(length);
-      for (let i = 0; i < length; i++) {
-        bytes[i] = obj[i.toString()];
-      }
-      payloadStr = new TextDecoder().decode(bytes);
-    } else if (typeof payload === 'string') {
-      payloadStr = payload;
-    } else if (typeof payload === 'object') {
-      // Already an object
-      txParams = payload;
-    }
-
-    // Parse JSON string
-    if (payloadStr && !txParams) {
-      txParams = JSON.parse(payloadStr);
-    }
-    
-    console.log('[Background] Parsed ETH tx payload:', txParams);
-  } catch (e) {
-    console.error('[Background] Failed to parse EVM transaction payload:', e, 'payload:', payload);
-    throw new Error('Failed to parse EVM transaction payload');
-  }
-
-  if (!txParams) {
-    throw new Error('Empty EVM transaction payload');
-  }
-
-  console.log('[Background] Sending ETH transaction:', txParams);
-
-  const { to, value, data } = txParams;
-
-  // Validate params
-  if (!value || !to) {
-    console.error('[Background] Invalid EVM params:', { to, value });
-    throw new Error('Invalid EVM transaction params');
-  }
-
-  // Convert wei string to ETH for display
-  const ethAmount = Number(BigInt(value)) / 1e18;
-  console.log('[Background] ETH amount:', ethAmount);
-
-  // In production, this would:
-  // 1. Build the actual EVM transaction with data field (encoded message)
-  // 2. Sign with wallet's EVM private key
-  // 3. Broadcast to Ethereum network
-  // 4. Return the transaction hash
-
-  // Simulated transaction hash
-  const txHash = '0x' + Date.now().toString(16) + Math.random().toString(16).slice(2, 18);
-
-  const result = {
-    success: true,
-    txHash,
-    from: connection.evmAddress,
-    to,
-    value, // wei string
-    ethAmount, // decimal ETH for reference
-    data: data || null, // encoded message for backend verification
-    timestamp: Date.now(),
-  };
-
-  return new TextEncoder().encode(JSON.stringify(result));
+  throw new Error('send_evm_transaction requires user approval');
 }
 
 // Handle disconnect request

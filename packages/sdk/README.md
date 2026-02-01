@@ -30,6 +30,7 @@ const connection = await sdk.connect({
 
 console.log('Connected:', connection.walletPubKey);
 console.log('EVM Address:', connection.evmAddress);
+console.log('Network:', connection.network);
 
 // Request capability
 const capability = await sdk.requestCapability({
@@ -48,7 +49,9 @@ const result = await sdk.invoke({
 
 if (result.success) {
   const data = JSON.parse(new TextDecoder().decode(result.data));
-  console.log('Balance:', data.balance);
+  console.log('OCT Balance:', data.octBalance);
+  console.log('ETH Balance:', data.ethBalance);
+  console.log('USDC Balance:', data.usdcBalance);
 }
 ```
 
@@ -87,6 +90,24 @@ const result = await sdk.invoke({
   })),
 });
 ```
+
+### Network
+Network is determined by the wallet/extension and returned in `connection.network`. dApps must follow this value to select API endpoints, explorers, and transaction behavior. If a dApp requires a specific network, prompt the user to switch networks in the wallet and then reconnect.
+
+### Extension Method Compatibility
+The extension exposes the following invoke methods and payloads. These are the real methods wired in `extensionFiles/background.js`.
+
+Read scope (auto-executed, no approval):
+- `get_balance` → no payload, returns balances
+- `get_quote` → payload `{ apiUrl, from?: 'OCT', to?: 'ETH', amount }`
+- `create_intent` → payload `{ quote, targetAddress, slippageBps? }`
+- `submit_intent` → payload `{ apiUrl, octraTxHash }`
+- `get_intent_status` → payload `{ apiUrl, intentId }`
+
+Write scope (requires user approval in the extension UI):
+- `sign_intent` → payload `SwapIntentPayload` (use `IntentsClient.signIntent`)
+- `send_transaction` → payload `{ to, amount, message? }`
+- `send_evm_transaction` → payload `{ to, amount?, value?, data? }`
 
 ## API Reference
 
@@ -172,15 +193,15 @@ For intent-based swaps (OCT ⇄ ETH):
 import { OctraSDK, IntentsClient } from '@octwa/sdk';
 
 const sdk = await OctraSDK.init();
-const intents = new IntentsClient(sdk, 'http://localhost:3001');
+const intents = new IntentsClient(sdk, 'https://your-intents-api.example.com');
 
-// Get quote
+// Get quote from your intents API
 const quote = await intents.getQuote(100); // 100 OCT
 
 // Create intent
 const payload = await intents.createIntent(quote, '0x...targetAddress');
 
-// Sign intent
+// Sign intent (requires capability with `sign_intent`)
 intents.setCapability(capability);
 await intents.signIntent(payload);
 

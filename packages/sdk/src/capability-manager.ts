@@ -1,9 +1,8 @@
 import type { Capability } from './types';
-import { 
-  verifyCapabilitySignature, 
-  isCapabilityExpired, 
+import {
+  isCapabilityExpired,
   isOriginValid,
-  validateCapability 
+  validateCapability
 } from './crypto';
 
 /**
