@@ -2530,7 +2530,11 @@ export function WalletDashboard({
               />
               
               <Dialog open={showRPCManager} onOpenChange={setShowRPCManager}>
-                <DialogContent className={isPopupMode ? "w-[360px] max-h-[500px] overflow-y-auto p-4" : "sm:max-w-2xl max-h-[80vh] overflow-y-auto"}>
+                <DialogContent
+                  className={isPopupMode ? "w-[360px] max-h-[500px] overflow-y-auto p-4" : "sm:max-w-2xl max-h-[80vh] overflow-y-auto"}
+                  preventCloseOnOutsideClick
+                  onEscapeKeyDown={(event) => event.preventDefault()}
+                >
                   <DialogHeader className={isPopupMode ? "pb-2" : ""}>
                     <DialogTitle className={isPopupMode ? "text-sm" : ""}>RPC Provider</DialogTitle>
                     {!isPopupMode && (
@@ -2548,7 +2552,11 @@ export function WalletDashboard({
               </Dialog>
               
               <Dialog open={showDAppsManager} onOpenChange={setShowDAppsManager}>
-                <DialogContent className={isPopupMode ? "w-[360px] max-h-[500px] overflow-y-auto p-4" : "sm:max-w-2xl max-h-[80vh] overflow-y-auto"}>
+                <DialogContent
+                  className={isPopupMode ? "w-[360px] max-h-[500px] overflow-y-auto p-4" : "sm:max-w-2xl max-h-[80vh] overflow-y-auto"}
+                  preventCloseOnOutsideClick
+                  onEscapeKeyDown={(event) => event.preventDefault()}
+                >
                   <DialogHeader className={isPopupMode ? "pb-2" : ""}>
                     <DialogTitle className={isPopupMode ? "text-sm" : ""}>Connected dApps</DialogTitle>
                     {!isPopupMode && (
@@ -2567,7 +2575,11 @@ export function WalletDashboard({
 
               {/* Address Book Dialog */}
               <Dialog open={showAddressBook} onOpenChange={setShowAddressBook}>
-                <DialogContent className={isPopupMode ? "w-[360px] max-h-[520px] overflow-hidden p-3" : "sm:max-w-lg max-h-[80vh] overflow-hidden"}>
+                <DialogContent
+                  className={isPopupMode ? "w-[360px] max-h-[520px] overflow-hidden p-3" : "sm:max-w-lg max-h-[80vh] overflow-hidden"}
+                  preventCloseOnOutsideClick
+                  onEscapeKeyDown={(event) => event.preventDefault()}
+                >
                   <DialogHeader className={isPopupMode ? "pb-1.5" : ""}>
                     <DialogTitle className={isPopupMode ? "text-xs" : ""}>Address Book</DialogTitle>
                     <DialogDescription className={isPopupMode ? "sr-only" : ""}>
@@ -4238,7 +4250,11 @@ export function WalletDashboard({
 
       {/* EVM Send Dialog */}
       <Dialog open={showEvmSendDialog} onOpenChange={setShowEvmSendDialog}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent
+          className="sm:max-w-md"
+          preventCloseOnOutsideClick
+          onEscapeKeyDown={(event) => event.preventDefault()}
+        >
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-orange-600 dark:text-orange-400">
               <Send className="h-5 w-5" />
@@ -4324,7 +4340,11 @@ export function WalletDashboard({
 
       {/* EVM RPC Manager Dialog - Network Management */}
       <Dialog open={showEvmRpcManager} onOpenChange={setShowEvmRpcManager}>
-        <DialogContent className="sm:max-w-lg max-h-[85vh] overflow-hidden flex flex-col">
+        <DialogContent
+          className="sm:max-w-lg max-h-[85vh] overflow-hidden flex flex-col"
+          preventCloseOnOutsideClick
+          onEscapeKeyDown={(event) => event.preventDefault()}
+        >
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-orange-600 dark:text-orange-400">
               <Settings className="h-5 w-5" />
@@ -4479,7 +4499,11 @@ export function WalletDashboard({
 
       {/* EVM Send Transaction Dialog - Updated for tokens/NFTs */}
       <Dialog open={showEvmSendDialog} onOpenChange={setShowEvmSendDialog}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent
+          className="sm:max-w-md"
+          preventCloseOnOutsideClick
+          onEscapeKeyDown={(event) => event.preventDefault()}
+        >
           <DialogHeader>
             <DialogTitle className="text-orange-600 dark:text-orange-400">
               Send {evmSendType === 'native' ? evmNetwork.symbol : evmSendType === 'token' ? selectedEvmToken?.symbol : `NFT #${selectedEvmNFT?.tokenId}`}

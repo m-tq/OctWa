@@ -21,6 +21,12 @@ export function RPCProviderManager({ onRPCChange, isPopupMode = false }: RPCProv
   const [providers, setProviders] = useState<RPCProvider[]>([]);
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [editingProvider, setEditingProvider] = useState<RPCProvider | null>(null);
+  const [testStatus, setTestStatus] = useState<'idle' | 'testing' | 'success' | 'failed'>('idle');
+  const [testDetails, setTestDetails] = useState<{
+    statusOk?: boolean;
+    statusCode?: number;
+    error?: string;
+  } | null>(null);
   const { toast } = useToast();
 
   // Form state
@@ -117,6 +123,8 @@ export function RPCProviderManager({ onRPCChange, isPopupMode = false }: RPCProv
     setNewHeaderKey('');
     setNewHeaderValue('');
     setEditingProvider(null);
+    setTestStatus('idle');
+    setTestDetails(null);
   };
 
   const handleAddHeader = () => {
@@ -197,6 +205,101 @@ export function RPCProviderManager({ onRPCChange, isPopupMode = false }: RPCProv
     resetForm();
   };
 
+  const handleTestConnection = async () => {
+    const urlValue = formData.url.trim();
+    if (!urlValue) {
+      toast({
+        title: 'Validation Error',
+        description: 'URL is required to test connection',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    try {
+      new URL(urlValue);
+    } catch {
+      toast({
+        title: 'Invalid URL',
+        description: 'Please enter a valid URL before testing',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    const isDevelopment = import.meta.env.DEV;
+    const isExtension =
+      typeof chrome !== 'undefined' &&
+      chrome.runtime &&
+      typeof chrome.runtime.id === 'string' &&
+      chrome.runtime.id.length > 0;
+
+    const buildHeaders = (extra?: Record<string, string>) => ({
+      ...formData.headers,
+      ...(extra || {}),
+    });
+
+    const statusBase = urlValue.endsWith('/') ? urlValue : `${urlValue}/`;
+
+    const statusUrl = isExtension
+      ? new URL('status', statusBase).toString()
+      : isDevelopment
+        ? '/api/status'
+        : '/rpc-proxy/status';
+
+    const statusHeaders = isExtension
+      ? buildHeaders()
+      : isDevelopment
+        ? buildHeaders({ 'X-RPC-URL': urlValue })
+        : buildHeaders({ 'X-RPC-Target': urlValue });
+
+    setTestStatus('testing');
+    setTestDetails(null);
+
+    let statusOk = false;
+    let statusCode: number | undefined;
+
+    try {
+      const statusResponse = await fetch(statusUrl, {
+        method: 'GET',
+        headers: statusHeaders,
+        signal: AbortSignal.timeout(10000),
+      });
+
+      statusCode = statusResponse.status;
+      statusOk = statusResponse.ok;
+
+      setTestDetails({
+        statusOk,
+        statusCode,
+      });
+
+      if (statusOk) {
+        setTestStatus('success');
+        toast({
+          title: 'Connection OK',
+          description: 'Status check succeeded',
+        });
+      } else {
+        setTestStatus('failed');
+        toast({
+          title: 'Connection Failed',
+          description: 'Status check failed',
+          variant: 'destructive',
+        });
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Connection test failed';
+      setTestDetails({ statusOk, statusCode, error: message });
+      setTestStatus('failed');
+      toast({
+        title: 'Connection Failed',
+        description: message,
+        variant: 'destructive',
+      });
+    }
+  };
+
   const handleEdit = (provider: RPCProvider) => {
     setEditingProvider(provider);
     setFormData({
@@ -268,7 +371,12 @@ export function RPCProviderManager({ onRPCChange, isPopupMode = false }: RPCProv
                 Add
               </Button>
             </DialogTrigger>
-            <DialogContent className={isPopupMode ? "w-[320px] p-3 z-[10001]" : "sm:max-w-md z-[10001]"} overlayClassName="z-[10000]">
+            <DialogContent
+              className={isPopupMode ? "w-[320px] p-3 z-[10001]" : "sm:max-w-md z-[10001]"}
+              overlayClassName="z-[10000]"
+              preventCloseOnOutsideClick
+              onEscapeKeyDown={(event) => event.preventDefault()}
+            >
               <DialogHeader className={isPopupMode ? "pb-2" : ""}>
                 <DialogTitle className={isPopupMode ? "text-sm" : ""}>
                   {editingProvider ? 'Edit RPC Provider' : 'Add RPC Provider'}
@@ -375,6 +483,14 @@ export function RPCProviderManager({ onRPCChange, isPopupMode = false }: RPCProv
                 <div className="flex gap-2">
                   <Button
                     variant="outline"
+                    onClick={handleTestConnection}
+                    disabled={testStatus === 'testing'}
+                    className={`flex-1 ${isPopupMode ? "h-8 text-xs" : ""}`}
+                  >
+                    {testStatus === 'testing' ? 'Testing...' : 'Test Connection'}
+                  </Button>
+                  <Button
+                    variant="outline"
                     onClick={() => setShowAddDialog(false)}
                     className={`flex-1 ${isPopupMode ? "h-8 text-xs" : ""}`}
                   >
@@ -384,6 +500,12 @@ export function RPCProviderManager({ onRPCChange, isPopupMode = false }: RPCProv
                     {editingProvider ? 'Update' : 'Add'}
                   </Button>
                 </div>
+                {testStatus !== 'idle' && (
+                  <div className={`rounded-md border px-3 py-2 ${isPopupMode ? "text-[10px]" : "text-xs"} ${testStatus === 'success' ? "border-green-500/40 text-green-600" : testStatus === 'failed' ? "border-red-500/40 text-red-600" : "border-muted-foreground/30 text-muted-foreground"}`}>
+                    <div>Status: {testDetails?.statusOk ? `OK${testDetails?.statusCode ? ` (${testDetails.statusCode})` : ''}` : testDetails?.statusCode ? `Failed (${testDetails.statusCode})` : 'Failed'}</div>
+                    {testDetails?.error && <div>{testDetails.error}</div>}
+                  </div>
+                )}
               </div>
             </DialogContent>
           </Dialog>

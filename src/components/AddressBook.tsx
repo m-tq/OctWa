@@ -344,6 +344,8 @@ export function AddressBook({
               ? 'w-[95vw] max-w-[380px] h-[85vh] max-h-[520px] p-0 flex flex-col z-[10001]'
               : 'sm:max-w-md max-h-[80vh] flex flex-col z-[10001]'
           }
+          preventCloseOnOutsideClick
+          onEscapeKeyDown={(event) => event.preventDefault()}
         >
           <DialogHeader className={`px-4 ${isPopupMode ? 'pt-3 pb-2' : 'pt-4 pb-3'}`}>
             <DialogTitle className={isPopupMode ? 'text-xs' : ''}>
