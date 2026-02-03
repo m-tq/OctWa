@@ -17,10 +17,10 @@ export function ModeIndicator({ mode }: ModeIndicatorProps) {
       <div className="relative overflow-hidden transition-all duration-300">
         {/* Triangle Shape using clip-path */}
         <div
-          className="w-24 h-24 bg-gradient-to-br from-[#0000db] to-[#0000aa]"
+          className="w-24 h-24 bg-gradient-to-br from-[#00E5C0] to-[#0000aa]"
           style={{
             clipPath: 'polygon(100% 0, 100% 100%, 0 100%)',
-            boxShadow: '-4px -4px 12px rgba(0, 0, 219, 0.3)',
+            boxShadow: '-4px -4px 12px rgba(0, 229, 192, 0.3)',
           }}
         />
 

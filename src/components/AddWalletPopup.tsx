@@ -76,7 +76,7 @@ export function AddWalletPopup({
               <div className="p-3 pt-1 space-y-2">
                 <Button
                   onClick={() => handleNavigate('create')}
-                  className="w-full h-8 text-xs bg-[#0000db] hover:bg-[#0000db]/90"
+                  className="w-full h-8 text-xs bg-[#3A4DFF] hover:bg-[#6C63FF]/90"
                 >
                   <Plus className="h-3.5 w-3.5 mr-1.5" />
                   Generate new wallet
@@ -170,7 +170,7 @@ export function AddWalletPopup({
             <div className="p-6 pt-2 space-y-3">
               <Button
                 onClick={() => handleNavigate('create')}
-                className="w-full h-12 text-base bg-[#0000db] hover:bg-[#0000db]/90"
+                className="w-full h-12 text-base bg-[#3A4DFF] hover:bg-[#6C63FF]/90"
                 size="lg"
               >
                 <Plus className="h-5 w-5 mr-2" />

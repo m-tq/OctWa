@@ -158,7 +158,7 @@ export function UnifiedHistory({ wallet, transactions, onTransactionsUpdate, isL
   const getStatusIcon = (status: string, small: boolean = false) => {
     const sizeClass = small ? "h-3 w-3" : "h-4 w-4";
     switch (status) {
-      case 'confirmed': return <CircleCheckBig className={`${sizeClass} text-[#0000db] fill-[#0000db]/20`} />;
+      case 'confirmed': return <CircleCheckBig className={`${sizeClass} text-[#3A4DFF] fill-[#3A4DFF]/20`} />;
       case 'pending': return <Clock className={`${sizeClass} text-yellow-500`} />;
       case 'failed': return <XCircle className={`${sizeClass} text-red-500`} />;
       default: return <Clock className={`${sizeClass} text-gray-500`} />;
@@ -246,7 +246,7 @@ export function UnifiedHistory({ wallet, transactions, onTransactionsUpdate, isL
               className={`${isPopupMode ? 'h-6 px-2 text-[10px]' : 'h-7 px-2.5 text-xs'} ${
                 activeFilter === 'all'
                   ? operationMode === 'private'
-                    ? 'bg-[#0000db]/10 text-[#0000db] dark:bg-[#0000db]/20'
+                    ? 'bg-[#3A4DFF]/10 text-[#3A4DFF] dark:bg-[#3A4DFF]/20'
                     : 'bg-accent text-accent-foreground'
                   : 'text-muted-foreground'
               }`}
@@ -414,7 +414,7 @@ export function UnifiedHistory({ wallet, transactions, onTransactionsUpdate, isL
             <div className="flex-1 overflow-y-auto pr-1">
               {loadingDetails ? (
                 <div className="flex items-center justify-center py-12">
-                  <div className="w-6 h-6 rounded-full border-2 border-transparent animate-spin" style={{ borderTopColor: '#0000db' }} />
+                  <div className="w-6 h-6 rounded-full border-2 border-transparent animate-spin" style={{ borderTopColor: '#3A4DFF' }} />
                 </div>
               ) : selectedTx ? (
                 <div className="space-y-2">
@@ -426,7 +426,7 @@ export function UnifiedHistory({ wallet, transactions, onTransactionsUpdate, isL
                         {selectedTx.stage_status || 'pending'}
                       </Badge>
                     ) : (
-                      <Badge variant="secondary" className="text-xs bg-[#0000db]/20 text-[#0000db]">
+                      <Badge variant="secondary" className="text-xs bg-[#3A4DFF]/20 text-[#3A4DFF]">
                         confirmed
                       </Badge>
                     )}
@@ -643,12 +643,12 @@ function TransferItem({
                 {isContract ? (
                   <span className="text-purple-500 font-medium text-xs">Contract Call</span>
                 ) : isPrivate ? (
-                  <span className="text-[#0000db] font-medium text-xs">{tx.type === 'sent' ? '-' : '+'}Private</span>
+                  <span className="text-[#3A4DFF] font-medium text-xs">{tx.type === 'sent' ? '-' : '+'}Private</span>
                 ) : (
                   <span className={`font-mono text-xs ${tx.type === 'sent' ? 'text-red-500' : 'text-green-500'}`}>{tx.type === 'sent' ? '-' : '+'}{tx.amount?.toFixed(4) || '0'} OCT</span>
                 )}
                 {tx.status === 'confirmed' ? (
-                  <div className="h-1.5 w-1.5 bg-[#0000db]" />
+                  <div className="h-1.5 w-1.5 bg-[#3A4DFF]" />
                 ) : tx.status === 'pending' ? (
                   <div className="h-1.5 w-1.5 bg-yellow-500 animate-pulse" />
                 ) : (
@@ -710,12 +710,12 @@ function TransferItem({
                 {isContract ? (
                   <span className="text-purple-500 font-medium text-sm">Contract Call</span>
                 ) : isPrivate ? (
-                  <span className="text-[#0000db] font-medium text-sm">{tx.type === 'sent' ? '-' : '+'}Private</span>
+                  <span className="text-[#3A4DFF] font-medium text-sm">{tx.type === 'sent' ? '-' : '+'}Private</span>
                 ) : (
                   <span className={`font-mono text-sm ${tx.type === 'sent' ? 'text-red-500' : 'text-green-500'}`}>{tx.type === 'sent' ? '-' : '+'}{tx.amount?.toFixed(4) || '0'} OCT</span>
                 )}
                 {tx.status === 'confirmed' ? (
-                  <div className="h-1.5 w-1.5 bg-[#0000db]" />
+                  <div className="h-1.5 w-1.5 bg-[#3A4DFF]" />
                 ) : tx.status === 'pending' ? (
                   <div className="h-1.5 w-1.5 bg-yellow-500 animate-pulse" />
                 ) : (
@@ -781,7 +781,7 @@ function TransferItem({
           {isContract ? (
             <span className="font-mono">{truncateAddress(tx.to)}</span>
           ) : isPrivate ? (
-            <span className="text-[#0000db] font-medium">private OCT</span>
+            <span className="text-[#3A4DFF] font-medium">private OCT</span>
           ) : (
             <span className="font-mono">{tx.amount?.toFixed(8) || '0'} OCT</span>
           )}

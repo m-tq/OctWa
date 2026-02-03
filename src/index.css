@@ -10,7 +10,7 @@
     --card-foreground: 0 0% 3.9%;
     --popover: 0 0% 100%;
     --popover-foreground: 0 0% 3.9%;
-    --primary: 240 100% 43%;
+    --primary: 234 100% 61%;
     --primary-foreground: 0 0% 100%;
     --secondary: 220 14% 93%;
     --secondary-foreground: 0 0% 9%;
@@ -40,7 +40,7 @@
     --card-foreground: 0 0% 90%;
     --popover: 0 0% 12%;
     --popover-foreground: 0 0% 90%;
-    --primary: 240 100% 43%;
+    --primary: 234 100% 61%;
     --primary-foreground: 0 0% 100%;
     --secondary: 0 0% 16%;
     --secondary-foreground: 0 0% 90%;
@@ -491,9 +491,9 @@ input::-webkit-calendar-picker-indicator {
 }
 
 
-/* Private Mode Styling - #0000db accent color */
+/* Private Mode Styling - private indicator color */
 :root {
-  --private-primary: 240 100% 43%; /* #0000db */
+  --private-primary: 170 100% 45%;
   --private-primary-foreground: 0 0% 100%;
 }
 
@@ -504,55 +504,55 @@ input::-webkit-calendar-picker-indicator {
 }
 
 .private-accent {
-  color: hsl(240, 100%, 43%);
+  color: hsl(170, 100%, 45%);
 }
 
 .private-bg {
-  background-color: hsl(240, 100%, 43%);
+  background-color: hsl(170, 100%, 45%);
 }
 
 .private-bg-subtle {
-  background-color: hsl(240, 100%, 43%, 0.1);
+  background-color: hsl(170, 100%, 45%, 0.1);
 }
 
 .private-border {
-  border-color: hsl(240, 100%, 43%, 0.3);
+  border-color: hsl(170, 100%, 45%, 0.3);
 }
 
 .private-text {
-  color: hsl(240, 100%, 43%);
+  color: hsl(170, 100%, 45%);
 }
 
 /* Private mode button styling */
 .btn-private {
-  @apply bg-[#0000db] text-white hover:bg-[#0000db]/90;
+  @apply bg-[#00E5C0] text-white hover:bg-[#6C63FF]/90;
 }
 
 .btn-private-outline {
-  @apply border-[#0000db]/30 text-[#0000db] hover:bg-[#0000db]/5;
+  @apply border-[#00E5C0]/30 text-[#00E5C0] hover:bg-[#6C63FF]/5;
 }
 
 /* Private mode card styling */
 .card-private {
-  @apply border-[#0000db]/20;
+  @apply border-[#00E5C0]/20;
 }
 
 .card-private .card-header {
-  @apply border-b-[#0000db]/10;
+  @apply border-b-[#00E5C0]/10;
 }
 
 /* Private mode badge styling */
 .badge-private {
-  @apply bg-[#0000db] text-white;
+  @apply bg-[#00E5C0] text-white;
 }
 
 /* Private mode tab styling */
 .tabs-private .tabs-list {
-  @apply bg-[#0000db]/10;
+  @apply bg-[#00E5C0]/10;
 }
 
 .tabs-private [data-state="active"] {
-  @apply bg-[#0000db] text-white;
+  @apply bg-[#6C63FF] text-white;
 }
 
 /* Mode transition animation */
@@ -665,8 +665,8 @@ body.mode-switching.to-public main {
 }
 
 /* Private mode glow effect */
-body.to-private .bg-\[\#0000db\] {
-  box-shadow: 0 0 20px rgba(0, 0, 219, 0.4);
+body.to-private .bg-\[\#00E5C0\] {
+  box-shadow: 0 0 20px rgba(0, 229, 192, 0.4);
 }
 
 /* Smooth color transitions for mode-aware elements */
@@ -860,10 +860,10 @@ body.to-private .bg-\[\#0000db\] {
 /* Pulse glow for primary color */
 @keyframes pulse-glow {
   0%, 100% {
-    box-shadow: 0 0 5px rgba(0, 0, 219, 0.3);
+    box-shadow: 0 0 5px rgba(58, 77, 255, 0.3);
   }
   50% {
-    box-shadow: 0 0 20px rgba(0, 0, 219, 0.6);
+    box-shadow: 0 0 20px rgba(58, 77, 255, 0.6);
   }
 }
 

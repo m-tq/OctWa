@@ -88,7 +88,7 @@ export const fragmentShader = `
     float colorShift = sin(uTime * 0.2 + vClusterId * 1.5) * 0.5 + 0.5;
     
     // Octra palette with variation
-    vec3 color1 = vec3(0.0, 0.0, 0.86);   // Primary blue #0000db
+    vec3 color1 = vec3(0.227, 0.302, 1.0);   // Primary blue #3A4DFF
     vec3 color2 = vec3(0.27, 0.27, 1.0);  // Lighter blue
     vec3 color3 = vec3(0.53, 0.53, 1.0);  // Accent
     vec3 color4 = vec3(0.4, 0.2, 1.0);    // Violet accent
@@ -135,7 +135,7 @@ export const lineFragmentShader = `
   varying float vOpacity;
   
   void main() {
-    vec3 color = vec3(0.0, 0.0, 0.86); // Primary blue
+    vec3 color = vec3(0.227, 0.302, 1.0); // Primary blue
     float alpha = vOpacity * 0.25;
     
     gl_FragColor = vec4(color, alpha);

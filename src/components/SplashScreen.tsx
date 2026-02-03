@@ -42,12 +42,12 @@ const AnimatedLogo = ({ size = 112 }: { size?: number }) => (
       cx="25"
       cy="25"
       r="21"
-      stroke="#0000FF"
+      stroke="#3A4DFF"
       strokeWidth="8"
       fill="none"
       className="outer-circle"
     />
-    <circle cx="25" cy="25" r="9" fill="#0000FF" className="inner-circle" />
+    <circle cx="25" cy="25" r="9" fill="#3A4DFF" className="inner-circle" />
   </svg>
 );
 
@@ -113,7 +113,7 @@ export function SplashScreen({
           <h1 
             className="font-bold" 
             style={{ 
-              color: '#0000db',
+              color: '#3A4DFF',
               fontSize: isPopupMode ? '1.75rem' : '2.5rem'
             }}
           >

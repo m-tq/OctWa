@@ -34,20 +34,20 @@ export function OnboardingOverlay({ onComplete }: OnboardingOverlayProps) {
     {
       icon: <div className="relative">
         <Globe className="h-12 w-12 text-muted-foreground" />
-        <Shield className="h-8 w-8 text-[#0000db] absolute -bottom-1 -right-1" />
+        <Shield className="h-8 w-8 text-[#00E5C0] absolute -bottom-1 -right-1" />
       </div>,
       title: "Public vs Private Mode",
       description: "Switch between Public Mode (standard blockchain transactions) and Private Mode (encrypted, untraceable transfers). Your choice, your privacy.",
       highlight: "Private Mode keeps your balance and transactions hidden from observers."
     },
     {
-      icon: <Lock className="h-12 w-12 text-[#0000db]" />,
+      icon: <Lock className="h-12 w-12 text-[#00E5C0]" />,
       title: "What \"Encrypt\" Means",
       description: "When you encrypt your balance, it's processed using Fully Homomorphic Encryption (FHE). This means your funds can be computed on without ever being decrypted.",
       highlight: "Only you can see your encrypted balance. The network processes it blindly."
     },
     {
-      icon: <Sparkles className="h-12 w-12 text-[#0000db]" />,
+      icon: <Sparkles className="h-12 w-12 text-[#00E5C0]" />,
       title: "Why Octra is Different",
       description: "Unlike regular wallets, Octra gives you true financial privacy. No one can trace your transactions or see your balance when you're in Private Mode.",
       highlight: "Your keys, your privacy, your control."
@@ -76,9 +76,9 @@ export function OnboardingOverlay({ onComplete }: OnboardingOverlayProps) {
                 key={index}
                 className={`h-2 w-2 rounded-full transition-all duration-300 ${
                   index === step 
-                    ? 'bg-[#0000db] w-6' 
+                    ? 'bg-[#3A4DFF] w-6' 
                     : index < step 
-                      ? 'bg-[#0000db]/50' 
+                      ? 'bg-[#3A4DFF]/50' 
                       : 'bg-muted'
                 }`}
               />
@@ -94,8 +94,8 @@ export function OnboardingOverlay({ onComplete }: OnboardingOverlayProps) {
             <p className="text-sm text-muted-foreground leading-relaxed">
               {steps[step].description}
             </p>
-            <div className="bg-[#0000db]/5 border border-[#0000db]/20 p-3">
-              <p className="text-xs text-[#0000db] font-medium">
+            <div className="bg-[#3A4DFF]/5 border border-[#3A4DFF]/20 p-3">
+              <p className="text-xs text-[#3A4DFF] font-medium">
                 💡 {steps[step].highlight}
               </p>
             </div>
@@ -120,7 +120,7 @@ export function OnboardingOverlay({ onComplete }: OnboardingOverlayProps) {
                   handleComplete();
                 }
               }}
-              className="flex-1 bg-[#0000db] hover:bg-[#0000db]/90"
+              className="flex-1 bg-[#3A4DFF] hover:bg-[#6C63FF]/90"
             >
               {step < steps.length - 1 ? (
                 <>

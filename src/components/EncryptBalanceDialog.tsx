@@ -127,7 +127,7 @@ export function EncryptBalanceDialog({
             <button
               type="button"
               onClick={() => setAmount(maxEncryptable.toFixed(8))}
-              className="text-[#0000db] hover:text-[#0000db]/80 font-medium hover:underline"
+              className="text-[#00E5C0] hover:text-[#6C63FF]/80 font-medium hover:underline"
               disabled={isEncrypting || maxEncryptable <= 0}
             >
               Max

@@ -277,7 +277,7 @@ export function AddressBook({
               resetForm();
               setShowAddDialog(true);
             }}
-            className={`text-[#0000db] hover:text-[#0000db] hover:bg-[#0000db]/10 ${isPopupMode ? 'h-6 text-[10px] px-2' : ''}`}
+            className={`text-[#3A4DFF] hover:text-[#6C63FF] hover:bg-[#6C63FF]/10 ${isPopupMode ? 'h-6 text-[10px] px-2' : ''}`}
           >
             <Plus className={isPopupMode ? 'h-3 w-3 mr-0.5' : 'h-4 w-4 mr-1.5'} />
             {isPopupMode ? 'Add' : 'Add'}
@@ -451,7 +451,7 @@ export function AddressBook({
                         formPreferredMode === 'private' ? undefined : 'private'
                       )
                     }
-                    className={`flex-1 ${isPopupMode ? 'h-6 text-[10px]' : ''} ${formPreferredMode === 'private' ? 'bg-[#0000db] hover:bg-[#0000db]/90' : ''}`}
+                    className={`flex-1 ${isPopupMode ? 'h-6 text-[10px]' : ''} ${formPreferredMode === 'private' ? 'bg-[#00E5C0] hover:bg-[#6C63FF]/90' : ''}`}
                   >
                     <Shield
                       className={`${isPopupMode ? 'h-3 w-3 mr-0.5' : 'h-4 w-4 mr-1'}`}
@@ -495,7 +495,7 @@ export function AddressBook({
             </Button>
             <Button
               onClick={handleSave}
-              className={`flex-1 bg-[#0000db] hover:bg-[#0000db]/90 ${isPopupMode ? 'h-7 text-[10px]' : ''}`}
+              className={`flex-1 bg-[#3A4DFF] hover:bg-[#6C63FF]/90 ${isPopupMode ? 'h-7 text-[10px]' : ''}`}
             >
               {editingContact ? 'Save' : 'Add Contact'}
             </Button>
@@ -547,7 +547,7 @@ function ContactCard({
             {contact.preferredMode &&
               (contact.preferredMode === 'private' ? (
                 <Shield
-                  className={`text-[#0000db] flex-shrink-0 ${isPopupMode ? 'h-2.5 w-2.5' : 'h-3.5 w-3.5'}`}
+                  className={`text-[#00E5C0] flex-shrink-0 ${isPopupMode ? 'h-2.5 w-2.5' : 'h-3.5 w-3.5'}`}
                 />
               ) : (
                 <Globe

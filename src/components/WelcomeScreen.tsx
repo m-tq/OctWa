@@ -118,12 +118,25 @@ export function WelcomeScreen({ onWalletCreated }: WelcomeScreenProps) {
           <div className="text-center mb-8">
             <div className="flex items-center justify-center mb-4">
               <div className="p-4 bg-primary/10 rounded-full border border-primary/20">
-                <img 
-                  src="/icons/octwa128x128.png" 
-                  alt="OctWa Logo" 
+                <svg
+                  viewBox="0 0 50 50"
+                  fill="none"
+                  xmlns="http://www.w3.org/2000/svg"
                   className="h-20 w-20"
                   style={{ width: '82px', height: '82px' }}
-                />
+                  role="img"
+                  aria-label="OctWa Logo"
+                >
+                  <circle
+                    cx="25"
+                    cy="25"
+                    r="21"
+                    stroke="#3A4DFF"
+                    strokeWidth="8"
+                    fill="none"
+                  />
+                  <circle cx="25" cy="25" r="9" fill="#3A4DFF" />
+                </svg>
               </div>
             </div>
             <h1 className="text-3xl font-bold text-foreground">{__APP_NAME__.split(' ')[0]}</h1>

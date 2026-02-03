@@ -34,20 +34,20 @@ export function AnimatedIcon({ type, size = 'md' }: AnimatedIconProps) {
       <div 
         className={`${sizeClasses[size]} rounded-full flex items-center justify-center relative ${
           isPrivate 
-            ? 'bg-[#0000db]/10 border-2 border-[#0000db]/30' 
+            ? 'bg-[#00E5C0]/10 border-2 border-[#00E5C0]/30' 
             : 'bg-muted/50 border-2 border-border'
         }`}
       >
         {/* Rotating ring */}
         <div 
           className={`absolute inset-0 rounded-full border-2 border-transparent animate-spin ${
-            isPrivate ? 'border-t-[#0000db]/50' : 'border-t-foreground/30'
+            isPrivate ? 'border-t-[#00E5C0]/50' : 'border-t-foreground/30'
           }`}
           style={{ animationDuration: '3s' }}
         />
 
         {/* Icon */}
-        <div className={`relative z-10 ${isPrivate ? 'text-[#0000db]' : 'text-foreground'}`}>
+        <div className={`relative z-10 ${isPrivate ? 'text-[#00E5C0]' : 'text-foreground'}`}>
           {type === 'encrypt' && <Lock className={`${iconSizes[size]} animate-pulse`} style={{ animationDuration: '2s' }} />}
           {type === 'decrypt' && <Unlock className={`${iconSizes[size]} animate-pulse`} style={{ animationDuration: '2s' }} />}
           {(type === 'send-public' || type === 'send-private') && (

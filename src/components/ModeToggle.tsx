@@ -122,8 +122,8 @@ export function ModeToggle({
                       } ${
                         isPrivate 
                           ? isCompact
-                            ? 'shadow-[0_0_12px_4px_rgba(0,0,219,0.4)] bg-[#0000db]/10'
-                            : 'shadow-[0_0_30px_8px_rgba(0,0,219,0.5)] bg-[#0000db]/10' 
+                            ? 'shadow-[0_0_12px_4px_rgba(0,229,192,0.4)] bg-[#00E5C0]/10'
+                            : 'shadow-[0_0_30px_8px_rgba(0,229,192,0.5)] bg-[#00E5C0]/10' 
                           : isCompact
                             ? 'shadow-[0_0_10px_3px_rgba(0,0,0,0.12)] dark:shadow-[0_0_10px_3px_rgba(255,255,255,0.12)] bg-muted/40'
                             : 'shadow-[0_0_25px_6px_rgba(0,0,0,0.15)] dark:shadow-[0_0_25px_6px_rgba(255,255,255,0.15)] bg-muted/40'
@@ -133,7 +133,7 @@ export function ModeToggle({
                     {/* Rotating ring */}
                     <div 
                       className={`absolute inset-0 rounded-full border-2 border-transparent animate-spin ${
-                        isPrivate ? 'border-t-[#0000db]/60' : 'border-t-foreground/40'
+                        isPrivate ? 'border-t-[#00E5C0]/60' : 'border-t-foreground/40'
                       }`}
                       style={{ animationDuration: '3s' }}
                     />
@@ -142,7 +142,7 @@ export function ModeToggle({
                     <div 
                       className={`absolute inset-2 rounded-full transition-all duration-300 ${
                         isPrivate 
-                          ? 'bg-[#0000db] border-2 border-[#0000db]' 
+                          ? 'bg-[#00E5C0] border-2 border-[#00E5C0]' 
                           : 'bg-background border-2 border-border'
                       }`}
                     />
@@ -194,7 +194,7 @@ export function ModeToggle({
             </span>
             {/* Private Mode Text */}
             <span
-              className={`${isCompact ? 'text-lg' : 'text-xl'} font-medium text-[#0000db] whitespace-nowrap transition-all duration-300 ease-in-out
+              className={`${isCompact ? 'text-lg' : 'text-xl'} font-medium text-[#00E5C0] whitespace-nowrap transition-all duration-300 ease-in-out
                 ${isPrivate 
                   ? 'translate-y-0 opacity-100' 
                   : 'translate-y-full opacity-0 absolute'
@@ -211,7 +211,7 @@ export function ModeToggle({
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
-                <div className={`flex items-center gap-1 ${isCompact ? 'text-[10px]' : 'text-xs'} font-medium text-[#0000db] cursor-help`}>
+                <div className={`flex items-center gap-1 ${isCompact ? 'text-[10px]' : 'text-xs'} font-medium text-[#00E5C0] cursor-help`}>
                   <Check className={`${isCompact ? 'h-3 w-3' : 'h-3.5 w-3.5'}`} />
                   <span>Encrypted.</span>
                 </div>
@@ -226,8 +226,8 @@ export function ModeToggle({
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
-                <div className={`flex items-center gap-1 ${isCompact ? 'text-[10px]' : 'text-xs'} font-medium text-orange-500 cursor-help`}>
-                  <AlertTriangle className={`${isCompact ? 'h-3 w-3' : 'h-3.5 w-3.5'}`} />
+                <div className={`flex items-center gap-1 ${isCompact ? 'text-[10px]' : 'text-xs'} font-medium text-[#F2C94C] cursor-help`}>
+                  <AlertTriangle className={`${isCompact ? 'h-3 w-3' : 'h-3.5 w-3.5'} text-[#F2C94C]`} />
                   <span>Exposed.</span>
                 </div>
               </TooltipTrigger>

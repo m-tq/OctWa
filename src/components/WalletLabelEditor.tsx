@@ -132,7 +132,7 @@ export function WalletLabelEditor({
               </Button>
               <Button
                 onClick={handleSave}
-                className={`bg-[#0000db] hover:bg-[#0000db]/90 ${isPopupMode ? 'h-8 text-xs' : ''}`}
+                className={`bg-[#3A4DFF] hover:bg-[#6C63FF]/90 ${isPopupMode ? 'h-8 text-xs' : ''}`}
               >
                 Save
               </Button>

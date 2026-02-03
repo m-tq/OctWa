@@ -1702,7 +1702,7 @@ export function WalletDashboard({
                 <Button variant="ghost" size="sm" onClick={() => setPopupScreen('main')} className="h-8 w-8 p-0">
                   <ChevronDown className="h-4 w-4 rotate-90" />
                 </Button>
-                <div className="flex items-center gap-2 text-[#0000db]">
+                <div className="flex items-center gap-2 text-[#3A4DFF]">
                   <Unlock className="h-5 w-5" />
                   <h2 className="font-semibold text-sm">Decrypt OCT</h2>
                 </div>
@@ -1735,7 +1735,7 @@ export function WalletDashboard({
                 <Button variant="ghost" size="sm" onClick={() => setPopupScreen('main')} className="h-8 w-8 p-0">
                   <ChevronDown className="h-4 w-4 rotate-90" />
                 </Button>
-                <div className={`flex items-center gap-2 ${operationMode === 'private' ? 'text-[#0000db]' : ''}`}>
+                <div className={`flex items-center gap-2 ${operationMode === 'private' ? 'text-[#3A4DFF]' : ''}`}>
                   <Send className="h-5 w-5" />
                   <h2 className="font-semibold text-sm">
                     {operationMode === 'private' ? 'Private Transfer' : 'Send OCT'}
@@ -1792,7 +1792,7 @@ export function WalletDashboard({
                 <Button variant="ghost" size="sm" onClick={() => setPopupScreen('main')} className="h-8 w-8 p-0">
                   <ChevronDown className="h-4 w-4 rotate-90" />
                 </Button>
-                <div className="flex items-center gap-2 text-[#0000db]">
+                <div className="flex items-center gap-2 text-[#3A4DFF]">
                   <Gift className="h-5 w-5" />
                   <h2 className="font-semibold text-sm">Claim Transfers</h2>
                 </div>
@@ -1822,7 +1822,7 @@ export function WalletDashboard({
               <div className="flex-1 overflow-y-auto p-4">
                 {loadingTxDetails ? (
                   <div className="flex items-center justify-center py-12">
-                    <div className="w-6 h-6 rounded-full border-2 border-transparent animate-spin" style={{ borderTopColor: '#0000db' }} />
+                    <div className="w-6 h-6 rounded-full border-2 border-transparent animate-spin" style={{ borderTopColor: '#3A4DFF' }} />
                   </div>
                 ) : selectedTxDetails ? (
                   <>
@@ -1836,7 +1836,7 @@ export function WalletDashboard({
                         </Badge>
                       ) : (
                         <div className="flex items-center gap-1.5">
-                          <Badge variant="secondary" className="text-[10px] bg-[#0000db]/20 text-[#0000db] h-5">
+                          <Badge variant="secondary" className="text-[10px] bg-[#3A4DFF]/20 text-[#3A4DFF] h-5">
                             confirmed
                           </Badge>
                           {'epoch' in selectedTxDetails && (
@@ -2012,12 +2012,25 @@ export function WalletDashboard({
             <div className="flex items-center space-x-4">
               <div className={`flex ${isPopupMode ? 'items-center space-x-2' : 'items-center space-x-3'}`}>
                 <Avatar className={`${isPopupMode ? 'h-6 w-6' : 'h-10 w-10'} flex-shrink-0`}>
-                  <img 
-                    src={isPopupMode ? "/icons/octwa32x32.png" : "/icons/octwa48x48.png"}
-                    alt="OctWa Logo" 
-                    className="h-full w-full object-contain"
+                  <svg
+                    viewBox="0 0 50 50"
+                    fill="none"
+                    xmlns="http://www.w3.org/2000/svg"
+                    className="h-full w-full"
                     style={evmMode ? { filter: 'sepia(1) saturate(2) hue-rotate(-5deg) brightness(1.1)' } : undefined}
-                  />
+                    role="img"
+                    aria-label="OctWa Logo"
+                  >
+                    <circle
+                      cx="25"
+                      cy="25"
+                      r="21"
+                      stroke="#3A4DFF"
+                      strokeWidth="8"
+                      fill="none"
+                    />
+                    <circle cx="25" cy="25" r="9" fill="#3A4DFF" />
+                  </svg>
                 </Avatar>
                 <div className={`flex flex-col ${!isPopupMode && showWalletSidebar ? 'justify-center' : ''}`}>
                   <div className="flex items-center gap-2">
@@ -2035,7 +2048,7 @@ export function WalletDashboard({
                       <Badge 
                         className={`text-xs px-2 py-0.5 pointer-events-none ${
                           operationMode === 'private' 
-                            ? 'bg-[#0000db] text-white' 
+                            ? 'bg-[#3A4DFF] text-white' 
                             : 'bg-foreground/10 text-foreground border border-foreground/20'
                         }`}
                       >
@@ -2055,7 +2068,7 @@ export function WalletDashboard({
                             <SheetTrigger asChild>
                               <Button variant="ghost" className="h-auto p-0 hover:bg-transparent">
                                 <div className="flex items-center space-x-1">
-                                  <p className="text-xs text-[#0000db] font-medium">
+                                  <p className="text-xs text-[#3A4DFF] font-medium">
                                     {truncateAddress(wallet.address)}
                                   </p>
                                   <ChevronDown className="h-2.5 w-2.5 text-muted-foreground" />
@@ -2073,7 +2086,7 @@ export function WalletDashboard({
                               <div className="flex-1 mt-3 overflow-hidden">
                                 <ScrollArea className="h-full max-h-[calc(100vh-200px)]" stabilizeGutter>
                                   <ScrollAreaContent>
-                                    <DraggableWalletList
+                              <DraggableWalletList
                                       wallets={wallets}
                                       activeWallet={wallet}
                                       nonce={nonce}
@@ -2085,6 +2098,7 @@ export function WalletDashboard({
                                       onReorderWallets={onReorderWallets}
                                       copiedField={copiedField}
                                       isPopupMode={true}
+                                      isPrivateMode={operationMode === 'private'}
                                       closeSelector={() => setShowWalletSelector(false)}
                                     />
                                   </ScrollAreaContent>
@@ -2124,7 +2138,7 @@ export function WalletDashboard({
                       ) : (
                         /* Expanded mode - show label + address only when wallet sidebar is hidden */
                         <>
-                          <p className={`text-sm font-medium whitespace-nowrap ${evmMode ? 'text-orange-600 dark:text-orange-400' : 'text-[#0000db]'}`}>
+                          <p className={`text-sm font-medium whitespace-nowrap ${evmMode ? 'text-orange-600 dark:text-orange-400' : 'text-[#3A4DFF]'}`}>
                             {evmMode && selectedEVMWallet 
                               ? `${getWalletDisplayName(selectedEVMWallet.octraAddress)} - ${selectedEVMWallet.evmAddress.slice(0, 10)}...${selectedEVMWallet.evmAddress.slice(-6)}`
                               : `${getWalletDisplayName(wallet.address)} - ${truncateAddress(wallet.address)}`
@@ -2842,7 +2856,7 @@ export function WalletDashboard({
                 /* Normal Octra Wallet Sidebar */
                 <>
                   <div className="flex items-center justify-between mb-4 mt-2">
-                    <h3 className="font-semibold text-base flex items-center gap-2">
+                    <h3 className={`font-semibold text-base flex items-center gap-2 ${operationMode === 'private' ? 'text-[#00E5C0]' : ''}`}>
                       <WalletIcon className="h-5 w-5" />
                       Wallets ({wallets.length})
                     </h3>
@@ -2861,6 +2875,7 @@ export function WalletDashboard({
                         onReorderWallets={onReorderWallets}
                         copiedField={copiedField}
                         isPopupMode={false}
+                        isPrivateMode={operationMode === 'private'}
                       />
                     </ScrollAreaContent>
                   </ScrollArea>
@@ -2935,22 +2950,22 @@ export function WalletDashboard({
               {/* Balance Display */}
               <div className=" p-2">
                 <div className="text-center">
-                  <p className={`text-[10px] font-medium ${operationMode === 'private' ? 'text-[#0000db]' : 'text-muted-foreground'}`}>
+                  <p className={`text-[10px] font-medium ${operationMode === 'private' ? 'text-[#3A4DFF]' : 'text-muted-foreground'}`}>
                     Balance
                   </p>
                   {isLoadingBalance ? (
                     <div className="h-10 flex items-center justify-center">
-                      <div className="w-5 h-5 rounded-full border-2 border-transparent animate-spin" style={{ borderTopColor: '#0000db' }} />
+                      <div className="w-5 h-5 rounded-full border-2 border-transparent animate-spin" style={{ borderTopColor: '#3A4DFF' }} />
                     </div>
                   ) : (
                     <div className="flex items-center justify-center gap-2">
-                      <span className={`text-2xl font-bold ${operationMode === 'private' ? 'text-[#0000db]' : ''}`}>
+                      <span className={`text-2xl font-bold ${operationMode === 'private' ? 'text-[#3A4DFF]' : ''}`}>
                         {operationMode === 'private' 
                           ? (encryptedBalance?.encrypted || 0).toFixed(8)
                           : (balance || 0).toFixed(8)
                         }
                       </span>
-                      <Badge variant="outline" className={`text-lg font-bold px-2 py-0.5 border-0 ${operationMode === 'private' ? 'text-[#0000db]' : ''}`}>
+                      <Badge variant="outline" className={`text-lg font-bold px-2 py-0.5 border-0 ${operationMode === 'private' ? 'text-[#3A4DFF]' : ''}`}>
                         OCT
                       </Badge>
                     </div>
@@ -2965,29 +2980,29 @@ export function WalletDashboard({
                     {/* Encrypt Button */}
                     <Button
                       variant="outline"
-                      className="flex flex-col items-center gap-0.5 h-auto py-2 px-3  border"
+                      className="group flex flex-col items-center gap-0.5 h-auto py-2 px-3 border-0 rounded-none bg-transparent hover:bg-transparent hover:text-primary"
                       onClick={() => setPopupScreen('encrypt')}
                     >
-                      <Lock className="h-3.5 w-3.5" />
-                      <span className="text-[10px] font-medium">Encrypt</span>
+                      <Lock className="h-3.5 w-3.5 transition-colors group-hover:drop-shadow-[0_0_6px_rgba(0,0,0,0.25)]" />
+                      <span className="text-[10px] font-medium transition-colors group-hover:drop-shadow-[0_0_6px_rgba(0,0,0,0.25)]">Encrypt</span>
                     </Button>
                     {/* Send Button */}
                     <Button
                       variant="outline"
-                      className="flex flex-col items-center gap-0.5 h-auto py-2 px-3  border"
+                      className="group flex flex-col items-center gap-0.5 h-auto py-2 px-3 border-0 rounded-none bg-transparent hover:bg-transparent hover:text-primary"
                       onClick={() => setPopupScreen('send')}
                     >
-                      <Send className="h-3.5 w-3.5" />
-                      <span className="text-[10px] font-medium">Send</span>
+                      <Send className="h-3.5 w-3.5 transition-colors group-hover:drop-shadow-[0_0_6px_rgba(0,0,0,0.25)]" />
+                      <span className="text-[10px] font-medium transition-colors group-hover:drop-shadow-[0_0_6px_rgba(0,0,0,0.25)]">Send</span>
                     </Button>
                     {/* Receive Button */}
                     <Button
                       variant="outline"
-                      className="flex flex-col items-center gap-0.5 h-auto py-2 px-3  border"
+                      className="group flex flex-col items-center gap-0.5 h-auto py-2 px-3 border-0 rounded-none bg-transparent hover:bg-transparent hover:text-primary"
                       onClick={() => setPopupScreen('receive')}
                     >
-                      <QrCode className="h-3.5 w-3.5" />
-                      <span className="text-[10px] font-medium">Receive</span>
+                      <QrCode className="h-3.5 w-3.5 transition-colors group-hover:drop-shadow-[0_0_6px_rgba(0,0,0,0.25)]" />
+                      <span className="text-[10px] font-medium transition-colors group-hover:drop-shadow-[0_0_6px_rgba(0,0,0,0.25)]">Receive</span>
                     </Button>
                   </>
                 ) : (
@@ -2995,38 +3010,38 @@ export function WalletDashboard({
                     {/* Decrypt Button */}
                     <Button
                       variant="outline"
-                      className="flex flex-col items-center gap-0.5 h-auto py-2 px-2  border border-[#0000db]/30 text-[#0000db] hover:bg-[#0000db]/5"
+                      className="group flex flex-col items-center gap-0.5 h-auto py-2 px-2 border-0 rounded-none bg-transparent text-[#3A4DFF] hover:bg-transparent hover:text-[#6C63FF]"
                       onClick={() => setPopupScreen('decrypt')}
                     >
-                      <Unlock className="h-3.5 w-3.5" />
-                      <span className="text-[10px] font-medium">Decrypt</span>
+                      <Unlock className="h-3.5 w-3.5 transition-colors group-hover:drop-shadow-[0_0_6px_rgba(58,77,255,0.5)]" />
+                      <span className="text-[10px] font-medium transition-colors group-hover:drop-shadow-[0_0_6px_rgba(58,77,255,0.5)]">Decrypt</span>
                     </Button>
                     {/* Send Button */}
                     <Button
                       variant="outline"
-                      className="flex flex-col items-center gap-0.5 h-auto py-2 px-2  border border-[#0000db]/30 text-[#0000db] hover:bg-[#0000db]/5"
+                      className="group flex flex-col items-center gap-0.5 h-auto py-2 px-2 border-0 rounded-none bg-transparent text-[#3A4DFF] hover:bg-transparent hover:text-[#6C63FF]"
                       onClick={() => setPopupScreen('send')}
                     >
-                      <Send className="h-3.5 w-3.5" />
-                      <span className="text-[10px] font-medium">Send</span>
+                      <Send className="h-3.5 w-3.5 transition-colors group-hover:drop-shadow-[0_0_6px_rgba(58,77,255,0.5)]" />
+                      <span className="text-[10px] font-medium transition-colors group-hover:drop-shadow-[0_0_6px_rgba(58,77,255,0.5)]">Send</span>
                     </Button>
                     {/* Receive Button */}
                     <Button
                       variant="outline"
-                      className="flex flex-col items-center gap-0.5 h-auto py-2 px-2  border border-[#0000db]/30 text-[#0000db] hover:bg-[#0000db]/5"
+                      className="group flex flex-col items-center gap-0.5 h-auto py-2 px-2 border-0 rounded-none bg-transparent text-[#3A4DFF] hover:bg-transparent hover:text-[#6C63FF]"
                       onClick={() => setPopupScreen('receive')}
                     >
-                      <QrCode className="h-3.5 w-3.5" />
-                      <span className="text-[10px] font-medium">Receive</span>
+                      <QrCode className="h-3.5 w-3.5 transition-colors group-hover:drop-shadow-[0_0_6px_rgba(58,77,255,0.5)]" />
+                      <span className="text-[10px] font-medium transition-colors group-hover:drop-shadow-[0_0_6px_rgba(58,77,255,0.5)]">Receive</span>
                     </Button>
                     {/* Claim Button */}
                     <Button
                       variant="outline"
-                      className="flex flex-col items-center gap-0.5 h-auto py-2 px-2  border border-[#0000db]/30 text-[#0000db] hover:bg-[#0000db]/5"
+                      className="group flex flex-col items-center gap-0.5 h-auto py-2 px-2 border-0 rounded-none bg-transparent text-[#3A4DFF] hover:bg-transparent hover:text-[#6C63FF]"
                       onClick={() => setPopupScreen('claim')}
                     >
-                      <Gift className="h-3.5 w-3.5" />
-                      <span className="text-[10px] font-medium">Claim</span>
+                      <Gift className="h-3.5 w-3.5 transition-colors group-hover:drop-shadow-[0_0_6px_rgba(58,77,255,0.5)]" />
+                      <span className="text-[10px] font-medium transition-colors group-hover:drop-shadow-[0_0_6px_rgba(58,77,255,0.5)]">Claim</span>
                     </Button>
                   </>
                 )}
@@ -3034,7 +3049,7 @@ export function WalletDashboard({
 
               {/* Recent Activity Header */}
               <div className="flex items-center justify-between pt-1 pb-2">
-                <h3 className={`text-xs font-semibold ${operationMode === 'private' ? 'text-[#0000db]' : ''}`}>
+                <h3 className={`text-xs font-semibold ${operationMode === 'private' ? 'text-[#3A4DFF]' : ''}`}>
                   Recent Activity
                 </h3>
                 <div className="flex items-center gap-1.5">
@@ -3056,7 +3071,7 @@ export function WalletDashboard({
               <ScrollAreaContent className="divide-y divide-dashed divide-border pb-6">
                 {isLoadingTransactions ? (
                   <div className="flex items-center justify-center py-4">
-                    <div className="w-4 h-4 rounded-full border-2 border-transparent animate-spin" style={{ borderTopColor: '#0000db' }} />
+                    <div className="w-4 h-4 rounded-full border-2 border-transparent animate-spin" style={{ borderTopColor: '#3A4DFF' }} />
                   </div>
                 ) : (() => {
                   // Filter transactions based on operationMode
@@ -3108,12 +3123,12 @@ export function WalletDashboard({
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center gap-1.5">
                                 {txIsPrivate ? (
-                                  <span className="text-[#0000db] font-medium text-xs">{tx.type === 'sent' ? '-' : '+'}Private</span>
+                                  <span className="text-[#3A4DFF] font-medium text-xs">{tx.type === 'sent' ? '-' : '+'}Private</span>
                                 ) : (
                                   <span className={`font-mono text-xs ${tx.type === 'sent' ? 'text-red-500' : 'text-green-500'}`}>{tx.type === 'sent' ? '-' : '+'}{(tx.amount || 0).toFixed(4)} OCT</span>
                                 )}
                                 {tx.status === 'confirmed' ? (
-                                  <div className="h-1.5 w-1.5  bg-[#0000db]" />
+                                  <div className="h-1.5 w-1.5  bg-[#3A4DFF]" />
                                 ) : tx.status === 'pending' ? (
                                   <div className="h-1.5 w-1.5  bg-yellow-500 animate-pulse" />
                                 ) : (
@@ -3275,40 +3290,46 @@ export function WalletDashboard({
                 <div className="text-center mb-6">
                   {isLoadingBalance || isRefreshingData ? (
                     <div className="flex items-center justify-center gap-2">
-                      <div className="w-6 h-6 rounded-full border-2 border-transparent animate-spin" style={{ borderTopColor: '#0000db' }} />
+                      <div className="w-6 h-6 rounded-full border-2 border-transparent animate-spin" style={{ borderTopColor: '#3A4DFF' }} />
                     </div>
                   ) : (
-                    <div className={`text-4xl font-bold tracking-tight ${operationMode === 'private' ? 'text-[#0000db]' : ''}`}>
-                      {operationMode === 'private' 
-                        ? `${(encryptedBalance?.encrypted || 0).toFixed(8)} OCT`
-                        : `${(balance || 0).toFixed(8)} OCT`
-                      }
+                    <div className="flex items-center justify-center gap-4">
+                      <div className={`text-4xl font-bold tracking-tight ${operationMode === 'private' ? 'text-[#3A4DFF]' : ''}`}>
+                        {operationMode === 'private' 
+                          ? `${(encryptedBalance?.encrypted || 0).toFixed(8)} OCT`
+                          : `${(balance || 0).toFixed(8)} OCT`
+                        }
+                      </div>
+                      {operationMode === 'public' ? (
+                        <>
+                          <div className="h-8 border-l border-dashed border-border" />
+                          <Button
+                            variant="ghost"
+                            className="group h-auto px-0 py-1 text-sm font-medium bg-transparent text-[#00E5C0] hover:bg-transparent hover:text-[#00E5C0]"
+                            onClick={() => openPrivateModal('encrypt')}
+                            disabled={!balance || balance <= 0.001}
+                          >
+                            <Lock className="h-6 w-6 mr-3 text-[#00E5C0] transition-colors group-hover:drop-shadow-[0_0_6px_rgba(0,229,192,0.6)]" />
+                            <span className="transition-colors group-hover:text-[#00E5C0] group-hover:drop-shadow-[0_0_6px_rgba(0,229,192,0.6)]">Encrypt</span>
+                          </Button>
+                        </>
+                      ) : (
+                        <>
+                          <div className="h-8 border-l border-dashed border-border" />
+                          <Button
+                            variant="outline"
+                            className="group h-auto px-0 py-1 text-sm font-medium bg-transparent border-0 text-muted-foreground hover:bg-transparent hover:text-muted-foreground"
+                            onClick={() => openPrivateModal('decrypt')}
+                            disabled={!encryptedBalance || encryptedBalance.encrypted <= 0}
+                          >
+                            <Unlock className="h-6 w-6 mr-3 text-muted-foreground transition-colors group-hover:drop-shadow-[0_0_10px_rgba(0,0,0,0.45)] dark:group-hover:drop-shadow-[0_0_10px_rgba(255,255,255,0.35)]" />
+                            <span className="transition-colors group-hover:drop-shadow-[0_0_10px_rgba(0,0,0,0.45)] dark:group-hover:drop-shadow-[0_0_10px_rgba(255,255,255,0.35)]">Decrypt</span>
+                          </Button>
+                        </>
+                      )}
                     </div>
                   )}
                 </div>
-
-                {/* Encrypt/Decrypt Button */}
-                {operationMode === 'public' ? (
-                  <Button
-                    variant="outline"
-                    className="w-full max-w-lg h-12 mb-4 border border-border"
-                    onClick={() => openPrivateModal('encrypt')}
-                    disabled={!balance || balance <= 0.001}
-                  >
-                    <Lock className="h-4 w-4 mr-2" />
-                    Encrypt
-                  </Button>
-                ) : (
-                  <Button
-                    variant="outline"
-                    className="w-full max-w-lg h-12 mb-4 border border-[#0000db]/30 text-[#0000db] hover:bg-[#0000db]/10"
-                    onClick={() => openPrivateModal('decrypt')}
-                    disabled={!encryptedBalance || encryptedBalance.encrypted <= 0}
-                  >
-                    <Unlock className="h-4 w-4 mr-2" />
-                    Decrypt
-                  </Button>
-                )}
 
                 {/* Action Buttons */}
                 {operationMode === 'public' ? (
@@ -3317,33 +3338,33 @@ export function WalletDashboard({
                     {/* Standard Send */}
                     <Button
                       variant="outline"
-                      className="flex flex-col items-center gap-3 h-auto py-6 border border-border hover:border-foreground/30 hover:bg-accent transition-all"
+                      className="group flex flex-col items-center gap-3 h-auto py-6 border-0 rounded-none bg-transparent shadow-none hover:bg-transparent hover:text-primary transition-colors"
                       onClick={() => openSendModal('standard')}
                     >
-                      <Send className="h-8 w-8" />
-                      <span className="text-sm font-medium">Send</span>
+                      <Send className="h-8 w-8 transition-colors group-hover:drop-shadow-[0_0_12px_rgba(58,77,255,0.7)]" />
+                      <span className="text-sm font-medium transition-colors group-hover:drop-shadow-[0_0_12px_rgba(58,77,255,0.7)]">Send</span>
                       <span className="text-[10px] text-muted-foreground">Single transfer</span>
                     </Button>
                     
                     {/* Multi Send */}
                     <Button
                       variant="outline"
-                      className="flex flex-col items-center gap-3 h-auto py-6 border border-border hover:border-foreground/30 hover:bg-accent transition-all"
+                      className="group flex flex-col items-center gap-3 h-auto py-6 border-0 rounded-none bg-transparent shadow-none hover:bg-transparent hover:text-primary transition-colors"
                       onClick={() => openSendModal('multi')}
                     >
-                      <Layers className="h-8 w-8" />
-                      <span className="text-sm font-medium">Multi Send</span>
+                      <Layers className="h-8 w-8 transition-colors group-hover:drop-shadow-[0_0_8px_rgba(58,77,255,0.5)]" />
+                      <span className="text-sm font-medium transition-colors group-hover:drop-shadow-[0_0_8px_rgba(58,77,255,0.5)]">Multi Send</span>
                       <span className="text-[10px] text-muted-foreground">Multiple recipients</span>
                     </Button>
                     
                     {/* Bulk Send */}
                     <Button
                       variant="outline"
-                      className="flex flex-col items-center gap-3 h-auto py-6 border border-border hover:border-foreground/30 hover:bg-accent transition-all"
+                      className="group flex flex-col items-center gap-3 h-auto py-6 border-0 rounded-none bg-transparent shadow-none hover:bg-transparent hover:text-primary transition-colors"
                       onClick={() => openSendModal('bulk')}
                     >
-                      <FileText className="h-8 w-8" />
-                      <span className="text-sm font-medium">Bulk Send</span>
+                      <FileText className="h-8 w-8 transition-colors group-hover:drop-shadow-[0_0_8px_rgba(58,77,255,0.5)]" />
+                      <span className="text-sm font-medium transition-colors group-hover:drop-shadow-[0_0_8px_rgba(58,77,255,0.5)]">Bulk Send</span>
                       <span className="text-[10px] text-muted-foreground">Import from file</span>
                     </Button>
                   </div>
@@ -3353,36 +3374,36 @@ export function WalletDashboard({
                     {/* Send (Private Transfer) */}
                     <Button
                       variant="outline"
-                      className="flex flex-col items-center gap-3 h-auto py-6 border border-[#0000db]/30 hover:border-[#0000db]/50 hover:bg-[#0000db]/5 transition-all text-[#0000db]"
+                      className="group flex flex-col items-center gap-3 h-auto py-6 border-0 rounded-none bg-transparent shadow-none text-[#3A4DFF] hover:bg-transparent transition-colors"
                       onClick={() => openSendModal('standard')}
                     >
-                      <Send className="h-8 w-8" />
-                      <span className="text-sm font-medium">Send</span>
-                      <span className="text-[10px] text-[#0000db]/70">Private transfer</span>
+                      <Send className="h-8 w-8 transition-colors group-hover:drop-shadow-[0_0_8px_rgba(58,77,255,0.5)]" />
+                      <span className="text-sm font-medium transition-colors group-hover:drop-shadow-[0_0_8px_rgba(58,77,255,0.5)]">Send</span>
+                      <span className="text-[10px] text-muted-foreground">Private transfer</span>
                     </Button>
                     
                     {/* Multi Send - Coming Soon */}
                     <Button
                       variant="outline"
-                      className="flex flex-col items-center gap-3 h-auto py-6 border border-[#0000db]/20 opacity-50 cursor-not-allowed"
+                      className="group flex flex-col items-center gap-3 h-auto py-6 border-0 rounded-none bg-transparent shadow-none opacity-50 cursor-not-allowed"
                       disabled
                     >
-                      <Layers className="h-8 w-8 text-[#0000db]/50" />
-                      <span className="text-sm font-medium text-[#0000db]/50">Multi Send</span>
-                      <span className="text-[10px] text-[#0000db]/40">Coming soon</span>
+                      <Layers className="h-8 w-8 transition-colors group-hover:drop-shadow-[0_0_8px_rgba(58,77,255,0.5)]" />
+                      <span className="text-sm font-medium transition-colors group-hover:drop-shadow-[0_0_8px_rgba(58,77,255,0.5)]">Multi Send</span>
+                      <span className="text-[10px] text-muted-foreground">Coming soon</span>
                     </Button>
                     
                     {/* Claim */}
                     <Button
                       variant="outline"
-                      className="flex flex-col items-center gap-3 h-auto py-6 border border-[#0000db]/30 hover:border-[#0000db]/50 hover:bg-[#0000db]/5 transition-all text-[#0000db] relative"
+                      className="group flex flex-col items-center gap-3 h-auto py-6 border-0 rounded-none bg-transparent shadow-none text-[#3A4DFF] hover:bg-transparent transition-colors relative"
                       onClick={openClaimScreen}
                     >
-                      <Gift className="h-8 w-8" />
-                      <span className="text-sm font-medium">Claim</span>
-                      <span className="text-[10px] text-[#0000db]/70">Pending transfers</span>
+                      <Gift className="h-8 w-8 transition-colors group-hover:drop-shadow-[0_0_12px_rgba(58,77,255,0.7)]" />
+                      <span className="text-sm font-medium transition-colors group-hover:drop-shadow-[0_0_12px_rgba(58,77,255,0.7)]">Claim</span>
+                      <span className="text-[10px] text-muted-foreground">Pending transfers</span>
                       {pendingTransfersCount > 0 && (
-                        <Badge className="absolute -top-2 -right-2 bg-[#0000db] text-white text-[10px] h-5 min-w-5 flex items-center justify-center">
+                        <Badge className="absolute -top-2 -right-2 bg-[#3A4DFF] text-white text-[10px] h-5 min-w-5 flex items-center justify-center">
                           {pendingTransfersCount}
                         </Badge>
                       )}
@@ -3393,14 +3414,17 @@ export function WalletDashboard({
                 {/* EVM Assets Section - Only in Public Mode */}
                 {operationMode === 'public' && (
                   <div className="w-full max-w-lg">
-                    <div className="border-t border-dashed border-border my-4" />
+                    <div className="border-t border-dashed border-border mt-4" />
                     <Button
                       variant="outline"
-                      className="w-full flex items-center justify-center gap-3 h-14 border border-orange-500/30 hover:border-orange-500/50 hover:bg-orange-500/5 transition-all text-orange-600 dark:text-orange-400"
+                      className="group w-full flex items-center justify-center gap-2 h-14 mt-2 rounded-none bg-transparent border-0 shadow-none text-orange-600 dark:text-orange-400 hover:bg-transparent transition-colors"
                       onClick={enterEvmMode}
                     >
-                      <Coins className="h-5 w-5" />
-                      <span className="text-sm font-medium">EVM Assets</span>
+                      <Coins className="h-5 w-5 transition-colors group-hover:text-orange-600 dark:group-hover:text-orange-300 group-hover:drop-shadow-[0_0_6px_rgba(249,115,22,0.6)]" />
+                      <div className="flex flex-col items-start">
+                        <span className="text-sm font-medium transition-colors group-hover:text-orange-600 dark:group-hover:text-orange-300 group-hover:drop-shadow-[0_0_6px_rgba(249,115,22,0.6)]">EVM Assets</span>
+                        <span className="text-[10px] text-muted-foreground">Manage Ethereum VM Assets</span>
+                      </div>
                     </Button>
                   </div>
                 )}
@@ -3432,10 +3456,10 @@ export function WalletDashboard({
                     <ChevronDown className="h-5 w-5 rotate-90" />
                   </Button>
                   <div className="flex items-center gap-2">
-                    <Gift className="h-5 w-5 text-[#0000db]" />
-                    <h2 className="text-lg font-semibold text-[#0000db]">Claim Transfers</h2>
+                    <Gift className="h-5 w-5 text-[#3A4DFF]" />
+                    <h2 className="text-lg font-semibold text-[#3A4DFF]">Claim Transfers</h2>
                     {pendingTransfersCount > 0 && (
-                      <Badge variant="secondary" className="ml-1 bg-[#0000db]/10 text-[#0000db]">
+                      <Badge variant="secondary" className="ml-1 bg-[#3A4DFF]/10 text-[#3A4DFF]">
                         {pendingTransfersCount}
                       </Badge>
                     )}
@@ -3493,7 +3517,7 @@ export function WalletDashboard({
                     <div className="p-3 pb-4 min-h-full flex flex-col">
                       {loadingTxDetails ? (
                         <div className="flex-1 flex items-center justify-center py-12">
-                          <div className="w-6 h-6 rounded-full border-2 border-transparent animate-spin" style={{ borderTopColor: '#0000db' }} />
+                          <div className="w-6 h-6 rounded-full border-2 border-transparent animate-spin" style={{ borderTopColor: '#3A4DFF' }} />
                         </div>
                       ) : selectedTxDetails ? (
                         <>
@@ -3506,7 +3530,7 @@ export function WalletDashboard({
                                 {selectedTxDetails.stage_status || 'pending'}
                               </Badge>
                             ) : (
-                              <Badge variant="secondary" className="text-xs bg-[#0000db]/20 text-[#0000db]">
+                              <Badge variant="secondary" className="text-xs bg-[#3A4DFF]/20 text-[#3A4DFF]">
                                 confirmed
                               </Badge>
                             )}
@@ -3791,7 +3815,7 @@ export function WalletDashboard({
                     /* Normal Octra History */
                     <>
                       <div className="flex items-center justify-between mb-4 mt-2 mr-2 flex-shrink-0">
-                        <h3 className={`font-semibold text-base flex items-center gap-2 ${operationMode === 'private' ? 'text-[#0000db]' : ''}`}>
+                        <h3 className={`font-semibold text-base flex items-center gap-2 ${operationMode === 'private' ? 'text-[#00E5C0]' : ''}`}>
                           <History className="h-5 w-5" />
                           {operationMode === 'private' ? 'Encrypted Activity' : 'Public Activity'}
                         </h3>
@@ -3891,7 +3915,7 @@ export function WalletDashboard({
               </Button>
               <div className="flex items-center gap-2">
                 {operationMode === 'private' ? (
-                  <Send className="h-5 w-5 text-[#0000db]" />
+                  <Send className="h-5 w-5 text-[#3A4DFF]" />
                 ) : (
                   <>
                     {expandedSendModal === 'standard' && <Send className="h-5 w-5" />}
@@ -3899,7 +3923,7 @@ export function WalletDashboard({
                     {expandedSendModal === 'bulk' && <FileText className="h-5 w-5" />}
                   </>
                 )}
-                <h2 className={`text-lg font-semibold ${operationMode === 'private' ? 'text-[#0000db]' : ''}`}>
+                <h2 className={`text-lg font-semibold ${operationMode === 'private' ? 'text-[#3A4DFF]' : ''}`}>
                   {operationMode === 'private' ? 'Private Transfer' : (
                     <>
                       {expandedSendModal === 'standard' && 'Single Send'}
@@ -4032,9 +4056,9 @@ export function WalletDashboard({
                 <ChevronDown className="h-5 w-5 rotate-90" />
               </Button>
               <div className="flex items-center gap-2">
-                {expandedPrivateModal === 'encrypt' && <Lock className="h-5 w-5 text-[#0000db]" />}
-                {expandedPrivateModal === 'decrypt' && <Unlock className="h-5 w-5 text-[#0000db]" />}
-                <h2 className="text-lg font-semibold text-[#0000db]">
+                {expandedPrivateModal === 'encrypt' && <Lock className="h-5 w-5 text-[#3A4DFF]" />}
+                {expandedPrivateModal === 'decrypt' && <Unlock className="h-5 w-5 text-[#3A4DFF]" />}
+                <h2 className="text-lg font-semibold text-[#3A4DFF]">
                   {expandedPrivateModal === 'encrypt' && 'Encrypt OCT'}
                   {expandedPrivateModal === 'decrypt' && 'Decrypt OCT'}
                 </h2>
@@ -4090,12 +4114,12 @@ export function WalletDashboard({
             {/* Left: Connection Status */}
             <div className="flex items-center gap-1.5">
               <div className={`w-1.5 h-1.5 rounded-full ${
-                rpcStatus === 'connected' ? 'bg-[#0000db]' : 
+                rpcStatus === 'connected' ? 'bg-[#3A4DFF]' : 
                 rpcStatus === 'disconnected' ? 'bg-red-500' : 
                 'bg-yellow-500 animate-pulse'
               }`} />
               <span className={`text-[10px] ${
-                rpcStatus === 'connected' ? 'text-[#0000db]' : 
+                rpcStatus === 'connected' ? 'text-[#3A4DFF]' : 
                 rpcStatus === 'disconnected' ? 'text-red-500' : 
                 'text-yellow-500'
               }`}>
@@ -4176,12 +4200,12 @@ export function WalletDashboard({
             /* Normal Octra Footer */
             <div className="flex items-center gap-1.5">
               <div className={`w-1.5 h-1.5 rounded-full ${
-                rpcStatus === 'connected' ? 'bg-[#0000db]' : 
+                rpcStatus === 'connected' ? 'bg-[#3A4DFF]' : 
                 rpcStatus === 'disconnected' ? 'bg-red-500' : 
                 'bg-yellow-500 animate-pulse'
               }`} />
               <span className={`${
-                rpcStatus === 'connected' ? 'text-[#0000db]' : 
+                rpcStatus === 'connected' ? 'text-[#3A4DFF]' : 
                 rpcStatus === 'disconnected' ? 'text-red-500' : 
                 'text-yellow-500'
               }`}>
@@ -4204,8 +4228,8 @@ export function WalletDashboard({
             <span className="flex items-center justify-center gap-1.5">
               {isUpdatingEpoch ? (
                 <>
-                  <RotateCcw className="h-3 w-3 animate-spin text-[#0000db]" />
-                  <span className="text-[#0000db]">updating data...</span>
+                  <RotateCcw className="h-3 w-3 animate-spin text-[#3A4DFF]" />
+                  <span className="text-[#3A4DFF]">updating data...</span>
                 </>
               ) : (
                 <>
@@ -4214,7 +4238,7 @@ export function WalletDashboard({
                     href={currentEpoch ? `https://octrascan.io/epochs/${currentEpoch}` : '#'}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="font-mono text-[#0000db] hover:underline"
+                    className="font-mono text-[#3A4DFF] hover:underline"
                   >
                     #{currentEpoch || '...'}
                   </a>

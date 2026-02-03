@@ -213,7 +213,7 @@ export function ClaimTransfers({ wallet, onTransactionSuccess, isPopupMode = fal
   }
 
   return (
-    <Card className={`${hideBorder || isPopupMode ? 'border-0 shadow-none' : 'border-[#0000db]/20'}`}>
+    <Card className={`${hideBorder || isPopupMode ? 'border-0 shadow-none' : 'border-[#3A4DFF]/20'}`}>
       <CardContent className={isPopupMode ? 'px-0 pb-0 pt-0' : 'pt-0'}>
         {/* Refresh button for popup mode */}
         {isPopupMode && (
@@ -235,7 +235,7 @@ export function ClaimTransfers({ wallet, onTransactionSuccess, isPopupMode = fal
             <Button
               onClick={handleClaimAll}
               disabled={claimingAll || claimingId !== null}
-              className={`w-full bg-[#0000db] hover:bg-[#0000db]/90 ${isPopupMode ? 'h-8 text-xs' : ''}`}
+              className={`w-full bg-[#3A4DFF] hover:bg-[#6C63FF]/90 ${isPopupMode ? 'h-8 text-xs' : ''}`}
             >
               {claimingAll ? (
                 <div className="flex items-center gap-1.5">
@@ -303,7 +303,7 @@ export function ClaimTransfers({ wallet, onTransactionSuccess, isPopupMode = fal
                     </div>
                     
                     <div className={`text-right ${isPopupMode ? 'space-y-0' : 'space-y-1'}`}>
-                      <div className={`font-mono font-bold text-[#0000db] ${isPopupMode ? 'text-xs' : ''}`}>
+                      <div className={`font-mono font-bold text-[#3A4DFF] ${isPopupMode ? 'text-xs' : ''}`}>
                         {transfer.decryptedAmount !== null 
                           ? `+ ${transfer.decryptedAmount.toFixed(isPopupMode ? 4 : 8)} OCT`
                           : '[Encrypted]'
@@ -322,7 +322,7 @@ export function ClaimTransfers({ wallet, onTransactionSuccess, isPopupMode = fal
                       onClick={() => handleClaim(transfer.id)}
                       disabled={claimingId === transfer.id || claimingAll}
                       size="sm"
-                      className={`flex items-center gap-1.5 bg-[#0000db] hover:bg-[#0000db]/90 ${isPopupMode ? 'h-7 text-xs px-2' : ''}`}
+                      className={`flex items-center gap-1.5 bg-[#3A4DFF] hover:bg-[#6C63FF]/90 ${isPopupMode ? 'h-7 text-xs px-2' : ''}`}
                     >
                       {claimingId === transfer.id || claimingAll ? (
                         <div className="flex items-center gap-1">

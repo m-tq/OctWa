@@ -55,7 +55,7 @@ export function ModeSwitchConfirmDialog({
           <AlertDialogTitle
             className={`flex items-center gap-2 ${isCompact ? 'text-sm' : ''}`}
           >
-            <AlertTriangle className={`${isCompact ? 'h-4 w-4' : 'h-5 w-5'} text-orange-500`} />
+            <AlertTriangle className={`${isCompact ? 'h-4 w-4' : 'h-5 w-5'} text-[#F2C94C]`} />
             Leaving Private Mode
           </AlertDialogTitle>
           <AlertDialogDescription
@@ -68,13 +68,13 @@ export function ModeSwitchConfirmDialog({
                 <span className="font-medium text-foreground">Public Mode</span>.
               </p>
               <div
-                className={`flex items-start gap-2 ${isCompact ? 'p-2' : 'p-3'} bg-orange-50 dark:bg-orange-950/30 border border-orange-200 dark:border-orange-800`}
+                className={`flex items-start gap-2 ${isCompact ? 'p-2' : 'p-3'} bg-[#F2C94C]/10 dark:bg-[#F2C94C]/15 border border-[#F2C94C]/40 dark:border-[#F2C94C]/50`}
               >
                 <AlertTriangle
-                  className={`${isCompact ? 'h-3 w-3' : 'h-4 w-4'} text-orange-500 mt-0.5 flex-shrink-0`}
+                  className={`${isCompact ? 'h-3 w-3' : 'h-4 w-4'} text-[#F2C94C] mt-0.5 flex-shrink-0`}
                 />
                 <div
-                  className={`${isCompact ? 'text-[10px]' : 'text-xs'} text-orange-800 dark:text-orange-200 text-left`}
+                  className={`${isCompact ? 'text-[10px]' : 'text-xs'} text-[#F2C94C] text-left`}
                 >
                   <p className="font-medium mb-0.5">Important:</p>
                   <ul className="list-disc list-inside space-y-0.5 text-left">
@@ -112,7 +112,7 @@ export function ModeSwitchConfirmDialog({
           </AlertDialogCancel>
           <AlertDialogAction
             onClick={handleConfirm}
-            className={`flex-1 bg-orange-500 hover:bg-orange-600 text-white ${isCompact ? 'h-8 text-xs' : ''}`}
+            className={`flex-1 bg-[#F2C94C] hover:bg-[#E5BF45] text-black ${isCompact ? 'h-8 text-xs' : ''}`}
           >
             <Globe className={`${isCompact ? 'h-3.5 w-3.5 mr-1' : 'h-4 w-4 mr-2'}`} />
             {isCompact ? 'Continue' : 'Continue to Public'}

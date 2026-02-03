@@ -75,7 +75,7 @@ export function AddressActionButtons({
           size="icon"
           onClick={() => onAddToAddressBook?.(value.trim())}
           disabled={disabled}
-          className={`${isCompact ? 'h-7 w-7' : 'h-8 w-8'} flex-shrink-0 text-[#0000db] hover:text-[#0000db] hover:bg-[#0000db]/10 border-[#0000db]/30`}
+          className={`${isCompact ? 'h-7 w-7' : 'h-8 w-8'} flex-shrink-0 text-[#3A4DFF] hover:text-[#6C63FF] hover:bg-[#6C63FF]/10 border-[#3A4DFF]/30`}
           title="Add to address book"
         >
           <Plus className={isCompact ? 'h-3 w-3' : 'h-3.5 w-3.5'} />
@@ -241,7 +241,7 @@ export function AddressInput({
                 size="icon"
                 onClick={() => onAddToAddressBook?.(value.trim())}
                 disabled={disabled}
-                className={`${isCompact ? 'h-8 w-8' : 'h-9 w-9'} flex-shrink-0 text-[#0000db] hover:text-[#0000db] hover:bg-[#0000db]/10 border-[#0000db]/30`}
+                className={`${isCompact ? 'h-8 w-8' : 'h-9 w-9'} flex-shrink-0 text-[#3A4DFF] hover:text-[#6C63FF] hover:bg-[#6C63FF]/10 border-[#3A4DFF]/30`}
                 title="Add to address book"
               >
                 <Plus className={isCompact ? 'h-3.5 w-3.5' : 'h-4 w-4'} />
@@ -325,7 +325,7 @@ export function AddressInput({
                             <span className="font-medium truncate">{contact.label}</span>
                             {contact.preferredMode && (
                               contact.preferredMode === 'private' ? (
-                                <Shield className={`text-[#0000db] flex-shrink-0 ${isPopupMode ? 'h-2.5 w-2.5' : 'h-3 w-3'}`} />
+                                <Shield className={`text-[#00E5C0] flex-shrink-0 ${isPopupMode ? 'h-2.5 w-2.5' : 'h-3 w-3'}`} />
                               ) : (
                                 <Globe className={`text-green-600 flex-shrink-0 ${isPopupMode ? 'h-2.5 w-2.5' : 'h-3 w-3'}`} />
                               )

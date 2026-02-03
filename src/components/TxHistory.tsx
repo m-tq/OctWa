@@ -172,7 +172,7 @@ export function TxHistory({ wallet, transactions, onTransactionsUpdate, isLoadin
   const getStatusIcon = (status: string) => {
     switch (status) {
       case 'confirmed':
-        return <CircleCheckBig className="h-4 w-4 text-[#0000db] fill-[#0000db]/20" />;
+        return <CircleCheckBig className="h-4 w-4 text-[#3A4DFF] fill-[#3A4DFF]/20" />;
       case 'pending':
         return <Clock className="h-4 w-4 text-yellow-500" />;
       case 'failed':

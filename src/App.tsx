@@ -578,7 +578,7 @@ function App() {
           <div className="flex flex-col items-center space-y-4">
             <div
               className="w-10 h-10 rounded-full border-4 border-transparent animate-spin"
-              style={{ borderTopColor: '#0000db', borderRightColor: '#0000db' }}
+              style={{ borderTopColor: '#3A4DFF', borderRightColor: '#3A4DFF' }}
             />
             <p className="text-muted-foreground">Loading...</p>
           </div>
@@ -654,7 +654,7 @@ function App() {
           <div className="flex flex-col items-center space-y-4">
             <div
               className="w-10 h-10 rounded-full border-4 border-transparent animate-spin"
-              style={{ borderTopColor: '#0000db', borderRightColor: '#0000db' }}
+              style={{ borderTopColor: '#3A4DFF', borderRightColor: '#3A4DFF' }}
             />
             <p className="text-muted-foreground">Loading wallet...</p>
           </div>

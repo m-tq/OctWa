@@ -663,7 +663,7 @@ function PopupApp() {
           <div className="flex flex-col items-center space-y-3">
             <div
               className="w-8 h-8 rounded-full border-3 border-transparent animate-spin"
-              style={{ borderTopColor: '#0000db', borderRightColor: '#0000db' }}
+              style={{ borderTopColor: '#3A4DFF', borderRightColor: '#3A4DFF' }}
             />
             <p className="text-sm text-muted-foreground">Loading...</p>
           </div>
@@ -780,7 +780,7 @@ function PopupApp() {
             <div className="text-center">
               <div
                 className="w-8 h-8 mx-auto rounded-full border-3 border-transparent animate-spin mb-3"
-                style={{ borderTopColor: '#0000db', borderRightColor: '#0000db' }}
+                style={{ borderTopColor: '#3A4DFF', borderRightColor: '#3A4DFF' }}
               />
               <div className="text-sm text-muted-foreground">Loading wallet...</div>
             </div>
@@ -801,7 +801,7 @@ function PopupApp() {
             <div className="text-center">
               <div
                 className="w-8 h-8 mx-auto rounded-full border-3 border-transparent animate-spin mb-3"
-                style={{ borderTopColor: '#0000db', borderRightColor: '#0000db' }}
+                style={{ borderTopColor: '#3A4DFF', borderRightColor: '#3A4DFF' }}
               />
               <div className="text-sm text-muted-foreground">Loading wallet...</div>
             </div>

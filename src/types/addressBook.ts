@@ -38,7 +38,7 @@ export const DEFAULT_ADDRESS_BOOK: AddressBookData = {
 // Available tags with display info
 export const CONTACT_TAGS: { value: ContactTag; label: string; color: string; icon: string }[] = [
   { value: 'public', label: 'Public', color: 'bg-green-500/20 text-green-600', icon: '🌐' },
-  { value: 'private', label: 'Private', color: 'bg-[#0000db]/20 text-[#0000db]', icon: '🔒' },
+  { value: 'private', label: 'Private', color: 'bg-[#3A4DFF]/20 text-[#3A4DFF]', icon: '🔒' },
   { value: 'encrypted', label: 'Encrypted', color: 'bg-purple-500/20 text-purple-600', icon: '🔐' },
   { value: 'service', label: 'Service', color: 'bg-orange-500/20 text-orange-600', icon: '⚙️' },
   { value: 'circle', label: 'Circle', color: 'bg-blue-500/20 text-blue-600', icon: '👥' },

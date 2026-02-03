@@ -1401,7 +1401,7 @@ export function FileMultiSend({ wallet, balance, onBalanceUpdate, onNonceUpdate,
               <div
                 className={`border-2 border-dashed rounded-lg p-6 text-center transition-colors ${
                   isDragOver 
-                    ? 'border-[#0000db] bg-[#0000db]/5' 
+                    ? 'border-[#3A4DFF] bg-[#3A4DFF]/5' 
                     : amountMode === 'same' && !validateAmount(sameAmount)
                     ? 'border-muted-foreground/20 bg-muted/30 cursor-not-allowed'
                     : 'border-muted-foreground/25 hover:border-muted-foreground/50'
@@ -1479,7 +1479,7 @@ export function FileMultiSend({ wallet, balance, onBalanceUpdate, onNonceUpdate,
               <span className="text-sm font-medium">Recipients Preview</span>
               {recipients.length > 0 && (
                 <div className="flex gap-1">
-                  <Badge variant="outline" className="text-[#0000db] text-xs">
+                  <Badge variant="outline" className="text-[#3A4DFF] text-xs">
                     {validRecipients.length} valid
                   </Badge>
                   {invalidRecipients.length > 0 && (
@@ -1518,14 +1518,14 @@ export function FileMultiSend({ wallet, balance, onBalanceUpdate, onNonceUpdate,
                     key={index}
                     className={`flex items-center justify-between p-2 rounded text-xs ${
                       recipient.isValid 
-                        ? 'bg-[#0000db]/10 dark:bg-[#0000db]/20' 
+                        ? 'bg-[#3A4DFF]/10 dark:bg-[#3A4DFF]/20' 
                         : 'bg-red-50 dark:bg-red-950/30'
                     }`}
                   >
                     <div className="flex items-center gap-2 flex-1 min-w-0">
                       <span className="text-muted-foreground w-6 text-right flex-shrink-0">{index + 1}.</span>
                       {recipient.isValid ? (
-                        <CheckCircle className="h-3.5 w-3.5 text-[#0000db] flex-shrink-0" />
+                        <CheckCircle className="h-3.5 w-3.5 text-[#3A4DFF] flex-shrink-0" />
                       ) : (
                         <AlertTriangle className="h-3.5 w-3.5 text-red-500 flex-shrink-0" />
                       )}
@@ -1585,7 +1585,7 @@ export function FileMultiSend({ wallet, balance, onBalanceUpdate, onNonceUpdate,
             {txLogs.length > 0 && (
               <div className="flex gap-1">
                 {successCount > 0 && (
-                  <Badge variant="outline" className="text-[#0000db] text-xs">{successCount}</Badge>
+                  <Badge variant="outline" className="text-[#3A4DFF] text-xs">{successCount}</Badge>
                 )}
                 {errorCount > 0 && (
                   <Badge variant="outline" className="text-red-600 text-xs">{errorCount}</Badge>
@@ -1625,7 +1625,7 @@ export function FileMultiSend({ wallet, balance, onBalanceUpdate, onNonceUpdate,
                         <div className="space-y-1 text-muted-foreground">
                           <div className="flex justify-between">
                             <span>Success:</span>
-                            <span className="text-[#0000db] font-medium">{log.successCount}</span>
+                            <span className="text-[#3A4DFF] font-medium">{log.successCount}</span>
                           </div>
                           <div className="flex justify-between">
                             <span>Failed:</span>
@@ -1658,7 +1658,7 @@ export function FileMultiSend({ wallet, balance, onBalanceUpdate, onNonceUpdate,
                           </span>
                           <div className="flex gap-2 text-[10px]">
                             <span className="text-muted-foreground">{log.totalInBatch} tx</span>
-                            {log.successInBatch > 0 && <span className="text-[#0000db]">✓{log.successInBatch}</span>}
+                            {log.successInBatch > 0 && <span className="text-[#3A4DFF]">✓{log.successInBatch}</span>}
                             {log.failedInBatch > 0 && <span className="text-red-600">✗{log.failedInBatch}</span>}
                           </div>
                         </div>
@@ -1673,7 +1673,7 @@ export function FileMultiSend({ wallet, balance, onBalanceUpdate, onNonceUpdate,
                       key={index}
                       className={`p-2 rounded text-xs ${
                         txLog.status === 'success' 
-                          ? 'bg-[#0000db]/10 dark:bg-[#0000db]/20' 
+                          ? 'bg-[#3A4DFF]/10 dark:bg-[#3A4DFF]/20' 
                           : txLog.status === 'error'
                           ? 'bg-red-50 dark:bg-red-950/30'
                           : txLog.status === 'queued'
@@ -1683,7 +1683,7 @@ export function FileMultiSend({ wallet, balance, onBalanceUpdate, onNonceUpdate,
                     >
                       <div className="flex items-center gap-2">
                         <span className="text-muted-foreground w-6 text-right flex-shrink-0">{txLog.txIndex || '-'}.</span>
-                        {txLog.status === 'success' && <CheckCircle className="h-3.5 w-3.5 text-[#0000db] flex-shrink-0" />}
+                        {txLog.status === 'success' && <CheckCircle className="h-3.5 w-3.5 text-[#3A4DFF] flex-shrink-0" />}
                         {txLog.status === 'error' && <XCircle className="h-3.5 w-3.5 text-red-500 flex-shrink-0" />}
                         {txLog.status === 'pending' && <Loader2 className="h-3.5 w-3.5 text-yellow-500 animate-spin flex-shrink-0" />}
                         {txLog.status === 'retrying' && <Loader2 className="h-3.5 w-3.5 text-orange-500 animate-spin flex-shrink-0" />}
@@ -1700,7 +1700,7 @@ export function FileMultiSend({ wallet, balance, onBalanceUpdate, onNonceUpdate,
                           href={`https://octrascan.io/transactions/${txLog.hash}`}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="text-[10px] text-[#0000db] hover:underline mt-1 block truncate"
+                          className="text-[10px] text-[#3A4DFF] hover:underline mt-1 block truncate"
                         >
                           {txLog.hash.slice(0, 16)}...
                         </a>
