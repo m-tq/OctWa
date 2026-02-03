@@ -220,17 +220,17 @@
 .popup-view *::-webkit-scrollbar,
 .popup-container::-webkit-scrollbar,
 .popup-container *::-webkit-scrollbar {
-  display: none !important;
-  width: 0 !important;
-  height: 0 !important;
+  width: 6px !important;
+  height: 6px !important;
 }
 
 .popup-view > * {
   max-width: 100% !important;
 }
 
-.popup-view * {
-  outline: none;
+.popup-view *:focus-visible {
+  outline: 2px solid #00E5C0;
+  outline-offset: 2px;
 }
 
 .popup-container {
@@ -239,15 +239,17 @@
   width: 100%;
   overflow-x: hidden !important;
   overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: hsl(var(--border)) transparent;
   border: none !important;
   outline: none !important;
   box-sizing: border-box !important;
 }
 
-/* Hide scrollbar for popup-view overflow-y-auto elements */
+/* Scrollbar for popup-view overflow-y-auto elements */
 .popup-view *::-webkit-scrollbar {
-  width: 0 !important;
-  display: none !important;
+  width: 6px !important;
+  height: 6px !important;
 }
 
 .popup-view *::-webkit-scrollbar-track {
@@ -256,7 +258,7 @@
 
 .popup-view *::-webkit-scrollbar-thumb {
   background: hsl(var(--border));
-  border-radius: 2px;
+  border-radius: 6px;
 }
 
 .popup-view .octra-header {

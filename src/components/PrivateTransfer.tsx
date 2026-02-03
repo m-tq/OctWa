@@ -506,7 +506,7 @@ export function PrivateTransfer({
             !recipientInfo.has_public_key ||
             parseFloat(amount) > encryptedBalance.encrypted
           }
-          className="w-full h-9 text-xs bg-[#3A4DFF] hover:bg-[#6C63FF]/90"
+          className="w-full h-9 text-xs bg-[#00E5C0] hover:bg-[#00E5C0]/80"
         >
           {isSending ? (
             <div className="flex items-center gap-2">
@@ -624,7 +624,7 @@ export function PrivateTransfer({
           !recipientInfo.has_public_key ||
           parseFloat(amount) > encryptedBalance.encrypted
         }
-        className="w-full bg-[#3A4DFF] hover:bg-[#6C63FF]/90"
+        className="w-full bg-[#00E5C0] hover:bg-[#00E5C0]/80"
         size="lg"
       >
         {isSending ? (

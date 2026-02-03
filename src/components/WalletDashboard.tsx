@@ -2045,10 +2045,10 @@ export function WalletDashboard({
                     )}
                     {/* Mode Badge - Only show when inline modal is open, except for decrypt (has corner badge) */}
                     {!isPopupMode && !evmMode && (expandedSendModal || expandedPrivateModal === 'encrypt') && (
-                      <Badge 
+                        <Badge 
                         className={`text-xs px-2 py-0.5 pointer-events-none ${
                           operationMode === 'private' 
-                            ? 'bg-[#3A4DFF] text-white' 
+                              ? 'bg-[#00E5C0] text-white' 
                             : 'bg-foreground/10 text-foreground border border-foreground/20'
                         }`}
                       >
@@ -2138,7 +2138,7 @@ export function WalletDashboard({
                       ) : (
                         /* Expanded mode - show label + address only when wallet sidebar is hidden */
                         <>
-                          <p className={`text-sm font-medium whitespace-nowrap ${evmMode ? 'text-orange-600 dark:text-orange-400' : 'text-[#3A4DFF]'}`}>
+                          <p className={`text-sm font-medium whitespace-nowrap ${evmMode ? 'text-orange-600 dark:text-orange-400' : operationMode === 'private' ? 'text-[#00E5C0]' : 'text-[#3A4DFF]'}`}>
                             {evmMode && selectedEVMWallet 
                               ? `${getWalletDisplayName(selectedEVMWallet.octraAddress)} - ${selectedEVMWallet.evmAddress.slice(0, 10)}...${selectedEVMWallet.evmAddress.slice(-6)}`
                               : `${getWalletDisplayName(wallet.address)} - ${truncateAddress(wallet.address)}`
@@ -2949,24 +2949,24 @@ export function WalletDashboard({
               </div>
 
               {/* Balance Display */}
-              <div className=" p-2">
+              <div className="p-2">
                 <div className="text-center">
-                  <p className={`text-[10px] font-medium ${operationMode === 'private' ? 'text-[#3A4DFF]' : 'text-muted-foreground'}`}>
+                  <p className={`text-xs font-medium ${operationMode === 'private' ? 'text-[#00E5C0]' : 'text-muted-foreground'}`}>
                     Balance
                   </p>
                   {isLoadingBalance ? (
                     <div className="h-10 flex items-center justify-center">
-                      <div className="w-5 h-5 rounded-full border-2 border-transparent animate-spin" style={{ borderTopColor: '#3A4DFF' }} />
+                      <div className="w-5 h-5 rounded-full border-2 border-transparent animate-spin" style={{ borderTopColor: '#00E5C0' }} />
                     </div>
                   ) : (
                     <div className="flex items-center justify-center gap-2">
-                      <span className={`text-2xl font-bold ${operationMode === 'private' ? 'text-[#3A4DFF]' : ''}`}>
+                      <span className={`text-2xl font-bold ${operationMode === 'private' ? 'text-[#00E5C0]' : ''}`}>
                         {operationMode === 'private' 
                           ? (encryptedBalance?.encrypted || 0).toFixed(8)
                           : (balance || 0).toFixed(8)
                         }
                       </span>
-                      <Badge variant="outline" className={`text-lg font-bold px-2 py-0.5 border-0 ${operationMode === 'private' ? 'text-[#3A4DFF]' : ''}`}>
+                      <Badge variant="outline" className={`text-base font-bold px-2 py-0.5 border-0 ${operationMode === 'private' ? 'text-[#00E5C0]' : ''}`}>
                         OCT
                       </Badge>
                     </div>
@@ -2975,35 +2975,35 @@ export function WalletDashboard({
               </div>
 
               {/* Action Buttons */}
-              <div className={`grid ${operationMode === 'private' ? 'grid-cols-4 gap-2' : 'grid-cols-3 gap-2'}`}>
+              <div className={`grid ${operationMode === 'private' ? 'grid-cols-4 gap-3' : 'grid-cols-3 gap-2'}`}>
                 {operationMode === 'public' ? (
                   <>
                     {/* Encrypt Button */}
                     <Button
                       variant="outline"
-                      className="group flex flex-col items-center gap-0.5 h-auto py-2 px-3 border-0 rounded-none bg-transparent hover:bg-transparent hover:text-primary"
+                      className="group flex flex-col items-center gap-1.5 h-16 py-2.5 px-2 border-0 rounded-none bg-transparent hover:bg-transparent hover:text-primary"
                       onClick={() => setPopupScreen('encrypt')}
                     >
-                      <Lock className="h-3.5 w-3.5 transition-colors group-hover:drop-shadow-[0_0_6px_rgba(0,0,0,0.25)]" />
-                      <span className="text-[10px] font-medium transition-colors group-hover:drop-shadow-[0_0_6px_rgba(0,0,0,0.25)]">Encrypt</span>
+                      <Lock className="h-7 w-7 transition-colors group-hover:drop-shadow-[0_0_6px_rgba(0,0,0,0.25)]" />
+                      <span className="text-xs font-medium transition-colors group-hover:drop-shadow-[0_0_6px_rgba(0,0,0,0.25)]">Encrypt</span>
                     </Button>
                     {/* Send Button */}
                     <Button
                       variant="outline"
-                      className="group flex flex-col items-center gap-0.5 h-auto py-2 px-3 border-0 rounded-none bg-transparent hover:bg-transparent hover:text-primary"
+                      className="group flex flex-col items-center gap-1.5 h-16 py-2.5 px-2 border-0 rounded-none bg-transparent hover:bg-transparent hover:text-primary"
                       onClick={() => setPopupScreen('send')}
                     >
-                      <Send className="h-3.5 w-3.5 transition-colors group-hover:drop-shadow-[0_0_6px_rgba(0,0,0,0.25)]" />
-                      <span className="text-[10px] font-medium transition-colors group-hover:drop-shadow-[0_0_6px_rgba(0,0,0,0.25)]">Send</span>
+                      <Send className="h-7 w-7 transition-colors group-hover:drop-shadow-[0_0_6px_rgba(0,0,0,0.25)]" />
+                      <span className="text-xs font-medium transition-colors group-hover:drop-shadow-[0_0_6px_rgba(0,0,0,0.25)]">Send</span>
                     </Button>
                     {/* Receive Button */}
                     <Button
                       variant="outline"
-                      className="group flex flex-col items-center gap-0.5 h-auto py-2 px-3 border-0 rounded-none bg-transparent hover:bg-transparent hover:text-primary"
+                      className="group flex flex-col items-center gap-1.5 h-16 py-2.5 px-2 border-0 rounded-none bg-transparent hover:bg-transparent hover:text-primary"
                       onClick={() => setPopupScreen('receive')}
                     >
-                      <QrCode className="h-3.5 w-3.5 transition-colors group-hover:drop-shadow-[0_0_6px_rgba(0,0,0,0.25)]" />
-                      <span className="text-[10px] font-medium transition-colors group-hover:drop-shadow-[0_0_6px_rgba(0,0,0,0.25)]">Receive</span>
+                      <QrCode className="h-7 w-7 transition-colors group-hover:drop-shadow-[0_0_6px_rgba(0,0,0,0.25)]" />
+                      <span className="text-xs font-medium transition-colors group-hover:drop-shadow-[0_0_6px_rgba(0,0,0,0.25)]">Receive</span>
                     </Button>
                   </>
                 ) : (
@@ -3011,38 +3011,38 @@ export function WalletDashboard({
                     {/* Decrypt Button */}
                     <Button
                       variant="outline"
-                      className="group flex flex-col items-center gap-0.5 h-auto py-2 px-2 border-0 rounded-none bg-transparent text-[#3A4DFF] hover:bg-transparent hover:text-[#6C63FF]"
+                      className="group flex flex-col items-center gap-1.5 h-16 py-2.5 px-2 border-0 rounded-none bg-transparent text-[#00E5C0] hover:bg-transparent hover:text-[#00E5C0]"
                       onClick={() => setPopupScreen('decrypt')}
                     >
-                      <Unlock className="h-3.5 w-3.5 transition-colors group-hover:drop-shadow-[0_0_6px_rgba(58,77,255,0.5)]" />
-                      <span className="text-[10px] font-medium transition-colors group-hover:drop-shadow-[0_0_6px_rgba(58,77,255,0.5)]">Decrypt</span>
+                      <Unlock className="h-7 w-7 transition-colors group-hover:drop-shadow-[0_0_6px_rgba(0,229,192,0.5)]" />
+                      <span className="text-xs font-medium transition-colors group-hover:drop-shadow-[0_0_6px_rgba(0,229,192,0.5)]">Decrypt</span>
                     </Button>
                     {/* Send Button */}
                     <Button
                       variant="outline"
-                      className="group flex flex-col items-center gap-0.5 h-auto py-2 px-2 border-0 rounded-none bg-transparent text-[#3A4DFF] hover:bg-transparent hover:text-[#6C63FF]"
+                      className="group flex flex-col items-center gap-1.5 h-16 py-2.5 px-2 border-0 rounded-none bg-transparent text-[#00E5C0] hover:bg-transparent hover:text-[#00E5C0]"
                       onClick={() => setPopupScreen('send')}
                     >
-                      <Send className="h-3.5 w-3.5 transition-colors group-hover:drop-shadow-[0_0_6px_rgba(58,77,255,0.5)]" />
-                      <span className="text-[10px] font-medium transition-colors group-hover:drop-shadow-[0_0_6px_rgba(58,77,255,0.5)]">Send</span>
+                      <Send className="h-7 w-7 transition-colors group-hover:drop-shadow-[0_0_6px_rgba(0,229,192,0.5)]" />
+                      <span className="text-xs font-medium transition-colors group-hover:drop-shadow-[0_0_6px_rgba(0,229,192,0.5)]">Send</span>
                     </Button>
                     {/* Receive Button */}
                     <Button
                       variant="outline"
-                      className="group flex flex-col items-center gap-0.5 h-auto py-2 px-2 border-0 rounded-none bg-transparent text-[#3A4DFF] hover:bg-transparent hover:text-[#6C63FF]"
+                      className="group flex flex-col items-center gap-1.5 h-16 py-2.5 px-2 border-0 rounded-none bg-transparent text-[#00E5C0] hover:bg-transparent hover:text-[#00E5C0]"
                       onClick={() => setPopupScreen('receive')}
                     >
-                      <QrCode className="h-3.5 w-3.5 transition-colors group-hover:drop-shadow-[0_0_6px_rgba(58,77,255,0.5)]" />
-                      <span className="text-[10px] font-medium transition-colors group-hover:drop-shadow-[0_0_6px_rgba(58,77,255,0.5)]">Receive</span>
+                      <QrCode className="h-7 w-7 transition-colors group-hover:drop-shadow-[0_0_6px_rgba(0,229,192,0.5)]" />
+                      <span className="text-xs font-medium transition-colors group-hover:drop-shadow-[0_0_6px_rgba(0,229,192,0.5)]">Receive</span>
                     </Button>
                     {/* Claim Button */}
                     <Button
                       variant="outline"
-                      className="group flex flex-col items-center gap-0.5 h-auto py-2 px-2 border-0 rounded-none bg-transparent text-[#3A4DFF] hover:bg-transparent hover:text-[#6C63FF]"
+                      className="group flex flex-col items-center gap-1.5 h-16 py-2.5 px-2 border-0 rounded-none bg-transparent text-[#00E5C0] hover:bg-transparent hover:text-[#00E5C0]"
                       onClick={() => setPopupScreen('claim')}
                     >
-                      <Gift className="h-3.5 w-3.5 transition-colors group-hover:drop-shadow-[0_0_6px_rgba(58,77,255,0.5)]" />
-                      <span className="text-[10px] font-medium transition-colors group-hover:drop-shadow-[0_0_6px_rgba(58,77,255,0.5)]">Claim</span>
+                      <Gift className="h-7 w-7 transition-colors group-hover:drop-shadow-[0_0_6px_rgba(0,229,192,0.5)]" />
+                      <span className="text-xs font-medium transition-colors group-hover:drop-shadow-[0_0_6px_rgba(0,229,192,0.5)]">Claim</span>
                     </Button>
                   </>
                 )}
@@ -3050,7 +3050,7 @@ export function WalletDashboard({
 
               {/* Recent Activity Header */}
               <div className="flex items-center justify-between pt-1 pb-2">
-                <h3 className={`text-xs font-semibold ${operationMode === 'private' ? 'text-[#3A4DFF]' : ''}`}>
+                <h3 className={`text-sm font-semibold ${operationMode === 'private' ? 'text-[#00E5C0]' : ''}`}>
                   Recent Activity
                 </h3>
                 <div className="flex items-center gap-1.5">
@@ -3072,7 +3072,7 @@ export function WalletDashboard({
               <ScrollAreaContent className="divide-y divide-dashed divide-border pb-6">
                 {isLoadingTransactions ? (
                   <div className="flex items-center justify-center py-4">
-                    <div className="w-4 h-4 rounded-full border-2 border-transparent animate-spin" style={{ borderTopColor: '#3A4DFF' }} />
+                    <div className="w-4 h-4 rounded-full border-2 border-transparent animate-spin" style={{ borderTopColor: '#00E5C0' }} />
                   </div>
                 ) : (() => {
                   // Filter transactions based on operationMode
@@ -3291,11 +3291,11 @@ export function WalletDashboard({
                 <div className="text-center mb-6">
                   {isLoadingBalance || isRefreshingData ? (
                     <div className="flex items-center justify-center gap-2">
-                      <div className="w-6 h-6 rounded-full border-2 border-transparent animate-spin" style={{ borderTopColor: '#3A4DFF' }} />
+                      <div className="w-6 h-6 rounded-full border-2 border-transparent animate-spin" style={{ borderTopColor: '#00E5C0' }} />
                     </div>
                   ) : (
                     <div className="flex items-center justify-center gap-4">
-                      <div className={`text-4xl font-bold tracking-tight ${operationMode === 'private' ? 'text-[#3A4DFF]' : ''}`}>
+                      <div className={`text-4xl font-bold tracking-tight ${operationMode === 'private' ? 'text-[#00E5C0]' : ''}`}>
                         {operationMode === 'private' 
                           ? `${(encryptedBalance?.encrypted || 0).toFixed(8)} OCT`
                           : `${(balance || 0).toFixed(8)} OCT`
@@ -3375,11 +3375,11 @@ export function WalletDashboard({
                     {/* Send (Private Transfer) */}
                     <Button
                       variant="outline"
-                      className="group flex flex-col items-center gap-3 h-auto py-6 border-0 rounded-none bg-transparent shadow-none text-[#3A4DFF] hover:bg-transparent transition-colors"
+                      className="group flex flex-col items-center gap-3 h-auto py-6 border-0 rounded-none bg-transparent shadow-none text-[#00E5C0] hover:bg-transparent transition-colors"
                       onClick={() => openSendModal('standard')}
                     >
-                      <Send className="h-8 w-8 transition-colors group-hover:drop-shadow-[0_0_8px_rgba(58,77,255,0.5)]" />
-                      <span className="text-sm font-medium transition-colors group-hover:drop-shadow-[0_0_8px_rgba(58,77,255,0.5)]">Send</span>
+                      <Send className="h-8 w-8 transition-colors group-hover:drop-shadow-[0_0_8px_rgba(0,229,192,0.5)]" />
+                      <span className="text-sm font-medium transition-colors group-hover:drop-shadow-[0_0_8px_rgba(0,229,192,0.5)]">Send</span>
                       <span className="text-[10px] text-muted-foreground">Private transfer</span>
                     </Button>
                     
@@ -3389,22 +3389,22 @@ export function WalletDashboard({
                       className="group flex flex-col items-center gap-3 h-auto py-6 border-0 rounded-none bg-transparent shadow-none opacity-50 cursor-not-allowed"
                       disabled
                     >
-                      <Layers className="h-8 w-8 transition-colors group-hover:drop-shadow-[0_0_8px_rgba(58,77,255,0.5)]" />
-                      <span className="text-sm font-medium transition-colors group-hover:drop-shadow-[0_0_8px_rgba(58,77,255,0.5)]">Multi Send</span>
+                      <Layers className="h-8 w-8 transition-colors group-hover:drop-shadow-[0_0_8px_rgba(0,229,192,0.5)]" />
+                      <span className="text-sm font-medium transition-colors group-hover:drop-shadow-[0_0_8px_rgba(0,229,192,0.5)]">Multi Send</span>
                       <span className="text-[10px] text-muted-foreground">Coming soon</span>
                     </Button>
                     
                     {/* Claim */}
                     <Button
                       variant="outline"
-                      className="group flex flex-col items-center gap-3 h-auto py-6 border-0 rounded-none bg-transparent shadow-none text-[#3A4DFF] hover:bg-transparent transition-colors relative"
+                      className="group flex flex-col items-center gap-3 h-auto py-6 border-0 rounded-none bg-transparent shadow-none text-[#00E5C0] hover:bg-transparent transition-colors relative"
                       onClick={openClaimScreen}
                     >
-                      <Gift className="h-8 w-8 transition-colors group-hover:drop-shadow-[0_0_12px_rgba(58,77,255,0.7)]" />
-                      <span className="text-sm font-medium transition-colors group-hover:drop-shadow-[0_0_12px_rgba(58,77,255,0.7)]">Claim</span>
+                      <Gift className="h-8 w-8 transition-colors group-hover:drop-shadow-[0_0_12px_rgba(0,229,192,0.7)]" />
+                      <span className="text-sm font-medium transition-colors group-hover:drop-shadow-[0_0_12px_rgba(0,229,192,0.7)]">Claim</span>
                       <span className="text-[10px] text-muted-foreground">Pending transfers</span>
                       {pendingTransfersCount > 0 && (
-                        <Badge className="absolute -top-2 -right-2 bg-[#3A4DFF] text-white text-[10px] h-5 min-w-5 flex items-center justify-center">
+                        <Badge className="absolute -top-2 -right-2 bg-[#00E5C0] text-white text-[10px] h-5 min-w-5 flex items-center justify-center">
                           {pendingTransfersCount}
                         </Badge>
                       )}
@@ -3457,10 +3457,10 @@ export function WalletDashboard({
                     <ChevronDown className="h-5 w-5 rotate-90" />
                   </Button>
                   <div className="flex items-center gap-2">
-                    <Gift className="h-5 w-5 text-[#3A4DFF]" />
-                    <h2 className="text-lg font-semibold text-[#3A4DFF]">Claim Transfers</h2>
+                  <Gift className="h-5 w-5 text-[#00E5C0]" />
+                  <h2 className="text-lg font-semibold text-[#00E5C0]">Claim Transfers</h2>
                     {pendingTransfersCount > 0 && (
-                      <Badge variant="secondary" className="ml-1 bg-[#3A4DFF]/10 text-[#3A4DFF]">
+                    <Badge variant="secondary" className="ml-1 bg-[#00E5C0]/10 text-[#00E5C0]">
                         {pendingTransfersCount}
                       </Badge>
                     )}
@@ -3916,7 +3916,7 @@ export function WalletDashboard({
               </Button>
               <div className="flex items-center gap-2">
                 {operationMode === 'private' ? (
-                  <Send className="h-5 w-5 text-[#3A4DFF]" />
+                  <Send className="h-5 w-5 text-[#00E5C0]" />
                 ) : (
                   <>
                     {expandedSendModal === 'standard' && <Send className="h-5 w-5" />}
@@ -3924,7 +3924,7 @@ export function WalletDashboard({
                     {expandedSendModal === 'bulk' && <FileText className="h-5 w-5" />}
                   </>
                 )}
-                <h2 className={`text-lg font-semibold ${operationMode === 'private' ? 'text-[#3A4DFF]' : ''}`}>
+                <h2 className={`text-lg font-semibold ${operationMode === 'private' ? 'text-[#00E5C0]' : ''}`}>
                   {operationMode === 'private' ? 'Private Transfer' : (
                     <>
                       {expandedSendModal === 'standard' && 'Single Send'}

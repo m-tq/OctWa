@@ -235,7 +235,7 @@ export function ClaimTransfers({ wallet, onTransactionSuccess, isPopupMode = fal
             <Button
               onClick={handleClaimAll}
               disabled={claimingAll || claimingId !== null}
-              className={`w-full bg-[#3A4DFF] hover:bg-[#6C63FF]/90 ${isPopupMode ? 'h-8 text-xs' : ''}`}
+              className={`w-full bg-[#00E5C0] hover:bg-[#00E5C0]/80 ${isPopupMode ? 'h-8 text-xs' : ''}`}
             >
               {claimingAll ? (
                 <div className="flex items-center gap-1.5">
@@ -322,7 +322,7 @@ export function ClaimTransfers({ wallet, onTransactionSuccess, isPopupMode = fal
                       onClick={() => handleClaim(transfer.id)}
                       disabled={claimingId === transfer.id || claimingAll}
                       size="sm"
-                      className={`flex items-center gap-1.5 bg-[#3A4DFF] hover:bg-[#6C63FF]/90 ${isPopupMode ? 'h-7 text-xs px-2' : ''}`}
+                      className={`flex items-center gap-1.5 bg-[#00E5C0] hover:bg-[#00E5C0]/80 ${isPopupMode ? 'h-7 text-xs px-2' : ''}`}
                     >
                       {claimingId === transfer.id || claimingAll ? (
                         <div className="flex items-center gap-1">
