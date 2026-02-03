@@ -27,7 +27,7 @@ export function AnimatedIcon({ type, size = 'md' }: AnimatedIconProps) {
     lg: 'mb-4'
   };
 
-  const isPrivate = type === 'decrypt' || type === 'send-private' || type === 'encrypt';
+  const isPrivate = type === 'send-private' || type === 'encrypt';
 
   return (
     <div className={`flex justify-center ${marginClasses[size]}`}>
@@ -47,7 +47,7 @@ export function AnimatedIcon({ type, size = 'md' }: AnimatedIconProps) {
         />
 
         {/* Icon */}
-        <div className={`relative z-10 ${isPrivate ? 'text-[#00E5C0]' : 'text-foreground'}`}>
+        <div className={`relative z-10 ${isPrivate ? 'text-[#00E5C0]' : 'text-muted-foreground'}`}>
           {type === 'encrypt' && <Lock className={`${iconSizes[size]} animate-pulse`} style={{ animationDuration: '2s' }} />}
           {type === 'decrypt' && <Unlock className={`${iconSizes[size]} animate-pulse`} style={{ animationDuration: '2s' }} />}
           {(type === 'send-public' || type === 'send-private') && (

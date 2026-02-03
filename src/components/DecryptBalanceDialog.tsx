@@ -94,16 +94,18 @@ export function DecryptBalanceDialog({
     <div className={isPopupMode ? "space-y-3" : "space-y-4 pt-8"}>
       {/* Animated Icon - in inline mode */}
       {isInline && (
-        <AnimatedIcon type="decrypt" size="sm" />
+        <div className="text-muted-foreground">
+          <AnimatedIcon type="decrypt" size="sm" />
+        </div>
       )}
 
       {/* Description text - no border, aligned with icon */}
       {isPopupMode && isInline ? (
-        <p className="text-xs text-center text-[#00E5C0]">
+        <p className="text-xs text-center text-muted-foreground">
           Convert private OCT back to public OCT.
         </p>
       ) : isInline ? (
-        <p className="text-sm text-center text-[#00E5C0]">
+        <p className="text-sm text-center text-muted-foreground">
           Convert private OCT back to public OCT.
         </p>
       ) : (
@@ -130,7 +132,7 @@ export function DecryptBalanceDialog({
             />
           </div>
           <div className={`flex items-center gap-2 ${isPopupMode ? 'text-xs' : 'text-sm'}`}>
-            <span className="text-[#00E5C0]/70">
+            <span className="text-muted-foreground">
               Balance: <span className="font-mono">{encryptedBalance.toFixed(4)}</span>
             </span>
             <button
@@ -169,7 +171,7 @@ export function DecryptBalanceDialog({
         <Button
           onClick={handleDecrypt}
           disabled={isDecrypting || !amount || parseFloat(amount) <= 0 || parseFloat(amount) > encryptedBalance}
-          className={`flex-1 bg-[#00E5C0] hover:bg-[#6C63FF]/90 ${isPopupMode ? 'h-10 text-sm' : 'h-12 text-base'}`}
+          className={`flex-1 bg-muted text-muted-foreground hover:bg-muted/80 ${isPopupMode ? 'h-10 text-sm' : 'h-12 text-base'}`}
         >
           {isDecrypting ? (
             <div className="flex items-center gap-2">

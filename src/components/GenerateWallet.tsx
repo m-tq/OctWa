@@ -321,7 +321,12 @@ export function GenerateWallet({ onWalletGenerated, isCompact = false, hideBorde
   return (
     <>
       <Dialog open={showVerifyModal} onOpenChange={setShowVerifyModal}>
-        <DialogContent className="sm:max-w-md z-[10001]" overlayClassName="z-[10000]">
+        <DialogContent
+          className="sm:max-w-md z-[10001]"
+          overlayClassName="z-[10000]"
+          preventCloseOnOutsideClick
+          onEscapeKeyDown={(event) => event.preventDefault()}
+        >
           <DialogHeader className="pr-8">
             <DialogTitle className="flex items-center gap-2">
               <ShieldCheck className="h-5 w-5 text-primary" />

@@ -2148,7 +2148,7 @@ export function WalletDashboard({
                             variant="ghost"
                             size="sm"
                             onClick={() => copyToClipboard(evmMode && selectedEVMWallet ? selectedEVMWallet.evmAddress : wallet.address, 'headerAddress')}
-                            className="h-6 w-6 p-0 flex-shrink-0"
+                            className="h-6 w-6 p-0 flex-shrink-0 hover:bg-transparent"
                           >
                             {copiedField === 'headerAddress' ? <Check className="h-3 w-3 text-green-500" /> : <Copy className="h-3 w-3" />}
                           </Button>
@@ -2156,7 +2156,7 @@ export function WalletDashboard({
                             variant="ghost"
                             size="sm"
                             onClick={() => setShowReceiveDialog(true)}
-                            className="h-6 w-6 p-0 flex-shrink-0"
+                            className="h-6 w-6 p-0 flex-shrink-0 hover:bg-transparent"
                             title="Show QR Code"
                           >
                             <QrCode className="h-3 w-3" />
@@ -2301,7 +2301,7 @@ export function WalletDashboard({
                   {/* EVM Mode Header Controls */}
                   {evmMode ? (
                     <>
-                      <ThemeToggle isPopupMode={false} className="h-9 w-9" />
+                      <ThemeToggle isPopupMode={false} className="h-9 w-9 hover:bg-transparent" />
                       <div className="flex items-center gap-2">
                         <select
                           value={evmNetwork.id}
@@ -2318,10 +2318,10 @@ export function WalletDashboard({
                           variant="ghost"
                           size="sm"
                           onClick={() => setShowEvmRpcManager(true)}
-                          className="h-9 text-xs text-orange-600 dark:text-orange-400 hover:bg-orange-500/10"
+                          className="group h-9 text-xs text-orange-600 dark:text-orange-400 hover:bg-transparent"
                         >
-                          <Wifi className="h-3.5 w-3.5 mr-1.5" />
-                          Network
+                          <Wifi className="h-3.5 w-3.5 mr-1.5 transition group-hover:drop-shadow-[0_0_6px_currentColor]" />
+                          <span className="transition group-hover:drop-shadow-[0_0_6px_currentColor]">Network</span>
                         </Button>
                       </div>
                       {/* Dashed separator */}
@@ -2331,15 +2331,16 @@ export function WalletDashboard({
                         variant="ghost"
                         size="sm"
                         onClick={exitEvmMode}
-                        className="h-9 px-4 text-red-500 hover:text-red-600 hover:bg-red-500/10 font-medium"
+                        className="group h-9 px-4 text-red-500 hover:text-red-600 hover:bg-transparent font-medium"
                       >
-                        <X className="h-4 w-4 mr-2" />
-                        Exit EVM Mode
+                        <X className="h-4 w-4 mr-2 transition group-hover:drop-shadow-[0_0_6px_currentColor]" />
+                        <span className="transition group-hover:drop-shadow-[0_0_6px_currentColor]">Exit EVM Mode</span>
                       </Button>
                     </>
                   ) : (
                     <>
-                      <ThemeToggle isPopupMode={false} />
+                      <ThemeToggle isPopupMode={false} className="hover:bg-transparent" />
+                      <div className="h-5 border-l border-dashed border-border mx-1" />
                       {/* Desktop Menu Items - Hidden in EVM mode */}
                       <div className="hidden lg:flex items-center space-x-2">
                         {/* Buttons with caption: RPC, dApps, Address Book */}
@@ -2347,57 +2348,57 @@ export function WalletDashboard({
                           variant="ghost"
                           size="sm"
                           onClick={() => setShowRPCManager(true)}
-                          className="flex items-center gap-2"
+                          className="group flex items-center gap-2 hover:bg-transparent"
                         >
-                          <Wifi className="h-4 w-4" />
-                          RPC
+                          <Wifi className="h-4 w-4 transition group-hover:drop-shadow-[0_0_6px_currentColor]" />
+                          <span className="transition group-hover:drop-shadow-[0_0_6px_currentColor]">RPC</span>
                         </Button>
                         <Button
                           variant="ghost"
                           size="sm"
                           onClick={() => setShowDAppsManager(true)}
-                          className="flex items-center gap-2"
+                          className="group flex items-center gap-2 hover:bg-transparent"
                         >
-                          <Globe className="h-4 w-4" />
-                          dApps
+                          <Globe className="h-4 w-4 transition group-hover:drop-shadow-[0_0_6px_currentColor]" />
+                          <span className="transition group-hover:drop-shadow-[0_0_6px_currentColor]">dApps</span>
                         </Button>
                         <Button
                           variant="ghost"
                           size="sm"
                           onClick={() => setShowAddressBook(true)}
-                          className="flex items-center gap-2"
+                          className="group flex items-center gap-2 hover:bg-transparent"
                         >
-                          <BookUser className="h-4 w-4" />
-                          Address Book
+                          <BookUser className="h-4 w-4 transition group-hover:drop-shadow-[0_0_6px_currentColor]" />
+                          <span className="transition group-hover:drop-shadow-[0_0_6px_currentColor]">Address Book</span>
                         </Button>
                         
                         {/* Text buttons: Export Private Keys, Lock Wallet, Reset All */}
                         <Button 
                           variant="ghost" 
                           size="sm"
-                          className="text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 flex items-center gap-2"
+                          className="group text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 flex items-center gap-2 hover:bg-transparent"
                           onClick={() => setShowExportKeys(true)}
                         >
-                          <Key className="h-4 w-4" />
-                          Export Keys
+                          <Key className="h-4 w-4 transition group-hover:drop-shadow-[0_0_6px_currentColor]" />
+                          <span className="transition group-hover:drop-shadow-[0_0_6px_currentColor]">Export Keys</span>
                         </Button>
                         <Button
                           variant="ghost"
                           size="sm"
-                          className="text-orange-600 hover:text-orange-700 dark:text-orange-400 dark:hover:text-orange-300 flex items-center gap-2"
+                          className="group text-orange-600 hover:text-orange-700 dark:text-orange-400 dark:hover:text-orange-300 flex items-center gap-2 hover:bg-transparent"
                           onClick={() => setShowLockConfirm(true)}
                         >
-                          <Lock className="h-4 w-4" />
-                          Lock
+                          <Lock className="h-4 w-4 transition group-hover:drop-shadow-[0_0_6px_currentColor]" />
+                          <span className="transition group-hover:drop-shadow-[0_0_6px_currentColor]">Lock</span>
                         </Button>
                         <Button
                           variant="ghost"
                           size="sm"
                           onClick={() => setShowResetConfirm(true)}
-                          className="text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 flex items-center gap-2"
+                          className="group text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 flex items-center gap-2 hover:bg-transparent"
                         >
-                          <RotateCcw className="h-4 w-4" />
-                          Reset
+                          <RotateCcw className="h-4 w-4 transition group-hover:drop-shadow-[0_0_6px_currentColor]" />
+                          <span className="transition group-hover:drop-shadow-[0_0_6px_currentColor]">Reset</span>
                         </Button>
                       </div>
 
@@ -4056,9 +4057,9 @@ export function WalletDashboard({
                 <ChevronDown className="h-5 w-5 rotate-90" />
               </Button>
               <div className="flex items-center gap-2">
-                {expandedPrivateModal === 'encrypt' && <Lock className="h-5 w-5 text-[#3A4DFF]" />}
-                {expandedPrivateModal === 'decrypt' && <Unlock className="h-5 w-5 text-[#3A4DFF]" />}
-                <h2 className="text-lg font-semibold text-[#3A4DFF]">
+                {expandedPrivateModal === 'encrypt' && <Lock className="h-5 w-5 text-[#00E5C0]" />}
+                {expandedPrivateModal === 'decrypt' && <Unlock className="h-5 w-5 text-muted-foreground" />}
+                <h2 className={`text-lg font-semibold ${expandedPrivateModal === 'encrypt' ? 'text-[#00E5C0]' : 'text-muted-foreground'}`}>
                   {expandedPrivateModal === 'encrypt' && 'Encrypt OCT'}
                   {expandedPrivateModal === 'decrypt' && 'Decrypt OCT'}
                 </h2>

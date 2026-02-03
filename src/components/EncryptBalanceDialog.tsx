@@ -101,11 +101,11 @@ export function EncryptBalanceDialog({
 
       {/* Description text - no border, aligned with icon */}
       {isPopupMode && isInline ? (
-        <p className="text-xs text-center text-muted-foreground">
+        <p className="text-xs text-center text-[#00E5C0]">
           Convert public OCT to private OCT.
         </p>
       ) : isInline ? (
-        <p className="text-sm text-center text-muted-foreground">
+        <p className="text-sm text-center text-[#00E5C0]">
           Convert public OCT to private OCT.
         </p>
       ) : (
@@ -167,7 +167,7 @@ export function EncryptBalanceDialog({
                 <Button
                   onClick={handleEncrypt}
                   disabled={isEncrypting || !amount || parseFloat(amount) <= 0 || parseFloat(amount) > maxEncryptable || maxEncryptable <= 0}
-                  className={`w-full ${isPopupMode ? 'h-10 text-sm' : 'h-12 text-base'}`}
+                  className={`w-full bg-[#00E5C0] hover:bg-[#00E5C0]/90 ${isPopupMode ? 'h-10 text-sm' : 'h-12 text-base'}`}
                 >
                   {isEncrypting ? (
                     <div className="flex items-center gap-2">

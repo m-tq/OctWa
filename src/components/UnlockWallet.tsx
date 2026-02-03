@@ -246,11 +246,24 @@ export function UnlockWallet({
               />
             </div>
           ) : (
-            <img
-              src="/icons/octwa128x128.png"
-              alt="OctWa Logo"
-              className={`${isPopupMode ? 'h-12 w-12' : 'h-24 w-24'} object-contain`}
-            />
+            <svg
+              viewBox="0 0 50 50"
+              fill="none"
+              xmlns="http://www.w3.org/2000/svg"
+              className={isPopupMode ? 'h-12 w-12' : 'h-24 w-24'}
+              role="img"
+              aria-label="OctWa Logo"
+            >
+              <circle
+                cx="25"
+                cy="25"
+                r="21"
+                stroke="#3A4DFF"
+                strokeWidth="8"
+                fill="none"
+              />
+              <circle cx="25" cy="25" r="9" fill="#3A4DFF" />
+            </svg>
           )}
         </div>
         <div className="text-center">

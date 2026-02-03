@@ -1342,7 +1342,7 @@ export function FileMultiSend({ wallet, balance, onBalanceUpdate, onNonceUpdate,
         <div className="space-y-1.5">
           <Label className="text-xs text-muted-foreground">Execution Mode</Label>
           <Select value={executionMode} onValueChange={(value: 'parallel' | 'sequential') => setExecutionMode(value)} disabled={isSending}>
-            <SelectTrigger className="text-sm h-9">
+            <SelectTrigger className="text-sm h-9 ring-inset">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
