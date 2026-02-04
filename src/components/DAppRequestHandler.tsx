@@ -588,6 +588,14 @@ export function DAppRequestHandler({ wallets }: DAppRequestHandlerProps) {
         console.log('[DAppRequestHandler]   amount:', txParams.amount);
         console.log('[DAppRequestHandler]   message:', txParams.message ? '(present)' : '(empty)');
         
+        // Validate transaction parameters
+        if (!txParams.to || typeof txParams.to !== 'string') {
+          throw new Error('Invalid recipient address');
+        }
+        if (typeof txParams.amount !== 'number' || !Number.isFinite(txParams.amount) || txParams.amount <= 0) {
+          throw new Error('Invalid transaction amount');
+        }
+        
         // Validate wallet has private key
         if (!selectedWallet.privateKey) {
           throw new Error('Wallet private key not available. Please unlock your wallet.');
@@ -703,6 +711,17 @@ export function DAppRequestHandler({ wallets }: DAppRequestHandlerProps) {
         console.log('[DAppRequestHandler]   value (wei):', evmTxParams.value || '(not provided)');
         console.log('[DAppRequestHandler]   data:', evmTxParams.data ? '(present)' : '(empty)');
         
+        // Validate EVM address format
+        if (!evmTxParams.to || !/^0x[a-fA-F0-9]{40}$/.test(evmTxParams.to)) {
+          throw new Error('Invalid EVM recipient address');
+        }
+        
+        // Validate amount
+        const amountNum = parseFloat(amountEth);
+        if (!Number.isFinite(amountNum) || amountNum < 0) {
+          throw new Error('Invalid transaction amount');
+        }
+        
         // Validate wallet has private key
         if (!selectedWallet.privateKey) {
           throw new Error('Wallet private key not available. Please unlock your wallet.');
@@ -789,6 +808,24 @@ export function DAppRequestHandler({ wallets }: DAppRequestHandlerProps) {
         console.log('[DAppRequestHandler]   amount (raw):', erc20TxParams.amount);
         console.log('[DAppRequestHandler]   amount (human):', amountHuman, erc20TxParams.symbol);
         console.log('[DAppRequestHandler]   decimals:', erc20TxParams.decimals);
+        
+        // Validate EVM addresses format
+        if (!erc20TxParams.tokenContract || !/^0x[a-fA-F0-9]{40}$/.test(erc20TxParams.tokenContract)) {
+          throw new Error('Invalid token contract address');
+        }
+        if (!erc20TxParams.to || !/^0x[a-fA-F0-9]{40}$/.test(erc20TxParams.to)) {
+          throw new Error('Invalid recipient address');
+        }
+        
+        // Validate amount
+        if (!erc20TxParams.amount || !Number.isFinite(Number(erc20TxParams.amount)) || Number(erc20TxParams.amount) <= 0) {
+          throw new Error('Invalid token amount');
+        }
+        
+        // Validate decimals
+        if (typeof erc20TxParams.decimals !== 'number' || !Number.isInteger(erc20TxParams.decimals) || erc20TxParams.decimals < 0 || erc20TxParams.decimals > 18) {
+          throw new Error('Invalid token decimals');
+        }
         
         // Validate wallet has private key
         if (!selectedWallet.privateKey) {
