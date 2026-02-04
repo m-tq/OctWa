@@ -78,12 +78,24 @@
   }
 
   const getTargetOrigin = () => {
-    return window.location.origin === 'null' ? '*' : window.location.origin;
+    // Security: Only use '*' for null origins (file:// protocol), otherwise use actual origin
+    const origin = window.location.origin;
+    if (origin === 'null') {
+      // For file:// protocol, we must use '*' but log a warning
+      console.warn('[Content] Using wildcard origin for file:// protocol');
+      return '*';
+    }
+    return origin;
   };
 
   const isSameOrigin = (event) => {
     const origin = window.location.origin;
-    return origin === 'null' || event.origin === origin;
+    // For null origins (file://), accept any origin but log warning
+    if (origin === 'null') {
+      console.warn('[Content] Accepting message in null origin context');
+      return true;
+    }
+    return event.origin === origin;
   };
 
   // Cleanup

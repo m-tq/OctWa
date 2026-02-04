@@ -22,11 +22,13 @@ export interface CapabilityValidationResult {
  * - Origin binding enforcement
  * - Expiry checking
  * - Method scope enforcement
+ * - Maximum capability limit to prevent DoS
  */
 export class CapabilityManager {
   private capabilities: Map<string, Capability> = new Map();
   private nonceMap: Map<string, number> = new Map();
   private currentOrigin: string;
+  private static readonly MAX_CAPABILITIES = 100; // Prevent DoS via capability flooding
 
   constructor(origin?: string) {
     this.currentOrigin = origin || (typeof window !== 'undefined' ? window.location.origin : '');
@@ -38,6 +40,17 @@ export class CapabilityManager {
    * @throws Error if capability signature is invalid
    */
   async addCapability(cap: Capability): Promise<CapabilityValidationResult> {
+    // Check capacity limit
+    if (this.capabilities.size >= CapabilityManager.MAX_CAPABILITIES) {
+      // Clean up expired first
+      this.cleanupExpired();
+      // If still at limit, reject
+      if (this.capabilities.size >= CapabilityManager.MAX_CAPABILITIES) {
+        console.warn('[CapabilityManager] Maximum capability limit reached');
+        return { valid: false, error: 'Maximum capability limit reached' };
+      }
+    }
+
     // Verify signature before accepting
     const validation = await validateCapability(cap, this.currentOrigin);
     
@@ -61,6 +74,20 @@ export class CapabilityManager {
    * Use with caution - only for capabilities directly from the wallet provider
    */
   addCapabilityTrusted(cap: Capability): void {
+    // Check capacity limit even for trusted sources
+    if (this.capabilities.size >= CapabilityManager.MAX_CAPABILITIES) {
+      this.cleanupExpired();
+      if (this.capabilities.size >= CapabilityManager.MAX_CAPABILITIES) {
+        console.warn('[CapabilityManager] Maximum capability limit reached, removing oldest');
+        // Remove oldest capability to make room
+        const oldestId = this.capabilities.keys().next().value;
+        if (oldestId) {
+          this.capabilities.delete(oldestId);
+          this.nonceMap.delete(oldestId);
+        }
+      }
+    }
+    
     this.capabilities.set(cap.id, cap);
     if (!this.nonceMap.has(cap.id)) {
       this.nonceMap.set(cap.id, 0);

@@ -94,6 +94,7 @@ export class OctraSDK {
     try {
       await this.provider?.disconnect();
     } catch { /* ignore */ }
+    this.cleanupProviderListeners();
     this.sessionManager.clearConnection();
     this.capabilityManager.clearAll();
     this.emit('disconnect');
@@ -214,5 +215,13 @@ export class OctraSDK {
     };
     this.provider.on('disconnect', onDisconnect);
     this.providerListeners.set('disconnect', onDisconnect);
+  }
+
+  private cleanupProviderListeners(): void {
+    if (!this.provider) return;
+    for (const [event, callback] of this.providerListeners.entries()) {
+      this.provider.off(event, callback);
+    }
+    this.providerListeners.clear();
   }
 }

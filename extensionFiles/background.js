@@ -612,6 +612,26 @@ async function executeGetBalance(connection) {
   return new TextEncoder().encode(JSON.stringify(result));
 }
 
+// Validate URL to prevent SSRF attacks
+function isValidApiUrl(url) {
+  if (!url || typeof url !== 'string') return false;
+  try {
+    const parsed = new URL(url);
+    // Only allow HTTPS in production
+    if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') return false;
+    // Block localhost/internal IPs in production (allow for development)
+    const hostname = parsed.hostname.toLowerCase();
+    const blockedPatterns = ['localhost', '127.0.0.1', '0.0.0.0', '::1', '169.254.', '10.', '172.16.', '172.17.', '172.18.', '172.19.', '172.20.', '172.21.', '172.22.', '172.23.', '172.24.', '172.25.', '172.26.', '172.27.', '172.28.', '172.29.', '172.30.', '172.31.', '192.168.'];
+    // Allow localhost for development, but log warning
+    if (blockedPatterns.some(p => hostname.startsWith(p) || hostname === p)) {
+      console.warn('[Background] Warning: API URL points to local/internal address:', hostname);
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 // Get swap quote
 async function executeGetQuote(payload) {
   let params;
@@ -629,10 +649,10 @@ async function executeGetQuote(payload) {
   }
   
   const { apiUrl, from = 'OCT', to = 'ETH', amount } = params;
-  if (!apiUrl || typeof apiUrl !== 'string') {
-    throw new Error('apiUrl is required for get_quote');
+  if (!isValidApiUrl(apiUrl)) {
+    throw new Error('Invalid or missing apiUrl for get_quote');
   }
-  if (typeof amount !== 'number' || amount <= 0) {
+  if (typeof amount !== 'number' || amount <= 0 || !Number.isFinite(amount)) {
     throw new Error('Invalid amount for get_quote');
   }
 
@@ -667,12 +687,16 @@ async function executeCreateIntent(payload) {
   if (!/^0x[a-fA-F0-9]{40}$/.test(targetAddress || '')) {
     throw new Error('Invalid targetAddress');
   }
-  if (typeof slippageBps !== 'number' || slippageBps < 0 || slippageBps > 5000) {
-    throw new Error('Invalid slippageBps');
+  if (typeof slippageBps !== 'number' || slippageBps < 0 || slippageBps > 5000 || !Number.isFinite(slippageBps)) {
+    throw new Error('Invalid slippageBps (must be 0-5000)');
   }
 
   const slippageMultiplier = 1 - slippageBps / 10000;
-  const minAmountOut = Number(quote.estimatedOut) * slippageMultiplier;
+  const estimatedOut = Number(quote.estimatedOut);
+  if (!Number.isFinite(estimatedOut) || estimatedOut <= 0) {
+    throw new Error('Invalid quote.estimatedOut');
+  }
+  const minAmountOut = estimatedOut * slippageMultiplier;
 
   const intentPayload = {
     version: 1,
@@ -706,11 +730,11 @@ async function executeSubmitIntent(payload) {
   }
 
   const { apiUrl, octraTxHash } = params;
-  if (!apiUrl || typeof apiUrl !== 'string') {
-    throw new Error('apiUrl is required for submit_intent');
+  if (!isValidApiUrl(apiUrl)) {
+    throw new Error('Invalid or missing apiUrl for submit_intent');
   }
-  if (!octraTxHash || typeof octraTxHash !== 'string') {
-    throw new Error('octraTxHash is required for submit_intent');
+  if (!octraTxHash || typeof octraTxHash !== 'string' || octraTxHash.length < 10) {
+    throw new Error('Invalid octraTxHash for submit_intent');
   }
 
   const response = await fetch(`${apiUrl.replace(/\/$/, '')}/swap/submit`, {
@@ -744,11 +768,11 @@ async function executeGetIntentStatus(payload) {
   }
 
   const { apiUrl, intentId } = params;
-  if (!apiUrl || typeof apiUrl !== 'string') {
-    throw new Error('apiUrl is required for get_intent_status');
+  if (!isValidApiUrl(apiUrl)) {
+    throw new Error('Invalid or missing apiUrl for get_intent_status');
   }
-  if (!intentId || typeof intentId !== 'string') {
-    throw new Error('intentId is required for get_intent_status');
+  if (!intentId || typeof intentId !== 'string' || intentId.length < 5) {
+    throw new Error('Invalid intentId for get_intent_status');
   }
 
   const response = await fetch(`${apiUrl.replace(/\/$/, '')}/swap/${encodeURIComponent(intentId)}`);

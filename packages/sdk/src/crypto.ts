@@ -79,17 +79,22 @@ export async function hashCapabilityPayload(payload: CapabilityPayload): Promise
  * Convert hex string to Uint8Array
  */
 export function hexToBytes(hex: string): Uint8Array {
-  const cleanHex = hex.replace(/\s/g, '');
+  if (typeof hex !== 'string') {
+    throw new Error('hexToBytes: input must be a string');
+  }
+  const cleanHex = hex.replace(/^0x/i, '').replace(/\s/g, '');
+  if (cleanHex.length === 0) {
+    return new Uint8Array(0);
+  }
   if (cleanHex.length % 2 !== 0) {
-    throw new Error('Invalid hex string: odd length');
+    throw new Error(`hexToBytes: invalid hex string length (${cleanHex.length} chars, must be even)`);
+  }
+  if (!/^[0-9a-fA-F]*$/.test(cleanHex)) {
+    throw new Error('hexToBytes: invalid hex characters detected');
   }
   const bytes = new Uint8Array(cleanHex.length / 2);
   for (let i = 0; i < bytes.length; i++) {
-    const byte = parseInt(cleanHex.substring(i * 2, i * 2 + 2), 16);
-    if (isNaN(byte)) {
-      throw new Error(`Invalid hex character at position ${i * 2}`);
-    }
-    bytes[i] = byte;
+    bytes[i] = parseInt(cleanHex.substring(i * 2, i * 2 + 2), 16);
   }
   return bytes;
 }

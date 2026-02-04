@@ -179,18 +179,33 @@ export class IntentsClient {
   ): Promise<IntentStatus> {
     const { timeoutMs = 5 * 60 * 1000, pollIntervalMs = 3000 } = options;
     const startTime = Date.now();
+    let lastError: Error | null = null;
+    let consecutiveErrors = 0;
+    const maxConsecutiveErrors = 5;
 
     while (Date.now() - startTime < timeoutMs) {
-      const status = await this.getIntentStatus(intentId);
-      
-      if (status.status === 'FULFILLED' || status.status === 'EXPIRED' || status.status === 'REJECTED') {
-        return status;
+      try {
+        const status = await this.getIntentStatus(intentId);
+        consecutiveErrors = 0; // Reset on success
+        
+        if (status.status === 'FULFILLED' || status.status === 'EXPIRED' || status.status === 'REJECTED') {
+          return status;
+        }
+      } catch (error) {
+        lastError = error instanceof Error ? error : new Error(String(error));
+        consecutiveErrors++;
+        console.warn(`[IntentsClient] Status check failed (${consecutiveErrors}/${maxConsecutiveErrors}):`, lastError.message);
+        
+        // If too many consecutive errors, throw
+        if (consecutiveErrors >= maxConsecutiveErrors) {
+          throw new Error(`Failed to get intent status after ${maxConsecutiveErrors} attempts: ${lastError.message}`);
+        }
       }
       
       await new Promise(resolve => setTimeout(resolve, pollIntervalMs));
     }
 
-    throw new Error('Timeout waiting for fulfillment');
+    throw new Error(`Timeout waiting for fulfillment${lastError ? `: last error was ${lastError.message}` : ''}`);
   }
 }
 
