@@ -475,7 +475,7 @@ export function PrivateTransfer({
                     });
                   }
                 }}
-                className="text-[#3A4DFF] hover:text-[#6C63FF]/80 font-medium hover:underline"
+                className="text-[#00E5C0] hover:text-[#00E5C0]/80 font-medium hover:underline"
               >
                 Max
               </button>
@@ -591,7 +591,7 @@ export function PrivateTransfer({
                   });
                 }
               }}
-              className="text-[#3A4DFF] hover:text-[#6C63FF]/80 font-medium hover:underline"
+              className="text-[#00E5C0] hover:text-[#00E5C0]/80 font-medium hover:underline"
             >
               Max
             </button>

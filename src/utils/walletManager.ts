@@ -903,11 +903,13 @@ export class WalletManager {
     try {
       console.log('🔒 WalletManager: lockWallets called');
       
-      // Check activeWalletId BEFORE locking (should be preserved)
+      // FIX #7: Preserve activeWalletId BEFORE any clearing operations
       const activeWalletIdBefore = await ExtensionStorageManager.get('activeWalletId');
-      console.log('🔒 WalletManager: activeWalletId BEFORE lock:', activeWalletIdBefore);
+      const localActiveWalletId = localStorage.getItem('activeWalletId');
+      const preservedActiveWalletId = activeWalletIdBefore || localActiveWalletId;
+      console.log('🔒 WalletManager: activeWalletId BEFORE lock:', preservedActiveWalletId);
       
-      // Clear session password
+      // Clear session password (this calls clearSessionDataFromStorage internally)
       this.clearSessionPassword();
       
       // Set locked state
@@ -922,9 +924,19 @@ export class WalletManager {
       await ExtensionStorageManager.removeSession('sessionWallets');
       console.log('🔒 WalletManager: Cleared session wallets');
       
+      // FIX #7: Restore activeWalletId if it was cleared
+      if (preservedActiveWalletId) {
+        const activeWalletIdAfter = await ExtensionStorageManager.get('activeWalletId');
+        if (!activeWalletIdAfter) {
+          console.log('🔒 WalletManager: Restoring activeWalletId:', preservedActiveWalletId);
+          await ExtensionStorageManager.set('activeWalletId', preservedActiveWalletId);
+          localStorage.setItem('activeWalletId', preservedActiveWalletId);
+        }
+      }
+      
       // Verify activeWalletId is still preserved
-      const activeWalletIdAfter = await ExtensionStorageManager.get('activeWalletId');
-      console.log('🔒 WalletManager: activeWalletId AFTER lock:', activeWalletIdAfter);
+      const activeWalletIdFinal = await ExtensionStorageManager.get('activeWalletId');
+      console.log('🔒 WalletManager: activeWalletId AFTER lock:', activeWalletIdFinal);
     } catch (error) {
       console.error('WalletManager lock error:', error);
       throw error;

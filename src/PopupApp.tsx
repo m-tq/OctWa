@@ -8,6 +8,7 @@ import { SplashScreen } from './components/SplashScreen';
 import { PageTransition } from './components/PageTransition';
 import { Wallet, DAppConnectionRequest } from './types/wallet';
 import { Toaster } from '@/components/ui/toaster';
+import { useToast } from '@/hooks/use-toast';
 import { ExtensionStorageManager } from './utils/extensionStorage';
 import { WalletManager } from './utils/walletManager';
 
@@ -22,6 +23,7 @@ function PopupApp() {
   const [contractRequest, setContractRequest] = useState<any>(null);
   const [capabilityRequest, setCapabilityRequest] = useState<any>(null);
   const [invokeRequest, setInvokeRequest] = useState<any>(null);
+  const { toast: _toast } = useToast(); // FIX #10: Available for error notifications
 
   // ONLY load data once on mount - NO dependencies to prevent loops
   useEffect(() => {
@@ -170,43 +172,55 @@ function PopupApp() {
         // Only try to load session wallets if session key exists
         // Session wallets are encrypted and require the session encryption key in memory
         if (sessionKey) {
-          try {
-            // Restore session password first (this also restores encryption key)
-            const restoredPassword = await WalletManager.ensureSessionPassword();
-            
-            if (restoredPassword) {
-              // Re-setup auto-lock callback after session restore
-              WalletManager.setAutoLockCallback(() => {
-                console.log('🔒 PopupApp: Auto-lock callback triggered (from session restore)!');
-                setWallet(null);
-                setWallets([]);
-                setIsLocked(true);
-              });
+          // FIX #3: Add retry mechanism for session restore
+          let retryCount = 0;
+          const maxRetries = 3;
+          const retryDelay = 500; // ms
+          
+          while (retryCount < maxRetries) {
+            try {
+              // Restore session password first (this also restores encryption key)
+              const restoredPassword = await WalletManager.ensureSessionPassword();
               
-              // Now we can decrypt session wallets
-              const sessionWallets = await WalletManager.getSessionWallets();
-              
-              if (sessionWallets.length > 0) {
-                console.log('🔓 PopupApp: Loaded wallets from encrypted session storage:', sessionWallets.length);
+              if (restoredPassword) {
+                // Re-setup auto-lock callback after session restore
+                WalletManager.setAutoLockCallback(() => {
+                  console.log('🔒 PopupApp: Auto-lock callback triggered (from session restore)!');
+                  setWallet(null);
+                  setWallets([]);
+                  setIsLocked(true);
+                });
                 
-                let activeWallet = sessionWallets[0];
-                if (activeWalletId) {
-                  const foundWallet = sessionWallets.find((w: Wallet) => w.address === activeWalletId);
-                  if (foundWallet) {
-                    activeWallet = foundWallet;
+                // Now we can decrypt session wallets
+                const sessionWallets = await WalletManager.getSessionWallets();
+                
+                if (sessionWallets.length > 0) {
+                  console.log('🔓 PopupApp: Loaded wallets from encrypted session storage:', sessionWallets.length);
+                  
+                  let activeWallet = sessionWallets[0];
+                  if (activeWalletId) {
+                    const foundWallet = sessionWallets.find((w: Wallet) => w.address === activeWalletId);
+                    if (foundWallet) {
+                      activeWallet = foundWallet;
+                    }
                   }
+                  
+                  setWallets(sessionWallets);
+                  setWallet(activeWallet);
+                  setIsLocked(false);
+                  setIsLoading(false);
+                  console.log('✅ PopupApp: Dashboard ready with', sessionWallets.length, 'wallets');
+                  return;
                 }
-                
-                setWallets(sessionWallets);
-                setWallet(activeWallet);
-                setIsLocked(false);
-                setIsLoading(false);
-                console.log('✅ PopupApp: Dashboard ready with', sessionWallets.length, 'wallets');
-                return;
+              }
+              break; // Success or no password, exit retry loop
+            } catch (error) {
+              retryCount++;
+              console.error(`Failed to restore session wallets (attempt ${retryCount}/${maxRetries}):`, error);
+              if (retryCount < maxRetries) {
+                await new Promise(resolve => setTimeout(resolve, retryDelay * retryCount));
               }
             }
-          } catch (error) {
-            console.error('Failed to restore session wallets:', error);
           }
         }
         
@@ -335,6 +349,7 @@ function PopupApp() {
               // This could be a decryption failure, not actual empty wallets
             } catch (error) {
               console.error('Failed to sync session wallets:', error);
+              // FIX #10: Notify user of sync failure (but don't use toast in storage listener to avoid hook issues)
             }
           })();
           return;

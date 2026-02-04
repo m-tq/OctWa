@@ -54,12 +54,21 @@ export class ExtensionStorageManager {
     }
     return localStorage.getItem(key);
   }
-  
+
   static async set(key: string, value: string): Promise<void> {
     if (this.isExtension) {
       let chromeSuccess = false;
       let localSuccess = false;
-      
+      let previousChromeValue: string | null = null;
+
+      // FIX #6: Store previous chrome value for potential rollback
+      try {
+        const result = await chrome.storage.local.get(key);
+        previousChromeValue = result[key] || null;
+      } catch {
+        // Ignore - no previous value
+      }
+
       // Try chrome.storage first (primary)
       try {
         await chrome.storage.local.set({ [key]: value });
@@ -67,15 +76,26 @@ export class ExtensionStorageManager {
       } catch (error) {
         console.error('Failed to set in chrome.storage:', error);
       }
-      
+
       // Also update localStorage for immediate consistency (secondary)
       try {
         localStorage.setItem(key, value);
         localSuccess = true;
       } catch (localStorageError) {
         console.warn('Failed to update localStorage:', localStorageError);
+
+        // FIX #6: Rollback chrome.storage if localStorage failed and chrome succeeded
+        if (chromeSuccess && previousChromeValue !== null) {
+          try {
+            await chrome.storage.local.set({ [key]: previousChromeValue });
+            console.warn('Rolled back chrome.storage due to localStorage failure');
+            chromeSuccess = false;
+          } catch {
+            // Rollback failed - data may be inconsistent
+          }
+        }
       }
-      
+
       // Throw error only if both failed
       if (!chromeSuccess && !localSuccess) {
         throw new Error(`Failed to save ${key} to any storage`);

@@ -166,13 +166,23 @@ class APICache {
     return this.currentEpoch || 0;
   }
 
-  // Check if cache entry exists (cache is valid until manually invalidated or updated)
+  // Check if cache entry is valid with TTL fallback
+  // FIX #2: Added TTL fallback to prevent stale cache when epoch check fails
+  private static readonly MAX_CACHE_AGE_MS = 5 * 60 * 1000; // 5 minutes TTL fallback
+  
   private isValid<T>(entry: CacheEntry<T> | undefined): boolean {
-    // Cache is valid as long as entry exists
-    // Invalidation is handled by:
-    // 1. Manual invalidate after user TX actions
-    // 2. WalletDashboard updating cache when epoch change detects new data
-    return !!entry;
+    if (!entry) return false;
+    
+    // Cache is valid if:
+    // 1. Entry exists AND
+    // 2. Entry is not older than MAX_CACHE_AGE (TTL fallback for when epoch check fails)
+    const age = Date.now() - entry.timestamp;
+    if (age > APICache.MAX_CACHE_AGE_MS) {
+      console.log(`📦 Cache expired (age: ${Math.round(age / 1000)}s > ${APICache.MAX_CACHE_AGE_MS / 1000}s)`);
+      return false;
+    }
+    
+    return true;
   }
 
   // Balance cache
@@ -384,6 +394,15 @@ class APICache {
     // Note: We don't clear transactionDetails here as they're indexed by hash, not address
     // Transaction details remain cached as they're immutable once confirmed
     console.log(`📦 Cache invalidated: ALL for ${address.slice(0, 8)}`);
+    await this.saveToStorage();
+  }
+
+  // FIX #8: Clear wallet nonces cache - called on epoch change
+  async invalidateAllWalletNonces(addresses: string[]): Promise<void> {
+    for (const address of addresses) {
+      delete this.memoryCache.balance[address];
+    }
+    console.log(`📦 Cache invalidated: nonces for ${addresses.length} wallets`);
     await this.saveToStorage();
   }
 
@@ -753,7 +772,8 @@ export async function fetchTransactionHistory(
     
     const confirmedTransactions = await Promise.all(confirmedTransactionPromises);
     
-    // Transform pending transactions to our expected format
+    const confirmedHashes = new Set(confirmedTransactions.map(tx => tx.hash));
+    
     const pendingTransactionsFormatted = pendingTransactions.map(tx => {
       // Determine op_type from message
       const opType = tx.message === 'PRIVATE_TRANSFER' || 
@@ -772,9 +792,9 @@ export async function fetchTransactionHistory(
       };
     });
     
-    // Combine and sort by timestamp (newest first)
-    // Only include pending transactions on first page (offset 0)
-    const pendingToInclude = offset === 0 ? pendingTransactionsFormatted : [];
+    const pendingToInclude = offset === 0
+      ? pendingTransactionsFormatted.filter(tx => !confirmedHashes.has(tx.hash))
+      : [];
     const allTransactions = [...pendingToInclude, ...confirmedTransactions]
       .sort((a, b) => b.timestamp - a.timestamp);
     

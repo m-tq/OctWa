@@ -243,15 +243,23 @@ export function UnifiedHistory({ wallet, transactions, onTransactionsUpdate, isL
               variant="ghost"
               size="sm"
               onClick={() => setActiveFilter('all')}
-              className={`${isPopupMode ? 'h-6 px-2 text-[10px]' : 'h-7 px-2.5 text-xs'} ${
+              className={`group ${isPopupMode ? 'h-6 px-2 text-[10px]' : 'h-7 px-2.5 text-xs'} transition-all duration-200 hover:bg-transparent ${
                 activeFilter === 'all'
                   ? operationMode === 'private'
-                    ? 'bg-[#3A4DFF]/10 text-[#3A4DFF] dark:bg-[#3A4DFF]/20'
-                    : 'bg-accent text-accent-foreground'
+                    ? 'text-[#00E5C0]'
+                    : 'text-[#3A4DFF]'
                   : 'text-muted-foreground'
               }`}
             >
-              All
+              <span className={`transition-all duration-200 ${
+                activeFilter === 'all'
+                  ? operationMode === 'private'
+                    ? 'drop-shadow-[0_0_4px_rgba(0,229,192,1)] drop-shadow-[0_0_12px_rgba(0,229,192,1)] drop-shadow-[0_0_24px_rgba(0,229,192,0.6)]'
+                    : 'drop-shadow-[0_0_4px_rgba(58,77,255,1)] drop-shadow-[0_0_12px_rgba(58,77,255,1)] drop-shadow-[0_0_24px_rgba(58,77,255,0.6)]'
+                  : operationMode === 'private'
+                    ? 'group-hover:text-[#00E5C0] group-hover:drop-shadow-[0_0_6px_rgba(0,229,192,0.6)]'
+                    : 'group-hover:text-[#3A4DFF] group-hover:drop-shadow-[0_0_6px_rgba(58,77,255,0.6)]'
+              }`}>All</span>
             </Button>
 
             {/* Dashed separator */}
@@ -262,14 +270,18 @@ export function UnifiedHistory({ wallet, transactions, onTransactionsUpdate, isL
               variant="ghost"
               size="sm"
               onClick={() => setActiveFilter('sent')}
-              className={`${isPopupMode ? 'h-6 px-2 text-[10px]' : 'h-7 px-2.5 text-xs'} ${
-                activeFilter === 'sent'
-                  ? 'bg-red-50 text-red-700 dark:bg-red-950 dark:text-red-400'
-                  : 'text-red-600 hover:bg-red-50 hover:text-red-700 dark:text-red-400 dark:hover:bg-red-950'
-              }`}
+              className={`group ${isPopupMode ? 'h-6 px-2 text-[10px]' : 'h-7 px-2.5 text-xs'} transition-all duration-200 hover:bg-transparent text-red-600 dark:text-red-400`}
             >
-              <ArrowUpRight className={`${isPopupMode ? 'h-3 w-3' : 'h-3.5 w-3.5'} ${sentCount > 0 ? 'mr-1' : ''}`} />
-              {sentCount > 0 && <span>{sentCount}</span>}
+              <ArrowUpRight className={`${isPopupMode ? 'h-3 w-3' : 'h-3.5 w-3.5'} ${sentCount > 0 ? 'mr-1' : ''} transition-all duration-200 ${
+                activeFilter === 'sent' 
+                  ? 'text-red-500 drop-shadow-[0_0_4px_rgba(239,68,68,1)] drop-shadow-[0_0_12px_rgba(239,68,68,1)] drop-shadow-[0_0_24px_rgba(239,68,68,0.6)]' 
+                  : 'group-hover:text-red-500 group-hover:drop-shadow-[0_0_6px_rgba(239,68,68,0.6)]'
+              }`} />
+              {sentCount > 0 && <span className={`transition-all duration-200 ${
+                activeFilter === 'sent' 
+                  ? 'text-red-500 drop-shadow-[0_0_4px_rgba(239,68,68,1)] drop-shadow-[0_0_12px_rgba(239,68,68,1)] drop-shadow-[0_0_24px_rgba(239,68,68,0.6)]' 
+                  : 'group-hover:text-red-500 group-hover:drop-shadow-[0_0_6px_rgba(239,68,68,0.6)]'
+              }`}>{sentCount}</span>}
             </Button>
 
             {/* Dashed separator */}
@@ -280,14 +292,18 @@ export function UnifiedHistory({ wallet, transactions, onTransactionsUpdate, isL
               variant="ghost"
               size="sm"
               onClick={() => setActiveFilter('received')}
-              className={`${isPopupMode ? 'h-6 px-2 text-[10px]' : 'h-7 px-2.5 text-xs'} ${
-                activeFilter === 'received'
-                  ? 'bg-green-50 text-green-700 dark:bg-green-950 dark:text-green-400'
-                  : 'text-green-600 hover:bg-green-50 hover:text-green-700 dark:text-green-400 dark:hover:bg-green-950'
-              }`}
+              className={`group ${isPopupMode ? 'h-6 px-2 text-[10px]' : 'h-7 px-2.5 text-xs'} transition-all duration-200 hover:bg-transparent text-green-600 dark:text-green-400`}
             >
-              <ArrowDownLeft className={`${isPopupMode ? 'h-3 w-3' : 'h-3.5 w-3.5'} ${receivedCount > 0 ? 'mr-1' : ''}`} />
-              {receivedCount > 0 && <span>{receivedCount}</span>}
+              <ArrowDownLeft className={`${isPopupMode ? 'h-3 w-3' : 'h-3.5 w-3.5'} ${receivedCount > 0 ? 'mr-1' : ''} transition-all duration-200 ${
+                activeFilter === 'received' 
+                  ? 'text-green-500 drop-shadow-[0_0_4px_rgba(34,197,94,1)] drop-shadow-[0_0_12px_rgba(34,197,94,1)] drop-shadow-[0_0_24px_rgba(34,197,94,0.6)]' 
+                  : 'group-hover:text-green-500 group-hover:drop-shadow-[0_0_6px_rgba(34,197,94,0.6)]'
+              }`} />
+              {receivedCount > 0 && <span className={`transition-all duration-200 ${
+                activeFilter === 'received' 
+                  ? 'text-green-500 drop-shadow-[0_0_4px_rgba(34,197,94,1)] drop-shadow-[0_0_12px_rgba(34,197,94,1)] drop-shadow-[0_0_24px_rgba(34,197,94,0.6)]' 
+                  : 'group-hover:text-green-500 group-hover:drop-shadow-[0_0_6px_rgba(34,197,94,0.6)]'
+              }`}>{receivedCount}</span>}
             </Button>
 
             {/* Contract filter - only for public mode - purple theme */}
@@ -299,14 +315,18 @@ export function UnifiedHistory({ wallet, transactions, onTransactionsUpdate, isL
                   variant="ghost"
                   size="sm"
                   onClick={() => setActiveFilter('contract')}
-                  className={`${isPopupMode ? 'h-6 px-2 text-[10px]' : 'h-7 px-2.5 text-xs'} ${
-                    activeFilter === 'contract'
-                      ? 'bg-purple-50 text-purple-700 dark:bg-purple-950 dark:text-purple-400'
-                      : 'text-purple-600 hover:bg-purple-50 hover:text-purple-700 dark:text-purple-400 dark:hover:bg-purple-950'
-                  }`}
+                  className={`group ${isPopupMode ? 'h-6 px-2 text-[10px]' : 'h-7 px-2.5 text-xs'} transition-all duration-200 hover:bg-transparent text-purple-600 dark:text-purple-400`}
                 >
-                  <Code className={`${isPopupMode ? 'h-3 w-3' : 'h-3.5 w-3.5'} ${contractCallCount > 0 ? 'mr-1' : ''}`} />
-                  {contractCallCount > 0 && <span>{contractCallCount}</span>}
+                  <Code className={`${isPopupMode ? 'h-3 w-3' : 'h-3.5 w-3.5'} ${contractCallCount > 0 ? 'mr-1' : ''} transition-all duration-200 ${
+                    activeFilter === 'contract' 
+                      ? 'text-purple-500 drop-shadow-[0_0_4px_rgba(168,85,247,1)] drop-shadow-[0_0_12px_rgba(168,85,247,1)] drop-shadow-[0_0_24px_rgba(168,85,247,0.6)]' 
+                      : 'group-hover:text-purple-500 group-hover:drop-shadow-[0_0_6px_rgba(168,85,247,0.6)]'
+                  }`} />
+                  {contractCallCount > 0 && <span className={`transition-all duration-200 ${
+                    activeFilter === 'contract' 
+                      ? 'text-purple-500 drop-shadow-[0_0_4px_rgba(168,85,247,1)] drop-shadow-[0_0_12px_rgba(168,85,247,1)] drop-shadow-[0_0_24px_rgba(168,85,247,0.6)]' 
+                      : 'group-hover:text-purple-500 group-hover:drop-shadow-[0_0_6px_rgba(168,85,247,0.6)]'
+                  }`}>{contractCallCount}</span>}
                 </Button>
               </>
             )}

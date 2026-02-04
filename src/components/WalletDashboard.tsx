@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger, SheetDescription } from '@/components/ui/sheet';
@@ -237,6 +237,29 @@ export function WalletDashboard({
   const [evmCustomRpcUrl, setEvmCustomRpcUrl] = useState('');
   // EVM Tokens & NFTs state
   const [evmTokens, setEvmTokens] = useState<ERC20Token[]>([]);
+  const activeWalletRef = useRef<Wallet | null>(null);
+  const activeFetchIdRef = useRef(0);
+  
+  // FIX #5: Refs for values accessed in epoch change callback to avoid stale closures
+  const walletsRef = useRef<Wallet[]>(wallets);
+  const balanceRef = useRef<number | null>(balance);
+  const nonceRef = useRef<number>(nonce);
+  const encryptedBalanceRef = useRef<any>(encryptedBalance);
+  const pendingTransfersCountRef = useRef<number>(pendingTransfersCount);
+  const transactionsRef = useRef<Transaction[]>(transactions);
+
+  useEffect(() => {
+    activeWalletRef.current = wallet;
+  }, [wallet]);
+  
+  // FIX #5: Keep refs in sync with state
+  useEffect(() => { walletsRef.current = wallets; }, [wallets]);
+  useEffect(() => { balanceRef.current = balance; }, [balance]);
+  useEffect(() => { nonceRef.current = nonce; }, [nonce]);
+  useEffect(() => { encryptedBalanceRef.current = encryptedBalance; }, [encryptedBalance]);
+  useEffect(() => { pendingTransfersCountRef.current = pendingTransfersCount; }, [pendingTransfersCount]);
+  useEffect(() => { transactionsRef.current = transactions; }, [transactions]);
+  
   const [evmNfts, setEvmNfts] = useState<NFTToken[]>([]);
   const [isLoadingEvmTokens, setIsLoadingEvmTokens] = useState(false);
   const [evmActiveTab, setEvmActiveTab] = useState<'tokens' | 'nfts'>('tokens');
@@ -564,22 +587,34 @@ export function WalletDashboard({
   // Epoch-based auto-refresh: Poll for epoch changes and refresh data when epoch changes
   useEffect(() => {
     if (!wallet) return;
+    const activeWalletAddress = wallet.address;
+    const activeWalletPrivateKey = wallet.privateKey;
 
     // Subscribe to epoch changes
     const unsubscribe = apiCache.onEpochChange(async (newEpoch, oldEpoch) => {
+      if (activeWalletRef.current?.address !== activeWalletAddress) {
+        return;
+      }
+      const isActiveWallet = () => activeWalletRef.current?.address === activeWalletAddress;
       console.log(
         `🔄 Epoch changed (${oldEpoch} → ${newEpoch}), updating all wallets...`
       );
 
       // Show updating indicator
       setIsUpdatingEpoch(true);
+      
+      // FIX #8: Clear wallet nonces cache on epoch change
+      setWalletNonces({});
 
       try {
+        // FIX #5: Use ref to get current wallets list (avoid stale closure)
+        const currentWallets = walletsRef.current;
+        
         // 1. Update ALL wallets cache in parallel (wait for completion)
-        console.log(`📍 Updating ${wallets.length} wallet(s) cache...`);
+        console.log(`📍 Updating ${currentWallets.length} wallet(s) cache...`);
         
         await Promise.all(
-          wallets.map(async (w) => {
+          currentWallets.map(async (w) => {
             try {
               await fetchBalance(w.address, true);
               await fetchEncryptedBalance(w.address, w.privateKey, true);
@@ -599,15 +634,19 @@ export function WalletDashboard({
         console.log(`🔄 Reloading UI for active wallet...`);
         
         // 1. Fetch fresh transaction history FIRST
-        const result = await getTransactionHistory(wallet.address);
+        const result = await getTransactionHistory(activeWalletAddress);
+        if (!isActiveWallet()) {
+          return;
+        }
         if (Array.isArray(result.transactions)) {
+          // FIX #5: Use ref for logging to avoid stale closure
           console.log(
-            `📜 Updating transactions: ${transactions.length} → ${result.transactions.length}`
+            `📜 Updating transactions: ${transactionsRef.current.length} → ${result.transactions.length}`
           );
           const transformedTxs = result.transactions.map((tx) => ({
             ...tx,
             type:
-              tx.from?.toLowerCase() === wallet.address.toLowerCase()
+              tx.from?.toLowerCase() === activeWalletAddress.toLowerCase()
                 ? 'sent'
                 : 'received',
           })) as Transaction[];
@@ -615,42 +654,62 @@ export function WalletDashboard({
         }
 
         // 2. Update balance and nonce
-        const balanceData = await fetchBalance(wallet.address);
+        const balanceData = await fetchBalance(activeWalletAddress);
+        if (!isActiveWallet()) {
+          return;
+        }
+        // FIX #5: Use refs for logging to avoid stale closure
         console.log(
-          `💰 Balance: ${balance} → ${balanceData.balance}, nonce: ${nonce} → ${balanceData.nonce}`
+          `💰 Balance: ${balanceRef.current} → ${balanceData.balance}, nonce: ${nonceRef.current} → ${balanceData.nonce}`
         );
         setBalance(balanceData.balance);
         setNonce(balanceData.nonce);
 
         // 3. Update encrypted balance
         const encData = await fetchEncryptedBalance(
-          wallet.address,
-          wallet.privateKey
+          activeWalletAddress,
+          activeWalletPrivateKey
         );
+        if (!isActiveWallet()) {
+          return;
+        }
         if (encData) {
+          // FIX #5: Use ref for logging to avoid stale closure
           console.log(
-            `🔐 Encrypted balance: ${encryptedBalance?.encrypted || 0} → ${encData.encrypted}`
+            `🔐 Encrypted balance: ${encryptedBalanceRef.current?.encrypted || 0} → ${encData.encrypted}`
           );
           setEncryptedBalance(encData);
         }
 
         // 4. Fetch pending transfers count LAST
         const pending = await getPendingPrivateTransfers(
-          wallet.address,
-          wallet.privateKey
+          activeWalletAddress,
+          activeWalletPrivateKey
         );
+        if (!isActiveWallet()) {
+          return;
+        }
+        // FIX #5: Use ref for logging to avoid stale closure
         console.log(
-          `🎁 Pending transfers: ${pendingTransfersCount} → ${pending.length}`
+          `🎁 Pending transfers: ${pendingTransfersCountRef.current} → ${pending.length}`
         );
         setPendingTransfersCount(pending.length);
 
         console.log('✅ UI reload complete');
       } catch (error) {
         console.error('Failed to check data after epoch change:', error);
+        // FIX #10: Notify user of sync failure
+        toast({
+          title: "Sync Warning",
+          description: "Some data may be outdated. Pull to refresh.",
+          variant: "destructive",
+        });
       } finally {
         // Update epoch and hide updating indicator
-        setCurrentEpoch(newEpoch);
-        setIsUpdatingEpoch(false);
+        if (isActiveWallet()) {
+          setCurrentEpoch(newEpoch);
+          setIsUpdatingEpoch(false);
+        }
       }
     });
 
@@ -675,56 +734,71 @@ export function WalletDashboard({
   }, [
     wallet?.address,
     wallet?.privateKey,
-    balance,
-    nonce,
-    encryptedBalance,
-    transactions,
-    pendingTransfersCount,
-    wallets,
+    // FIX #4: Remove wallets from dependency to prevent memory leak
+    // walletsRef is used instead inside the callback
   ]);
 
   // Initial data fetch when wallet is connected
+  // FIX #1 & #9: Batch state updates and use previous data during loading to prevent flicker
   useEffect(() => {
     const fetchInitialData = async () => {
       if (!wallet) return;
+      const fetchId = ++activeFetchIdRef.current;
+      const currentAddress = wallet.address;
+      const currentPrivateKey = wallet.privateKey;
+      const isStale = () => activeFetchIdRef.current !== fetchId || activeWalletRef.current?.address !== currentAddress;
 
-      // Reset encrypted balance and mode to public when wallet changes
-      // This ensures new/switched wallets start in public mode
-      setEncryptedBalance(null);
-      setOperationMode('public');
-      
-      // Reset transaction details view when wallet changes
+      // FIX #9: Don't reset to null immediately - keep showing previous data with loading indicator
+      // Only reset UI-specific states
       setShowExpandedTxDetails(false);
       setSelectedTxHash(null);
       setSelectedTxDetails(null);
+      
+      // Set loading states but keep previous data visible
+      setIsLoadingBalance(true);
+      setIsLoadingTransactions(true);
 
+      // FIX #1: Fetch all data in parallel to reduce race condition window
       try {
-        // Fetch balance and nonce (from cache, which is updated on epoch change)
-        setIsLoadingBalance(true);
-        const balanceData = await fetchBalance(wallet.address);
+        const [balanceData, encData, historyResult, pendingTransfers] = await Promise.all([
+          fetchBalance(currentAddress).catch(err => {
+            console.error('Failed to fetch balance:', err);
+            return { balance: 0, nonce: 0 };
+          }),
+          fetchEncryptedBalance(currentAddress, currentPrivateKey).catch(err => {
+            console.error('Failed to fetch encrypted balance:', err);
+            return null;
+          }),
+          getTransactionHistory(currentAddress).catch(err => {
+            console.error('Failed to fetch transaction history:', err);
+            return { transactions: [], totalCount: 0 };
+          }),
+          getPendingPrivateTransfers(currentAddress, currentPrivateKey).catch(err => {
+            console.error('Failed to fetch pending transfers:', err);
+            return [];
+          })
+        ]);
+
+        // FIX #1: Check staleness once after all fetches complete
+        if (isStale()) {
+          console.log('🔄 Fetch completed but wallet changed, discarding results');
+          return;
+        }
+
+        // FIX #1: Batch all state updates together to prevent partial UI updates
+        // Use React 18's automatic batching or wrap in unstable_batchedUpdates if needed
+        
+        // Update balance and nonce
         setBalance(balanceData.balance);
         setNonce(balanceData.nonce);
         
-        // Fetch encrypted balance for the new wallet
-        try {
-          const encData = await fetchEncryptedBalance(wallet.address, wallet.privateKey);
-          if (encData) {
-            setEncryptedBalance(encData);
-            // Load operation mode based on encrypted balance
-            const savedMode = loadOperationMode(encData.encrypted || 0, pendingTransfersCount);
-            setOperationMode(savedMode);
-          } else {
-            // Set default encrypted balance for new wallet
-            setEncryptedBalance({
-              public: balanceData.balance,
-              public_raw: Math.floor(balanceData.balance * 1_000_000),
-              encrypted: 0,
-              encrypted_raw: 0,
-              total: balanceData.balance
-            });
-          }
-        } catch (encError) {
-          console.error('Failed to fetch encrypted balance:', encError);
+        // Update encrypted balance
+        if (encData) {
+          setEncryptedBalance(encData);
+          // Load operation mode based on encrypted balance
+          const savedMode = loadOperationMode(encData.encrypted || 0, pendingTransfers.length);
+          setOperationMode(savedMode);
+        } else {
           setEncryptedBalance({
             public: balanceData.balance,
             public_raw: Math.floor(balanceData.balance * 1_000_000),
@@ -732,50 +806,51 @@ export function WalletDashboard({
             encrypted_raw: 0,
             total: balanceData.balance
           });
+          setOperationMode('public');
         }
-      } catch (error) {
-        console.error('Failed to fetch balance:', error);
-        // Don't show error for new addresses, just set balance to 0
-        setBalance(0);
-        setNonce(0);
-        setEncryptedBalance({
-          public: 0,
-          public_raw: 0,
-          encrypted: 0,
-          encrypted_raw: 0,
-          total: 0
-        });
-      } finally {
-        setIsLoadingBalance(false);
-      }
-
-      try {
-        // Fetch transaction history (from cache, which is updated on epoch change)
-        setIsLoadingTransactions(true);
-        const result = await getTransactionHistory(wallet.address);
         
-        if (Array.isArray(result.transactions)) {
-          const transformedTxs = result.transactions.map((tx) => ({
+        // Update transactions
+        if (Array.isArray(historyResult.transactions)) {
+          const transformedTxs = historyResult.transactions.map((tx) => ({
             ...tx,
-            type: tx.from?.toLowerCase() === wallet.address.toLowerCase() ? 'sent' : 'received'
+            type: tx.from?.toLowerCase() === currentAddress.toLowerCase() ? 'sent' : 'received'
           } as Transaction));
           setTransactions(transformedTxs);
+        } else {
+          setTransactions([]);
         }
+        
+        // Update pending transfers count
+        setPendingTransfersCount(pendingTransfers.length);
+        
       } catch (error) {
-        console.error('Failed to fetch transaction history:', error);
-        // Don't show error for new addresses, just set empty transactions
-        setTransactions([]);
+        console.error('Failed to fetch wallet data:', error);
+        // FIX #10: Notify user of fetch failure
+        if (!isStale()) {
+          toast({
+            title: "Data Load Error",
+            description: "Failed to load wallet data. Please try refreshing.",
+            variant: "destructive",
+          });
+          // Set safe defaults
+          setBalance(0);
+          setNonce(0);
+          setEncryptedBalance({
+            public: 0,
+            public_raw: 0,
+            encrypted: 0,
+            encrypted_raw: 0,
+            total: 0
+          });
+          setTransactions([]);
+          setPendingTransfersCount(0);
+          setOperationMode('public');
+        }
       } finally {
-        setIsLoadingTransactions(false);
-      }
-      
-      // Fetch pending transfers count
-      try {
-        const pending = await getPendingPrivateTransfers(wallet.address, wallet.privateKey);
-        setPendingTransfersCount(pending.length);
-      } catch (error) {
-        console.error('Failed to fetch pending transfers:', error);
-        setPendingTransfersCount(0);
+        if (!isStale()) {
+          setIsLoadingBalance(false);
+          setIsLoadingTransactions(false);
+        }
       }
     };
 
@@ -1702,7 +1777,7 @@ export function WalletDashboard({
                 <Button variant="ghost" size="sm" onClick={() => setPopupScreen('main')} className="h-8 w-8 p-0">
                   <ChevronDown className="h-4 w-4 rotate-90" />
                 </Button>
-                <div className="flex items-center gap-2 text-[#3A4DFF]">
+                <div className="flex items-center gap-2 text-[#00E5C0]">
                   <Unlock className="h-5 w-5" />
                   <h2 className="font-semibold text-sm">Decrypt OCT</h2>
                 </div>
@@ -1735,7 +1810,7 @@ export function WalletDashboard({
                 <Button variant="ghost" size="sm" onClick={() => setPopupScreen('main')} className="h-8 w-8 p-0">
                   <ChevronDown className="h-4 w-4 rotate-90" />
                 </Button>
-                <div className={`flex items-center gap-2 ${operationMode === 'private' ? 'text-[#3A4DFF]' : ''}`}>
+                <div className={`flex items-center gap-2 ${operationMode === 'private' ? 'text-[#00E5C0]' : ''}`}>
                   <Send className="h-5 w-5" />
                   <h2 className="font-semibold text-sm">
                     {operationMode === 'private' ? 'Private Transfer' : 'Send OCT'}
@@ -1782,6 +1857,7 @@ export function WalletDashboard({
               isPopupMode={true}
               isFullscreen={true}
               onBack={() => setPopupScreen('main')}
+              currentMode={operationMode}
             />
           )}
 
@@ -1792,7 +1868,7 @@ export function WalletDashboard({
                 <Button variant="ghost" size="sm" onClick={() => setPopupScreen('main')} className="h-8 w-8 p-0">
                   <ChevronDown className="h-4 w-4 rotate-90" />
                 </Button>
-                <div className="flex items-center gap-2 text-[#3A4DFF]">
+                <div className={`flex items-center gap-2 ${operationMode === 'private' ? 'text-[#00E5C0]' : 'text-[#3A4DFF]'}`}>
                   <Gift className="h-5 w-5" />
                   <h2 className="font-semibold text-sm">Claim Transfers</h2>
                 </div>
@@ -2068,7 +2144,7 @@ export function WalletDashboard({
                             <SheetTrigger asChild>
                               <Button variant="ghost" className="h-auto p-0 hover:bg-transparent">
                                 <div className="flex items-center space-x-1">
-                                  <p className="text-xs text-[#3A4DFF] font-medium">
+                                  <p className={`text-xs font-medium ${operationMode === 'private' ? 'text-[#00E5C0]' : 'text-[#3A4DFF]'}`}>
                                     {truncateAddress(wallet.address)}
                                   </p>
                                   <ChevronDown className="h-2.5 w-2.5 text-muted-foreground" />
@@ -2190,22 +2266,25 @@ export function WalletDashboard({
                       <div className="flex-1 flex flex-col justify-center space-y-3">
                         {/* Expand View Button */}
                         {typeof chrome !== 'undefined' && chrome.tabs && (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => {
-                              chrome.tabs.create({
-                                url: chrome.runtime.getURL('index.html')
-                              });
-                              setShowMobileMenu(false);
-                            }}
-                            className="w-full justify-start gap-1.5 text-xs h-10"
-                          >
-                            <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
-                            </svg>
-                            Expand View
-                          </Button>
+                          <div className="space-y-1">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => {
+                                chrome.tabs.create({
+                                  url: chrome.runtime.getURL('index.html')
+                                });
+                                setShowMobileMenu(false);
+                              }}
+                              className="w-full justify-start gap-1.5 text-xs h-10"
+                            >
+                              <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
+                              </svg>
+                              Expand View
+                            </Button>
+                            <p className="text-[10px] text-muted-foreground pl-7">Access More Feature</p>
+                          </div>
                         )}
 
                         {/* RPC Provider */}
@@ -2628,6 +2707,7 @@ export function WalletDashboard({
                   customAddress={evmMode && selectedEVMWallet ? selectedEVMWallet.evmAddress : undefined}
                   customTitle={evmMode ? `Receive ${evmNetwork.symbol}` : undefined}
                   customInfo={evmMode ? `Share this address to receive ${evmNetwork.symbol} tokens on ${evmNetwork.name}. Only send ${evmNetwork.symbol} to this address.` : undefined}
+                  currentMode={operationMode}
                 />
               )}
               
@@ -2981,11 +3061,11 @@ export function WalletDashboard({
                     {/* Encrypt Button */}
                     <Button
                       variant="outline"
-                      className="group flex flex-col items-center gap-1.5 h-16 py-2.5 px-2 border-0 rounded-none bg-transparent hover:bg-transparent hover:text-primary"
+                      className="group flex flex-col items-center gap-1.5 h-16 py-2.5 px-2 border-0 rounded-none bg-transparent text-[#00E5C0] hover:bg-transparent hover:text-[#00E5C0]"
                       onClick={() => setPopupScreen('encrypt')}
                     >
-                      <Lock className="h-7 w-7 transition-colors group-hover:drop-shadow-[0_0_6px_rgba(0,0,0,0.25)]" />
-                      <span className="text-xs font-medium transition-colors group-hover:drop-shadow-[0_0_6px_rgba(0,0,0,0.25)]">Encrypt</span>
+                      <Lock className="h-7 w-7 transition-colors group-hover:drop-shadow-[0_0_6px_rgba(0,229,192,0.5)]" />
+                      <span className="text-xs font-medium transition-colors group-hover:drop-shadow-[0_0_6px_rgba(0,229,192,0.5)]">Encrypt</span>
                     </Button>
                     {/* Send Button */}
                     <Button
@@ -3011,11 +3091,11 @@ export function WalletDashboard({
                     {/* Decrypt Button */}
                     <Button
                       variant="outline"
-                      className="group flex flex-col items-center gap-1.5 h-16 py-2.5 px-2 border-0 rounded-none bg-transparent text-[#00E5C0] hover:bg-transparent hover:text-[#00E5C0]"
+                      className="group flex flex-col items-center gap-1.5 h-16 py-2.5 px-2 border-0 rounded-none bg-transparent text-muted-foreground hover:bg-transparent hover:text-muted-foreground"
                       onClick={() => setPopupScreen('decrypt')}
                     >
-                      <Unlock className="h-7 w-7 transition-colors group-hover:drop-shadow-[0_0_6px_rgba(0,229,192,0.5)]" />
-                      <span className="text-xs font-medium transition-colors group-hover:drop-shadow-[0_0_6px_rgba(0,229,192,0.5)]">Decrypt</span>
+                      <Unlock className="h-7 w-7 transition-colors group-hover:drop-shadow-[0_0_10px_rgba(0,0,0,0.45)] dark:group-hover:drop-shadow-[0_0_10px_rgba(255,255,255,0.35)]" />
+                      <span className="text-xs font-medium transition-colors group-hover:drop-shadow-[0_0_10px_rgba(0,0,0,0.45)] dark:group-hover:drop-shadow-[0_0_10px_rgba(255,255,255,0.35)]">Decrypt</span>
                     </Button>
                     {/* Send Button */}
                     <Button
@@ -4115,12 +4195,12 @@ export function WalletDashboard({
             {/* Left: Connection Status */}
             <div className="flex items-center gap-1.5">
               <div className={`w-1.5 h-1.5 rounded-full ${
-                rpcStatus === 'connected' ? 'bg-[#3A4DFF]' : 
+                rpcStatus === 'connected' ? (operationMode === 'private' ? 'bg-[#00E5C0]' : 'bg-[#3A4DFF]') : 
                 rpcStatus === 'disconnected' ? 'bg-red-500' : 
                 'bg-yellow-500 animate-pulse'
               }`} />
               <span className={`text-[10px] ${
-                rpcStatus === 'connected' ? 'text-[#3A4DFF]' : 
+                rpcStatus === 'connected' ? (operationMode === 'private' ? 'text-[#00E5C0]' : 'text-[#3A4DFF]') : 
                 rpcStatus === 'disconnected' ? 'text-red-500' : 
                 'text-yellow-500'
               }`}>
@@ -4201,12 +4281,12 @@ export function WalletDashboard({
             /* Normal Octra Footer */
             <div className="flex items-center gap-1.5">
               <div className={`w-1.5 h-1.5 rounded-full ${
-                rpcStatus === 'connected' ? 'bg-[#3A4DFF]' : 
+                rpcStatus === 'connected' ? (operationMode === 'private' ? 'bg-[#00E5C0]' : 'bg-[#3A4DFF]') : 
                 rpcStatus === 'disconnected' ? 'bg-red-500' : 
                 'bg-yellow-500 animate-pulse'
               }`} />
               <span className={`${
-                rpcStatus === 'connected' ? 'text-[#3A4DFF]' : 
+                rpcStatus === 'connected' ? (operationMode === 'private' ? 'text-[#00E5C0]' : 'text-[#3A4DFF]') : 
                 rpcStatus === 'disconnected' ? 'text-red-500' : 
                 'text-yellow-500'
               }`}>
@@ -4229,8 +4309,8 @@ export function WalletDashboard({
             <span className="flex items-center justify-center gap-1.5">
               {isUpdatingEpoch ? (
                 <>
-                  <RotateCcw className="h-3 w-3 animate-spin text-[#3A4DFF]" />
-                  <span className="text-[#3A4DFF]">updating data...</span>
+                  <RotateCcw className={`h-3 w-3 animate-spin ${operationMode === 'private' ? 'text-[#00E5C0]' : 'text-[#3A4DFF]'}`} />
+                  <span className={`${operationMode === 'private' ? 'text-[#00E5C0]' : 'text-[#3A4DFF]'}`}>updating data...</span>
                 </>
               ) : (
                 <>
@@ -4239,7 +4319,7 @@ export function WalletDashboard({
                     href={currentEpoch ? `https://octrascan.io/epochs/${currentEpoch}` : '#'}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="font-mono text-[#3A4DFF] hover:underline"
+                    className={`font-mono hover:underline ${operationMode === 'private' ? 'text-[#00E5C0]' : 'text-[#3A4DFF]'}`}
                   >
                     #{currentEpoch || '...'}
                   </a>

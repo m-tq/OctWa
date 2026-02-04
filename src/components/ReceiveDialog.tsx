@@ -13,6 +13,7 @@ interface ReceiveDialogProps {
   isPopupMode?: boolean;
   isFullscreen?: boolean;
   onBack?: () => void;
+  currentMode?: 'public' | 'private';
   customAddress?: string; // For EVM mode - show EVM address instead of Octra address
   customTitle?: string; // For EVM mode - show "Receive ETH" instead of "Receive OCT"
   customInfo?: string; // For EVM mode - custom info text
@@ -25,6 +26,7 @@ export function ReceiveDialog({
   isPopupMode = false,
   isFullscreen = false,
   onBack,
+  currentMode = 'public',
   customAddress,
   customTitle,
   customInfo
@@ -36,6 +38,7 @@ export function ReceiveDialog({
   const displayAddress = customAddress || wallet.address;
   const title = customTitle || 'Receive OCT';
   const infoText = customInfo || 'Share this address to receive OCT tokens. Only send OCT to this address.';
+  const isPrivateMode = currentMode === 'private';
 
   const copyAddress = async () => {
     try {
@@ -84,7 +87,9 @@ export function ReceiveDialog({
       {/* Copy Button */}
       <Button
         onClick={copyAddress}
-        className="mt-4 gap-2"
+        className={`mt-4 gap-2 ${
+          isPrivateMode ? 'bg-[#00E5C0] hover:bg-[#00E5C0]/80 text-white' : ''
+        }`}
         variant={copied ? "secondary" : "default"}
       >
         {copied ? (
@@ -116,7 +121,7 @@ export function ReceiveDialog({
           <Button variant="ghost" size="sm" onClick={onBack} className="h-8 w-8 p-0">
             <ArrowLeft className="h-4 w-4" />
           </Button>
-          <div className="flex items-center gap-2">
+          <div className={`flex items-center gap-2 ${isPrivateMode ? 'text-[#00E5C0]' : ''}`}>
             <QrCode className="h-5 w-5" />
             <h2 className="font-semibold text-sm">{title}</h2>
           </div>
@@ -135,7 +140,7 @@ export function ReceiveDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className={isPopupMode ? 'max-w-[360px]' : 'sm:max-w-md'}>
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
+          <DialogTitle className={`flex items-center gap-2 ${isPrivateMode ? 'text-[#00E5C0]' : ''}`}>
             <QrCode className="h-5 w-5" />
             {title}
           </DialogTitle>
