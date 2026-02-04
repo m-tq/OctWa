@@ -52,7 +52,14 @@ if (result.success) {
   console.log('OCT Balance:', data.octBalance);
   console.log('ETH Balance:', data.ethBalance);
   console.log('USDC Balance:', data.usdcBalance);
+  console.log('EVM Network:', data.evmNetwork); // e.g., 'eth-mainnet', 'eth-sepolia'
 }
+
+// Or use the helper function (recommended)
+import { decodeBalanceResponse } from '@octwa/sdk';
+
+const balance = decodeBalanceResponse(result);
+console.log('Balance:', balance);
 ```
 
 ## Core Concepts
@@ -107,7 +114,7 @@ Network is determined by the wallet/extension and returned in `connection.networ
 The extension exposes the following invoke methods and payloads. These are the real methods wired in `extensionFiles/background.js`.
 
 Read scope (auto-executed, no approval):
-- `get_balance` → no payload, returns balances
+- `get_balance` → no payload, returns `BalanceResponse` (see Types section)
 - `get_quote` → payload `{ apiUrl, from?: 'OCT', to?: 'ETH', amount }`
 - `create_intent` → payload `{ quote, targetAddress, slippageBps? }`
 - `submit_intent` → payload `{ apiUrl, octraTxHash }`
@@ -254,6 +261,29 @@ import {
 const bytes = hexToBytes('0x1234abcd'); // Works with or without 0x
 ```
 
+## Response Utilities
+
+Helper functions for decoding invoke response data:
+
+```typescript
+import { decodeResponseData, decodeBalanceResponse } from '@octwa/sdk';
+
+// Generic decode for any method
+const result = await sdk.invoke({ capabilityId, method: 'get_balance' });
+const data = decodeResponseData<BalanceResponse>(result);
+
+// Specific helper for balance
+const balance = decodeBalanceResponse(result);
+console.log(balance.octBalance, balance.ethBalance, balance.evmNetwork);
+```
+
+**Why use these helpers?**
+Chrome extension messaging serializes `Uint8Array` to plain objects. These helpers handle all formats:
+- Direct `Uint8Array`
+- Array of numbers `[123, 34, ...]`
+- Object with numeric keys `{0: 123, 1: 34, ...}`
+- Already parsed objects
+
 ## Error Handling
 
 ```typescript
@@ -300,8 +330,36 @@ import type {
   InitOptions,
   EventName,
   EventCallback,
+  // Balance types
+  EVMNetworkId,
+  BalanceResponse,
 } from '@octwa/sdk';
 ```
+
+### BalanceResponse
+
+Response from `get_balance` method:
+
+```typescript
+interface BalanceResponse {
+  octAddress: string;      // Octra wallet address
+  evmAddress: string;      // EVM address (derived from same key)
+  octBalance: number;      // OCT balance
+  ethBalance: number;      // ETH/native token balance on active EVM network
+  usdcBalance: number;     // USDC balance on active EVM network
+  network: 'mainnet' | 'testnet';  // Octra network
+  evmNetwork: EVMNetworkId;        // Active EVM network
+}
+
+type EVMNetworkId = 
+  | 'eth-mainnet' 
+  | 'eth-sepolia' 
+  | 'polygon-mainnet' 
+  | 'base-mainnet' 
+  | 'bsc-mainnet';
+```
+
+**Note:** The `evmNetwork` reflects the user's active EVM network selection in the wallet. ETH and USDC balances are fetched from this network.
 
 ## Security Considerations
 

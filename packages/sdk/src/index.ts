@@ -77,6 +77,12 @@ export type {
   SessionState,
 } from './types';
 
+// Types - Balance
+export type {
+  EVMNetworkId,
+  BalanceResponse,
+} from './types';
+
 // Types - Configuration
 export type {
   InitOptions,
@@ -98,6 +104,12 @@ export {
   IntentsClient,
   deriveEvmAddress,
 } from './intents';
+
+// Response utilities
+export {
+  decodeResponseData,
+  decodeBalanceResponse,
+} from './response-utils';
 
 export type {
   SwapIntentPayload,

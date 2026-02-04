@@ -254,11 +254,11 @@ export function UnifiedHistory({ wallet, transactions, onTransactionsUpdate, isL
               <span className={`transition-all duration-200 ${
                 activeFilter === 'all'
                   ? operationMode === 'private'
-                    ? 'drop-shadow-[0_0_4px_rgba(0,229,192,1)] drop-shadow-[0_0_12px_rgba(0,229,192,1)] drop-shadow-[0_0_24px_rgba(0,229,192,0.6)]'
-                    : 'drop-shadow-[0_0_4px_rgba(58,77,255,1)] drop-shadow-[0_0_12px_rgba(58,77,255,1)] drop-shadow-[0_0_24px_rgba(58,77,255,0.6)]'
+                    ? '[text-shadow:0_0_8px_#00E5C0,0_0_16px_#00E5C0,0_0_32px_#00E5C0,0_0_48px_rgba(0,229,192,0.5)]'
+                    : '[text-shadow:0_0_8px_#3A4DFF,0_0_16px_#3A4DFF,0_0_32px_#3A4DFF,0_0_48px_rgba(58,77,255,0.5)]'
                   : operationMode === 'private'
-                    ? 'group-hover:text-[#00E5C0] group-hover:drop-shadow-[0_0_6px_rgba(0,229,192,0.6)]'
-                    : 'group-hover:text-[#3A4DFF] group-hover:drop-shadow-[0_0_6px_rgba(58,77,255,0.6)]'
+                    ? 'group-hover:text-[#00E5C0] group-hover:[text-shadow:0_0_8px_rgba(0,229,192,0.8)]'
+                    : 'group-hover:text-[#3A4DFF] group-hover:[text-shadow:0_0_8px_rgba(58,77,255,0.8)]'
               }`}>All</span>
             </Button>
 
@@ -274,13 +274,13 @@ export function UnifiedHistory({ wallet, transactions, onTransactionsUpdate, isL
             >
               <ArrowUpRight className={`${isPopupMode ? 'h-3 w-3' : 'h-3.5 w-3.5'} ${sentCount > 0 ? 'mr-1' : ''} transition-all duration-200 ${
                 activeFilter === 'sent' 
-                  ? 'text-red-500 drop-shadow-[0_0_4px_rgba(239,68,68,1)] drop-shadow-[0_0_12px_rgba(239,68,68,1)] drop-shadow-[0_0_24px_rgba(239,68,68,0.6)]' 
-                  : 'group-hover:text-red-500 group-hover:drop-shadow-[0_0_6px_rgba(239,68,68,0.6)]'
+                  ? 'text-red-500 [filter:drop-shadow(0_0_6px_#ef4444)_drop-shadow(0_0_12px_#ef4444)_drop-shadow(0_0_24px_#ef4444)]' 
+                  : 'group-hover:text-red-500 group-hover:[filter:drop-shadow(0_0_8px_rgba(239,68,68,0.8))]'
               }`} />
               {sentCount > 0 && <span className={`transition-all duration-200 ${
                 activeFilter === 'sent' 
-                  ? 'text-red-500 drop-shadow-[0_0_4px_rgba(239,68,68,1)] drop-shadow-[0_0_12px_rgba(239,68,68,1)] drop-shadow-[0_0_24px_rgba(239,68,68,0.6)]' 
-                  : 'group-hover:text-red-500 group-hover:drop-shadow-[0_0_6px_rgba(239,68,68,0.6)]'
+                  ? 'text-red-500 [text-shadow:0_0_8px_#ef4444,0_0_16px_#ef4444,0_0_32px_#ef4444,0_0_48px_rgba(239,68,68,0.5)]' 
+                  : 'group-hover:text-red-500 group-hover:[text-shadow:0_0_8px_rgba(239,68,68,0.8)]'
               }`}>{sentCount}</span>}
             </Button>
 
@@ -296,13 +296,13 @@ export function UnifiedHistory({ wallet, transactions, onTransactionsUpdate, isL
             >
               <ArrowDownLeft className={`${isPopupMode ? 'h-3 w-3' : 'h-3.5 w-3.5'} ${receivedCount > 0 ? 'mr-1' : ''} transition-all duration-200 ${
                 activeFilter === 'received' 
-                  ? 'text-green-500 drop-shadow-[0_0_4px_rgba(34,197,94,1)] drop-shadow-[0_0_12px_rgba(34,197,94,1)] drop-shadow-[0_0_24px_rgba(34,197,94,0.6)]' 
-                  : 'group-hover:text-green-500 group-hover:drop-shadow-[0_0_6px_rgba(34,197,94,0.6)]'
+                  ? 'text-green-500 [filter:drop-shadow(0_0_6px_#22c55e)_drop-shadow(0_0_12px_#22c55e)_drop-shadow(0_0_24px_#22c55e)]' 
+                  : 'group-hover:text-green-500 group-hover:[filter:drop-shadow(0_0_8px_rgba(34,197,94,0.8))]'
               }`} />
               {receivedCount > 0 && <span className={`transition-all duration-200 ${
                 activeFilter === 'received' 
-                  ? 'text-green-500 drop-shadow-[0_0_4px_rgba(34,197,94,1)] drop-shadow-[0_0_12px_rgba(34,197,94,1)] drop-shadow-[0_0_24px_rgba(34,197,94,0.6)]' 
-                  : 'group-hover:text-green-500 group-hover:drop-shadow-[0_0_6px_rgba(34,197,94,0.6)]'
+                  ? 'text-green-500 [text-shadow:0_0_8px_#22c55e,0_0_16px_#22c55e,0_0_32px_#22c55e,0_0_48px_rgba(34,197,94,0.5)]' 
+                  : 'group-hover:text-green-500 group-hover:[text-shadow:0_0_8px_rgba(34,197,94,0.8)]'
               }`}>{receivedCount}</span>}
             </Button>
 
@@ -319,13 +319,13 @@ export function UnifiedHistory({ wallet, transactions, onTransactionsUpdate, isL
                 >
                   <Code className={`${isPopupMode ? 'h-3 w-3' : 'h-3.5 w-3.5'} ${contractCallCount > 0 ? 'mr-1' : ''} transition-all duration-200 ${
                     activeFilter === 'contract' 
-                      ? 'text-purple-500 drop-shadow-[0_0_4px_rgba(168,85,247,1)] drop-shadow-[0_0_12px_rgba(168,85,247,1)] drop-shadow-[0_0_24px_rgba(168,85,247,0.6)]' 
-                      : 'group-hover:text-purple-500 group-hover:drop-shadow-[0_0_6px_rgba(168,85,247,0.6)]'
+                      ? 'text-purple-500 [filter:drop-shadow(0_0_6px_#a855f7)_drop-shadow(0_0_12px_#a855f7)_drop-shadow(0_0_24px_#a855f7)]' 
+                      : 'group-hover:text-purple-500 group-hover:[filter:drop-shadow(0_0_8px_rgba(168,85,247,0.8))]'
                   }`} />
                   {contractCallCount > 0 && <span className={`transition-all duration-200 ${
                     activeFilter === 'contract' 
-                      ? 'text-purple-500 drop-shadow-[0_0_4px_rgba(168,85,247,1)] drop-shadow-[0_0_12px_rgba(168,85,247,1)] drop-shadow-[0_0_24px_rgba(168,85,247,0.6)]' 
-                      : 'group-hover:text-purple-500 group-hover:drop-shadow-[0_0_6px_rgba(168,85,247,0.6)]'
+                      ? 'text-purple-500 [text-shadow:0_0_8px_#a855f7,0_0_16px_#a855f7,0_0_32px_#a855f7,0_0_48px_rgba(168,85,247,0.5)]' 
+                      : 'group-hover:text-purple-500 group-hover:[text-shadow:0_0_8px_rgba(168,85,247,0.8)]'
                   }`}>{contractCallCount}</span>}
                 </Button>
               </>

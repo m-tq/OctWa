@@ -13,8 +13,10 @@ export class OctraError extends Error {
     this.code = code;
     this.details = details;
 
-    if (Error.captureStackTrace) {
-      Error.captureStackTrace(this, this.constructor);
+    // V8 stack trace capture (Node.js, Chrome)
+    const ErrorWithCapture = Error as typeof Error & { captureStackTrace?: (target: object, constructor: Function) => void };
+    if (ErrorWithCapture.captureStackTrace) {
+      ErrorWithCapture.captureStackTrace(this, this.constructor);
     }
   }
 }

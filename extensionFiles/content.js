@@ -33,14 +33,18 @@
       }
     }).then(response => {
       console.log('[Content] Response:', response);
+      
+      // Properly serialize Uint8Array in response for postMessage
+      const serializedResponse = serializeResponse(response);
+      
       // Forward back to provider
       window.postMessage({
         source: 'octra-content-script',
         requestId: event.data.requestId,
-        type: response.type,
-        success: response.success,
-        result: response.result,
-        error: response.error
+        type: serializedResponse.type,
+        success: serializedResponse.success,
+        result: serializedResponse.result,
+        error: serializedResponse.error
       }, getTargetOrigin());
     }).catch(error => {
       console.error('[Content] Error:', error);
@@ -102,4 +106,48 @@
   window.addEventListener('beforeunload', () => {
     window.removeEventListener('message', handleMessage);
   });
+
+  /**
+   * Serialize response to properly handle Uint8Array through postMessage
+   * Chrome extension messaging converts Uint8Array to plain objects with numeric keys
+   */
+  function serializeResponse(response) {
+    if (!response || typeof response !== 'object') return response;
+    
+    const result = { ...response };
+    
+    // Handle nested result.data (Uint8Array from background.js)
+    if (result.result && result.result.data) {
+      result.result = {
+        ...result.result,
+        data: convertToArray(result.result.data)
+      };
+    }
+    
+    return result;
+  }
+
+  /**
+   * Convert object with numeric keys or Uint8Array to regular array
+   */
+  function convertToArray(data) {
+    if (!data) return data;
+    
+    // Already an array
+    if (Array.isArray(data)) return data;
+    
+    // Uint8Array (unlikely after chrome messaging, but handle it)
+    if (data instanceof Uint8Array) return Array.from(data);
+    
+    // Object with numeric keys: {0: 123, 1: 34, ...}
+    if (typeof data === 'object') {
+      const keys = Object.keys(data);
+      if (keys.length > 0 && keys.every(k => /^\d+$/.test(k))) {
+        const sortedKeys = keys.sort((a, b) => Number(a) - Number(b));
+        return sortedKeys.map(k => data[k]);
+      }
+    }
+    
+    return data;
+  }
 })();

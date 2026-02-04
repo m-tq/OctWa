@@ -173,6 +173,40 @@ export interface EncryptedBlob {
 }
 
 // ============================================================================
+// Balance Response Types
+// ============================================================================
+
+/**
+ * Supported EVM networks
+ */
+export type EVMNetworkId = 
+  | 'eth-mainnet' 
+  | 'eth-sepolia' 
+  | 'polygon-mainnet' 
+  | 'base-mainnet' 
+  | 'bsc-mainnet';
+
+/**
+ * Response from get_balance method
+ */
+export interface BalanceResponse {
+  /** Octra wallet address */
+  octAddress: string;
+  /** EVM address (derived from same key) */
+  evmAddress: string;
+  /** OCT balance */
+  octBalance: number;
+  /** ETH/native token balance on active EVM network */
+  ethBalance: number;
+  /** USDC balance on active EVM network */
+  usdcBalance: number;
+  /** Octra network (mainnet/testnet) */
+  network: 'mainnet' | 'testnet';
+  /** Active EVM network ID */
+  evmNetwork: EVMNetworkId;
+}
+
+// ============================================================================
 // Session Types
 // ============================================================================
 
