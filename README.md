@@ -56,7 +56,7 @@ See [packages/sdk/README.md](packages/sdk/README.md) for documentation.
 ### Transactions
 - Standard OCT send with address book integration
 - Multi-send (multiple recipients in single transaction)
-- Bulk send via CSV file import
+- Bulk send via TXT/CSV file import
 - Transaction history with filtering (All/Sent/Received/Contract)
 - Real-time transaction status tracking
 - Pending transaction monitoring
