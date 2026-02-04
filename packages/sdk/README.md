@@ -66,6 +66,7 @@ Capabilities are cryptographically signed permissions that grant access to speci
 ```typescript
 interface Capability {
   id: string;
+  version: 1;
   circle: string;
   methods: string[];
   scope: 'read' | 'write' | 'compute';
@@ -73,9 +74,17 @@ interface Capability {
   appOrigin: string;
   issuedAt: number;
   expiresAt: number;
+  nonce: string;
+  issuerPubKey: string;
   signature: string;
 }
 ```
+
+**Security Features:**
+- Maximum 100 capabilities per session to prevent DoS attacks
+- Automatic cleanup of expired capabilities
+- Origin binding enforcement
+- Cryptographic signature verification (ed25519)
 
 ### Invocations
 Invoke methods using a valid capability:
@@ -108,6 +117,13 @@ Write scope (requires user approval in the extension UI):
 - `sign_intent` → payload `SwapIntentPayload` (use `IntentsClient.signIntent`)
 - `send_transaction` → payload `{ to, amount, message? }`
 - `send_evm_transaction` → payload `{ to, amount?, value?, data? }`
+- `send_erc20_transaction` → payload `{ tokenContract, to, amount, decimals, symbol }`
+
+**Input Validation:**
+- `apiUrl` must be a valid HTTPS URL
+- `amount` must be a finite positive number
+- `targetAddress` must be a valid Ethereum address (0x + 40 hex chars)
+- `slippageBps` must be 0-5000 (0-50%)
 
 ## API Reference
 
@@ -118,7 +134,8 @@ Initialize the SDK.
 
 ```typescript
 const sdk = await OctraSDK.init({
-  timeout: 3000, // Provider detection timeout
+  timeout: 3000, // Provider detection timeout (default: 3000ms)
+  skipSignatureVerification: false, // WARNING: Only for testing!
 });
 ```
 
@@ -136,7 +153,7 @@ const connection = await sdk.connect({
 ```
 
 #### `sdk.disconnect()`
-Disconnect from current Circle.
+Disconnect from current Circle. Also cleans up all event listeners.
 
 #### `sdk.requestCapability(request)`
 Request a new capability.
@@ -208,8 +225,33 @@ await intents.signIntent(payload);
 // Submit after sending OCT to escrow
 const result = await intents.submitIntent(octraTxHash);
 
-// Wait for fulfillment
-const status = await intents.waitForFulfillment(result.intentId);
+// Wait for fulfillment (with retry on network errors)
+const status = await intents.waitForFulfillment(result.intentId, {
+  timeoutMs: 300000,    // 5 minutes (default)
+  pollIntervalMs: 3000, // 3 seconds (default)
+});
+```
+
+**Note:** `waitForFulfillment` now handles network errors gracefully with automatic retry (up to 5 consecutive failures before throwing).
+
+## Crypto Utilities
+
+The SDK exports crypto utilities for advanced use cases:
+
+```typescript
+import {
+  hexToBytes,           // Convert hex string to Uint8Array (handles 0x prefix)
+  bytesToHex,           // Convert Uint8Array to hex string
+  sha256,               // SHA-256 hash
+  verifyEd25519Signature,
+  verifyCapabilitySignature,
+  isCapabilityExpired,
+  isOriginValid,
+  generateNonce,
+} from '@octwa/sdk';
+
+// hexToBytes now handles 0x prefix and provides better error messages
+const bytes = hexToBytes('0x1234abcd'); // Works with or without 0x
 ```
 
 ## Error Handling
@@ -221,6 +263,10 @@ import {
   UserRejectedError,
   CapabilityExpiredError,
   ScopeViolationError,
+  SignatureInvalidError,
+  OriginMismatchError,
+  ValidationError,
+  TimeoutError,
 } from '@octwa/sdk';
 
 try {
@@ -230,6 +276,10 @@ try {
     // Wallet not installed
   } else if (error instanceof UserRejectedError) {
     // User rejected the request
+  } else if (error instanceof CapabilityExpiredError) {
+    // Capability has expired, request a new one
+  } else if (error instanceof SignatureInvalidError) {
+    // Capability signature verification failed
   }
 }
 ```
@@ -240,12 +290,30 @@ try {
 import type {
   Connection,
   Capability,
+  CapabilityPayload,
   CapabilityRequest,
+  CapabilityScope,
   InvocationRequest,
   InvocationResult,
+  SignedInvocation,
   SessionState,
+  InitOptions,
+  EventName,
+  EventCallback,
 } from '@octwa/sdk';
 ```
+
+## Security Considerations
+
+1. **Capability Limits**: SDK enforces a maximum of 100 capabilities per session to prevent memory exhaustion attacks.
+
+2. **Signature Verification**: All capabilities are cryptographically verified using ed25519 signatures before use.
+
+3. **Origin Binding**: Capabilities are bound to the requesting origin and cannot be used from different origins.
+
+4. **Expiry Enforcement**: Expired capabilities are automatically rejected and cleaned up.
+
+5. **Input Validation**: All API URLs and transaction parameters are validated before use.
 
 ## License
 
