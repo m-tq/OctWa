@@ -477,13 +477,14 @@ async function handleInvokeRequest(data, sender) {
 // Method Execution (wallet-side RPC calls)
 // =============================================================================
 
-const RPC_URL = 'https://octra.network';
-const ETH_RPC_URL = 'https://ethereum-sepolia-rpc.publicnode.com';
+// These values are injected at build time from .env
+const RPC_URL = '__VITE_OCTRA_RPC_URL__';
+const ETH_RPC_URL = '__VITE_ETH_RPC_URL__';
 const MU_FACTOR = 1_000_000;
 
 // USDC Contract on Sepolia (Circle's official testnet USDC)
-const USDC_CONTRACT = '0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238';
-const USDC_DECIMALS = 6;
+const USDC_CONTRACT = '__VITE_USDC_CONTRACT__';
+const USDC_DECIMALS = __VITE_USDC_DECIMALS__;
 
 async function executeMethod(method, payload, connection, capability) {
   switch (method) {

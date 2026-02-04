@@ -5,6 +5,31 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+// Load .env file manually
+async function loadEnv(envPath) {
+  try {
+    const content = await fs.readFile(envPath, 'utf8');
+    const env = {};
+    for (const line of content.split('\n')) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith('#')) continue;
+      const eqIndex = trimmed.indexOf('=');
+      if (eqIndex === -1) continue;
+      const key = trimmed.slice(0, eqIndex).trim();
+      let value = trimmed.slice(eqIndex + 1).trim();
+      // Remove quotes if present
+      if ((value.startsWith('"') && value.endsWith('"')) || 
+          (value.startsWith("'") && value.endsWith("'"))) {
+        value = value.slice(1, -1);
+      }
+      env[key] = value;
+    }
+    return env;
+  } catch {
+    return {};
+  }
+}
+
 async function ensureDir(p) {
   await fs.mkdir(p, { recursive: true });
 }
@@ -69,17 +94,49 @@ async function injectVersionToProvider(extDir, distDir) {
   process.stdout.write(`Injected version ${version} into provider.js\n`);
 }
 
+/**
+ * Inject environment variables into background.js
+ */
+async function injectEnvToBackground(extDir, distDir, env) {
+  const backgroundSrc = path.join(extDir, 'background.js');
+  const backgroundDest = path.join(distDir, 'background.js');
+  
+  // Read background.js
+  let content = await fs.readFile(backgroundSrc, 'utf8');
+  
+  // Environment variables to inject (with defaults)
+  const envVars = {
+    '__VITE_OCTRA_RPC_URL__': env.VITE_OCTRA_RPC_URL || 'https://octra.network',
+    '__VITE_ETH_RPC_URL__': env.VITE_ETH_RPC_URL || 'https://ethereum-sepolia-rpc.publicnode.com',
+    '__VITE_USDC_CONTRACT__': env.VITE_USDC_CONTRACT || '0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238',
+    '__VITE_USDC_DECIMALS__': env.VITE_USDC_DECIMALS || '6',
+  };
+  
+  // Replace placeholders with actual values
+  for (const [placeholder, value] of Object.entries(envVars)) {
+    content = content.replace(new RegExp(placeholder, 'g'), value);
+  }
+  
+  // Write to dist
+  await ensureDir(distDir);
+  await fs.writeFile(backgroundDest, content, 'utf8');
+  
+  process.stdout.write(`Injected env variables into background.js\n`);
+}
+
 async function main() {
   const root = path.resolve(__dirname, '..');
   const distDir = path.join(root, 'dist');
   const extDir = path.join(root, 'extensionFiles');
+  
+  // Load environment variables
+  const env = await loadEnv(path.join(root, '.env'));
 
   await ensureDir(distDir);
 
-  // Files to copy (excluding provider.js - handled separately)
+  // Files to copy (excluding provider.js and background.js - handled separately)
   const files = [
     'manifest.json',
-    'background.js',
     'popup.html',
     'content.js',
     'octra-sdk.js'
@@ -94,6 +151,9 @@ async function main() {
 
   // Inject version and copy provider.js
   await injectVersionToProvider(extDir, distDir);
+  
+  // Inject env variables and copy background.js
+  await injectEnvToBackground(extDir, distDir, env);
 
   process.stdout.write('Extension files copied to dist\n');
 }
