@@ -175,6 +175,13 @@ export function getActiveEVMNetwork(): EVMNetwork {
  */
 export function setActiveEVMNetwork(networkId: string): void {
   localStorage.setItem(ACTIVE_EVM_NETWORK_KEY, networkId);
+  
+  // Sync to chrome.storage for background script access
+  if (typeof chrome !== 'undefined' && chrome.storage?.local) {
+    chrome.storage.local.set({ [ACTIVE_EVM_NETWORK_KEY]: networkId }).catch(() => {
+      // Ignore errors in non-extension context
+    });
+  }
 }
 
 /**

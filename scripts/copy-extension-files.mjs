@@ -104,18 +104,12 @@ async function injectEnvToBackground(extDir, distDir, env) {
   // Read background.js
   let content = await fs.readFile(backgroundSrc, 'utf8');
   
-  // Construct ETH RPC URL from Infura API key
-  const infuraApiKey = env.VITE_INFURA_API_KEY;
-  const ethRpcUrl = infuraApiKey 
-    ? `https://sepolia.infura.io/v3/${infuraApiKey}`
-    : 'https://ethereum-sepolia-rpc.publicnode.com'; // Fallback to public RPC
+  const infuraApiKey = env.VITE_INFURA_API_KEY || '';
   
   // Environment variables to inject (with defaults)
   const envVars = {
     '__VITE_OCTRA_RPC_URL__': env.VITE_OCTRA_RPC_URL || 'https://octra.network',
-    '__VITE_ETH_RPC_URL__': ethRpcUrl,
-    '__VITE_USDC_CONTRACT__': env.VITE_USDC_CONTRACT || '0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238',
-    '__VITE_USDC_DECIMALS__': env.VITE_USDC_DECIMALS || '6',
+    '__VITE_INFURA_API_KEY__': infuraApiKey,
   };
   
   // Replace placeholders with actual values
@@ -127,7 +121,7 @@ async function injectEnvToBackground(extDir, distDir, env) {
   await ensureDir(distDir);
   await fs.writeFile(backgroundDest, content, 'utf8');
   
-  process.stdout.write(`Injected env variables into background.js (ETH RPC: ${infuraApiKey ? 'Infura' : 'Public'})\n`);
+  process.stdout.write(`Injected env variables into background.js (Infura: ${infuraApiKey ? 'Yes' : 'No'})\n`);
 }
 
 async function main() {

@@ -479,12 +479,81 @@ async function handleInvokeRequest(data, sender) {
 
 // These values are injected at build time from .env
 const RPC_URL = '__VITE_OCTRA_RPC_URL__';
-const ETH_RPC_URL = '__VITE_ETH_RPC_URL__';
 const MU_FACTOR = 1_000_000;
 
-// USDC Contract on Sepolia (Circle's official testnet USDC)
-const USDC_CONTRACT = '__VITE_USDC_CONTRACT__';
-const USDC_DECIMALS = __VITE_USDC_DECIMALS__;
+// Default Infura API Key (injected at build time)
+const DEFAULT_INFURA_API_KEY = '__VITE_INFURA_API_KEY__';
+
+// Default EVM Networks configuration
+const DEFAULT_EVM_NETWORKS = {
+  'eth-mainnet': {
+    rpcUrl: `https://mainnet.infura.io/v3/${DEFAULT_INFURA_API_KEY}`,
+    chainId: 1,
+    symbol: 'ETH',
+    isTestnet: false
+  },
+  'eth-sepolia': {
+    rpcUrl: `https://sepolia.infura.io/v3/${DEFAULT_INFURA_API_KEY}`,
+    chainId: 11155111,
+    symbol: 'ETH',
+    isTestnet: true
+  },
+  'polygon-mainnet': {
+    rpcUrl: `https://polygon-mainnet.infura.io/v3/${DEFAULT_INFURA_API_KEY}`,
+    chainId: 137,
+    symbol: 'POL',
+    isTestnet: false
+  },
+  'base-mainnet': {
+    rpcUrl: `https://base-mainnet.infura.io/v3/${DEFAULT_INFURA_API_KEY}`,
+    chainId: 8453,
+    symbol: 'ETH',
+    isTestnet: false
+  },
+  'bsc-mainnet': {
+    rpcUrl: `https://bsc-mainnet.infura.io/v3/${DEFAULT_INFURA_API_KEY}`,
+    chainId: 56,
+    symbol: 'BNB',
+    isTestnet: false
+  }
+};
+
+// USDC Contracts per network
+const USDC_CONTRACTS = {
+  'eth-mainnet': { address: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48', decimals: 6 },
+  'eth-sepolia': { address: '0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238', decimals: 6 },
+  'polygon-mainnet': { address: '0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359', decimals: 6 },
+  'base-mainnet': { address: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913', decimals: 6 },
+  'bsc-mainnet': { address: '0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d', decimals: 18 }
+};
+
+/**
+ * Get active EVM network from chrome.storage (synced from wallet)
+ * Falls back to eth-sepolia if not set
+ */
+async function getActiveEVMNetwork() {
+  try {
+    const result = await chrome.storage.local.get(['active_evm_network']);
+    return result.active_evm_network || 'eth-sepolia';
+  } catch {
+    return 'eth-sepolia';
+  }
+}
+
+/**
+ * Get EVM RPC URL for a network
+ */
+function getEVMRpcUrl(networkId) {
+  const network = DEFAULT_EVM_NETWORKS[networkId];
+  return network ? network.rpcUrl : DEFAULT_EVM_NETWORKS['eth-sepolia'].rpcUrl;
+}
+
+/**
+ * Get USDC contract info for a network
+ */
+function getUSDCContract(networkId) {
+  return USDC_CONTRACTS[networkId] || USDC_CONTRACTS['eth-sepolia'];
+}
 
 async function executeMethod(method, payload, connection, capability) {
   switch (method) {
@@ -519,7 +588,12 @@ async function executeGetBalance(connection) {
   const octAddress = connection.walletPubKey;
   const evmAddress = connection.evmAddress || '';
   
-  console.log('[Background] Fetching balances for:', { octAddress, evmAddress });
+  // Get active EVM network from wallet settings
+  const activeNetwork = await getActiveEVMNetwork();
+  const evmRpcUrl = getEVMRpcUrl(activeNetwork);
+  const usdcContract = getUSDCContract(activeNetwork);
+  
+  console.log('[Background] Fetching balances for:', { octAddress, evmAddress, activeNetwork });
   
   let octBalance = 0;
   let ethBalance = 0;
@@ -538,10 +612,10 @@ async function executeGetBalance(connection) {
     console.error('[Background] OCT balance fetch error:', error);
   }
   
-  // Fetch ETH balance (Sepolia)
+  // Fetch ETH/native token balance
   if (evmAddress) {
     try {
-      const response = await fetch(ETH_RPC_URL, {
+      const response = await fetch(evmRpcUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -565,36 +639,38 @@ async function executeGetBalance(connection) {
       console.error('[Background] ETH balance fetch error:', error);
     }
     
-    // Fetch USDC balance (ERC20 on Sepolia)
-    try {
-      // balanceOf(address) function selector: 0x70a08231
-      const balanceOfData = '0x70a08231' + evmAddress.slice(2).toLowerCase().padStart(64, '0');
-      
-      const response = await fetch(ETH_RPC_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          jsonrpc: '2.0',
-          method: 'eth_call',
-          params: [
-            { to: USDC_CONTRACT, data: balanceOfData },
-            'latest'
-          ],
-          id: 2
-        })
-      });
-      
-      if (response.ok) {
-        const data = await response.json();
-        if (data.result && data.result !== '0x') {
-          // Convert from smallest units to USDC (6 decimals)
-          const rawBalance = BigInt(data.result);
-          usdcBalance = Number(rawBalance) / Math.pow(10, USDC_DECIMALS);
-          console.log('[Background] USDC balance:', usdcBalance);
+    // Fetch USDC balance (ERC20)
+    if (usdcContract.address) {
+      try {
+        // balanceOf(address) function selector: 0x70a08231
+        const balanceOfData = '0x70a08231' + evmAddress.slice(2).toLowerCase().padStart(64, '0');
+        
+        const response = await fetch(evmRpcUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            jsonrpc: '2.0',
+            method: 'eth_call',
+            params: [
+              { to: usdcContract.address, data: balanceOfData },
+              'latest'
+            ],
+            id: 2
+          })
+        });
+        
+        if (response.ok) {
+          const data = await response.json();
+          if (data.result && data.result !== '0x') {
+            // Convert from smallest units to USDC
+            const rawBalance = BigInt(data.result);
+            usdcBalance = Number(rawBalance) / Math.pow(10, usdcContract.decimals);
+            console.log('[Background] USDC balance:', usdcBalance);
+          }
         }
+      } catch (error) {
+        console.error('[Background] USDC balance fetch error:', error);
       }
-    } catch (error) {
-      console.error('[Background] USDC balance fetch error:', error);
     }
   }
   
@@ -607,7 +683,8 @@ async function executeGetBalance(connection) {
     octBalance: octBalance,
     ethBalance: ethBalance,
     usdcBalance: usdcBalance,
-    network: connection.network || 'mainnet'
+    network: connection.network || 'mainnet',
+    evmNetwork: activeNetwork
   };
   
   return new TextEncoder().encode(JSON.stringify(result));
