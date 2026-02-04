@@ -33,40 +33,73 @@ See [packages/sdk/README.md](packages/sdk/README.md) for documentation.
 - **Session Key Isolation** - Unique encryption key per session
 
 ### Session Security
-- **Auto-Lock Protection** - Automatic locking after 15 minutes
-- **Cross-Tab Sync** - Lock state synchronized across views
+- **Auto-Lock Protection** - Automatic locking after 15 minutes of inactivity
+- **Cross-Tab Sync** - Lock state synchronized across all views (popup, expanded, web)
 - **Browser Close Lock** - Auto-locks when browser closes
 
 ### Access Control
 - **Rate Limiting** - 5 failed attempts triggers 5-minute lockout
 - **Password Strength Validation** - Real-time strength indicator
-- **Password Re-verification** - Required for sensitive operations
+- **Password Re-verification** - Required for sensitive operations (export keys, etc.)
 
 ## Features
 
 ### Wallet Management
-- Create/Import wallets (BIP39 mnemonic)
-- Multiple wallet support
-- Secure private key export
+- Create new wallet with BIP39 mnemonic (12/24 words)
+- Import existing wallet via mnemonic phrase
+- Multiple wallet support with instant switching
+- Cached wallet data for seamless switching experience
+- Drag & drop wallet reordering
+- Custom wallet labels/names
+- Secure private key export with password verification
 
 ### Transactions
-- Standard send
-- Multi-send (multiple recipients)
-- Bulk send (CSV import)
-- Transaction history
+- Standard OCT send with address book integration
+- Multi-send (multiple recipients in single transaction)
+- Bulk send via CSV file import
+- Transaction history with filtering (All/Sent/Received/Contract)
+- Real-time transaction status tracking
+- Pending transaction monitoring
 
-### Privacy (Confidential Transactions)
+### Privacy Mode (Confidential Transactions)
 - Public/Private mode toggle
-- Encrypt/Decrypt balance
-- Private transfers with FHE
+- Encrypt balance (convert public OCT to private)
+- Decrypt balance (convert private OCT to public)
+- Private transfers using Fully Homomorphic Encryption (FHE)
+- Claim incoming private transfers
+- Separate activity history for private transactions
+
+### EVM Compatibility
+- Dual address support (Octra native + EVM address)
+- Multi-network support (Ethereum, Polygon, BSC, Arbitrum, etc.)
+- Custom network configuration
+- ERC-20 token management
+- NFT viewing and transfers
+- Gas price estimation
+- EVM transaction history
+
+### Address Book
+- Save frequently used addresses with labels
+- Quick address selection during transfers
+- Import/Export address book
 
 ### dApp Integration
 - Web3 provider (`window.octra`)
-- Connection approval flow
-- Capability-based permissions
-- Transaction signing
+- Circle-based connection model
+- Capability-based permissions with TTL
+- Connection approval flow with site info
+- Transaction signing requests
 - Intent-based swaps (OCT ⇄ ETH)
-- Smart contract interaction
+- Smart contract interaction support
+- Connected dApps manager
+
+### User Interface
+- Responsive design (Popup mode & Expanded mode)
+- Dark/Light theme toggle
+- Onboarding flow for new users
+- Real-time balance updates
+- RPC provider manager with status indicator
+- Animated 3D background
 
 ## Quick Start
 
@@ -100,107 +133,6 @@ Manage providers via UI (RPC Provider Manager) or seed `localStorage` key `rpcPr
 ## Network Determination
 
 The active network is determined by the wallet/extension and returned in `connection.network`. dApps must follow this value for API selection, explorer links, and transaction behavior. If a dApp requires a specific network, it should prompt the user to switch networks in the wallet and then reconnect.
-
-## Screenshots
-
-### Web Application
-
-<p align="center">
-  <img src="public/screenshot/welcome.png" alt="Welcome" width="400">
-  <br><em>Welcome Screen</em>
-</p>
-
-<p align="center">
-  <img src="public/screenshot/password.png" alt="Password" width="400">
-  <br><em>Password Setup</em>
-</p>
-
-<p align="center">
-  <img src="public/screenshot/dashboard.png" alt="Dashboard" width="400">
-  <br><em>Dashboard</em>
-</p>
-
-<p align="center">
-  <img src="public/screenshot/onboarding_first.png" alt="Onboarding" width="400">
-  <br><em>Onboarding - first</em>
-</p>
-
-<p align="center">
-  <img src="public/screenshot/onboarding_last.png" alt="Onboarding Complete" width="400">
-  <br><em>Onboarding - last</em>
-</p>
-
-<p align="center">
-  <img src="public/screenshot/multiwallet.png" alt="Multi Wallet" width="400">
-  <br><em>Multi Wallet Support</em>
-</p>
-
-<p align="center">
-  <img src="public/screenshot/multisend.png" alt="Multi Send" width="400">
-  <br><em>Multi Send</em>
-</p>
-
-<p align="center">
-  <img src="public/screenshot/bulksend.png" alt="Bulk Send" width="400">
-  <br><em>Bulk Send (CSV Import)</em>
-</p>
-
-<p align="center">
-  <img src="public/screenshot/privacy_first.png" alt="Privacy Setup" width="400">
-  <br><em>Privacy Mode Setup</em>
-</p>
-
-<p align="center">
-  <img src="public/screenshot/private.png" alt="Private Mode" width="400">
-  <br><em>Private Mode with FHE</em>
-</p>
-
-<p align="center">
-  <img src="public/screenshot/evm_assets.png" alt="EVM Assets" width="400">
-  <br><em>EVM Assets</em>
-</p>
-
-### Browser Extension (Popup)
-
-<table>
-  <tr>
-    <td align="center">
-      <img src="public/screenshot/popup/locked.png" alt="Locked" width="180"><br>
-      <em>Locked State</em>
-    </td>
-    <td align="center">
-      <img src="public/screenshot/popup/dashboard.png" alt="Popup Dashboard" width="180"><br>
-      <em>Dashboard</em>
-    </td>
-    <td align="center">
-      <img src="public/screenshot/popup/multiwallet.png" alt="Popup Multi Wallet" width="180"><br>
-      <em>Multi Wallet</em>
-    </td>
-    <td align="center">
-      <img src="public/screenshot/popup/walletmenu.png" alt="Wallet Menu" width="180"><br>
-      <em>Wallet Menu</em>
-    </td>
-  </tr>
-  <tr>
-    <td align="center">
-      <img src="public/screenshot/popup/publicsend.png" alt="Public Send" width="180"><br>
-      <em>Public Send</em>
-    </td>
-    <td align="center">
-      <img src="public/screenshot/popup/privatedashboard.png" alt="Private Dashboard" width="180"><br>
-      <em>Private Dashboard</em>
-    </td>
-    <td align="center">
-      <img src="public/screenshot/popup/privatesend.png" alt="Private Send" width="180"><br>
-      <em>Private Send</em>
-    </td>
-    <td align="center"></td>
-  </tr>
-</table>
-
-## Video Demo
-
-[![OctWa Demo](https://img.youtube.com/vi/n7hdKntWBzA/maxresdefault.jpg)](https://www.youtube.com/watch?v=n7hdKntWBzA)
 
 ## License
 
