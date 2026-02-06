@@ -173,35 +173,45 @@ export function ModeToggle({
                   </button>
                 </span>
               </TooltipTrigger>
-              <TooltipContent side="bottom">
-                <p className="text-xs">{getTooltipText()}</p>
+              <TooltipContent side="bottom" className={isCompact ? "px-2 py-1 max-w-[100px]" : ""}>
+                <p className={isCompact ? "text-[10px] whitespace-normal" : "text-xs"}>{getTooltipText()}</p>
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
 
           {/* Animated Status Text */}
-          <div className={`relative overflow-hidden flex items-center ${isCompact ? 'h-7' : 'h-8'}`}>
-            {/* Public Mode Text */}
-            <span
-              className={`${isCompact ? 'text-lg' : 'text-xl'} font-medium text-muted-foreground whitespace-nowrap transition-all duration-300 ease-in-out
-                ${isPrivate 
-                  ? '-translate-y-full opacity-0 absolute' 
-                  : 'translate-y-0 opacity-100'
-                }
-              `}
-            >
-              Public Mode
-            </span>
-            {/* Private Mode Text */}
-            <span
-              className={`${isCompact ? 'text-lg' : 'text-xl'} font-medium text-[#00E5C0] whitespace-nowrap transition-all duration-300 ease-in-out
-                ${isPrivate 
-                  ? 'translate-y-0 opacity-100' 
-                  : 'translate-y-full opacity-0 absolute'
-                }
-              `}
-            >
-              Private Mode
+          <div className="flex flex-col gap-0.5">
+            <div className={`relative overflow-hidden flex items-center ${isCompact ? 'h-7' : 'h-8'}`}>
+              {/* Public Mode Text */}
+              <button
+                onClick={handleToggle}
+                disabled={!privateEnabled && !isPrivate}
+                className={`${isCompact ? 'text-lg' : 'text-xl'} font-medium text-muted-foreground whitespace-nowrap transition-all duration-300 ease-in-out cursor-pointer hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50
+                  ${isPrivate 
+                    ? '-translate-y-full opacity-0 absolute' 
+                    : 'translate-y-0 opacity-100'
+                  }
+                `}
+              >
+                Public Mode
+              </button>
+              {/* Private Mode Text */}
+              <button
+                onClick={handleToggle}
+                disabled={!privateEnabled && !isPrivate}
+                className={`${isCompact ? 'text-lg' : 'text-xl'} font-medium text-[#00E5C0] whitespace-nowrap transition-all duration-300 ease-in-out cursor-pointer hover:opacity-80 disabled:cursor-not-allowed disabled:opacity-50
+                  ${isPrivate 
+                    ? 'translate-y-0 opacity-100' 
+                    : 'translate-y-full opacity-0 absolute'
+                  }
+                `}
+              >
+                Private Mode
+              </button>
+            </div>
+            {/* Helper text */}
+            <span className={`${isCompact ? 'text-[10px]' : 'text-xs'} text-muted-foreground/60`}>
+              ← click here to change mode
             </span>
           </div>
         </div>
@@ -216,8 +226,8 @@ export function ModeToggle({
                   <span>Encrypted.</span>
                 </div>
               </TooltipTrigger>
-              <TooltipContent side="bottom">
-                <p className="text-xs">{isCompact ? "Untraceable" : "You're untraceable"}</p>
+              <TooltipContent side="bottom" className={isCompact ? "px-2 py-1" : ""}>
+                <p className={isCompact ? "text-[10px]" : "text-xs"}>{isCompact ? "Untraceable" : "You're untraceable"}</p>
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
@@ -231,8 +241,8 @@ export function ModeToggle({
                   <span>Exposed.</span>
                 </div>
               </TooltipTrigger>
-              <TooltipContent side="bottom" className="max-w-[200px]">
-                <p className="text-xs">{isCompact ? "Transactions visible" : "Your transactions are publicly visible on the blockchain. Encrypt your balance to enable Private Mode."}</p>
+              <TooltipContent side="bottom" className={isCompact ? "px-2 py-1 max-w-[120px]" : "max-w-[200px]"}>
+                <p className={isCompact ? "text-[10px] whitespace-normal" : "text-xs"}>Your transactions are publicly visible on the blockchain. Encrypt your balance to enable Private Mode.</p>
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>

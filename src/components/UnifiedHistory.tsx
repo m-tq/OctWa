@@ -63,6 +63,10 @@ export function UnifiedHistory({ wallet, transactions, onTransactionsUpdate, isL
   const historyListRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
 
+  // Scanner/Explorer configuration from environment variables
+  const scannerUrl = import.meta.env.VITE_SCANNER_URL || 'https://octrascan.io/transactions/';
+  const scannerName = import.meta.env.VITE_SCANNER_NAME || 'Explorer';
+
   // Filter transactions based on operationMode and activeFilter
   const filteredTransactions = transactions.filter(tx => {
     if (operationMode === 'private') {
@@ -570,12 +574,12 @@ export function UnifiedHistory({ wallet, transactions, onTransactionsUpdate, isL
                     asChild
                   >
                     <a 
-                      href={`https://octrascan.io/transactions/${'hash' in selectedTx ? selectedTx.hash : selectedTx.tx_hash}`} 
+                      href={`${scannerUrl}${'hash' in selectedTx ? selectedTx.hash : selectedTx.tx_hash}`} 
                       target="_blank" 
                       rel="noopener noreferrer"
                     >
                       <ExternalLink className="h-4 w-4 mr-2" />
-                      View on Explorer
+                      View on {scannerName}
                     </a>
                   </Button>
                 </div>

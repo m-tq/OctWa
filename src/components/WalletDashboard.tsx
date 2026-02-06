@@ -278,6 +278,10 @@ export function WalletDashboard({
   // Add Network state
   const [newEvmNetwork, setNewEvmNetwork] = useState({ name: '', rpcUrl: '', chainId: '', symbol: '', explorer: '' });
   const [isAddingEvmNetwork, setIsAddingEvmNetwork] = useState(false);
+
+  // Scanner/Explorer configuration from environment variables
+  const scannerUrl = import.meta.env.VITE_SCANNER_URL || 'https://octrascan.io/transactions/';
+  const scannerName = import.meta.env.VITE_SCANNER_NAME || 'Explorer';
   // Current epoch state
   const [currentEpoch, setCurrentEpoch] = useState<number>(0);
   const [isUpdatingEpoch, setIsUpdatingEpoch] = useState(false);
@@ -2060,12 +2064,12 @@ export function WalletDashboard({
                       asChild
                     >
                       <a 
-                        href={`https://octrascan.io/transactions/${selectedTxHash}`} 
+                        href={`${scannerUrl}${selectedTxHash}`} 
                         target="_blank" 
                         rel="noopener noreferrer"
                       >
                         <ExternalLink className="h-4 w-4 mr-2" />
-                        View on Explorer
+                        View on {scannerName}
                       </a>
                     </Button>
                   </div>
@@ -3770,12 +3774,12 @@ export function WalletDashboard({
                               asChild
                             >
                               <a 
-                                href={`https://octrascan.io/transactions/${selectedTxHash}`} 
+                                href={`${scannerUrl}${selectedTxHash}`} 
                                 target="_blank" 
                                 rel="noopener noreferrer"
                               >
                                 <ExternalLink className="h-4 w-4 mr-2" />
-                                View on Explorer
+                                View on {scannerName}
                               </a>
                             </Button>
                           </div>
