@@ -657,7 +657,13 @@ export async function getPublicKey(address: string): Promise<string | null> {
   }
 }
 
-export async function sendTransaction(transaction: Transaction): Promise<{ success: boolean; hash?: string; error?: string }> {
+export async function sendTransaction(transaction: Transaction): Promise<{ 
+  success: boolean; 
+  hash?: string; 
+  error?: string;
+  finality?: 'pending' | 'confirmed' | 'rejected';
+  reason?: string;
+}> {
   try {
     // console.log('Sending transaction:', JSON.stringify(transaction, null, 2));
     
@@ -675,10 +681,34 @@ export async function sendTransaction(transaction: Transaction): Promise<{ succe
     if (response.ok) {
       try {
         const data = JSON.parse(text);
-        if (data.status === 'accepted') {
+        
+        // New format with finality
+        if (data.status === 'accepted' || data.status === 'rejected') {
+          const finality = data.finality as 'pending' | 'confirmed' | 'rejected';
+          
+          if (data.status === 'accepted') {
+            return { 
+              success: true, 
+              hash: data.hash || data.tx_hash,
+              finality: finality
+            };
+          } else {
+            // Status is 'rejected'
+            return { 
+              success: false, 
+              error: data.reason || 'Transaction rejected',
+              finality: 'rejected',
+              reason: data.reason
+            };
+          }
+        }
+        
+        // Legacy format (backward compatibility)
+        if (data.tx_hash) {
           return { success: true, hash: data.tx_hash };
         }
       } catch {
+        // Try to parse legacy format
         const hashMatch = text.match(/OK\s+([0-9a-fA-F]{64})/);
         if (hashMatch) {
           return { success: true, hash: hashMatch[1] };
@@ -687,12 +717,37 @@ export async function sendTransaction(transaction: Transaction): Promise<{ succe
       return { success: true, hash: text };
     }
 
-    console.error('Transaction failed:', text);
-    return { success: false, error: text || 'Transaction failed' };
+    // Handle error responses
+    try {
+      const errorData = JSON.parse(text);
+      const errorMessage = getTransactionErrorMessage(errorData.error || errorData.reason || text);
+      console.error('Transaction failed:', errorMessage);
+      return { success: false, error: errorMessage };
+    } catch {
+      console.error('Transaction failed:', text);
+      return { success: false, error: text || 'Transaction failed' };
+    }
   } catch (error) {
     console.error('Error sending transaction:', error);
     return { success: false, error: error instanceof Error ? error.message : 'Network error occurred' };
   }
+}
+
+// Helper function to get user-friendly error messages
+function getTransactionErrorMessage(errorType: string): string {
+  const errorMessages: Record<string, string> = {
+    'malformed_transaction': 'Transaction format is invalid',
+    'invalid_address': 'Invalid recipient address',
+    'self_transfer': 'Cannot send to yourself',
+    'sender_not_found': 'Sender address not found',
+    'invalid_signature': 'Invalid transaction signature',
+    'duplicate_transaction': 'Duplicate transaction detected',
+    'nonce_too_far': 'Transaction nonce is too far ahead',
+    'insufficient_balance': 'Insufficient balance',
+    'internal_error': 'Internal server error',
+  };
+  
+  return errorMessages[errorType] || errorType || 'Transaction failed';
 }
 
 // Update fetchTransactionHistory to handle errors better

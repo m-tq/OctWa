@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { VisuallyHidden } from '@/components/ui/visually-hidden';
 import { Button } from '@/components/ui/button';
-import { CheckCircle, XCircle, Copy, ExternalLink, Check } from 'lucide-react';
+import { CheckCircle, XCircle, Copy, ExternalLink, Check, Clock } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
 export type TransactionStatus = 'idle' | 'sending' | 'success' | 'error';
@@ -11,6 +11,7 @@ export interface TransactionResult {
   hash?: string;
   amount?: string;
   error?: string;
+  finality?: 'pending' | 'confirmed' | 'rejected';
 }
 
 // Bouncing Logo Animation for loading state
@@ -156,6 +157,29 @@ export function TransactionModal({
                       </a>
                     </Button>
                   </div>
+                  
+                  {/* Finality Status */}
+                  {result.finality && (
+                    <div className="flex items-center justify-center gap-1.5 mt-1">
+                      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium ${
+                        result.finality === 'confirmed' 
+                          ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+                          : 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400'
+                      }`}>
+                        {result.finality === 'confirmed' ? (
+                          <>
+                            <CheckCircle className="h-3 w-3" />
+                            <span>Confirmed</span>
+                          </>
+                        ) : (
+                          <>
+                            <Clock className="h-3 w-3" />
+                            <span>Pending</span>
+                          </>
+                        )}
+                      </span>
+                    </div>
+                  )}
                 </div>
               )}
 

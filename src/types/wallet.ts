@@ -118,6 +118,28 @@ export interface StagingResponse {
   message: string;
 }
 
+// Transaction send response with finality
+export interface TransactionSendResponse {
+  status: 'accepted' | 'rejected';
+  hash?: string;
+  finality: 'pending' | 'confirmed' | 'rejected';
+  reason?: string; // Rejection reason if finality is 'rejected'
+  error?: string; // For backward compatibility
+}
+
+// Transaction error types
+export type TransactionErrorType =
+  | 'malformed_transaction'
+  | 'invalid_address'
+  | 'self_transfer'
+  | 'sender_not_found'
+  | 'invalid_signature'
+  | 'duplicate_transaction'
+  | 'nonce_too_far'
+  | 'insufficient_balance'
+  | 'internal_error'
+  | 'unknown_error';
+
 // New interfaces for private transfers
 export interface PendingPrivateTransfer {
   id: string;

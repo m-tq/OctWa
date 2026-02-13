@@ -269,7 +269,11 @@ export function SendTransaction({
       if (sendResult.success) {
         // Update modal to success state
         setTxModalStatus('success');
-        setTxModalResult({ hash: sendResult.hash, amount: amountNum.toFixed(8) });
+        setTxModalResult({ 
+          hash: sendResult.hash, 
+          amount: amountNum.toFixed(8),
+          finality: sendResult.finality 
+        });
         
         // Reset OU to auto on success
         setOuOption('auto');
@@ -299,10 +303,13 @@ export function SendTransaction({
 
         onTransactionSuccess();
       } else {
-        const errorMsg = sendResult.error || "Unknown error occurred";
+        const errorMsg = sendResult.error || sendResult.reason || "Unknown error occurred";
         // Update modal to error state
         setTxModalStatus('error');
-        setTxModalResult({ error: errorMsg });
+        setTxModalResult({ 
+          error: errorMsg,
+          finality: sendResult.finality 
+        });
       }
     } catch (error) {
       console.error('Send transaction error:', error);
