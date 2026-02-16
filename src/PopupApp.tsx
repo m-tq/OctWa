@@ -23,6 +23,7 @@ function PopupApp() {
   const [contractRequest, setContractRequest] = useState<any>(null);
   const [capabilityRequest, setCapabilityRequest] = useState<any>(null);
   const [invokeRequest, setInvokeRequest] = useState<any>(null);
+  const [signMessageRequest, setSignMessageRequest] = useState<any>(null);
   const { toast: _toast } = useToast(); // FIX #10: Available for error notifications
 
   // ONLY load data once on mount - NO dependencies to prevent loops
@@ -133,6 +134,21 @@ function PopupApp() {
           } catch (error) {
             console.error('Failed to parse invoke request:', error);
             await ExtensionStorageManager.remove('pendingInvokeRequest');
+          }
+        }
+        
+        // Check for pending sign message request
+        const pendingSignMessageRequest = await ExtensionStorageManager.get('pendingSignMessageRequest');
+        if (pendingSignMessageRequest) {
+          try {
+            const signMessageReq = typeof pendingSignMessageRequest === 'string' 
+              ? JSON.parse(pendingSignMessageRequest) 
+              : pendingSignMessageRequest;
+            setSignMessageRequest(signMessageReq);
+            console.log('✍️ PopupApp: Found pending sign message request:', signMessageReq);
+          } catch (error) {
+            console.error('Failed to parse sign message request:', error);
+            await ExtensionStorageManager.remove('pendingSignMessageRequest');
           }
         }
         
@@ -753,6 +769,22 @@ function PopupApp() {
 
   // Handle invoke request - Show invoke approval interface
   if (invokeRequest) {
+    return (
+      <ThemeProvider defaultTheme="dark" storageKey="octra-wallet-theme">
+        <div className="w-[400px] h-[600px] bg-background popup-view overflow-hidden">
+          <div className="popup-container h-full overflow-y-auto">
+            <PageTransition variant="scale">
+              <DAppRequestHandler wallets={wallets} />
+            </PageTransition>
+          </div>
+          <Toaster />
+        </div>
+      </ThemeProvider>
+    );
+  }
+
+  // Handle sign message request - Show sign message approval interface
+  if (signMessageRequest) {
     return (
       <ThemeProvider defaultTheme="dark" storageKey="octra-wallet-theme">
         <div className="w-[400px] h-[600px] bg-background popup-view overflow-hidden">

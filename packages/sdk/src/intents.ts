@@ -1,8 +1,12 @@
 /**
  * Octra Intents SDK
  * Client-side helpers for intent-based swaps
+ * 
+ * NOTE: Intent-based swaps feature is currently disabled/commented out
+ * This feature is under development and not yet ready for production use
  */
 
+/*
 import { OctraSDK } from './sdk.js';
 import type { Capability, InvocationResult } from './types.js';
 
@@ -69,9 +73,6 @@ export class IntentsClient {
     this.capability = capability;
   }
 
-  /**
-   * Get quote from backend API
-   */
   async getQuote(amountIn: number): Promise<Quote> {
     const response = await fetch(
       `${this.apiUrl}/quote?from=OCT&to=ETH&amount=${amountIn}`
@@ -85,21 +86,15 @@ export class IntentsClient {
     return response.json();
   }
 
-  /**
-   * Create and sign swap intent
-   * Returns the signed intent ready for submission
-   */
   async createIntent(
     quote: Quote,
     targetAddress: string,
     slippageBps: number = 50
   ): Promise<SwapIntentPayload> {
-    // Validate target address
     if (!/^0x[a-fA-F0-9]{40}$/.test(targetAddress)) {
       throw new Error('Invalid Ethereum address');
     }
 
-    // Calculate min amount with slippage
     const slippageMultiplier = 1 - slippageBps / 10000;
     const minAmountOut = quote.estimatedOut * slippageMultiplier;
 
@@ -112,16 +107,13 @@ export class IntentsClient {
       minAmountOut,
       targetChain: 'ethereum_sepolia',
       targetAddress,
-      expiry: Date.now() + 5 * 60 * 1000, // 5 minutes
+      expiry: Date.now() + 5 * 60 * 1000,
       nonce: crypto.randomUUID(),
     };
 
     return payload;
   }
 
-  /**
-   * Sign intent via wallet
-   */
   async signIntent(payload: SwapIntentPayload): Promise<InvocationResult> {
     if (!this.capability) {
       throw new Error('No capability set - call setCapability first');
@@ -134,9 +126,6 @@ export class IntentsClient {
     });
   }
 
-  /**
-   * Submit intent to backend after OCT transaction is sent
-   */
   async submitIntent(octraTxHash: string): Promise<{
     intentId: string;
     status: string;
@@ -156,9 +145,6 @@ export class IntentsClient {
     return response.json();
   }
 
-  /**
-   * Poll intent status
-   */
   async getIntentStatus(intentId: string): Promise<IntentStatus> {
     const response = await fetch(`${this.apiUrl}/swap/${intentId}`);
     
@@ -170,9 +156,6 @@ export class IntentsClient {
     return response.json();
   }
 
-  /**
-   * Poll until intent is fulfilled or expired
-   */
   async waitForFulfillment(
     intentId: string,
     options: { timeoutMs?: number; pollIntervalMs?: number } = {}
@@ -186,7 +169,7 @@ export class IntentsClient {
     while (Date.now() - startTime < timeoutMs) {
       try {
         const status = await this.getIntentStatus(intentId);
-        consecutiveErrors = 0; // Reset on success
+        consecutiveErrors = 0;
         
         if (status.status === 'FULFILLED' || status.status === 'EXPIRED' || status.status === 'REJECTED') {
           return status;
@@ -196,7 +179,6 @@ export class IntentsClient {
         consecutiveErrors++;
         console.warn(`[IntentsClient] Status check failed (${consecutiveErrors}/${maxConsecutiveErrors}):`, lastError.message);
         
-        // If too many consecutive errors, throw
         if (consecutiveErrors >= maxConsecutiveErrors) {
           throw new Error(`Failed to get intent status after ${maxConsecutiveErrors} attempts: ${lastError.message}`);
         }
@@ -209,13 +191,10 @@ export class IntentsClient {
   }
 }
 
-/**
- * @deprecated EVM address is now derived by the wallet and returned in Connection.evmAddress
- * This function is kept for backward compatibility but should not be used.
- */
 export function deriveEvmAddress(octraPubKey: string): string {
   if (!octraPubKey) {
     throw new Error('Octra public key is required');
   }
   throw new Error('deriveEvmAddress is deprecated. Use connection.evmAddress from wallet instead.');
 }
+*/

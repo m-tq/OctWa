@@ -1,184 +1,200 @@
 /**
  * Octra Web Wallet SDK Types
- * 
- * This SDK implements Octra's capability-based authorization model.
- * It does NOT follow EVM/MetaMask patterns.
  */
 
 // ============================================================================
 // Connect Flow Types
 // ============================================================================
 
-/**
- * Request to connect to a Circle
- */
 export interface ConnectRequest {
-  /** Target Circle ID */
   circle: string;
-  /** Application origin (window.origin) */
   appOrigin: string;
-  /** Optional capability templates to request during connection */
+  appName?: string;
+  appIcon?: string;
   requestedCapabilities?: CapabilityTemplate[];
 }
 
-/**
- * Connection result - no authority granted yet
- */
 export interface Connection {
-  /** Connected Circle ID */
   circle: string;
-  /** Unique session identifier */
   sessionId: string;
-  /** Wallet's public key (Octra address) */
   walletPubKey: string;
-  /** Derived EVM address (from same key) */
   evmAddress?: string;
-  /** Network type */
   network: 'testnet' | 'mainnet';
+  epoch?: number; // PENDING: Optional until implementation is ready
+  branchId?: string; // PENDING: Optional until implementation is ready
 }
 
 // ============================================================================
 // Capability Types
 // ============================================================================
 
-/**
- * Capability scope - defines the level of access
- */
 export type CapabilityScope = 'read' | 'write' | 'compute';
 
-/**
- * Template for requesting capabilities during connection
- */
+export type CapabilityState = 
+  | 'REQUESTED'
+  | 'ACTIVE'
+  | 'EXPIRED'
+  | 'REVOKED'
+  | 'SUSPENDED';
+
 export interface CapabilityTemplate {
-  /** Methods to request access to */
   methods: string[];
-  /** Access scope level */
   scope: CapabilityScope;
-  /** Whether payloads should be encrypted */
   encrypted: boolean;
 }
 
-/**
- * Request for a new capability
- */
 export interface CapabilityRequest {
-  /** Target Circle ID */
   circle: string;
-  /** Methods to request access to */
   methods: string[];
-  /** Access scope level */
   scope: CapabilityScope;
-  /** Whether payloads should be encrypted */
   encrypted: boolean;
-  /** Time-to-live in seconds (optional) */
   ttlSeconds?: number;
+  branchId?: string;
 }
 
-/**
- * Capability payload for signing (without signature fields)
- * This is the cryptographic artifact that gets signed
- */
 export interface CapabilityPayload {
-  /** Version of capability format */
-  readonly version: 1;
-  /** Circle this capability is scoped to */
+  readonly version: 2;
   readonly circle: string;
-  /** Allowed methods (sorted lexicographically) */
   readonly methods: readonly string[];
-  /** Access scope level */
   readonly scope: CapabilityScope;
-  /** Whether payloads are encrypted */
   readonly encrypted: boolean;
-  /** Application origin - cryptographically bound */
   readonly appOrigin: string;
-  /** Timestamp when capability was issued (Unix ms) */
+  readonly branchId: string;
+  readonly epoch: number;
   readonly issuedAt: number;
-  /** Timestamp when capability expires (Unix ms) */
   readonly expiresAt: number;
-  /** Unique nonce for replay protection */
-  readonly nonce: string;
+  readonly nonceBase: number;
 }
 
-/**
- * Signed capability - grants scoped authority
- * This is an immutable cryptographic artifact
- */
 export interface Capability extends CapabilityPayload {
-  /** Unique capability identifier */
   readonly id: string;
-  /** Public key of the issuer (wallet) */
-  readonly issuerPubKey: string;
-  /** Cryptographic signature (ed25519) */
+  readonly walletPubKey: string;
   readonly signature: string;
+  state: CapabilityState;
+  lastNonce: number;
 }
 
 // ============================================================================
 // Invocation Types
 // ============================================================================
 
-/**
- * Request to invoke a method within a Circle
- */
 export interface InvocationRequest {
-  /** Capability ID authorizing this invocation */
   capabilityId: string;
-  /** Method to invoke */
   method: string;
-  /** Optional payload (can be encrypted) */
-  payload?: Uint8Array | EncryptedBlob;
+  payload?: Uint8Array | EncryptedPayload;
+  branchId?: string;
 }
 
-/**
- * Signed invocation sent to wallet
- */
 export interface SignedInvocation {
-  /** Capability ID authorizing this invocation */
-  capabilityId: string;
-  /** Method to invoke */
-  method: string;
-  /** Optional payload */
-  payload?: Uint8Array | EncryptedBlob;
-  /** Monotonically increasing nonce per capability */
-  nonce: number;
-  /** Timestamp of invocation (Unix ms) */
-  timestamp: number;
+  header: InvocationHeader;
+  body: InvocationBody;
+  signature?: string;
 }
 
-/**
- * Result from an invocation
- */
+export interface InvocationHeader {
+  version: 2;
+  circleId: string;
+  branchId: string;
+  epoch: number;
+  nonce: number;
+  timestamp: number;
+  originHash: string;
+}
+
+export interface InvocationBody {
+  capabilityId: string;
+  method: string;
+  payloadHash: string;
+}
+
 export interface InvocationResult {
-  /** Whether the invocation succeeded */
   success: boolean;
-  /** Result data (can be encrypted) */
-  data?: Uint8Array | EncryptedBlob;
-  /** Error message if failed */
+  data?: Uint8Array | EncryptedPayload;
   error?: string;
+  branchProofHash?: string;
+  merkleRoot?: string;
+  epochTag?: number;
 }
 
 // ============================================================================
 // Encryption Types
 // ============================================================================
 
-/**
- * Encrypted data blob using HFHE scheme
- */
-export interface EncryptedBlob {
-  /** Encryption scheme identifier */
+export interface EncryptedPayload {
   scheme: 'HFHE';
-  /** Encrypted data */
   data: Uint8Array;
-  /** Optional metadata */
   metadata?: Uint8Array;
+  associatedData: string;
+}
+
+export interface EncryptedBlob extends EncryptedPayload {}
+
+// ============================================================================
+// Compute Types
+// ============================================================================
+
+export interface ComputeRequest {
+  circleId: string;
+  capabilityId: string;
+  branchId: string;
+  circuitId: string;
+  encryptedInput: EncryptedPayload;
+  computeProfile: ComputeProfile;
+  gasLimit: number;
+}
+
+export interface ComputeProfile {
+  gateCount: number;
+  vectorSize: number;
+  depth: number;
+  expectedBootstrap: number;
+  branchAffinity?: string;
+}
+
+export interface ComputeResult {
+  success: boolean;
+  encryptedOutput?: EncryptedPayload;
+  gasUsed: number;
+  executionTime: number;
+  branchProofHash: string;
+  error?: string;
+}
+
+// ============================================================================
+// Branch Types
+// ============================================================================
+
+export interface BranchInfo {
+  branchId: string;
+  parentBranch?: string;
+  epoch: number;
+  height: number;
+  stateRoot: string;
+}
+
+export interface BranchProof {
+  branchId: string;
+  proofHash: string;
+  merkleRoot: string;
+  epoch: number;
+  signature: string;
+}
+
+// ============================================================================
+// Gas Types
+// ============================================================================
+
+export interface GasEstimate {
+  gasUnits: number;
+  tokenCost: number;
+  latencyEstimate: number;
+  epoch: number;
 }
 
 // ============================================================================
 // Balance Response Types
 // ============================================================================
 
-/**
- * Supported EVM networks
- */
 export type EVMNetworkId = 
   | 'eth-mainnet' 
   | 'eth-sepolia' 
@@ -186,23 +202,13 @@ export type EVMNetworkId =
   | 'base-mainnet' 
   | 'bsc-mainnet';
 
-/**
- * Response from get_balance method
- */
 export interface BalanceResponse {
-  /** Octra wallet address */
   octAddress: string;
-  /** EVM address (derived from same key) */
   evmAddress: string;
-  /** OCT balance */
   octBalance: number;
-  /** ETH/native token balance on active EVM network */
   ethBalance: number;
-  /** USDC balance on active EVM network */
   usdcBalance: number;
-  /** Octra network (mainnet/testnet) */
   network: 'mainnet' | 'testnet';
-  /** Active EVM network ID */
   evmNetwork: EVMNetworkId;
 }
 
@@ -210,33 +216,22 @@ export interface BalanceResponse {
 // Session Types
 // ============================================================================
 
-/**
- * Current session state
- */
 export interface SessionState {
-  /** Whether connected to a Circle */
   connected: boolean;
-  /** Current Circle ID (if connected) */
   circle?: string;
-  /** List of active (non-expired) capabilities */
+  branchId?: string;
+  epoch?: number;
   activeCapabilities: Capability[];
+  sessionKey?: Uint8Array;
 }
 
 // ============================================================================
 // SDK Configuration
 // ============================================================================
 
-/**
- * SDK initialization options
- */
 export interface InitOptions {
-  /** Provider detection timeout in milliseconds (default: 3000) */
   timeout?: number;
-  /** 
-   * Skip cryptographic signature verification on capabilities.
-   * WARNING: Only use for testing! Never enable in production.
-   * @default false
-   */
+  autoCleanupExpired?: boolean;
   skipSignatureVerification?: boolean;
 }
 
@@ -244,26 +239,27 @@ export interface InitOptions {
 // Provider Interface
 // ============================================================================
 
-/**
- * Wallet provider interface (window.octra)
- */
 export interface OctraProvider {
-  /** Identifies this as an Octra provider */
   isOctra: boolean;
-  /** Provider version */
   version: string;
-
-  // Connection
+  
   connect(request: ConnectRequest): Promise<Connection>;
   disconnect(): Promise<void>;
-
-  // Capabilities
+  
   requestCapability(req: CapabilityRequest): Promise<Capability>;
-
-  // Invocation
+  renewCapability(capabilityId: string): Promise<Capability>;
+  revokeCapability(capabilityId: string): Promise<void>;
+  listCapabilities(): Promise<Capability[]>;
+  
   invoke(call: SignedInvocation): Promise<InvocationResult>;
-
-  // Events
+  invokeCompute(req: ComputeRequest): Promise<ComputeResult>;
+  
+  estimatePlainTx(payload: unknown): Promise<GasEstimate>;
+  estimateEncryptedTx(payload: EncryptedPayload): Promise<GasEstimate>;
+  estimateComputeCost(profile: ComputeProfile): Promise<GasEstimate>;
+  
+  signMessage(message: string): Promise<string>;
+  
   on(event: string, callback: (...args: unknown[]) => void): void;
   off(event: string, callback: (...args: unknown[]) => void): void;
 }
@@ -272,9 +268,6 @@ export interface OctraProvider {
 // Error Types
 // ============================================================================
 
-/**
- * Error codes used by the SDK
- */
 export type ErrorCode =
   | 'NOT_INSTALLED'
   | 'NOT_CONNECTED'
@@ -285,25 +278,35 @@ export type ErrorCode =
   | 'SCOPE_VIOLATION'
   | 'SIGNATURE_INVALID'
   | 'CAPABILITY_EXPIRED'
-  | 'ORIGIN_MISMATCH';
+  | 'CAPABILITY_REVOKED'
+  | 'ORIGIN_MISMATCH'
+  | 'BRANCH_MISMATCH'
+  | 'EPOCH_MISMATCH'
+  | 'NONCE_VIOLATION'
+  | 'DOMAIN_SEPARATION_ERROR';
 
 // ============================================================================
 // Event Types
 // ============================================================================
 
-/**
- * Supported event names
- */
-export type EventName = 'connect' | 'disconnect' | 'capabilityGranted' | 'capabilityRevoked' | 'extensionReady';
+export type EventName =
+  | 'connect'
+  | 'disconnect'
+  | 'capabilityGranted'
+  | 'capabilityExpired'
+  | 'capabilityRevoked'
+  | 'branchChanged'
+  | 'epochChanged'
+  | 'extensionReady';
 
-/**
- * Event callback type mapping
- */
 export type EventCallback<E extends EventName> =
   E extends 'connect' ? (data: { connection: Connection }) => void :
   E extends 'disconnect' ? () => void :
   E extends 'capabilityGranted' ? (data: { capability: Capability }) => void :
+  E extends 'capabilityExpired' ? (data: { capabilityId: string }) => void :
   E extends 'capabilityRevoked' ? (data: { capabilityId: string }) => void :
+  E extends 'branchChanged' ? (data: { branchId: string; epoch: number }) => void :
+  E extends 'epochChanged' ? (data: { epoch: number }) => void :
   E extends 'extensionReady' ? () => void :
   never;
 

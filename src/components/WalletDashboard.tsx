@@ -2205,13 +2205,13 @@ export function WalletDashboard({
                           <Button
                             variant="ghost"
                             size="sm"
-                            className="h-5 w-5 p-0 hover:bg-transparent"
+                            className="group h-5 w-5 p-0 hover:bg-transparent"
                             onClick={() => copyToClipboard(wallet.address, 'headerAddress')}
                           >
                             {copiedField === 'headerAddress' ? (
                               <Check className="h-3 w-3 text-green-500" />
                             ) : (
-                              <Copy className="h-3 w-3 text-muted-foreground hover:text-foreground" />
+                              <Copy className="h-3 w-3 text-muted-foreground hover:text-foreground transition group-hover:drop-shadow-[0_0_6px_currentColor]" />
                             )}
                           </Button>
                         </>
@@ -2228,18 +2228,18 @@ export function WalletDashboard({
                             variant="ghost"
                             size="sm"
                             onClick={() => copyToClipboard(evmMode && selectedEVMWallet ? selectedEVMWallet.evmAddress : wallet.address, 'headerAddress')}
-                            className="h-6 w-6 p-0 flex-shrink-0 hover:bg-transparent"
+                            className="group h-6 w-6 p-0 flex-shrink-0 hover:bg-transparent"
                           >
-                            {copiedField === 'headerAddress' ? <Check className="h-3 w-3 text-green-500" /> : <Copy className="h-3 w-3" />}
+                            {copiedField === 'headerAddress' ? <Check className="h-3 w-3 text-green-500" /> : <Copy className="h-3 w-3 transition group-hover:drop-shadow-[0_0_6px_currentColor]" />}
                           </Button>
                           <Button
                             variant="ghost"
                             size="sm"
                             onClick={() => setShowReceiveDialog(true)}
-                            className="h-6 w-6 p-0 flex-shrink-0 hover:bg-transparent"
+                            className="group h-6 w-6 p-0 flex-shrink-0 hover:bg-transparent"
                             title="Show QR Code"
                           >
-                            <QrCode className="h-3 w-3" />
+                            <QrCode className="h-3 w-3 transition group-hover:drop-shadow-[0_0_6px_currentColor]" />
                           </Button>
                         </>
                       )}
@@ -2258,8 +2258,8 @@ export function WalletDashboard({
                   {/* Mobile Hamburger Menu with expanded functionality */}
                   <Sheet open={showMobileMenu} onOpenChange={setShowMobileMenu}>
                     <SheetTrigger asChild>
-                      <Button variant="ghost" size="sm" className="h-7 w-7 p-0">
-                        <Menu className="h-3.5 w-3.5" />
+                      <Button variant="ghost" size="sm" className="group h-7 w-7 p-0 hover:bg-transparent">
+                        <Menu className="h-3.5 w-3.5 transition group-hover:drop-shadow-[0_0_6px_currentColor]" />
                       </Button>
                     </SheetTrigger>
                     <SheetContent side="right" className="w-72 pb-14 flex flex-col">
@@ -2280,12 +2280,12 @@ export function WalletDashboard({
                                 });
                                 setShowMobileMenu(false);
                               }}
-                              className="w-full justify-start gap-1.5 text-xs h-10"
+                              className="group w-full justify-start gap-1.5 text-xs h-10 hover:bg-transparent"
                             >
-                              <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <svg className="h-3.5 w-3.5 transition group-hover:drop-shadow-[0_0_6px_currentColor]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
                               </svg>
-                              Expand View
+                              <span className="transition group-hover:drop-shadow-[0_0_6px_currentColor]">Expand View</span>
                             </Button>
                             <p className="text-[10px] text-muted-foreground pl-7">Access More Feature</p>
                           </div>
@@ -2299,10 +2299,10 @@ export function WalletDashboard({
                             setShowRPCManager(true);
                             setShowMobileMenu(false);
                           }}
-                          className="w-full justify-start gap-1.5 text-xs h-10"
+                          className="group w-full justify-start gap-1.5 text-xs h-10 hover:bg-transparent"
                         >
-                          <Wifi className="h-3.5 w-3.5" />
-                          RPC Provider
+                          <Wifi className="h-3.5 w-3.5 transition group-hover:drop-shadow-[0_0_6px_currentColor]" />
+                          <span className="transition group-hover:drop-shadow-[0_0_6px_currentColor]">RPC Provider</span>
                         </Button>
 
                         {/* Connected dApps */}
@@ -2313,10 +2313,10 @@ export function WalletDashboard({
                             setShowDAppsManager(true);
                             setShowMobileMenu(false);
                           }}
-                          className="w-full justify-start gap-1.5 text-xs h-10"
+                          className="group w-full justify-start gap-1.5 text-xs h-10 hover:bg-transparent"
                         >
-                          <Globe className="h-3.5 w-3.5" />
-                          Connected dApps
+                          <Globe className="h-3.5 w-3.5 transition group-hover:drop-shadow-[0_0_6px_currentColor]" />
+                          <span className="transition group-hover:drop-shadow-[0_0_6px_currentColor]">Connected dApps</span>
                         </Button>
 
                         {/* Address Book */}
@@ -2327,10 +2327,10 @@ export function WalletDashboard({
                             setShowAddressBook(true);
                             setShowMobileMenu(false);
                           }}
-                          className="w-full justify-start gap-1.5 text-xs h-10"
+                          className="group w-full justify-start gap-1.5 text-xs h-10 hover:bg-transparent"
                         >
-                          <BookUser className="h-3.5 w-3.5" />
-                          Address Book
+                          <BookUser className="h-3.5 w-3.5 transition group-hover:drop-shadow-[0_0_6px_currentColor]" />
+                          <span className="transition group-hover:drop-shadow-[0_0_6px_currentColor]">Address Book</span>
                         </Button>
 
                         {/* Export Private Keys */}
@@ -2341,10 +2341,10 @@ export function WalletDashboard({
                             setShowExportKeys(true);
                             setShowMobileMenu(false);
                           }}
-                          className="w-full justify-start gap-1.5 text-xs h-10 text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300"
+                          className="group w-full justify-start gap-1.5 text-xs h-10 text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 hover:bg-transparent"
                         >
-                          <Key className="h-3.5 w-3.5" />
-                          Export Keys
+                          <Key className="h-3.5 w-3.5 transition group-hover:drop-shadow-[0_0_6px_currentColor]" />
+                          <span className="transition group-hover:drop-shadow-[0_0_6px_currentColor]">Export Keys</span>
                         </Button>
 
                         {/* Lock Wallet */}
@@ -2355,10 +2355,10 @@ export function WalletDashboard({
                             setShowLockConfirm(true);
                             setShowMobileMenu(false);
                           }}
-                          className="w-full justify-start gap-1.5 text-xs h-10 text-orange-600 hover:text-orange-700 dark:text-orange-400 dark:hover:text-orange-300"
+                          className="group w-full justify-start gap-1.5 text-xs h-10 text-orange-600 hover:text-orange-700 dark:text-orange-400 dark:hover:text-orange-300 hover:bg-transparent"
                         >
-                          <Lock className="h-3.5 w-3.5" />
-                          Lock Wallet
+                          <Lock className="h-3.5 w-3.5 transition group-hover:drop-shadow-[0_0_6px_currentColor]" />
+                          <span className="transition group-hover:drop-shadow-[0_0_6px_currentColor]">Lock Wallet</span>
                         </Button>
 
                         {/* Reset All */}
@@ -2369,10 +2369,10 @@ export function WalletDashboard({
                             setShowResetConfirm(true);
                             setShowMobileMenu(false);
                           }}
-                          className="w-full justify-start gap-1.5 text-xs h-10 text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300"
+                          className="group w-full justify-start gap-1.5 text-xs h-10 text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 hover:bg-transparent"
                         >
-                          <RotateCcw className="h-3.5 w-3.5" />
-                          Reset All
+                          <RotateCcw className="h-3.5 w-3.5 transition group-hover:drop-shadow-[0_0_6px_currentColor]" />
+                          <span className="transition group-hover:drop-shadow-[0_0_6px_currentColor]">Reset All</span>
                         </Button>
                       </div>
                     </SheetContent>

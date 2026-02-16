@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -228,6 +228,9 @@ export function EncryptBalanceDialog({
             <Lock className={isPopupMode ? "h-4 w-4" : "h-5 w-5"} />
             Encrypt Balance
           </DialogTitle>
+          <DialogDescription className="sr-only">
+            Convert public OCT to private OCT for enhanced privacy
+          </DialogDescription>
         </DialogHeader>
         {content}
       </DialogContent>

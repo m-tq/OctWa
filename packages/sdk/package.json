@@ -1,7 +1,7 @@
 {
   "name": "@octwa/sdk",
-  "version": "1.1.0",
-  "description": "SDK for integrating dApps with OCTWA Wallet browser extension",
+  "version": "1.1.1",
+  "description": "Official TypeScript SDK for integrating dApps with OctWa Wallet Extension. Implements capability-based authorization with full HFHE support.",
   "main": "dist/index.js",
   "module": "dist/index.mjs",
   "types": "dist/index.d.ts",
@@ -13,7 +13,9 @@
     }
   },
   "files": [
-    "dist"
+    "dist",
+    "README.md",
+    "LICENSE"
   ],
   "scripts": {
     "build": "tsup src/index.ts --format cjs,esm --dts",
@@ -29,10 +31,23 @@
     "sdk",
     "blockchain",
     "dapp",
-    "web3"
+    "web3",
+    "hfhe",
+    "homomorphic-encryption",
+    "capability-based-auth",
+    "typescript"
   ],
-  "author": "",
+  "author": "Octra Team",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/m-tq/OctWa.git",
+    "directory": "packages/sdk"
+  },
+  "homepage": "https://github.com/m-tq/OctWa/tree/master/packages/sdk",
+  "bugs": {
+    "url": "https://github.com/m-tq/OctWa/issues"
+  },
   "devDependencies": {
     "@types/node": "^20.10.0",
     "fast-check": "^3.15.0",

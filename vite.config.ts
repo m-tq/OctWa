@@ -75,7 +75,8 @@ export default defineConfig({
     }
   },
   esbuild: {
-    drop: ['console', 'debugger'],
+    // Don't drop console in development/debugging
+    // drop: ['debugger'],
   },
   server: {
     host: true,

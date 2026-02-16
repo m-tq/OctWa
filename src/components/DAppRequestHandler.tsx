@@ -29,7 +29,7 @@ import { Wallet } from '../types/wallet';
 import { useToast } from '@/hooks/use-toast';
 import { 
   signCapability, 
-  generateNonce, 
+  generateNonceBase, 
   createCapabilityId,
   type CapabilityPayload
 } from '../utils/capability';
@@ -107,19 +107,29 @@ interface InvokeRequest {
   };
 }
 
+interface SignMessageRequest {
+  message: string;
+  appOrigin: string;
+  appName?: string;
+  appIcon?: string;
+  timestamp: number;
+}
+
 interface DAppRequestHandlerProps {
   wallets: Wallet[];
 }
 
-type RequestType = 'connection' | 'capability' | 'invoke' | null;
+type RequestType = 'connection' | 'capability' | 'invoke' | 'signMessage' | null;
 
 export function DAppRequestHandler({ wallets }: DAppRequestHandlerProps) {
+  console.log('[DAppRequestHandler] Component mounted/rendered');
   console.log('[DAppRequestHandler] Render - wallets count:', wallets.length, 'addresses:', wallets.map(w => w.address.slice(0, 10)));
   
   const [requestType, setRequestType] = useState<RequestType>(null);
   const [connectionRequest, setConnectionRequest] = useState<ConnectionRequest | null>(null);
   const [capabilityRequest, setCapabilityRequest] = useState<CapabilityRequest | null>(null);
   const [invokeRequest, setInvokeRequest] = useState<InvokeRequest | null>(null);
+  const [signMessageRequest, setSignMessageRequest] = useState<SignMessageRequest | null>(null);
   const [parsedTxPayload, setParsedTxPayload] = useState<TransactionPayload | null>(null);
   const [parsedEvmTxPayload, setParsedEvmTxPayload] = useState<EVMTransactionPayload | null>(null);
   const [parsedErc20TxPayload, setParsedErc20TxPayload] = useState<ERC20TransactionPayload | null>(null);
@@ -156,6 +166,7 @@ export function DAppRequestHandler({ wallets }: DAppRequestHandlerProps) {
   }, [invokeRequest, wallets]);
 
   useEffect(() => {
+    console.log('[DAppRequestHandler] useEffect triggered - loading pending request');
     loadPendingRequest();
   }, []);
 
@@ -197,21 +208,55 @@ export function DAppRequestHandler({ wallets }: DAppRequestHandlerProps) {
       }
     }
 
+    if (action === 'signMessage') {
+      const appOrigin = urlParams.get('appOrigin');
+      const message = urlParams.get('message');
+      if (appOrigin && message) {
+        console.log('[DAppRequestHandler] Loading sign message from URL params');
+        setRequestType('signMessage');
+        setSignMessageRequest({
+          message: decodeURIComponent(message),
+          appOrigin: decodeURIComponent(appOrigin),
+          appName: urlParams.get('appName') ? decodeURIComponent(urlParams.get('appName')!) : undefined,
+          appIcon: urlParams.get('appIcon') ? decodeURIComponent(urlParams.get('appIcon')!) : undefined,
+          timestamp: Date.now()
+        });
+        return;
+      }
+    }
+
     // Check chrome storage for pending requests
     if (typeof chrome !== 'undefined' && chrome.storage) {
+      console.log('[DAppRequestHandler] Checking chrome.storage for pending requests...');
+      
       const pending = await chrome.storage.local.get([
         'pendingConnectionRequest',
         'pendingCapabilityRequest',
-        'pendingInvokeRequest'
+        'pendingInvokeRequest',
+        'pendingSignMessageRequest'
       ]);
 
+      console.log('[DAppRequestHandler] Pending requests:', {
+        connection: !!pending.pendingConnectionRequest,
+        capability: !!pending.pendingCapabilityRequest,
+        invoke: !!pending.pendingInvokeRequest,
+        signMessage: !!pending.pendingSignMessageRequest
+      });
+
       if (pending.pendingConnectionRequest) {
+        console.log('[DAppRequestHandler] Loading connection request');
         setRequestType('connection');
         setConnectionRequest(pending.pendingConnectionRequest);
       } else if (pending.pendingCapabilityRequest) {
+        console.log('[DAppRequestHandler] Loading capability request');
         setRequestType('capability');
         setCapabilityRequest(pending.pendingCapabilityRequest);
+      } else if (pending.pendingSignMessageRequest) {
+        console.log('[DAppRequestHandler] Loading sign message request:', pending.pendingSignMessageRequest);
+        setRequestType('signMessage');
+        setSignMessageRequest(pending.pendingSignMessageRequest);
       } else if (pending.pendingInvokeRequest) {
+        console.log('[DAppRequestHandler] Loading invoke request');
         setRequestType('invoke');
         setInvokeRequest(pending.pendingInvokeRequest);
         
@@ -415,22 +460,29 @@ export function DAppRequestHandler({ wallets }: DAppRequestHandlerProps) {
           });
         }
 
+        const currentEpoch = Date.now();
+        const currentBranchId = 'main';
+        
         console.log('[DAppRequestHandler] Sending CONNECTION_RESULT:', {
           appOrigin: connectionRequest.appOrigin,
           walletPubKey: selectedWallet.address,
           evmAddress: evmAddress || '(MISSING!)',
           network: currentNetwork,
+          epoch: currentEpoch,
+          branchId: currentBranchId
         });
         
         chrome.runtime.sendMessage({
           type: 'CONNECTION_RESULT',
           appOrigin: connectionRequest.appOrigin,
-          origin: connectionRequest.appOrigin, // For compatibility
+          origin: connectionRequest.appOrigin,
           approved: true,
           walletPubKey: selectedWallet.address,
-          address: selectedWallet.address, // For compatibility
-          evmAddress, // EVM address from storage
-          network: currentNetwork
+          address: selectedWallet.address,
+          evmAddress,
+          network: currentNetwork,
+          epoch: currentEpoch,
+          branchId: currentBranchId
         });
         chrome.storage.local.remove('pendingConnectionRequest');
       }
@@ -470,21 +522,26 @@ export function DAppRequestHandler({ wallets }: DAppRequestHandlerProps) {
     setIsProcessing(true);
 
     try {
-      // Build capability payload (expiresAt is mandatory in v1)
       const now = Date.now();
-      const defaultTTL = 24 * 60 * 60 * 1000; // 24 hours default
+      const defaultTTL = 24 * 60 * 60 * 1000;
+      
+      const currentEpoch = Date.now();
+      const currentBranchId = 'main';
+      
       const payload: CapabilityPayload = {
-        version: 1,
+        version: 2,
         circle: capabilityRequest.circle,
         methods: capabilityRequest.methods,
         scope: capabilityRequest.scope,
         encrypted: capabilityRequest.encrypted,
         appOrigin: capabilityRequest.appOrigin,
+        branchId: currentBranchId,
+        epoch: currentEpoch,
         issuedAt: now,
         expiresAt: capabilityRequest.ttlSeconds 
           ? now + capabilityRequest.ttlSeconds * 1000 
-          : now + defaultTTL, // Default 24h if not specified
-        nonce: generateNonce()
+          : now + defaultTTL,
+        nonceBase: generateNonceBase()
       };
 
       console.log('[DAppRequestHandler] Capability payload:', payload);
@@ -500,7 +557,7 @@ export function DAppRequestHandler({ wallets }: DAppRequestHandlerProps) {
       
       console.log('[DAppRequestHandler] Signed capability:', {
         id: capabilityId,
-        issuerPubKey: signedCapability.issuerPubKey,
+        walletPubKey: signedCapability.walletPubKey,
         signature: signedCapability.signature.slice(0, 32) + '...',
         fullSignature: signedCapability.signature
       });
@@ -924,6 +981,14 @@ export function DAppRequestHandler({ wallets }: DAppRequestHandlerProps) {
           approved: false
         });
         chrome.storage.local.remove('pendingCapabilityRequest');
+      } else if (requestType === 'signMessage' && signMessageRequest) {
+        chrome.runtime.sendMessage({
+          type: 'SIGN_MESSAGE_RESULT',
+          appOrigin: signMessageRequest.appOrigin,
+          approved: false,
+          error: 'User rejected request'
+        });
+        chrome.storage.local.remove('pendingSignMessageRequest');
       } else if (requestType === 'invoke' && invokeRequest) {
         chrome.runtime.sendMessage({
           type: 'INVOKE_RESULT',
@@ -936,6 +1001,60 @@ export function DAppRequestHandler({ wallets }: DAppRequestHandlerProps) {
     }
 
     window.close();
+  };
+
+  const handleSignMessageApprove = async () => {
+    if (!signMessageRequest || !selectedWallet) {
+      console.error('[DAppRequestHandler] Missing signMessageRequest or selectedWallet');
+      return;
+    }
+
+    if (!selectedWallet.privateKey) {
+      console.error('[DAppRequestHandler] Wallet has no private key');
+      toast({ 
+        title: 'Error', 
+        description: 'Wallet private key not available. Please unlock your wallet.', 
+        variant: 'destructive' 
+      });
+      return;
+    }
+
+    setIsProcessing(true);
+
+    try {
+      console.log('[DAppRequestHandler] Signing message...');
+      
+      // Sign message with Ed25519
+      const privateKeyBytes = Buffer.from(selectedWallet.privateKey, 'base64');
+      const keyPair = nacl.sign.keyPair.fromSeed(privateKeyBytes);
+      const messageBytes = Buffer.from(signMessageRequest.message);
+      const signature = nacl.sign.detached(messageBytes, keyPair.secretKey);
+      const signatureBase64 = Buffer.from(signature).toString('base64');
+
+      console.log('[DAppRequestHandler] Message signed successfully');
+
+      // Send response
+      if (typeof chrome !== 'undefined' && chrome.runtime) {
+        chrome.runtime.sendMessage({
+          type: 'SIGN_MESSAGE_RESULT',
+          appOrigin: signMessageRequest.appOrigin,
+          approved: true,
+          signature: signatureBase64
+        });
+        chrome.storage.local.remove('pendingSignMessageRequest');
+      }
+
+      // Success - close popup
+      window.close();
+    } catch (error) {
+      console.error('[DAppRequestHandler] Sign message error:', error);
+      toast({ 
+        title: 'Error', 
+        description: `Failed to sign message: ${error instanceof Error ? error.message : 'Unknown error'}`, 
+        variant: 'destructive' 
+      });
+      setIsProcessing(false);
+    }
   };
 
   const truncateAddress = (address: string) => `${address.slice(0, 8)}...${address.slice(-6)}`;
@@ -969,13 +1088,14 @@ export function DAppRequestHandler({ wallets }: DAppRequestHandlerProps) {
           {/* App Icon */}
           <div className="flex justify-center mb-1">
             <Avatar className="h-10 w-10">
-              {(connectionRequest?.appIcon || capabilityRequest?.appIcon) && (
-                <AvatarImage src={connectionRequest?.appIcon || capabilityRequest?.appIcon} />
+              {(connectionRequest?.appIcon || capabilityRequest?.appIcon || signMessageRequest?.appIcon) && (
+                <AvatarImage src={connectionRequest?.appIcon || capabilityRequest?.appIcon || signMessageRequest?.appIcon} />
               )}
               <AvatarFallback className="bg-primary text-primary-foreground">
                 {requestType === 'connection' && <Globe className="h-5 w-5" />}
                 {requestType === 'capability' && <Shield className="h-5 w-5" />}
                 {requestType === 'invoke' && <Zap className="h-5 w-5" />}
+                {requestType === 'signMessage' && <Edit className="h-5 w-5" />}
               </AvatarFallback>
             </Avatar>
           </div>
@@ -985,14 +1105,15 @@ export function DAppRequestHandler({ wallets }: DAppRequestHandlerProps) {
             {requestType === 'connection' && 'Connection Request'}
             {requestType === 'capability' && 'Capability Request'}
             {requestType === 'invoke' && 'Invoke Request'}
+            {requestType === 'signMessage' && 'Sign Message'}
           </CardTitle>
 
           {/* App Info */}
           <p className="text-sm font-medium text-foreground truncate">
-            {connectionRequest?.appName || capabilityRequest?.appName || invokeRequest?.appName || 'Octra DEX'}
+            {connectionRequest?.appName || capabilityRequest?.appName || invokeRequest?.appName || signMessageRequest?.appName || 'Octra DEX'}
           </p>
           <p className="text-xs text-muted-foreground truncate">
-            {connectionRequest?.appOrigin || capabilityRequest?.appOrigin || invokeRequest?.appOrigin}
+            {connectionRequest?.appOrigin || capabilityRequest?.appOrigin || invokeRequest?.appOrigin || signMessageRequest?.appOrigin}
           </p>
         </CardHeader>
 
@@ -1047,7 +1168,22 @@ export function DAppRequestHandler({ wallets }: DAppRequestHandlerProps) {
                   <span className="text-xs text-muted-foreground">Scope</span>
                   <Badge className={`${getScopeColor(capabilityRequest.scope)} text-xs py-0`}>
                     {getScopeIcon(capabilityRequest.scope)}
-                    <span className="ml-1">{capabilityRequest.scope}</span>
+                    <span className="ml-1">
+                      {(() => {
+                        // Check if methods include both read and write operations
+                        const hasReadMethod = capabilityRequest.methods.some(m => 
+                          m.includes('get_') || m.includes('read_') || m === 'get_balance'
+                        );
+                        const hasWriteMethod = capabilityRequest.methods.some(m => 
+                          m.includes('send_') || m.includes('write_') || m === 'send_transaction'
+                        );
+                        
+                        if (hasReadMethod && hasWriteMethod) {
+                          return 'read & write';
+                        }
+                        return capabilityRequest.scope;
+                      })()}
+                    </span>
                   </Badge>
                 </div>
                 {capabilityRequest.encrypted && (
@@ -1231,6 +1367,30 @@ export function DAppRequestHandler({ wallets }: DAppRequestHandlerProps) {
             </>
           )}
 
+          {/* Sign Message Request */}
+          {requestType === 'signMessage' && signMessageRequest && (
+            <>
+              <div className="p-3 bg-purple-50 border border-purple-200 rounded-lg space-y-2">
+                <h4 className="font-medium text-sm text-purple-800 flex items-center gap-2">
+                  <Edit className="h-4 w-4" />
+                  Message to Sign
+                </h4>
+                <div className="p-2 bg-white rounded border border-purple-200 max-h-[200px] overflow-y-auto">
+                  <pre className="text-xs font-mono text-purple-900 whitespace-pre-wrap break-all">
+                    {signMessageRequest.message}
+                  </pre>
+                </div>
+              </div>
+
+              <Alert className="border-purple-200 bg-purple-50 py-2">
+                <AlertTriangle className="h-3 w-3 text-purple-600" />
+                <AlertDescription className="text-xs text-purple-800">
+                  Only sign messages you understand and trust. This proves you own this wallet.
+                </AlertDescription>
+              </Alert>
+            </>
+          )}
+
           {/* Spacer to push buttons to bottom */}
           <div className="flex-1 min-h-2" />
 
@@ -1250,6 +1410,7 @@ export function DAppRequestHandler({ wallets }: DAppRequestHandlerProps) {
                 console.log('[DAppRequestHandler] Approve clicked, requestType:', requestType, 'selectedWallet:', selectedWallet?.address);
                 if (requestType === 'connection') handleConnectionApprove();
                 else if (requestType === 'capability') handleCapabilityApprove();
+                else if (requestType === 'signMessage') handleSignMessageApprove();
                 else if (requestType === 'invoke') handleInvokeApprove();
               }}
               disabled={isProcessing || !selectedWallet}

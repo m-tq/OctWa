@@ -300,12 +300,18 @@ export function ConnectedDAppsManager({
                     {isPopupMode ? 'All' : 'Disconnect All'}
                   </Button>
                 </AlertDialogTrigger>
-                <AlertDialogContent className={isPopupMode ? 'w-[320px] p-4' : ''}>
+                <AlertDialogContent 
+                  className={isPopupMode ? 'w-[320px] p-4' : ''}
+                  aria-describedby="disconnect-all-description"
+                >
                   <AlertDialogHeader>
                     <AlertDialogTitle className={isPopupMode ? 'text-sm' : ''}>
                       Disconnect All dApps
                     </AlertDialogTitle>
-                    <AlertDialogDescription className={isPopupMode ? 'text-xs' : ''}>
+                    <AlertDialogDescription 
+                      id="disconnect-all-description"
+                      className={isPopupMode ? 'text-xs' : ''}
+                    >
                       This will disconnect all dApps and revoke all capabilities. 
                       Each dApp will need to request a new connection to interact with your wallet.
                     </AlertDialogDescription>

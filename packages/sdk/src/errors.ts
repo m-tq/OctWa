@@ -123,6 +123,57 @@ export class CapabilityExpiredError extends OctraError {
   }
 }
 
+export class CapabilityRevokedError extends OctraError {
+  constructor(capabilityId: string, details?: unknown) {
+    super(
+      'CAPABILITY_REVOKED',
+      `Capability '${capabilityId}' has been revoked`,
+      details
+    );
+    this.name = 'CapabilityRevokedError';
+  }
+}
+
+export class BranchMismatchError extends OctraError {
+  constructor(expected: string, actual: string, details?: unknown) {
+    super(
+      'BRANCH_MISMATCH',
+      `Branch mismatch: expected '${expected}', got '${actual}'`,
+      details
+    );
+    this.name = 'BranchMismatchError';
+  }
+}
+
+export class EpochMismatchError extends OctraError {
+  constructor(expected: number, actual: number, details?: unknown) {
+    super(
+      'EPOCH_MISMATCH',
+      `Epoch mismatch: expected ${expected}, got ${actual}`,
+      details
+    );
+    this.name = 'EpochMismatchError';
+  }
+}
+
+export class NonceViolationError extends OctraError {
+  constructor(capabilityId: string, lastNonce: number, attemptedNonce: number, details?: unknown) {
+    super(
+      'NONCE_VIOLATION',
+      `Nonce violation for capability '${capabilityId}': attempted ${attemptedNonce}, must be > ${lastNonce}`,
+      details
+    );
+    this.name = 'NonceViolationError';
+  }
+}
+
+export class DomainSeparationError extends OctraError {
+  constructor(message: string, details?: unknown) {
+    super('DOMAIN_SEPARATION_ERROR', message, details);
+    this.name = 'DomainSeparationError';
+  }
+}
+
 /**
  * Thrown when capability origin doesn't match current origin
  */

@@ -1,20 +1,16 @@
-/**
- * Octra Wallet Provider
- * 
- * Implements capability-based authorization model.
- * Synced with @octwa/sdk types.
- */
-(function() {
+(() => {
   'use strict';
 
-  const PROVIDER_VERSION = '1.1.5';
+  const PROVIDER_VERSION = '2.0.0';
 
   class OctraProvider {
     constructor() {
       this.isOctra = true;
       this.version = PROVIDER_VERSION;
       this._eventListeners = {};
-      this._pendingRequests = {};
+      this._pendingRequests = new Map();
+      this._nonceControllers = new Map();
+      this._state = { state: 'DISCONNECTED' };
 
       window.addEventListener('message', (event) => {
         if (event.source !== window) return;
@@ -23,10 +19,6 @@
         this._handleResponse(event.data);
       });
     }
-
-    // =========================================================================
-    // Event Management
-    // =========================================================================
 
     on(event, callback) {
       if (!this._eventListeners[event]) {
@@ -49,21 +41,12 @@
           try {
             callback(data);
           } catch (e) {
-            console.error('[Octra Provider] Event callback error:', e);
+            // Ignore
           }
         });
       }
     }
 
-    // =========================================================================
-    // Public API - Capability-Based Model
-    // =========================================================================
-
-    /**
-     * Connect to a Circle (NO signing popup)
-     * @param {Object} request - ConnectRequest
-     * @returns {Promise<Connection>}
-     */
     async connect(request) {
       return new Promise((resolve, reject) => {
         if (!request || !request.circle) {
@@ -72,7 +55,7 @@
         }
 
         const requestId = this._generateRequestId();
-        this._pendingRequests[requestId] = { resolve, reject };
+        this._pendingRequests.set(requestId, { resolve, reject });
 
         window.postMessage({
           source: 'octra-provider',
@@ -81,24 +64,21 @@
           data: {
             circle: request.circle,
             appOrigin: request.appOrigin || window.location.origin,
-            appName: document.title || window.location.hostname,
-            appIcon: this._getAppIcon(),
+            appName: request.appName || document.title || window.location.hostname,
+            appIcon: request.appIcon || this._getAppIcon(),
             requestedCapabilities: request.requestedCapabilities || []
           }
         }, this._getTargetOrigin());
 
         setTimeout(() => {
-          if (this._pendingRequests[requestId]) {
-            delete this._pendingRequests[requestId];
+          if (this._pendingRequests.has(requestId)) {
+            this._pendingRequests.delete(requestId);
             reject(new Error('Connection request timeout'));
           }
         }, 60000);
       });
     }
 
-    /**
-     * Disconnect from Circle
-     */
     async disconnect() {
       this._emit('disconnect');
       window.postMessage({
@@ -108,11 +88,6 @@
       }, this._getTargetOrigin());
     }
 
-    /**
-     * Request a capability from user
-     * @param {Object} request - CapabilityRequest
-     * @returns {Promise<Capability>} - Signed capability with all required fields
-     */
     async requestCapability(request) {
       return new Promise((resolve, reject) => {
         if (!request || !request.circle) {
@@ -129,7 +104,7 @@
         }
 
         const requestId = this._generateRequestId();
-        this._pendingRequests[requestId] = { resolve, reject };
+        this._pendingRequests.set(requestId, { resolve, reject });
 
         window.postMessage({
           source: 'octra-provider',
@@ -141,6 +116,7 @@
             scope: request.scope,
             encrypted: request.encrypted || false,
             ttlSeconds: request.ttlSeconds,
+            branchId: request.branchId,
             appOrigin: window.location.origin,
             appName: document.title || window.location.hostname,
             appIcon: this._getAppIcon()
@@ -148,32 +124,35 @@
         }, this._getTargetOrigin());
 
         setTimeout(() => {
-          if (this._pendingRequests[requestId]) {
-            delete this._pendingRequests[requestId];
+          if (this._pendingRequests.has(requestId)) {
+            this._pendingRequests.delete(requestId);
             reject(new Error('Capability request timeout'));
           }
         }, 300000);
       });
     }
 
-    /**
-     * Invoke a method using a capability
-     * @param {Object} call - SignedInvocation
-     * @returns {Promise<InvocationResult>}
-     */
+    async renewCapability(capabilityId) {
+      return this._sendRequest('RENEW_CAPABILITY_REQUEST', { capabilityId });
+    }
+
+    async revokeCapability(capabilityId) {
+      return this._sendRequest('REVOKE_CAPABILITY_REQUEST', { capabilityId });
+    }
+
+    async listCapabilities() {
+      return this._sendRequest('LIST_CAPABILITIES_REQUEST', {});
+    }
+
     async invoke(call) {
       return new Promise((resolve, reject) => {
-        if (!call || !call.capabilityId) {
-          reject(new Error('Capability ID is required'));
-          return;
-        }
-        if (!call.method) {
-          reject(new Error('Method is required'));
+        if (!call || !call.header || !call.body) {
+          reject(new Error('Invalid invocation structure'));
           return;
         }
 
         const requestId = this._generateRequestId();
-        this._pendingRequests[requestId] = { resolve, reject };
+        this._pendingRequests.set(requestId, { resolve, reject });
 
         let payload = call.payload;
         if (payload instanceof Uint8Array) {
@@ -193,45 +172,96 @@
           type: 'INVOKE_REQUEST',
           requestId,
           data: {
-            capabilityId: call.capabilityId,
-            method: call.method,
-            payload: payload,
-            nonce: call.nonce,
-            timestamp: call.timestamp,
+            capabilityId: call.body.capabilityId,
+            method: call.body.method,
+            payload,
+            nonce: call.header.nonce,
+            timestamp: call.header.timestamp,
             appOrigin: window.location.origin,
             appName: document.title || window.location.hostname
           }
         }, this._getTargetOrigin());
 
         setTimeout(() => {
-          if (this._pendingRequests[requestId]) {
-            delete this._pendingRequests[requestId];
+          if (this._pendingRequests.has(requestId)) {
+            this._pendingRequests.delete(requestId);
             reject(new Error('Invocation request timeout'));
           }
         }, 300000);
       });
     }
 
-    // =========================================================================
-    // Response Handler
-    // =========================================================================
+    async invokeCompute(request) {
+      return this._sendRequest('COMPUTE_REQUEST', request);
+    }
+
+    async estimatePlainTx(payload) {
+      return this._sendRequest('ESTIMATE_PLAIN_TX', { payload });
+    }
+
+    async estimateEncryptedTx(payload) {
+      return this._sendRequest('ESTIMATE_ENCRYPTED_TX', { payload });
+    }
+
+    async estimateComputeCost(profile) {
+      return this._sendRequest('ESTIMATE_COMPUTE_COST', { profile });
+    }
+
+    async signMessage(message) {
+      return new Promise((resolve, reject) => {
+        if (!message || typeof message !== 'string') {
+          reject(new Error('Message must be a non-empty string'));
+          return;
+        }
+
+        const requestId = this._generateRequestId();
+        this._pendingRequests.set(requestId, { resolve, reject });
+
+        window.postMessage({
+          source: 'octra-provider',
+          type: 'SIGN_MESSAGE_REQUEST',
+          requestId,
+          data: {
+            message,
+            appOrigin: window.location.origin,
+            appName: document.title || window.location.hostname,
+            appIcon: this._getAppIcon()
+          }
+        }, this._getTargetOrigin());
+
+        setTimeout(() => {
+          if (this._pendingRequests.has(requestId)) {
+            this._pendingRequests.delete(requestId);
+            reject(new Error('Sign message request timeout'));
+          }
+        }, 60000);
+      });
+    }
 
     _handleResponse(data) {
       const { requestId, type, success, result, error, appOrigin } = data;
 
-      // Handle disconnect notification from wallet
       if (type === 'WALLET_DISCONNECTED') {
-        console.log('[Octra Provider] Wallet disconnected notification received');
         this._emit('disconnect', { appOrigin });
         return;
       }
 
-      if (!this._pendingRequests || !this._pendingRequests[requestId]) {
+      if (type === 'BRANCH_CHANGED') {
+        this._emit('branchChanged', { branchId: data.branchId, epoch: data.epoch });
         return;
       }
 
-      const { resolve, reject } = this._pendingRequests[requestId];
-      delete this._pendingRequests[requestId];
+      if (type === 'EPOCH_CHANGED') {
+        this._emit('epochChanged', { epoch: data.epoch });
+        return;
+      }
+
+      if (!this._pendingRequests || !this._pendingRequests.has(requestId)) {
+        return;
+      }
+
+      const { resolve, reject } = this._pendingRequests.get(requestId);
+      this._pendingRequests.delete(requestId);
 
       if (success) {
         switch (type) {
@@ -241,6 +271,9 @@
             break;
 
           case 'CAPABILITY_RESPONSE':
+            if (result && result.id) {
+              this._nonceControllers.set(result.id, result.nonceBase || 0);
+            }
             this._emit('capabilityGranted', { capability: result });
             resolve(result);
             break;
@@ -259,6 +292,10 @@
             resolve(result);
             break;
 
+          case 'SIGN_MESSAGE_RESPONSE':
+            resolve(result);
+            break;
+
           default:
             resolve(result);
         }
@@ -270,9 +307,26 @@
       }
     }
 
-    // =========================================================================
-    // Helpers
-    // =========================================================================
+    _sendRequest(type, data) {
+      return new Promise((resolve, reject) => {
+        const requestId = this._generateRequestId();
+        this._pendingRequests.set(requestId, { resolve, reject });
+
+        window.postMessage({
+          source: 'octra-provider',
+          type,
+          requestId,
+          data
+        }, this._getTargetOrigin());
+
+        setTimeout(() => {
+          if (this._pendingRequests.has(requestId)) {
+            this._pendingRequests.delete(requestId);
+            reject(new Error('Request timeout'));
+          }
+        }, 300000);
+      });
+    }
 
     _generateRequestId() {
       return 'req_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
@@ -309,7 +363,6 @@
     }
   }
 
-  // Inject provider
   if (typeof window !== 'undefined') {
     window.octra = new OctraProvider();
     window.dispatchEvent(new Event('octraLoaded'));
@@ -324,7 +377,5 @@
       type: 'OCTRA_EXTENSION_AVAILABLE',
       version: PROVIDER_VERSION
     }, window.location.origin === 'null' ? '*' : window.location.origin);
-
-    console.log(`[Octra] Wallet Provider v${PROVIDER_VERSION} injected (Capability-based model)`);
   }
 })();

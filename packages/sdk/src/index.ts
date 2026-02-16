@@ -1,21 +1,8 @@
 /**
  * Octra Web Wallet SDK
- * 
- * Capability-based authorization for Octra dApps.
- * Does NOT follow EVM/MetaMask patterns.
- * 
- * Features:
- * - ed25519 cryptographic signing
- * - Deterministic canonicalization
- * - Origin binding
- * - Replay protection via nonce
- * - Expiry enforcement
  */
 
-// Main SDK class
 export { OctraSDK } from './sdk';
-
-// Error classes
 export {
   OctraError,
   NotInstalledError,
@@ -27,10 +14,14 @@ export {
   ScopeViolationError,
   SignatureInvalidError,
   CapabilityExpiredError,
+  CapabilityRevokedError,
   OriginMismatchError,
+  BranchMismatchError,
+  EpochMismatchError,
+  NonceViolationError,
+  DomainSeparationError,
 } from './errors';
 
-// Crypto utilities (for advanced use cases)
 export {
   canonicalizeCapabilityPayload,
   hashCapabilityPayload,
@@ -43,73 +34,67 @@ export {
   hexToBytes,
   bytesToHex,
   sha256,
+  domainSeparator,
+  verifyDomainSeparation,
+  deriveSessionKey,
 } from './crypto';
 
-// Types - Connect Flow
+export {
+  canonicalize,
+  canonicalizeCapability,
+  canonicalizeInvocation,
+  hashCapabilityWithDomain,
+  hashInvocationWithDomain,
+  hashPayload,
+  applyDomainSeparation,
+  OCTRA_DOMAIN_PREFIX,
+  OCTRA_CAPABILITY_PREFIX,
+  OCTRA_INVOCATION_PREFIX,
+} from './canonical';
+
 export type {
   ConnectRequest,
   Connection,
-} from './types';
-
-// Types - Capability System
-export type {
   CapabilityScope,
+  CapabilityState,
   CapabilityTemplate,
   CapabilityRequest,
   CapabilityPayload,
   Capability,
-} from './types';
-
-// Types - Invocation
-export type {
   InvocationRequest,
   InvocationResult,
   SignedInvocation,
-} from './types';
-
-// Types - Encryption
-export type {
+  InvocationHeader,
+  InvocationBody,
+  EncryptedPayload,
   EncryptedBlob,
-} from './types';
-
-// Types - Session
-export type {
+  ComputeRequest,
+  ComputeProfile,
+  ComputeResult,
+  BranchInfo,
+  BranchProof,
+  GasEstimate,
   SessionState,
-} from './types';
-
-// Types - Balance
-export type {
   EVMNetworkId,
   BalanceResponse,
-} from './types';
-
-// Types - Configuration
-export type {
   InitOptions,
-} from './types';
-
-// Types - Events
-export type {
   EventName,
   EventCallback,
-} from './types';
-
-// Types - Errors
-export type {
   ErrorCode,
 } from './types';
 
-// Intents SDK
-export {
-  IntentsClient,
-  deriveEvmAddress,
-} from './intents';
-
-// Response utilities
 export {
   decodeResponseData,
   decodeBalanceResponse,
 } from './response-utils';
+
+// NOTE: Intent-based swaps feature is currently disabled
+// Uncomment when ready for production
+/*
+export {
+  IntentsClient,
+  deriveEvmAddress,
+} from './intents';
 
 export type {
   SwapIntentPayload,
@@ -118,3 +103,4 @@ export type {
   IntentStatus,
   TargetChain,
 } from './intents';
+*/

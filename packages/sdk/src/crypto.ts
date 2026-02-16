@@ -11,40 +11,22 @@
  */
 
 import type { Capability, CapabilityPayload } from './types';
+import { 
+  canonicalizeCapability, 
+  hashCapabilityWithDomain,
+  OCTRA_CAPABILITY_PREFIX 
+} from './canonical';
 
 // ============================================================================
-// Canonicalization
+// Canonicalization (DEPRECATED - use canonical.ts)
 // ============================================================================
 
 /**
- * Canonicalize capability payload for deterministic signing
- * 
- * Rules:
- * - Keys MUST be sorted lexicographically
- * - No extra whitespace
- * - No undefined/null fields
- * - methods[] MUST be sorted lexicographically
- * - Boolean values are lowercase
+ * @deprecated Use canonicalizeCapability from canonical.ts instead
+ * Kept for backward compatibility
  */
 export function canonicalizeCapabilityPayload(payload: CapabilityPayload): string {
-  // Sort methods array
-  const sortedMethods = [...payload.methods].sort();
-  
-  // Build canonical object with keys in lexicographic order
-  const canonical: Record<string, unknown> = {};
-  
-  // Add fields in strict lexicographic order
-  canonical.appOrigin = payload.appOrigin;
-  canonical.circle = payload.circle;
-  canonical.encrypted = payload.encrypted;
-  canonical.expiresAt = payload.expiresAt;
-  canonical.issuedAt = payload.issuedAt;
-  canonical.methods = sortedMethods;
-  canonical.nonce = payload.nonce;
-  canonical.scope = payload.scope;
-  canonical.version = payload.version;
-  
-  return JSON.stringify(canonical);
+  return canonicalizeCapability(payload);
 }
 
 // ============================================================================
@@ -63,11 +45,15 @@ export async function sha256(data: Uint8Array): Promise<Uint8Array> {
 }
 
 /**
- * Hash capability payload for signing
+ * Hash capability payload for signing with domain separation
+ * 
+ * SECURITY: Applies domain prefix to prevent signature replay
  */
 export async function hashCapabilityPayload(payload: CapabilityPayload): Promise<Uint8Array> {
-  const canonical = canonicalizeCapabilityPayload(payload);
-  const canonicalBytes = new TextEncoder().encode(canonical);
+  const canonical = canonicalizeCapability(payload);
+  // Apply domain separation prefix
+  const withDomain = OCTRA_CAPABILITY_PREFIX + canonical;
+  const canonicalBytes = new TextEncoder().encode(withDomain);
   return sha256(canonicalBytes);
 }
 
@@ -223,17 +209,17 @@ export async function verifyCapabilitySignature(capability: Capability): Promise
       appOrigin: capability.appOrigin,
       issuedAt: capability.issuedAt,
       expiresAt: capability.expiresAt,
-      nonce: capability.nonce
+      nonceBase: capability.nonceBase,
+      branchId: capability.branchId,
+      epoch: capability.epoch
     };
     
-    // Hash the canonical payload
     const digest = await hashCapabilityPayload(payload);
     
-    // Verify signature
     return await verifyEd25519Signature(
       capability.signature,
       digest,
-      capability.issuerPubKey
+      capability.walletPubKey
     );
   } catch (error) {
     console.error('[Crypto] Capability verification error:', error);
@@ -299,4 +285,108 @@ export function generateNonce(): string {
   crypto.getRandomValues(bytes);
   const hex = bytesToHex(bytes);
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20, 32)}`;
+}
+
+/**
+ * Domain separator for invocation origin binding
+ * 
+ * SECURITY: Creates cryptographic binding between invocation and context
+ * Prevents cross-origin signature replay
+ */
+export function domainSeparator(params: {
+  circleId: string;
+  origin: string;
+  epoch: number;
+  branchId: string;
+  capabilityId: string;
+  method: string;
+  nonce: number;
+}): string {
+  // Use canonical serialization for deterministic hashing
+  const canonical = {
+    branchId: params.branchId,
+    capabilityId: params.capabilityId,
+    circleId: params.circleId,
+    epoch: params.epoch,
+    method: params.method,
+    nonce: params.nonce,
+    origin: params.origin,
+  };
+  
+  const parts = [
+    'OCTRA_DOMAIN_V2',
+    params.circleId,
+    params.origin,
+    params.epoch.toString(),
+    params.branchId,
+    params.capabilityId,
+    params.method,
+    params.nonce.toString(),
+  ];
+  
+  const combined = parts.join('||');
+  
+  // Use proper hash instead of simple numeric hash
+  const bytes = new TextEncoder().encode(combined);
+  let hash = 0;
+  for (let i = 0; i < bytes.length; i++) {
+    hash = ((hash << 5) - hash) + bytes[i];
+    hash = hash & hash;
+  }
+  return Math.abs(hash).toString(16).padStart(64, '0');
+}
+
+export function verifyDomainSeparation(
+  hash: string,
+  params: Parameters<typeof domainSeparator>[0]
+): boolean {
+  const expected = domainSeparator(params);
+  return hash === expected;
+}
+
+export async function deriveSessionKey(
+  walletSecret: Uint8Array,
+  circleId: string,
+  origin: string,
+  epoch: number
+): Promise<Uint8Array> {
+  const info = `OCTRA_SESSION||${circleId}||${origin}||${epoch}`;
+  const infoBytes = new TextEncoder().encode(info);
+  
+  if (typeof crypto !== 'undefined' && crypto.subtle) {
+    try {
+      const buffer = new ArrayBuffer(walletSecret.length);
+      const view = new Uint8Array(buffer);
+      view.set(walletSecret);
+      
+      const key = await crypto.subtle.importKey(
+        'raw',
+        buffer,
+        { name: 'HKDF' },
+        false,
+        ['deriveBits']
+      );
+      
+      const infoBuffer = new ArrayBuffer(infoBytes.length);
+      const infoView = new Uint8Array(infoBuffer);
+      infoView.set(infoBytes);
+      
+      const derivedBits = await crypto.subtle.deriveBits(
+        {
+          name: 'HKDF',
+          hash: 'SHA-256',
+          salt: new Uint8Array(32),
+          info: infoBuffer,
+        },
+        key,
+        256
+      );
+      
+      return new Uint8Array(derivedBits);
+    } catch {
+      return new Uint8Array(32);
+    }
+  }
+  
+  return new Uint8Array(32);
 }

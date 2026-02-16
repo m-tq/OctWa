@@ -12,27 +12,29 @@
 
 import * as nacl from 'tweetnacl';
 
-// Capability payload interface (matches SDK types)
+// Capability payload interface v2
 export interface CapabilityPayload {
-  version: 1;
+  version: 2;
   circle: string;
   methods: string[];
   scope: 'read' | 'write' | 'compute';
   encrypted: boolean;
   appOrigin: string;
+  branchId: string;
+  epoch: number;
   issuedAt: number;
-  expiresAt: number; // Mandatory in v1
-  nonce: string;
+  expiresAt: number;
+  nonceBase: number;
 }
 
 // Signed capability interface
 export interface SignedCapability extends CapabilityPayload {
-  issuerPubKey: string;
+  walletPubKey: string;
   signature: string;
 }
 
 /**
- * Canonicalize capability payload for signing
+ * Canonicalize capability payload for signing v2
  * Rules:
  * - Keys MUST be sorted lexicographically
  * - No extra whitespace
@@ -40,20 +42,19 @@ export interface SignedCapability extends CapabilityPayload {
  * - methods[] MUST be sorted lexicographically
  */
 export function canonicalizeCapability(payload: CapabilityPayload): string {
-  // Sort methods array
   const sortedMethods = [...payload.methods].sort();
   
-  // Build canonical object with sorted keys (lexicographic order)
   const canonical: Record<string, unknown> = {};
   
-  // Add fields in lexicographic order
   canonical.appOrigin = payload.appOrigin;
+  canonical.branchId = payload.branchId;
   canonical.circle = payload.circle;
   canonical.encrypted = payload.encrypted;
-  canonical.expiresAt = payload.expiresAt; // Mandatory in v1
+  canonical.epoch = payload.epoch;
+  canonical.expiresAt = payload.expiresAt;
   canonical.issuedAt = payload.issuedAt;
   canonical.methods = sortedMethods;
-  canonical.nonce = payload.nonce;
+  canonical.nonceBase = payload.nonceBase;
   canonical.scope = payload.scope;
   canonical.version = payload.version;
   
@@ -132,14 +133,10 @@ export function bytesToHex(bytes: Uint8Array): string {
 }
 
 /**
- * Generate a unique nonce for capability
+ * Generate nonce base for capability v2
  */
-export function generateNonce(): string {
-  const bytes = new Uint8Array(16);
-  crypto.getRandomValues(bytes);
-  // Format as UUID-like string
-  const hex = bytesToHex(bytes);
-  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20, 32)}`;
+export function generateNonceBase(): number {
+  return 0;
 }
 
 /**
@@ -222,11 +219,10 @@ export async function signCapability(
   
   console.log('[Capability] Capability signed successfully');
   
-  // Return signed capability with sorted methods
   return {
     ...payload,
     methods: [...payload.methods].sort(),
-    issuerPubKey,
+    walletPubKey: issuerPubKey,
     signature: signatureHex
   };
 }
@@ -239,7 +235,6 @@ export async function signCapability(
  */
 export async function verifyCapability(capability: SignedCapability): Promise<boolean> {
   try {
-    // Extract payload (without issuerPubKey and signature)
     const payload: CapabilityPayload = {
       version: capability.version,
       circle: capability.circle,
@@ -247,21 +242,20 @@ export async function verifyCapability(capability: SignedCapability): Promise<bo
       scope: capability.scope,
       encrypted: capability.encrypted,
       appOrigin: capability.appOrigin,
+      branchId: capability.branchId,
+      epoch: capability.epoch,
       issuedAt: capability.issuedAt,
       expiresAt: capability.expiresAt,
-      nonce: capability.nonce
+      nonceBase: capability.nonceBase
     };
     
-    // Get canonical form and hash
     const canonical = canonicalizeCapability(payload);
     const canonicalBytes = new TextEncoder().encode(canonical);
     const digest = await sha256(canonicalBytes);
     
-    // Convert signature and public key from hex
     const signatureBytes = hexToBytes(capability.signature);
-    const publicKeyBytes = hexToBytes(capability.issuerPubKey);
+    const publicKeyBytes = hexToBytes(capability.walletPubKey);
     
-    // Verify signature
     return nacl.sign.detached.verify(digest, signatureBytes, publicKeyBytes);
   } catch (error) {
     console.error('[Capability] Verification error:', error);
