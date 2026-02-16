@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "OctWa (Octra Wallet)",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "The Octra wallet for public and fully encrypted transactions. Powered by HFHE.",
   "permissions": [
     "storage",
