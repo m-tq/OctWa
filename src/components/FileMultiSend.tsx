@@ -111,6 +111,7 @@ export function FileMultiSend({ wallet, balance, onBalanceUpdate, onNonceUpdate,
   const [executionMode, setExecutionMode] = useState<'parallel' | 'sequential'>('parallel');
   const txLogsEndRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
+  const scannerUrl = import.meta.env.VITE_SCANNER_URL || 'https://octrascan.io/transactions/';
 
   // Auto-scroll to bottom when new logs are added
   useEffect(() => {
@@ -1697,7 +1698,7 @@ export function FileMultiSend({ wallet, balance, onBalanceUpdate, onNonceUpdate,
                       </div>
                       {txLog.hash && (
                         <a 
-                          href={`https://octrascan.io/transactions/${txLog.hash}`}
+                          href={`${scannerUrl}${txLog.hash}`}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="text-[10px] text-[#3A4DFF] hover:underline mt-1 block truncate"

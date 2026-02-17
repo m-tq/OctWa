@@ -72,11 +72,19 @@ export function PrivateTransfer({
   const [showTxModal, setShowTxModal] = useState(false);
   const [txModalStatus, setTxModalStatus] = useState<TransactionStatus>('idle');
   const [txModalResult, setTxModalResult] = useState<TransactionResult>({});
+  const [txContext, setTxContext] = useState<{ from: string; to: string } | null>(null);
   const [showAddressBookDropdown, setShowAddressBookDropdown] = useState(false);
   const [addressBookSearch, setAddressBookSearch] = useState('');
   const dropdownRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
   const { contacts, walletLabels } = useAddressBook();
+  
+  const handleTxModalOpenChange = (open: boolean) => {
+    setShowTxModal(open);
+    if (!open) {
+      setTxModalStatus('idle');
+    }
+  };
 
   // Use prop if available, otherwise use local state
   const encryptedBalance = propEncryptedBalance || localEncryptedBalance;
@@ -241,6 +249,7 @@ export function PrivateTransfer({
     setIsSending(true);
     
     // Show modal with sending state
+    setTxContext({ from: wallet.address, to: finalRecipientAddress });
     setTxModalStatus('sending');
     setTxModalResult({});
     setShowTxModal(true);
@@ -298,7 +307,7 @@ export function PrivateTransfer({
     );
   }
 
-  if (!encryptedBalance || encryptedBalance.encrypted <= 0) {
+  if (!showTxModal && (!encryptedBalance || encryptedBalance.encrypted <= 0)) {
     return isCompact ? (
       <Alert className="border-[#3A4DFF]/20">
         <AlertDescription className="text-xs">
@@ -331,205 +340,203 @@ export function PrivateTransfer({
   if (isCompact) {
     return (
       <div className="space-y-3" ref={dropdownRef}>
-        {/* Animated Icon - Compact */}
-        <AnimatedIcon type="send-private" size="xs" />
-
-        {/* Recipient */}
-        <div className="space-y-1 relative">
-          <div className="flex items-center justify-between">
-            <Label htmlFor="recipient" className="text-xs">Recipient</Label>
-            {/* Action buttons - sejajar dengan label Recipient */}
-            <div className="flex gap-1">
-              {recipientAddress.trim() && 
-               /^oct[123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz]{44}$/.test(recipientAddress.trim()) &&
-               recipientAddress.trim().toLowerCase() !== wallet?.address?.toLowerCase() &&
-               !isAddressInBook(recipientAddress.trim()) &&
-               onAddToAddressBook && (
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="icon"
-                  onClick={() => onAddToAddressBook?.(recipientAddress.trim())}
-                  className="h-7 w-7 flex-shrink-0 text-[#3A4DFF] hover:text-[#6C63FF] hover:bg-[#6C63FF]/10 border-[#3A4DFF]/30"
-                  title="Add to address book"
-                >
-                  <Plus className="h-3 w-3" />
-                </Button>
-              )}
-              <Button
-                type="button"
-                variant="outline"
-                size="icon"
-                onClick={() => setShowAddressBookDropdown(!showAddressBookDropdown)}
-                className="h-7 w-7 flex-shrink-0"
-                title="Select from contacts"
-              >
-                <BookUser className="h-3 w-3" />
-              </Button>
-            </div>
-          </div>
-          <AddressInput
-            id="recipient"
-            value={recipientAddress}
-            onChange={setRecipientAddress}
-            isPopupMode={true}
-            isCompact={true}
-            hideButtons={true}
-            className="text-xs"
-            activeWalletAddress={wallet?.address}
-            onAddToAddressBook={onAddToAddressBook}
-            currentMode="private"
+        {showTxModal ? (
+          <TransactionModal
+            open={showTxModal}
+            onOpenChange={handleTxModalOpenChange}
+            status={txModalStatus}
+            result={txModalResult}
+            type="transfer"
+            isPopupMode={isCompact}
+            fromAddress={txContext?.from}
+            toAddress={txContext?.to}
           />
-          {recipientAddress.trim() && addressValidation && !addressValidation.isValid && (
-            <p className="text-[10px] text-red-600">{addressValidation.error}</p>
-          )}
-          {recipientInfo && !recipientInfo.has_public_key && (
-            <p className="text-[10px] text-red-600">⚠️ Recipient needs a public key</p>
-          )}
-          
-          {/* Address Book Dropdown */}
-          {showAddressBookDropdown && (
-            <div className="absolute top-14 right-0 z-50 w-64 bg-background border rounded-md shadow-lg overflow-hidden">
-              <div className="p-2 border-b">
-                <div className="relative">
-                  <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground" />
-                  <Input
-                    placeholder="Search contacts..."
-                    value={addressBookSearch}
-                    onChange={(e) => setAddressBookSearch(e.target.value)}
-                    className="h-7 text-xs pl-7"
-                    autoFocus
-                  />
+        ) : (
+          <>
+            <AnimatedIcon type="send-private" size="xs" />
+            <div className="space-y-1 relative">
+              <div className="flex items-center justify-between">
+                <Label htmlFor="recipient" className="text-xs">Recipient</Label>
+                <div className="flex gap-1">
+                  {recipientAddress.trim() && 
+                   /^oct[123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz]{44}$/.test(recipientAddress.trim()) &&
+                   recipientAddress.trim().toLowerCase() !== wallet?.address?.toLowerCase() &&
+                   !isAddressInBook(recipientAddress.trim()) &&
+                   onAddToAddressBook && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon"
+                      onClick={() => onAddToAddressBook?.(recipientAddress.trim())}
+                      className="h-7 w-7 flex-shrink-0 text-[#3A4DFF] hover:text-[#6C63FF] hover:bg-[#6C63FF]/10 border-[#3A4DFF]/30"
+                      title="Add to address book"
+                    >
+                      <Plus className="h-3 w-3" />
+                    </Button>
+                  )}
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    onClick={() => setShowAddressBookDropdown(!showAddressBookDropdown)}
+                    className="h-7 w-7 flex-shrink-0"
+                    title="Select from contacts"
+                  >
+                    <BookUser className="h-3 w-3" />
+                  </Button>
                 </div>
               </div>
-              <ScrollArea className="h-[160px]">
-                {filteredContacts.length === 0 && filteredWallets.length === 0 ? (
-                  <div className="text-center py-4 text-muted-foreground text-xs">
-                    {addressBookSearch ? 'No results found' : 'No contacts or wallets'}
+              <AddressInput
+                id="recipient"
+                value={recipientAddress}
+                onChange={setRecipientAddress}
+                isPopupMode={true}
+                isCompact={true}
+                hideButtons={true}
+                className="text-xs"
+                activeWalletAddress={wallet?.address}
+                onAddToAddressBook={onAddToAddressBook}
+                currentMode="private"
+              />
+              {recipientAddress.trim() && addressValidation && !addressValidation.isValid && (
+                <p className="text-[10px] text-red-600">{addressValidation.error}</p>
+              )}
+              {recipientInfo && !recipientInfo.has_public_key && (
+                <p className="text-[10px] text-red-600">⚠️ Recipient needs a public key</p>
+              )}
+              
+              {showAddressBookDropdown && (
+                <div className="absolute top-14 right-0 z-50 w-64 bg-background border rounded-md shadow-lg overflow-hidden">
+                  <div className="p-2 border-b">
+                    <div className="relative">
+                      <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground" />
+                      <Input
+                        placeholder="Search contacts..."
+                        value={addressBookSearch}
+                        onChange={(e) => setAddressBookSearch(e.target.value)}
+                        className="h-7 text-xs pl-7"
+                        autoFocus
+                      />
+                    </div>
                   </div>
-                ) : (
-                  <div className="p-1">
-                    {filteredContacts.length > 0 && (
-                      <div>
-                        <div className="px-2 py-1 text-muted-foreground font-medium text-[10px]">Contacts</div>
-                        {filteredContacts.map((contact) => (
-                          <button
-                            key={contact.id}
-                            type="button"
-                            onClick={() => handleSelectFromAddressBook(contact.address)}
-                            className="w-full text-left px-2 py-1.5 hover:bg-accent rounded-sm text-xs"
-                          >
-                            <div className="flex items-center gap-1.5">
-                              <span className="font-medium truncate">{contact.label}</span>
-                              {contact.preferredMode === 'private' && <Shield className="h-2.5 w-2.5 text-[#3A4DFF]" />}
-                              {contact.preferredMode === 'public' && <Globe className="h-2.5 w-2.5 text-green-600" />}
-                            </div>
-                            <div className="font-mono text-[10px] text-muted-foreground">{truncateAddress(contact.address)}</div>
-                          </button>
-                        ))}
+                  <ScrollArea className="h-[160px]">
+                    {filteredContacts.length === 0 && filteredWallets.length === 0 ? (
+                      <div className="text-center py-4 text-muted-foreground text-xs">
+                        {addressBookSearch ? 'No results found' : 'No contacts or wallets'}
+                      </div>
+                    ) : (
+                      <div className="p-1">
+                        {filteredContacts.length > 0 && (
+                          <div>
+                            <div className="px-2 py-1 text-muted-foreground font-medium text-[10px]">Contacts</div>
+                            {filteredContacts.map((contact) => (
+                              <button
+                                key={contact.id}
+                                type="button"
+                                onClick={() => handleSelectFromAddressBook(contact.address)}
+                                className="w-full text-left px-2 py-1.5 hover:bg-accent rounded-sm text-xs"
+                              >
+                                <div className="flex items-center gap-1.5">
+                                  <span className="font-medium truncate">{contact.label}</span>
+                                  {contact.preferredMode === 'private' && <Shield className="h-2.5 w-2.5 text-[#3A4DFF]" />}
+                                  {contact.preferredMode === 'public' && <Globe className="h-2.5 w-2.5 text-green-600" />}
+                                </div>
+                                <div className="font-mono text-[10px] text-muted-foreground">{truncateAddress(contact.address)}</div>
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                        {filteredWallets.length > 0 && (
+                          <div className={filteredContacts.length > 0 ? 'mt-2 pt-2 border-t' : ''}>
+                            <div className="px-2 py-1 text-muted-foreground font-medium text-[10px]">My Wallets</div>
+                            {filteredWallets.map((w) => (
+                              <button
+                                key={w.address}
+                                type="button"
+                                onClick={() => handleSelectFromAddressBook(w.address)}
+                                className="w-full text-left px-2 py-1.5 hover:bg-accent rounded-sm text-xs"
+                              >
+                                <div className="font-medium truncate">{w.name}</div>
+                                <div className="font-mono text-[10px] text-muted-foreground">{truncateAddress(w.address)}</div>
+                              </button>
+                            ))}
+                          </div>
+                        )}
                       </div>
                     )}
-                    {filteredWallets.length > 0 && (
-                      <div className={filteredContacts.length > 0 ? 'mt-2 pt-2 border-t' : ''}>
-                        <div className="px-2 py-1 text-muted-foreground font-medium text-[10px]">My Wallets</div>
-                        {filteredWallets.map((w) => (
-                          <button
-                            key={w.address}
-                            type="button"
-                            onClick={() => handleSelectFromAddressBook(w.address)}
-                            className="w-full text-left px-2 py-1.5 hover:bg-accent rounded-sm text-xs"
-                          >
-                            <div className="font-medium truncate">{w.name}</div>
-                            <div className="font-mono text-[10px] text-muted-foreground">{truncateAddress(w.address)}</div>
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                )}
-              </ScrollArea>
+                  </ScrollArea>
+                </div>
+              )}
             </div>
-          )}
-        </div>
 
-        {/* Amount */}
-        <div className="space-y-1">
-          <div className="flex items-center justify-between">
-            <Label htmlFor="amount" className="text-xs">Amount (OCT)</Label>
-            <div className="flex items-center gap-1.5 text-[10px]">
-              <span className="text-muted-foreground">
-                Balance: <span className="font-mono">{encryptedBalance.encrypted.toFixed(4)}</span>
-              </span>
-              <button
-                type="button"
-                onClick={() => {
-                  // Private transfer: use full encrypted balance (no fee needed)
-                  const maxAmount = encryptedBalance.encrypted;
-                  if (maxAmount > 0) {
-                    setAmount(maxAmount.toFixed(8));
-                  } else {
-                    toast({
-                      title: "No Balance",
-                      description: "No encrypted balance available",
-                      variant: "destructive",
-                    });
-                  }
-                }}
-                className="text-[#00E5C0] hover:text-[#00E5C0]/80 font-medium hover:underline"
-              >
-                Max
-              </button>
-            </div>
-          </div>
-          <Input
-            id="amount"
-            type="number"
-            placeholder="0.00"
-            value={amount}
-            onChange={(e) => setAmount(e.target.value)}
-            step="0.1"
-            min="0"
-            max={encryptedBalance.encrypted}
-            className="text-xs h-8"
-          />
-        </div>
-
-        <Button
-          onClick={handleSend}
-          disabled={
-            isSending ||
-            !addressValidation?.isValid ||
-            isCheckingRecipient ||
-            !validateAmount(amount) ||
-            !recipientInfo ||
-            recipientInfo.error ||
-            !recipientInfo.has_public_key ||
-            parseFloat(amount) > encryptedBalance.encrypted
-          }
-          className="w-full h-9 text-xs bg-[#00E5C0] hover:bg-[#00E5C0]/80"
-        >
-          {isSending ? (
-            <div className="flex items-center gap-2">
-              <div className="relative w-3.5 h-3.5">
-                <div className="absolute inset-0 rounded-full border-2 border-white/20" />
-                <div className="absolute inset-0 rounded-full border-2 border-transparent border-t-white animate-spin" />
+            <div className="space-y-1">
+              <div className="flex items-center justify-between">
+                <Label htmlFor="amount" className="text-xs">Amount (OCT)</Label>
+                <div className="flex items-center gap-1.5 text-[10px]">
+                  <span className="text-muted-foreground">
+                    Balance: <span className="font-mono">{encryptedBalance.encrypted.toFixed(4)}</span>
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const maxAmount = encryptedBalance.encrypted;
+                      if (maxAmount > 0) {
+                        setAmount(maxAmount.toFixed(8));
+                      } else {
+                        toast({
+                          title: "No Balance",
+                          description: "No encrypted balance available",
+                          variant: "destructive",
+                        });
+                      }
+                    }}
+                    className="text-[#00E5C0] hover:text-[#00E5C0]/80 font-medium hover:underline"
+                  >
+                    Max
+                  </button>
+                </div>
               </div>
-              <span>Sending...</span>
+              <Input
+                id="amount"
+                type="number"
+                placeholder="0.00"
+                value={amount}
+                onChange={(e) => setAmount(e.target.value)}
+                step="0.1"
+                min="0"
+                max={encryptedBalance.encrypted}
+                className="text-xs h-8"
+              />
             </div>
-          ) : (
-            'Send Private'
-          )}
-        </Button>
 
-        {/* Transaction Modal */}
-        <TransactionModal
-          open={showTxModal}
-          onOpenChange={setShowTxModal}
-          status={txModalStatus}
-          result={txModalResult}
-          type="transfer"
-          isPopupMode={isCompact}
-        />
+            <Button
+              onClick={handleSend}
+              disabled={
+                isSending ||
+                !addressValidation?.isValid ||
+                isCheckingRecipient ||
+                !validateAmount(amount) ||
+                !recipientInfo ||
+                recipientInfo.error ||
+                !recipientInfo.has_public_key ||
+                parseFloat(amount) > encryptedBalance.encrypted
+              }
+              className="w-full h-9 text-xs bg-[#00E5C0] hover:bg-[#00E5C0]/80"
+            >
+              {isSending ? (
+                <div className="flex items-center gap-2">
+                  <div className="relative w-3.5 h-3.5">
+                    <div className="absolute inset-0 rounded-full border-2 border-white/20" />
+                    <div className="absolute inset-0 rounded-full border-2 border-transparent border-t-white animate-spin" />
+                  </div>
+                  <span>Sending...</span>
+                </div>
+              ) : (
+                'Send Private'
+              )}
+            </Button>
+          </>
+        )}
       </div>
     );
   }
@@ -537,114 +544,112 @@ export function PrivateTransfer({
   // Full mode - Simplified
   return (
     <div className="space-y-4 max-w-xl mx-auto">
-      {/* Animated Icon */}
-      <div className="pb-4">
-        <AnimatedIcon type="send-private" size="sm" />
-      </div>
-
-      {/* Recipient Address */}
-      <div className="space-y-2">
-        <Label htmlFor="recipient">Recipient Address</Label>
-        <AddressInput
-          id="recipient"
-          value={recipientAddress}
-          onChange={setRecipientAddress}
-          isPopupMode={false}
-          activeWalletAddress={wallet?.address}
-          onAddToAddressBook={onAddToAddressBook}
-          currentMode="private"
+      {showTxModal ? (
+        <TransactionModal
+          open={showTxModal}
+          onOpenChange={handleTxModalOpenChange}
+          status={txModalStatus}
+          result={txModalResult}
+          type="transfer"
+          fromAddress={txContext?.from}
+          toAddress={txContext?.to}
         />
-        {recipientAddress.trim() && addressValidation && !addressValidation.isValid && (
-          <p className="text-sm text-red-600">{addressValidation.error}</p>
-        )}
-        {isCheckingRecipient && (
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <Loader2 className="h-4 w-4 animate-spin" />
-            Checking recipient...
+      ) : (
+        <>
+          <div className="pb-4">
+            <AnimatedIcon type="send-private" size="sm" />
           </div>
-        )}
-        {recipientInfo && !isCheckingRecipient && !recipientInfo.has_public_key && (
-          <p className="text-sm text-red-600">⚠️ Recipient needs a public key first</p>
-        )}
-      </div>
-
-      {/* Amount with Balance and Max */}
-      <div className="space-y-2">
-        <div className="flex items-center justify-between">
-          <Label htmlFor="amount">Amount (OCT)</Label>
-          <div className="flex items-center gap-2 text-sm">
-            <span className="text-muted-foreground">
-              Balance: <span className="font-mono">{encryptedBalance.encrypted.toFixed(4)}</span>
-            </span>
-            <button
-              type="button"
-              onClick={() => {
-                // Private transfer: use full encrypted balance (no fee needed)
-                const maxAmount = encryptedBalance.encrypted;
-                if (maxAmount > 0) {
-                  setAmount(maxAmount.toFixed(8));
-                } else {
-                  toast({
-                    title: "No Balance",
-                    description: "No encrypted balance available",
-                    variant: "destructive",
-                  });
-                }
-              }}
-              className="text-[#00E5C0] hover:text-[#00E5C0]/80 font-medium hover:underline"
-            >
-              Max
-            </button>
+          <div className="space-y-2">
+            <Label htmlFor="recipient">Recipient Address</Label>
+            <AddressInput
+              id="recipient"
+              value={recipientAddress}
+              onChange={setRecipientAddress}
+              isPopupMode={false}
+              activeWalletAddress={wallet?.address}
+              onAddToAddressBook={onAddToAddressBook}
+              currentMode="private"
+            />
+            {recipientAddress.trim() && addressValidation && !addressValidation.isValid && (
+              <p className="text-sm text-red-600">{addressValidation.error}</p>
+            )}
+            {isCheckingRecipient && (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Checking recipient...
+              </div>
+            )}
+            {recipientInfo && !isCheckingRecipient && !recipientInfo.has_public_key && (
+              <p className="text-sm text-red-600">⚠️ Recipient needs a public key first</p>
+            )}
           </div>
-        </div>
-        <Input
-          id="amount"
-          type="number"
-          placeholder="0.00000000"
-          value={amount}
-          onChange={(e) => setAmount(e.target.value)}
-          step="0.1"
-          min="0"
-          max={encryptedBalance.encrypted}
-        />
-        {amount && validateAmount(amount) && parseFloat(amount) > encryptedBalance.encrypted && (
-          <p className="text-sm text-red-600">Amount exceeds available encrypted balance</p>
-        )}
-      </div>
-
-      <Button 
-        onClick={handleSend}
-        disabled={
-          isSending || 
-          !addressValidation?.isValid ||
-          isCheckingRecipient ||
-          !validateAmount(amount) || 
-          !recipientInfo ||
-          recipientInfo.error ||
-          !recipientInfo.has_public_key ||
-          parseFloat(amount) > encryptedBalance.encrypted
-        }
-        className="w-full bg-[#00E5C0] hover:bg-[#00E5C0]/80"
-        size="lg"
-      >
-        {isSending ? (
-          <>
-            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-            Sending...
-          </>
-        ) : (
-          `Send ${parseFloat(amount || '0').toFixed(8)} OCT`
-        )}
-      </Button>
-
-      {/* Transaction Modal */}
-      <TransactionModal
-        open={showTxModal}
-        onOpenChange={setShowTxModal}
-        status={txModalStatus}
-        result={txModalResult}
-        type="transfer"
-      />
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <Label htmlFor="amount">Amount (OCT)</Label>
+              <div className="flex items-center gap-2 text-sm">
+                <span className="text-muted-foreground">
+                  Balance: <span className="font-mono">{encryptedBalance.encrypted.toFixed(4)}</span>
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const maxAmount = encryptedBalance.encrypted;
+                    if (maxAmount > 0) {
+                      setAmount(maxAmount.toFixed(8));
+                    } else {
+                      toast({
+                        title: "No Balance",
+                        description: "No encrypted balance available",
+                        variant: "destructive",
+                      });
+                    }
+                  }}
+                  className="text-[#00E5C0] hover:text-[#00E5C0]/80 font-medium hover:underline"
+                >
+                  Max
+                </button>
+              </div>
+            </div>
+            <Input
+              id="amount"
+              type="number"
+              placeholder="0.00000000"
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+              step="0.1"
+              min="0"
+              max={encryptedBalance.encrypted}
+            />
+            {amount && validateAmount(amount) && parseFloat(amount) > encryptedBalance.encrypted && (
+              <p className="text-sm text-red-600">Amount exceeds available encrypted balance</p>
+            )}
+          </div>
+          <Button 
+            onClick={handleSend}
+            disabled={
+              isSending || 
+              !addressValidation?.isValid ||
+              isCheckingRecipient ||
+              !validateAmount(amount) || 
+              !recipientInfo ||
+              recipientInfo.error ||
+              !recipientInfo.has_public_key ||
+              parseFloat(amount) > encryptedBalance.encrypted
+            }
+            className="w-full bg-[#00E5C0] hover:bg-[#00E5C0]/80"
+            size="lg"
+          >
+            {isSending ? (
+              <>
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                Sending...
+              </>
+            ) : (
+              `Send ${parseFloat(amount || '0').toFixed(8)} OCT`
+            )}
+          </Button>
+        </>
+      )}
     </div>
   );
 }

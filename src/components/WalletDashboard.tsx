@@ -282,6 +282,8 @@ export function WalletDashboard({
   // Scanner/Explorer configuration from environment variables
   const scannerUrl = import.meta.env.VITE_SCANNER_URL || 'https://octrascan.io/transactions/';
   const scannerName = import.meta.env.VITE_SCANNER_NAME || 'Explorer';
+  const scannerAddressUrl = scannerUrl.replace('/tx/', '/address/').replace('/transactions/', '/address/');
+  const scannerEpochUrl = scannerUrl.replace('/tx/', '/epoch/').replace('/transactions/', '/epoch/');
   // Current epoch state
   const [currentEpoch, setCurrentEpoch] = useState<number>(0);
   const [isUpdatingEpoch, setIsUpdatingEpoch] = useState(false);
@@ -3139,7 +3141,7 @@ export function WalletDashboard({
                 </h3>
                 <div className="flex items-center gap-1.5">
                   <a 
-                    href={`https://octrascan.io/addresses/${wallet.address}`}
+                    href={`${scannerAddressUrl}${wallet.address}`}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="p-1 rounded hover:bg-muted transition-colors"
@@ -3920,7 +3922,7 @@ export function WalletDashboard({
                             className="h-7 w-7 p-0"
                             asChild
                           >
-                            <a href={`https://octrascan.io/addresses/${wallet.address}`} target="_blank" rel="noopener noreferrer">
+                          <a href={`${scannerAddressUrl}${wallet.address}`} target="_blank" rel="noopener noreferrer">
                               <ExternalLink className="h-3.5 w-3.5" />
                             </a>
                           </Button>
@@ -4057,7 +4059,6 @@ export function WalletDashboard({
                   onNonceUpdate={handleNonceUpdate}
                   onTransactionSuccess={() => {
                     handleTransactionSuccess();
-                    closeSendModal();
                   }}
                   isCompact={false}
                   onAddToAddressBook={handleAddToAddressBook}
@@ -4320,7 +4321,7 @@ export function WalletDashboard({
                 <>
                   <span className="text-muted-foreground">Epoch:</span>
                   <a 
-                    href={currentEpoch ? `https://octrascan.io/epochs/${currentEpoch}` : '#'}
+                    href={currentEpoch ? `${scannerEpochUrl}${currentEpoch}` : '#'}
                     target="_blank"
                     rel="noopener noreferrer"
                     className={`font-mono hover:underline ${operationMode === 'private' ? 'text-[#00E5C0]' : 'text-[#3A4DFF]'}`}

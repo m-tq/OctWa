@@ -66,6 +66,7 @@ export function UnifiedHistory({ wallet, transactions, onTransactionsUpdate, isL
   // Scanner/Explorer configuration from environment variables
   const scannerUrl = import.meta.env.VITE_SCANNER_URL || 'https://octrascan.io/transactions/';
   const scannerName = import.meta.env.VITE_SCANNER_NAME || 'Explorer';
+  const scannerAddressUrl = scannerUrl.replace('/tx/', '/address/').replace('/transactions/', '/address/');
 
   // Filter transactions based on operationMode and activeFilter
   const filteredTransactions = transactions.filter(tx => {
@@ -230,7 +231,7 @@ export function UnifiedHistory({ wallet, transactions, onTransactionsUpdate, isL
         <div className="flex items-center gap-1">
           {!isCompact && (
             <Button variant="ghost" size="sm" asChild className={isPopupMode ? 'h-7 px-2' : ''}>
-              <a href={`https://octrascan.io/addresses/${wallet.address}`} target="_blank" rel="noopener noreferrer">
+              <a href={`${scannerAddressUrl}${wallet.address}`} target="_blank" rel="noopener noreferrer">
                 <ExternalLink className={`${isPopupMode ? 'h-3 w-3' : 'h-4 w-4'} ${isPopupMode ? '' : 'mr-2'}`} />
                 {!isPopupMode && 'View All'}
               </a>
@@ -372,6 +373,7 @@ export function UnifiedHistory({ wallet, transactions, onTransactionsUpdate, isL
                       getStatusIcon={getStatusIcon}
                       getStatusColor={getStatusColor}
                       copyToClipboard={copyToClipboard}
+                      scannerUrl={scannerUrl}
                       isPopupMode={isPopupMode}
                       isCompact={isCompact}
                       onItemClick={onViewTxDetails}
@@ -382,6 +384,7 @@ export function UnifiedHistory({ wallet, transactions, onTransactionsUpdate, isL
                       contract={item.contractInteraction}
                       truncateAddress={truncateAddress}
                       copyToClipboard={copyToClipboard}
+                      scannerUrl={scannerUrl}
                       isPopupMode={isPopupMode}
                     />
                   )}
@@ -606,6 +609,7 @@ interface TransferItemProps {
   getStatusIcon: (status: string, small?: boolean) => React.ReactNode;
   getStatusColor: (status: string) => string;
   copyToClipboard: (text: string, label: string) => void;
+  scannerUrl: string;
   isPopupMode?: boolean;
   isCompact?: boolean;
   onItemClick?: (txHash: string, isPending: boolean) => void;
@@ -617,6 +621,7 @@ function TransferItem({
   truncateHash,
   truncateAddress, 
   getStatusIcon,
+  scannerUrl,
   isPopupMode = false,
   isCompact = false,
   onItemClick
@@ -792,7 +797,7 @@ function TransferItem({
           </Button>
           {tx.status === 'confirmed' && (
             <Button variant="ghost" size="sm" asChild>
-              <a href={`https://octrascan.io/transactions/${tx.hash}`} target="_blank" rel="noopener noreferrer">
+              <a href={`${scannerUrl}${tx.hash}`} target="_blank" rel="noopener noreferrer">
                 <ExternalLink className="h-4 w-4" />
               </a>
             </Button>
@@ -832,10 +837,11 @@ interface ContractItemProps {
   contract: ContractInteraction;
   truncateAddress: (address: string) => string;
   copyToClipboard: (text: string, label: string) => void;
+  scannerUrl: string;
   isPopupMode?: boolean;
 }
 
-function ContractItem({ contract, truncateAddress, isPopupMode = false }: ContractItemProps) {
+function ContractItem({ contract, truncateAddress, scannerUrl, isPopupMode = false }: ContractItemProps) {
   // Popup mode: simplified compact view
   if (isPopupMode) {
     return (
@@ -858,7 +864,7 @@ function ContractItem({ contract, truncateAddress, isPopupMode = false }: Contra
         </div>
         {contract.txHash && (
           <Button variant="ghost" size="sm" className="h-7 w-7 p-0 flex-shrink-0" asChild>
-            <a href={`https://octrascan.io/transactions/${contract.txHash}`} target="_blank" rel="noopener noreferrer">
+            <a href={`${scannerUrl}${contract.txHash}`} target="_blank" rel="noopener noreferrer">
               <ExternalLink className="h-3.5 w-3.5" />
             </a>
           </Button>
@@ -885,7 +891,7 @@ function ContractItem({ contract, truncateAddress, isPopupMode = false }: Contra
         </div>
         {contract.txHash && (
           <Button variant="ghost" size="sm" asChild>
-            <a href={`https://octrascan.io/transactions/${contract.txHash}`} target="_blank" rel="noopener noreferrer">
+            <a href={`${scannerUrl}${contract.txHash}`} target="_blank" rel="noopener noreferrer">
               <ExternalLink className="h-4 w-4" />
             </a>
           </Button>

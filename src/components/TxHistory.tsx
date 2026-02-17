@@ -67,6 +67,7 @@ export function TxHistory({ wallet, transactions, onTransactionsUpdate, isLoadin
   const [contractHistory, setContractHistory] = useState<ContractInteraction[]>([]);
   const [activeTab, setActiveTab] = useState('transactions');
   const { toast } = useToast();
+  const scannerUrl = import.meta.env.VITE_SCANNER_URL || 'https://octrascan.io/transactions/';
 
   // Load contract history when wallet changes
   useEffect(() => {
@@ -542,7 +543,7 @@ export function TxHistory({ wallet, transactions, onTransactionsUpdate, isLoadin
                           {tx.status === 'confirmed' && (
                             <Button variant="ghost" size="sm" asChild>
                               <a
-                                href={`https://octrascan.io/transactions/${tx.hash}`}
+                                href={`${scannerUrl}${tx.hash}`}
                                 target="_blank"
                                 rel="noopener noreferrer"
                               >
@@ -652,7 +653,7 @@ export function TxHistory({ wallet, transactions, onTransactionsUpdate, isLoadin
                           {interaction.txHash && (
                             <Button variant="ghost" size="sm" asChild>
                               <a
-                                href={`https://octrascan.io/transactions/${interaction.txHash}`}
+                                href={`${scannerUrl}${interaction.txHash}`}
                                 target="_blank"
                                 rel="noopener noreferrer"
                               >
