@@ -36,6 +36,13 @@ export function DecryptBalanceDialog({
   const [txModalStatus, setTxModalStatus] = useState<TransactionStatus>('idle');
   const [txModalResult, setTxModalResult] = useState<TransactionResult>({});
   const { toast } = useToast();
+  
+  const handleTxModalOpenChange = (open: boolean) => {
+    setShowTxModal(open);
+    if (!open) {
+      setTxModalStatus('idle');
+    }
+  };
 
   const handleDecrypt = async () => {
     const amountNum = parseFloat(amount);
@@ -90,7 +97,16 @@ export function DecryptBalanceDialog({
     }
   };
 
-  const content = (
+  const content = showTxModal ? (
+    <TransactionModal
+      open={showTxModal}
+      onOpenChange={handleTxModalOpenChange}
+      status={txModalStatus}
+      result={txModalResult}
+      type="decrypt"
+      isPopupMode={isPopupMode}
+    />
+  ) : (
     <div className={isPopupMode ? "space-y-3" : "space-y-4 pt-8"}>
       {/* Animated Icon - in inline mode */}
       {isInline && (
@@ -190,15 +206,6 @@ export function DecryptBalanceDialog({
         </Button>
       </div>
 
-      {/* Transaction Modal */}
-      <TransactionModal
-        open={showTxModal}
-        onOpenChange={setShowTxModal}
-        status={txModalStatus}
-        result={txModalResult}
-        type="decrypt"
-        isPopupMode={isPopupMode}
-      />
     </div>
   );
 

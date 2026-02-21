@@ -79,11 +79,19 @@ export function SendTransaction({
   const [showTxModal, setShowTxModal] = useState(false);
   const [txModalStatus, setTxModalStatus] = useState<TransactionStatus>('idle');
   const [txModalResult, setTxModalResult] = useState<TransactionResult>({});
+  const [txContext, setTxContext] = useState<{ from: string; to: string } | null>(null);
   const [showAddressBookDropdown, setShowAddressBookDropdown] = useState(false);
   const [addressBookSearch, setAddressBookSearch] = useState('');
   const dropdownRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
   const { contacts, walletLabels } = useAddressBook();
+  
+  const handleTxModalOpenChange = (open: boolean) => {
+    setShowTxModal(open);
+    if (!open) {
+      setTxModalStatus('idle');
+    }
+  };
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -242,6 +250,7 @@ export function SendTransaction({
     setIsSending(true);
     
     // Show modal with sending state
+    setTxContext({ from: wallet.address, to: recipientAddress.trim() });
     setTxModalStatus('sending');
     setTxModalResult({});
     setShowTxModal(true);
@@ -344,6 +353,19 @@ export function SendTransaction({
   if (isCompact) {
     return (
       <div className="space-y-3" ref={dropdownRef}>
+        {showTxModal ? (
+          <TransactionModal
+            open={showTxModal}
+            onOpenChange={handleTxModalOpenChange}
+            status={txModalStatus}
+            result={txModalResult}
+            type="send"
+            isPopupMode={isCompact}
+            fromAddress={txContext?.from}
+            toAddress={txContext?.to}
+          />
+        ) : (
+          <>
         {/* Recipient Address */}
         <div className="space-y-1 relative">
           <div className="flex items-center justify-between">
@@ -645,16 +667,8 @@ export function SendTransaction({
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
-
-        {/* Transaction Modal */}
-        <TransactionModal
-          open={showTxModal}
-          onOpenChange={setShowTxModal}
-          status={txModalStatus}
-          result={txModalResult}
-          type="send"
-          isPopupMode={isCompact}
-        />
+          </>
+        )}
       </div>
     );
   }
@@ -662,22 +676,34 @@ export function SendTransaction({
   // Full mode (expanded view) - Simplified
   return (
     <div className="space-y-4">
-      {/* Recipient Address */}
-      <div className="space-y-2">
-        <Label htmlFor="recipient">Recipient Address</Label>
-        <AddressInput
-          id="recipient"
-          value={recipientAddress}
-          onChange={setRecipientAddress}
-          isPopupMode={false}
-          activeWalletAddress={wallet?.address}
-          onAddToAddressBook={onAddToAddressBook}
-          currentMode="public"
+      {showTxModal ? (
+        <TransactionModal
+          open={showTxModal}
+          onOpenChange={handleTxModalOpenChange}
+          status={txModalStatus}
+          result={txModalResult}
+          type="send"
+          onClose={onModalClose}
+          fromAddress={txContext?.from}
+          toAddress={txContext?.to}
         />
-        {recipientAddress.trim() && addressValidation && !addressValidation.isValid && (
-          <p className="text-sm text-red-600">{addressValidation.error}</p>
-        )}
-      </div>
+      ) : (
+        <>
+          <div className="space-y-2">
+            <Label htmlFor="recipient">Recipient Address</Label>
+            <AddressInput
+              id="recipient"
+              value={recipientAddress}
+              onChange={setRecipientAddress}
+              isPopupMode={false}
+              activeWalletAddress={wallet?.address}
+              onAddToAddressBook={onAddToAddressBook}
+              currentMode="public"
+            />
+            {recipientAddress.trim() && addressValidation && !addressValidation.isValid && (
+              <p className="text-sm text-red-600">{addressValidation.error}</p>
+            )}
+          </div>
 
       {/* Amount with Max */}
       <div className="space-y-2">
@@ -895,15 +921,8 @@ export function SendTransaction({
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Transaction Modal */}
-      <TransactionModal
-        open={showTxModal}
-        onOpenChange={setShowTxModal}
-        status={txModalStatus}
-        result={txModalResult}
-        type="send"
-        onClose={onModalClose}
-      />
+        </>
+      )}
     </div>
   );
 }
