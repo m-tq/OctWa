@@ -6,7 +6,7 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
-
+webcli/*
 octswap
 node_modules
 dist
@@ -14,7 +14,8 @@ dist-ssr
 *.local
 .env
 **/.env
-
+webcli/
+docs.html
 # Database
 intents-api/data/
 *.db

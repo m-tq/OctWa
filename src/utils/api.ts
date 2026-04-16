@@ -665,8 +665,7 @@ export async function sendTransaction(transaction: Transaction): Promise<{
   reason?: string;
 }> {
   try {
-    // console.log('Sending transaction:', JSON.stringify(transaction, null, 2));
-    
+    // WEBCLI LOGIC: Submit transaction to RPC node
     const response = await makeAPIRequest(`/send-tx`, {
       method: 'POST',
       headers: {
@@ -676,13 +675,12 @@ export async function sendTransaction(transaction: Transaction): Promise<{
     });
 
     const text = await response.text();
-    // console.log('Server response:', response.status, text);
 
     if (response.ok) {
       try {
         const data = JSON.parse(text);
         
-        // New format with finality
+        // WEBCLI RESPONSE FORMAT: Check for status field
         if (data.status === 'accepted' || data.status === 'rejected') {
           const finality = data.finality as 'pending' | 'confirmed' | 'rejected';
           
@@ -703,7 +701,7 @@ export async function sendTransaction(transaction: Transaction): Promise<{
           }
         }
         
-        // Legacy format (backward compatibility)
+        // WEBCLI LEGACY FORMAT: tx_hash field
         if (data.tx_hash) {
           return { success: true, hash: data.tx_hash };
         }
@@ -750,7 +748,108 @@ function getTransactionErrorMessage(errorType: string): string {
   return errorMessages[errorType] || errorType || 'Transaction failed';
 }
 
-// Update fetchTransactionHistory to handle errors better
+// Check transaction status using octra_transaction RPC method
+export async function checkTransactionStatus(hash: string): Promise<{
+  status: 'pending' | 'confirmed' | 'rejected' | 'dropped' | 'not_found';
+  finality?: 'pending' | 'confirmed' | 'rejected';
+  reason?: string;
+}> {
+  try {
+    const response = await makeAPIRequest(`/tx/${hash}`);
+    
+    if (!response.ok) {
+      if (response.status === 404) {
+        return { status: 'not_found' };
+      }
+      return { status: 'not_found' };
+    }
+    
+    const data = await safeJsonParse(response);
+    
+    // Check if transaction is in staging (pending)
+    if (data.stage_status) {
+      return { 
+        status: 'pending',
+        finality: 'pending'
+      };
+    }
+    
+    // Check if transaction is confirmed (has epoch)
+    if (data.epoch !== undefined) {
+      return { 
+        status: 'confirmed',
+        finality: 'confirmed'
+      };
+    }
+    
+    // Check for rejected status
+    if (data.status === 'rejected') {
+      return { 
+        status: 'rejected',
+        finality: 'rejected',
+        reason: data.reason
+      };
+    }
+    
+    // Check for dropped status
+    if (data.status === 'dropped') {
+      return { 
+        status: 'dropped',
+        reason: data.reason
+      };
+    }
+    
+    return { status: 'not_found' };
+  } catch (error) {
+    console.error('Error checking transaction status:', error);
+    return { status: 'not_found' };
+  }
+}
+
+// Poll transaction status until confirmed, rejected, or timeout
+export async function pollTransactionStatus(
+  hash: string,
+  options: {
+    maxAttempts?: number;
+    intervalMs?: number;
+    onStatusUpdate?: (status: 'pending' | 'confirmed' | 'rejected' | 'dropped' | 'not_found') => void;
+  } = {}
+): Promise<{
+  status: 'pending' | 'confirmed' | 'rejected' | 'dropped' | 'not_found';
+  finality?: 'pending' | 'confirmed' | 'rejected';
+  reason?: string;
+}> {
+  const { maxAttempts = 15, intervalMs = 2000, onStatusUpdate } = options;
+  
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    const result = await checkTransactionStatus(hash);
+    
+    // Notify callback of status update
+    if (onStatusUpdate) {
+      onStatusUpdate(result.status);
+    }
+    
+    // If confirmed, rejected, or dropped, return immediately
+    if (result.status === 'confirmed' || result.status === 'rejected' || result.status === 'dropped') {
+      return result;
+    }
+    
+    // If not found and not first attempt, might have been dropped
+    if (result.status === 'not_found' && attempt > 2) {
+      return { status: 'dropped' };
+    }
+    
+    // Wait before next attempt (except on last attempt)
+    if (attempt < maxAttempts - 1) {
+      await new Promise(resolve => setTimeout(resolve, intervalMs));
+    }
+  }
+  
+  // Timeout - still pending
+  return { status: 'pending', finality: 'pending' };
+}
+
+// WEBCLI LOGIC: Fetch transaction history with proper parsing
 export async function fetchTransactionHistory(
   address: string, 
   options: HistoryPaginationOptions = {}
@@ -758,7 +857,7 @@ export async function fetchTransactionHistory(
   const { limit = 20, offset = 0 } = options;
   
   try {
-    // Fetch both confirmed and pending transactions
+    // WEBCLI LOGIC: Fetch confirmed and pending transactions in parallel
     const [confirmedResponse, pendingTransactions] = await Promise.all([
       makeAPIRequest(`/address/${address}?limit=${limit}&offset=${offset}`),
       fetchPendingTransactions(address).catch(() => []) // Return empty array on error
@@ -787,22 +886,33 @@ export async function fetchTransactionHistory(
       };
     }
     
-    // Fetch details for each confirmed transaction
+    // WEBCLI LOGIC: Fetch details for each confirmed transaction
     const confirmedTransactionPromises = apiData.recent_transactions.map(async (recentTx) => {
       try {
         const txDetails = await fetchTransactionDetails(recentTx.hash);
         
-        // Determine op_type from transaction details
+        // WEBCLI LOGIC: Determine op_type from transaction details
         const opType = txDetails.op_type || txDetails.parsed_tx.op_type || 
           (txDetails.parsed_tx.message === 'PRIVATE_TRANSFER' || 
            txDetails.parsed_tx.message === '505249564154455f5452414e53464552' ? 'private' : 'standard');
+        
+        // WEBCLI LOGIC: Parse amount from amount_raw or amount field
+        let amount = 0;
+        if (txDetails.parsed_tx.amount_raw) {
+          const amountRaw = typeof txDetails.parsed_tx.amount_raw === 'string'
+            ? parseInt(txDetails.parsed_tx.amount_raw, 10)
+            : txDetails.parsed_tx.amount_raw;
+          amount = amountRaw / MU_FACTOR;
+        } else if (txDetails.parsed_tx.amount) {
+          amount = parseFloat(txDetails.parsed_tx.amount);
+        }
         
         // Transform to our expected format
         return {
           hash: txDetails.tx_hash,
           from: txDetails.parsed_tx.from,
           to: txDetails.parsed_tx.to,
-          amount: parseFloat(txDetails.parsed_tx.amount),
+          amount: amount,
           timestamp: txDetails.parsed_tx.timestamp,
           status: 'confirmed' as const,
           type: txDetails.parsed_tx.from.toLowerCase() === address.toLowerCase() ? 'sent' as const : 'received' as const,
@@ -829,6 +939,7 @@ export async function fetchTransactionHistory(
     
     const confirmedHashes = new Set(confirmedTransactions.map(tx => tx.hash));
     
+    // WEBCLI LOGIC: Format pending transactions
     const pendingTransactionsFormatted = pendingTransactions.map(tx => {
       // Determine op_type from message
       const opType = tx.message === 'PRIVATE_TRANSFER' || 
@@ -847,9 +958,12 @@ export async function fetchTransactionHistory(
       };
     });
     
+    // WEBCLI LOGIC: Only include pending transactions on first page (offset === 0)
     const pendingToInclude = offset === 0
       ? pendingTransactionsFormatted.filter(tx => !confirmedHashes.has(tx.hash))
       : [];
+    
+    // WEBCLI LOGIC: Merge and sort by timestamp (newest first)
     const allTransactions = [...pendingToInclude, ...confirmedTransactions]
       .sort((a, b) => b.timestamp - a.timestamp);
     
@@ -1009,7 +1123,7 @@ export async function fetchBalance(address: string, forceRefresh = false): Promi
   }
 
   try {
-    // Fetch both balance and staging data like CLI does
+    // WEBCLI LOGIC: Fetch balance and staging in parallel
     const [balanceResponse, stagingResponse] = await Promise.all([
       makeAPIRequest(`/balance/${address}`),
       makeAPIRequest(`/staging`).catch(() => ({ ok: false }))
@@ -1021,12 +1135,9 @@ export async function fetchBalance(address: string, forceRefresh = false): Promi
       
       // Check if this is a 404 error (new address with no transactions)
       if (balanceResponse.status === 404) {
-        // console.log('Address not found (new address), returning zero balance');
         return { balance: 0, nonce: 0 };
       }
       
-      // For other errors, also return zero balance for new addresses
-      // console.log('Balance fetch failed, treating as new address with zero balance');
       return { balance: 0, nonce: 0 };
     }
     
@@ -1035,32 +1146,46 @@ export async function fetchBalance(address: string, forceRefresh = false): Promi
       const responseText = await balanceResponse.text();
       if (!responseText.trim()) {
         console.error('Empty response from balance API');
-        // Return zero balance for empty response (new address)
         return { balance: 0, nonce: 0 };
       }
       data = JSON.parse(responseText);
     } catch (parseError) {
       console.error('Failed to parse balance response as JSON:', parseError);
-      // Return zero balance for parse errors (new address)
       return { balance: 0, nonce: 0 };
     }
 
-    const balance = typeof data.balance === 'string' ? parseFloat(data.balance) : (data.balance || 0);
+    // WEBCLI LOGIC: Parse balance from balance_raw or balance field
+    let balance = 0;
+    if (data.balance_raw) {
+      // Parse from raw micro units
+      const balanceRaw = typeof data.balance_raw === 'string' 
+        ? parseInt(data.balance_raw, 10) 
+        : data.balance_raw;
+      balance = balanceRaw / MU_FACTOR;
+    } else if (data.balance !== undefined) {
+      balance = typeof data.balance === 'string' ? parseFloat(data.balance) : data.balance;
+    }
     
-    // Calculate nonce exactly like CLI: max of transaction_count and highest pending nonce
-    const transactionCount = data.nonce || 0;
-    let nonce = transactionCount;
+    // WEBCLI LOGIC: Nonce calculation
+    // Use pending_nonce if available, otherwise use nonce
+    let nonce = data.pending_nonce !== undefined ? data.pending_nonce : (data.nonce || 0);
     
-    // Check staging for our pending transactions like CLI does
+    // WEBCLI LOGIC: Check staging for pending transactions from this address
+    // and update nonce to max of pending nonces
     if ('ok' in stagingResponse && stagingResponse.ok) {
       try {
         const stagingData = await (stagingResponse as Response).json();
-        if (stagingData.staged_transactions) {
-          const ourPendingTxs = stagingData.staged_transactions.filter(
+        if (stagingData.staged_transactions || stagingData.transactions) {
+          const transactions = stagingData.staged_transactions || stagingData.transactions || [];
+          const ourPendingTxs = transactions.filter(
             (tx: any) => tx.from === address
           );
           if (ourPendingTxs.length > 0) {
-            const maxPendingNonce = Math.max(...ourPendingTxs.map((tx: any) => parseInt(tx.nonce) || 0));
+            const maxPendingNonce = Math.max(...ourPendingTxs.map((tx: any) => {
+              const txNonce = parseInt(tx.nonce, 10);
+              return isNaN(txNonce) ? 0 : txNonce;
+            }));
+            // WEBCLI: nonce = max(current_nonce, max_pending_nonce)
             nonce = Math.max(nonce, maxPendingNonce);
           }
         }
@@ -1071,17 +1196,14 @@ export async function fetchBalance(address: string, forceRefresh = false): Promi
 
     if (isNaN(balance) || isNaN(nonce)) {
       console.warn('Invalid balance or nonce in API response', { balance, nonce });
-      // Return zero balance for invalid data (new address)
       return { balance: 0, nonce: 0 };
     }
 
     const result = { balance, nonce };
-    // Cache the result
     await apiCache.setBalance(address, result);
     return result;
   } catch (error) {
     console.error('Error fetching balance:', error);
-    // Return zero balance for network errors (new address)
     return { balance: 0, nonce: 0 };
   }
 }
@@ -1348,44 +1470,53 @@ export function createTransaction(
   message?: string,
   customOu?: number
 ): Transaction {
-  // Convert amount to micro units (multiply by 1,000,000)
+  // Convert amount to micro units (multiply by 1,000,000) - WEBCLI LOGIC
   const amountMu = Math.floor(amount * MU_FACTOR);
   
-  // Use custom OU if provided, otherwise determine based on amount (10000 for < 1000 OCT, 30000 for >= 1000 OCT)
+  // Use custom OU if provided, otherwise determine based on amount
+  // WEBCLI LOGIC: 10000 for < 1000 OCT, 30000 for >= 1000 OCT
   const defaultOu = amount < 1000 ? 10000 : 30000;
   const ou = (customOu || defaultOu).toString();
   
-  // Create timestamp exactly like CLI: time.time() equivalent
+  // Create timestamp - WEBCLI LOGIC: Date.now() / 1000 (seconds with decimals)
   const timestamp = Date.now() / 1000;
 
-  // Create base transaction object
+  // Create base transaction object - WEBCLI STRUCTURE
   const transaction: Transaction = {
     from: senderAddress,
     to_: recipientAddress,
     amount: amountMu.toString(),
     nonce,
     ou,
-    timestamp
+    timestamp,
+    op_type: 'standard', // WEBCLI: always include op_type
   };
 
-  // Add message if provided (like CLI)
-  if (message) {
+  // Add message if provided - WEBCLI LOGIC
+  if (message && message.trim()) {
     transaction.message = message;
   }
 
-  // Convert transaction to JSON string for signing exactly like CLI
-  // CLI uses: json.dumps({k: v for k, v in tx.items() if k != "message"}, separators=(",", ":"))
-  // Create signing data excluding message field like CLI does
-  const signingObject: any = {};
-  // Add fields in the exact order as CLI to ensure consistent JSON
-  signingObject.from = transaction.from;
-  signingObject.to_ = transaction.to_;
-  signingObject.amount = transaction.amount;
-  signingObject.nonce = transaction.nonce;
-  signingObject.ou = transaction.ou;
-  signingObject.timestamp = transaction.timestamp;
-  
-  const signingData = JSON.stringify(signingObject, null, 0);
+  // WEBCLI CANONICAL JSON FORMAT
+  // Build canonical JSON exactly like webcli does:
+  // {"from":"...","to_":"...","amount":"...","nonce":N,"ou":"...","timestamp":T,"op_type":"..."}
+  const canonicalFields: any = {
+    from: transaction.from,
+    to_: transaction.to_,
+    amount: transaction.amount,
+    nonce: transaction.nonce,
+    ou: transaction.ou,
+    timestamp: transaction.timestamp,
+    op_type: transaction.op_type,
+  };
+
+  // Add optional fields in canonical order (webcli includes encrypted_data before message)
+  if (transaction.message) {
+    canonicalFields.message = transaction.message;
+  }
+
+  // Create canonical JSON string - WEBCLI uses compact format (no spaces)
+  const signingData = JSON.stringify(canonicalFields);
   
   // Prepare keys for signing
   const privateKeyBuffer = Buffer.from(privateKeyBase64, 'base64');
@@ -1396,7 +1527,7 @@ export function createTransaction(
   secretKey.set(privateKeyBuffer, 0);
   secretKey.set(publicKeyBuffer, 32);
 
-  // Sign the transaction
+  // Sign the canonical JSON - WEBCLI LOGIC
   const signature = nacl.sign.detached(new TextEncoder().encode(signingData), secretKey);
 
   // Add signature and public key to transaction

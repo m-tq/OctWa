@@ -281,7 +281,12 @@ export function SendTransaction({
         setTxModalResult({ 
           hash: sendResult.hash, 
           amount: amountNum.toFixed(8),
-          finality: sendResult.finality 
+          finality: sendResult.finality,
+          onStatusConfirmed: () => {
+            // Refresh transaction history when status becomes confirmed
+            console.log('🔄 Refreshing transaction history after confirmation');
+            onTransactionSuccess();
+          }
         });
         
         // Reset OU to auto on success

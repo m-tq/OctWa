@@ -67,7 +67,7 @@ export function TxHistory({ wallet, transactions, onTransactionsUpdate, isLoadin
   const [contractHistory, setContractHistory] = useState<ContractInteraction[]>([]);
   const [activeTab, setActiveTab] = useState('transactions');
   const { toast } = useToast();
-  const scannerUrl = import.meta.env.VITE_SCANNER_URL || 'https://octrascan.io/transactions/';
+  const scannerUrl = import.meta.env.VITE_SCANNER_URL || 'https://octrascan.io/tx.html?hash=';
 
   // Load contract history when wallet changes
   useEffect(() => {

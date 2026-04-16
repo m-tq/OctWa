@@ -64,9 +64,9 @@ export function UnifiedHistory({ wallet, transactions, onTransactionsUpdate, isL
   const { toast } = useToast();
 
   // Scanner/Explorer configuration from environment variables
-  const scannerUrl = import.meta.env.VITE_SCANNER_URL || 'https://octrascan.io/transactions/';
+  const scannerUrl = import.meta.env.VITE_SCANNER_URL || 'https://octrascan.io/tx.html?hash=';
   const scannerName = import.meta.env.VITE_SCANNER_NAME || 'Explorer';
-  const scannerAddressUrl = scannerUrl.replace('/tx/', '/address/').replace('/transactions/', '/address/');
+  const scannerAddressUrl = scannerUrl.replace('/tx.html?hash=', '/address/');
 
   // Filter transactions based on operationMode and activeFilter
   const filteredTransactions = transactions.filter(tx => {

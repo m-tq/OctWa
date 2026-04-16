@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { CheckCircle, XCircle, Copy, ExternalLink, Check, Clock, ArrowRight, Lock, Unlock, Gift, X } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { pollTransactionStatus } from '@/utils/api';
 
 export type TransactionStatus = 'idle' | 'sending' | 'success' | 'error';
 
@@ -10,6 +11,7 @@ export interface TransactionResult {
   amount?: string;
   error?: string;
   finality?: 'pending' | 'confirmed' | 'rejected';
+  onStatusConfirmed?: () => void; // Callback when status becomes confirmed
 }
 
 interface TransactionModalProps {
@@ -36,8 +38,43 @@ export function TransactionModal({
   toAddress
 }: TransactionModalProps) {
   const [copied, setCopied] = useState(false);
+  const [currentFinality, setCurrentFinality] = useState<'pending' | 'confirmed' | 'rejected' | undefined>(result.finality);
   const { toast } = useToast();
-  const scannerUrl = import.meta.env.VITE_SCANNER_URL || 'https://octrascan.io/transactions/';
+  const scannerUrl = import.meta.env.VITE_SCANNER_URL || 'https://octrascan.io/tx.html?hash=';
+
+  // Auto-poll transaction status when hash is available and status is success
+  useEffect(() => {
+    if (status === 'success' && result.hash && currentFinality === 'pending') {
+      console.log(`🔍 Starting status polling for tx: ${result.hash.slice(0, 16)}...`);
+      
+      // Start polling in background
+      pollTransactionStatus(result.hash, {
+        maxAttempts: 15, // Poll for up to 30 seconds (15 * 2s)
+        intervalMs: 2000, // Check every 2 seconds
+        onStatusUpdate: (newStatus) => {
+          console.log(`📊 Status update for ${result.hash?.slice(0, 16)}: ${newStatus}`);
+        }
+      }).then((finalStatus) => {
+        console.log(`✅ Final status for ${result.hash?.slice(0, 16)}: ${finalStatus.status}`);
+        if (finalStatus.finality) {
+          setCurrentFinality(finalStatus.finality);
+          
+          // If confirmed, trigger callback to refresh transaction list
+          if (finalStatus.finality === 'confirmed' && result.onStatusConfirmed) {
+            console.log('🔄 Transaction confirmed, triggering refresh callback');
+            result.onStatusConfirmed();
+          }
+        }
+      }).catch((error) => {
+        console.error('Error polling transaction status:', error);
+      });
+    }
+  }, [status, result.hash, currentFinality, result.onStatusConfirmed]);
+
+  // Update currentFinality when result.finality changes
+  useEffect(() => {
+    setCurrentFinality(result.finality);
+  }, [result.finality]);
 
   const truncateAddress = (address: string) => `${address.slice(0, 8)}...${address.slice(-5)}`;
 
@@ -223,22 +260,22 @@ export function TransactionModal({
                 </Button>
               </div>
 
-              {result.finality && (
+              {currentFinality && (
                 <div className="flex items-center justify-center gap-1.5 mt-1">
                   <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium ${
-                    result.finality === 'confirmed'
+                    currentFinality === 'confirmed'
                       ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
                       : 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400'
                   }`}>
-                    {result.finality === 'confirmed' ? (
+                    {currentFinality === 'confirmed' ? (
                       <>
                         <CheckCircle className="h-3 w-3" />
                         <span>Confirmed</span>
                       </>
                     ) : (
                       <>
-                        <Clock className="h-3 w-3" />
-                        <span>Pending</span>
+                        <Clock className="h-3 w-3 animate-pulse" />
+                        <span>Checking...</span>
                       </>
                     )}
                   </span>

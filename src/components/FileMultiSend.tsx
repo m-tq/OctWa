@@ -111,7 +111,7 @@ export function FileMultiSend({ wallet, balance, onBalanceUpdate, onNonceUpdate,
   const [executionMode, setExecutionMode] = useState<'parallel' | 'sequential'>('parallel');
   const txLogsEndRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
-  const scannerUrl = import.meta.env.VITE_SCANNER_URL || 'https://octrascan.io/transactions/';
+  const scannerUrl = import.meta.env.VITE_SCANNER_URL || 'https://octrascan.io/tx.html?hash=';
 
   // Auto-scroll to bottom when new logs are added
   useEffect(() => {
