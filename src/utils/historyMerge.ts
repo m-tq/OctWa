@@ -157,19 +157,20 @@ export function getUnifiedHistory(
  * @returns true if the transaction is a private/encrypted activity
  */
 export function isPrivateTransfer(tx: Transaction): boolean {
-  // Check op_type first (most reliable)
   if (tx.op_type) {
-    return tx.op_type === 'private' || tx.op_type === 'encrypt' || tx.op_type === 'decrypt';
+    return tx.op_type === 'private' ||
+           tx.op_type === 'encrypt' ||
+           tx.op_type === 'decrypt' ||
+           tx.op_type === 'stealth' ||
+           tx.op_type === 'claim';
   }
-  
-  // Fallback to message-based detection for older transactions
   return (
     tx.message === 'PRIVATE_TRANSFER' ||
-    tx.message === '505249564154455f5452414e53464552' || // hex encoded PRIVATE_TRANSFER
+    tx.message === '505249564154455f5452414e53464552' ||
     tx.message === 'ENCRYPT_BALANCE' ||
     tx.message === 'DECRYPT_BALANCE' ||
-    tx.message === '454e43525950545f42414c414e4345' || // hex encoded ENCRYPT_BALANCE
-    tx.message === '444543525950545f42414c414e4345' || // hex encoded DECRYPT_BALANCE
+    tx.message === '454e43525950545f42414c414e4345' ||
+    tx.message === '444543525950545f42414c414e4345' ||
     (tx.amount === 0 && !!tx.message)
   );
 }

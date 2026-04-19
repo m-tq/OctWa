@@ -8,7 +8,7 @@ import { Switch } from '@/components/ui/switch';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Shield, AlertTriangle, Wallet as WalletIcon, Loader2, Plus, BookUser, Search, Globe, Server, Zap } from 'lucide-react';
 import { Wallet } from '../types/wallet';
-import { fetchEncryptedBalance, createPrivateTransfer, getAddressInfo, invalidateCacheAfterPrivateSend, fetchBalance } from '../utils/api';
+import { fetchEncryptedBalance, createPrivateTransfer, getAddressInfo, getViewPubkey, invalidateCacheAfterPrivateSend, fetchBalance, sendTransaction } from '../utils/api';
 import { useToast } from '@/hooks/use-toast';
 import { useAddressBook } from '@/hooks/useAddressBook';
 import { TransactionModal, TransactionStatus, TransactionResult } from './TransactionModal';
@@ -81,6 +81,7 @@ export function PrivateTransfer({
   const [usePvacServer, setUsePvacServer] = useState(false);
   const [isPvacAvailable, setIsPvacAvailable] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const isSendingRef = useRef(false); // hard guard against concurrent sends
   const { toast } = useToast();
   const { contacts, walletLabels } = useAddressBook();
   
@@ -201,6 +202,8 @@ export function PrivateTransfer({
   };
 
   const handleSend = async () => {
+    // Hard guard — prevent double-submit even if React re-renders between clicks
+    if (isSendingRef.current) return;
     if (!wallet) {
       toast({
         title: "Error",
@@ -259,6 +262,7 @@ export function PrivateTransfer({
     }
 
     setIsSending(true);
+    isSendingRef.current = true;
     
     // Show modal with sending state
     setTxContext({ from: wallet.address, to: finalRecipientAddress });
@@ -280,6 +284,7 @@ export function PrivateTransfer({
       setTxModalResult({ error: errorMsg });
     } finally {
       setIsSending(false);
+      isSendingRef.current = false;
     }
   };
 
@@ -305,8 +310,12 @@ export function PrivateTransfer({
       // Get current encrypted balance cipher
       const currentCipher = encryptedBalance?.cipher || "hfhe_v1|...";
       
-      // Get recipient view public key
-      const recipientViewPubkey = recipientInfo?.view_public_key || "";
+      // Fetch recipient's Curve25519 view pubkey via RPC octra_viewPubkey
+      // (same as webcli: g_rpc.get_view_pubkey(to) → result["view_pubkey"])
+      const recipientViewPubkey = await getViewPubkey(toAddress);
+      if (!recipientViewPubkey) {
+        throw new Error("Recipient has no view pubkey — they must register PVAC first");
+      }
       
       // Call PVAC server for stealth send
       const result = await pvacServerService.stealthSend({
@@ -322,14 +331,17 @@ export function PrivateTransfer({
       });
 
       if (!result.success) {
-        // Fail optimistic update
         await optimisticUpdateService.failUpdate(update.id, result.error);
         throw new Error(result.error || 'PVAC server returned error');
       }
 
-      // TODO: Submit transaction to blockchain
-      // const txHash = await submitTransaction(result.tx);
-      const txHash = "0x..."; // Placeholder
+      // Submit signed transaction to blockchain
+      const submitResult = await sendTransaction(result.tx);
+      if (!submitResult.success) {
+        await optimisticUpdateService.failUpdate(update.id, submitResult.error);
+        throw new Error(submitResult.error || 'Failed to submit transaction');
+      }
+      const txHash = submitResult.hash || 'pending';
       
       // Update transaction hash
       optimisticUpdateService.updateTransactionHash(update.id, txHash);
@@ -374,17 +386,8 @@ export function PrivateTransfer({
       
     } catch (error: any) {
       console.error('[StealthSend] Error:', error);
-      
-      // If PVAC fails with connection error, fallback to browser
-      if (error.message.includes('Cannot connect')) {
-        toast({
-          title: "PVAC Server Unavailable",
-          description: "Falling back to browser-based method...",
-        });
-        await handleSendWithBrowser(toAddress, amountNum);
-      } else {
-        throw error;
-      }
+      // Don't fallback to browser — throw so handleSend shows error modal
+      throw error;
     }
   };
 

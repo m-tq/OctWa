@@ -1,55 +1,55 @@
 /**
  * Balance Pie Chart Component
- * Shows percentage comparison between public and encrypted balance
+ * Shows percentage comparison between public and encrypted balance.
+ * Supports isDecrypting spinner while PVAC is fetching encrypted balance.
  */
 
 import { useMemo } from 'react';
-import { Globe, Lock } from 'lucide-react';
+import { Globe, Lock, Loader2 } from 'lucide-react';
 
 interface BalancePieChartProps {
   publicBalance: number;
   encryptedBalance: number;
   isCompact?: boolean;
+  /** Show spinner on encrypted balance row while PVAC is decrypting */
+  isDecrypting?: boolean;
 }
 
-export function BalancePieChart({ publicBalance, encryptedBalance, isCompact = false }: BalancePieChartProps) {
+export function BalancePieChart({
+  publicBalance,
+  encryptedBalance,
+  isCompact = false,
+  isDecrypting = false,
+}: BalancePieChartProps) {
   const { publicPercent, encryptedPercent, total } = useMemo(() => {
     const total = publicBalance + encryptedBalance;
-    if (total === 0) {
-      return { publicPercent: 0, encryptedPercent: 0, total: 0 };
-    }
+    if (total === 0) return { publicPercent: 0, encryptedPercent: 0, total: 0 };
     return {
       publicPercent: (publicBalance / total) * 100,
       encryptedPercent: (encryptedBalance / total) * 100,
-      total
+      total,
     };
   }, [publicBalance, encryptedBalance]);
 
-  // SVG pie chart using conic-gradient
   const pieGradient = useMemo(() => {
-    if (total === 0) return 'conic-gradient(#e5e7eb 0deg 360deg)';
-    
+    if (total === 0 && !isDecrypting) return 'conic-gradient(#e5e7eb 0deg 360deg)';
     const publicDeg = (publicPercent / 100) * 360;
     return `conic-gradient(
       #3A4DFF 0deg ${publicDeg}deg,
       #00E5C0 ${publicDeg}deg 360deg
     )`;
-  }, [publicPercent, total]);
+  }, [publicPercent, total, isDecrypting]);
 
-  if (total === 0) {
-    return null; // Don't show if no balance
-  }
+  // Show chart if there's balance OR if we're still decrypting (cipher exists)
+  if (total === 0 && !isDecrypting) return null;
 
   if (isCompact) {
     return (
       <div className="flex items-center gap-3 p-3 bg-muted/30 rounded-lg border border-border/50">
-        {/* Mini Pie Chart */}
-        <div 
-          className="w-12 h-12 rounded-full flex-shrink-0 shadow-sm"
+        <div
+          className={`w-12 h-12 rounded-full flex-shrink-0 shadow-sm ${isDecrypting ? 'animate-pulse' : ''}`}
           style={{ background: pieGradient }}
         />
-        
-        {/* Legend */}
         <div className="flex-1 space-y-1.5">
           <div className="flex items-center justify-between text-xs">
             <div className="flex items-center gap-1.5">
@@ -63,7 +63,11 @@ export function BalancePieChart({ publicBalance, encryptedBalance, isCompact = f
               <div className="w-2.5 h-2.5 rounded-full bg-[#00E5C0]" />
               <span className="text-muted-foreground">Encrypted</span>
             </div>
-            <span className="font-mono font-medium">{encryptedPercent.toFixed(1)}%</span>
+            {isDecrypting ? (
+              <Loader2 className="h-3 w-3 animate-spin text-[#00E5C0]" />
+            ) : (
+              <span className="font-mono font-medium">{encryptedPercent.toFixed(1)}%</span>
+            )}
           </div>
         </div>
       </div>
@@ -75,13 +79,17 @@ export function BalancePieChart({ publicBalance, encryptedBalance, isCompact = f
       <div className="flex items-center gap-4">
         {/* Pie Chart */}
         <div className="relative flex-shrink-0">
-          <div 
-            className="w-24 h-24 rounded-full shadow-lg"
+          <div
+            className={`w-24 h-24 rounded-full shadow-lg ${isDecrypting ? 'animate-pulse' : ''}`}
             style={{ background: pieGradient }}
           />
           <div className="absolute inset-0 flex items-center justify-center">
             <div className="w-16 h-16 rounded-full bg-background flex items-center justify-center">
-              <span className="text-xs font-medium text-muted-foreground">Balance</span>
+              {isDecrypting ? (
+                <Loader2 className="h-4 w-4 animate-spin text-[#00E5C0]" />
+              ) : (
+                <span className="text-xs font-medium text-muted-foreground">Balance</span>
+              )}
             </div>
           </div>
         </div>
@@ -109,10 +117,17 @@ export function BalancePieChart({ publicBalance, encryptedBalance, isCompact = f
                 <Lock className="h-3.5 w-3.5 text-[#00E5C0]" />
                 <span className="text-sm text-muted-foreground">Encrypted</span>
               </div>
-              <div className="flex items-center gap-2">
-                <span className="font-mono text-sm font-medium">{encryptedBalance.toFixed(4)} OCT</span>
-                <span className="text-xs text-muted-foreground font-mono">({encryptedPercent.toFixed(1)}%)</span>
-              </div>
+              {isDecrypting ? (
+                <div className="flex items-center gap-1.5 text-[#00E5C0]">
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  <span className="text-xs">Decrypting...</span>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <span className="font-mono text-sm font-medium">{encryptedBalance.toFixed(4)} OCT</span>
+                  <span className="text-xs text-muted-foreground font-mono">({encryptedPercent.toFixed(1)}%)</span>
+                </div>
+              )}
             </div>
           </div>
 
@@ -120,7 +135,11 @@ export function BalancePieChart({ publicBalance, encryptedBalance, isCompact = f
           <div className="pt-2">
             <div className="flex items-center justify-between">
               <span className="text-xs text-muted-foreground">Total Balance</span>
-              <span className="font-mono text-sm font-bold">{total.toFixed(4)} OCT</span>
+              {isDecrypting ? (
+                <span className="text-xs text-muted-foreground italic">calculating...</span>
+              ) : (
+                <span className="font-mono text-sm font-bold">{total.toFixed(4)} OCT</span>
+              )}
             </div>
           </div>
         </div>

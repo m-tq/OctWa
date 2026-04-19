@@ -610,6 +610,36 @@ export async function getAddressInfo(address: string): Promise<any> {
   }
 }
 
+/**
+ * Fetch recipient's Curve25519 view public key via RPC octra_viewPubkey.
+ * This is the key used for ECDH in stealth send — NOT the Ed25519 signing key.
+ * Webcli equivalent: g_rpc.get_view_pubkey(addr) → result["view_pubkey"]
+ */
+export async function getViewPubkey(address: string): Promise<string | null> {
+  try {
+    const rpcRequest = {
+      jsonrpc: '2.0',
+      id: Date.now(),
+      method: 'octra_viewPubkey',
+      params: [address],
+    };
+    const response = await makeAPIRequest('/rpc', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(rpcRequest),
+    });
+    if (!response.ok) return null;
+    const data = await safeJsonParse(response);
+    if (data.error) return null;
+    const result = data.result;
+    if (!result || !result.view_pubkey || typeof result.view_pubkey !== 'string') return null;
+    return result.view_pubkey; // base64-encoded 32-byte Curve25519 pubkey
+  } catch (error) {
+    console.error('Error fetching view pubkey:', error);
+    return null;
+  }
+}
+
 // Fetch current epoch from RPC status
 export async function fetchCurrentEpoch(): Promise<number> {
   try {
@@ -1534,9 +1564,27 @@ export async function createPrivateTransfer(fromAddress: string, toAddress: stri
   }
 }
 
-export async function getPendingPrivateTransfers(_address: string, _privateKey?: string, _forceRefresh = false): Promise<PendingPrivateTransfer[]> {
-  // COMING SOON: Private transfer feature will be available in future release
-  return [];
+export async function getPendingPrivateTransfers(address: string, privateKey?: string, _forceRefresh = false): Promise<PendingPrivateTransfer[]> {
+  if (!privateKey) return [];
+  try {
+    const { scanStealthOutputs } = await import('../services/stealthScanService');
+    const claimable = await scanStealthOutputs(privateKey);
+    // Map to PendingPrivateTransfer shape expected by existing callers
+    return claimable.map(t => ({
+      id: t.id,
+      from: t.sender,
+      to: address,
+      amount: t.amount,
+      encrypted_data: '',
+      ephemeral_key: '',
+      timestamp: t.epoch,
+      // Extra fields for ClaimTransfers
+      _claimable: t,
+    } as any));
+  } catch (err) {
+    console.warn('[getPendingPrivateTransfers] scan failed:', err);
+    return [];
+  }
 }
 
 export async function claimPrivateTransfer(recipientAddress: string, privateKey: string, transferId: string): Promise<ClaimResult> {

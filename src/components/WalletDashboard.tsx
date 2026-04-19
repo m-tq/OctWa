@@ -191,6 +191,7 @@ export function WalletDashboard({
   const [loadingTxDetails, setLoadingTxDetails] = useState(false);
   const [isRefreshingData, setIsRefreshingData] = useState(false);
   const [encryptedBalance, setEncryptedBalance] = useState<any>(null);
+  const [isDecryptingBalance, setIsDecryptingBalance] = useState(false); // spinner for pie chart
   const [rpcStatus, setRpcStatus] = useState<'connected' | 'disconnected' | 'checking' | 'connecting'>('checking');
   const [pvacStatus, setPvacStatus] = useState<'connected' | 'disconnected' | 'checking'>('checking');
   const [showPvacManager, setShowPvacManager] = useState(false);
@@ -577,53 +578,93 @@ export function WalletDashboard({
     return () => { cleanup?.(); };
   }, []);
 
-  // Check PVAC server status and auto-decrypt
-  useEffect(() => {
-    const checkPvacStatus = async () => {
-      setPvacStatus('checking');
+  // ─── Centralised PVAC connect + auto-decrypt ─────────────────────────────────
+  // Called after: setup onComplete, manager onServerSelected, and the 30s interval.
+  const triggerPvacConnect = async () => {
+    // Prevent concurrent decrypt calls
+    if (pvacDecryptInFlightRef.current) return;
+
+    setPvacStatus('checking');
+    try {
+      const isAvailable = await pvacServerService.checkAvailability();
+      setPvacStatus(isAvailable ? 'connected' : 'disconnected');
+
+      if (!isAvailable || !wallet) return;
+
+      const cipher = encryptedBalance?.cipher;
+      if (
+        !cipher || cipher === '0' || cipher.length <= 10 ||
+        !cipher.startsWith('hfhe_v1|')
+      ) return;
+
+      if (encryptedBalance?.encrypted && encryptedBalance.encrypted > 0) return;
+      if (autoDecryptedCipherRef.current === cipher) return;
+
+      // Mark in-flight before any await to prevent race
+      pvacDecryptInFlightRef.current = true;
+      autoDecryptedCipherRef.current = cipher;
+
+      setIsDecryptingBalance(true);
       try {
-        const isAvailable = await pvacServerService.checkAvailability();
-        setPvacStatus(isAvailable ? 'connected' : 'disconnected');
-        
-        if (isAvailable && wallet && encryptedBalance?.cipher && 
-            encryptedBalance.cipher !== '0' && 
-            encryptedBalance.cipher.length > 10 && 
-            encryptedBalance.cipher.startsWith('hfhe_v1|') && 
-            (!encryptedBalance.encrypted || encryptedBalance.encrypted === 0)) {
-          try {
-            logger.info('Auto-decrypting encrypted balance via PVAC');
-            const privateKey = wallet.privateKey;
-            const decryptResult = await pvacServerService.decryptBalance(
-              encryptedBalance.cipher,
-              privateKey
-            );
-            
-            if (decryptResult.success && decryptResult.balance !== undefined) {
-              const decryptedAmount = decryptResult.balance / 1_000_000;
-              setEncryptedBalance({
-                ...encryptedBalance,
-                encrypted: decryptedAmount
-              });
-              logger.info('Auto-decrypt successful', { balance: decryptedAmount });
-            }
-          } catch (error) {
-            logger.error('Auto-decrypt failed', error);
-          }
+        logger.info('Auto-decrypting encrypted balance via PVAC');
+        const result = await pvacServerService.decryptBalance(cipher, wallet.privateKey);
+        if (result.success && result.balance !== undefined) {
+          const amount = result.balance / 1_000_000;
+          setEncryptedBalance((prev: any) => ({ ...prev, encrypted: amount }));
+          logger.info('Auto-decrypt successful', { balance: amount });
         }
-      } catch (error) {
-        setPvacStatus('disconnected');
+      } catch (err) {
+        autoDecryptedCipherRef.current = null;
+        logger.error('Auto-decrypt failed', err);
+      } finally {
+        pvacDecryptInFlightRef.current = false;
+        setIsDecryptingBalance(false);
       }
-    };
+    } catch {
+      setPvacStatus('disconnected');
+    }
+  };
 
-    // Initial check
-    checkPvacStatus();
+  // Check PVAC server status and auto-decrypt
+  // Use a ref to track which cipher has already been auto-decrypted — prevents
+  // re-triggering every time encryptedBalance state updates after decrypt.
+  const autoDecryptedCipherRef = useRef<string | null>(null);
+  const pvacDecryptInFlightRef = useRef(false); // prevent concurrent decrypt calls
 
-    // Check every 30 seconds
-    const interval = setInterval(checkPvacStatus, 30000);
-
+  useEffect(() => {
+    triggerPvacConnect();
+    const interval = setInterval(triggerPvacConnect, 30000);
     return () => clearInterval(interval);
-  }, [wallet?.address, encryptedBalance?.cipher]);
+  }, [wallet?.address]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // When a new cipher arrives (from cache or fresh fetch) and encrypted = 0,
+  // immediately attempt auto-decrypt without waiting for the 30s interval.
+  // Use a small debounce to avoid racing with the wallet?.address effect above.
+  useEffect(() => {
+    const cipher = encryptedBalance?.cipher;
+    if (
+      cipher && cipher !== '0' && cipher.startsWith('hfhe_v1|') &&
+      (!encryptedBalance?.encrypted || encryptedBalance.encrypted === 0) &&
+      autoDecryptedCipherRef.current !== cipher &&
+      !pvacDecryptInFlightRef.current
+    ) {
+      const t = setTimeout(() => triggerPvacConnect(), 200);
+      return () => clearTimeout(t);
+    }
+  }, [encryptedBalance?.cipher]); // eslint-disable-line react-hooks/exhaustive-deps
+
+
+  // Reset display data immediately when wallet changes — clears pie chart and
+  // balance display so stale data from previous wallet doesn't show during transition.
+  useEffect(() => {
+    setBalance(null);
+    setEncryptedBalance(null);
+    setTransactions([]);
+    setNonce(0);
+    setIsDecryptingBalance(false);
+    autoDecryptedCipherRef.current = null;
+    pvacDecryptInFlightRef.current = false;
+  }, [wallet?.address]);
 
   // Initial data fetch when wallet is connected
   // With cache service for instant load
@@ -674,9 +715,9 @@ export function WalletDashboard({
       setSelectedTxHash(null);
       setSelectedTxDetails(null);
       
-      // Set loading states
-      setIsLoadingBalance(true);
-      setIsLoadingTransactions(true);
+      // Set loading states — only show skeleton if no cached data available
+      setIsLoadingBalance(!cachedData);
+      setIsLoadingTransactions(!cachedData);
 
       // STEP 3: Fetch fresh data in parallel
       try {
@@ -731,7 +772,6 @@ export function WalletDashboard({
             type: tx.from?.toLowerCase() === currentAddress.toLowerCase() ? 'sent' : 'received'
           } as Transaction));
           setTransactions(transformedTxs);
-          
           // STEP 5: Save to cache for next time
           const recentActivities = transformedTxs.slice(0, 11).map(tx => ({
             hash: tx.hash,
@@ -1551,35 +1591,83 @@ export function WalletDashboard({
     }
   };
 
-  const handleTransactionSuccess = async () => {
-    // Refresh session timeout on transaction activity
-    WalletManager.refreshSessionTimeout();
-    
-    // Refresh transaction history and balance after successful transaction
-    const refreshData = async () => {
+  // ─── Optimistic UI update helpers ───────────────────────────────────────────
+
+  const applyOptimisticTx = (newTx: Transaction) => {
+    setTransactions(prev => {
+      const filtered = prev.filter(t => t.hash !== newTx.hash);
+      return [newTx, ...filtered].slice(0, 20);
+    });
+  };
+
+  // Silent background refresh after tx — updates state only if data changed
+  const silentRefreshAfterTx = (delayMs = 3000) => {
+    setTimeout(async () => {
       try {
-        // Refresh balance and nonce
-        const balanceData = await fetchBalance(wallet.address);
+        const [balanceData, historyResult] = await Promise.all([
+          fetchBalance(wallet.address),
+          getTransactionHistory(wallet.address),
+        ]);
         setBalance(balanceData.balance);
         setNonce(balanceData.nonce);
-
-        // Refresh transaction history
-        const result = await getTransactionHistory(wallet.address);
-        
-        if (Array.isArray(result.transactions)) {
-          const transformedTxs = result.transactions.map((tx) => ({
+        if (Array.isArray(historyResult.transactions)) {
+          const txs = historyResult.transactions.map(tx => ({
             ...tx,
             type: tx.from?.toLowerCase() === wallet.address.toLowerCase() ? 'sent' : 'received'
           } as Transaction));
-          setTransactions(transformedTxs);
+          setTransactions(txs);
+          // Update cache silently
+          const recentActivities = txs.slice(0, 11).map(tx => ({
+            hash: tx.hash,
+            type: (tx.op_type || 'standard') as any,
+            direction: tx.type === 'sent' ? 'out' : 'in' as 'in' | 'out',
+            amount: tx.amount,
+            timestamp: tx.timestamp,
+            from: tx.from,
+            to: tx.to,
+            status: tx.status,
+            finality: tx.status === 'confirmed' ? 'confirmed' : 'pending' as any,
+          }));
+          cacheService.setWalletCacheFast({
+            address: wallet.address,
+            publicBalance: balanceData.balance,
+            encryptedBalance: {
+              encrypted: encryptedBalance?.encrypted || 0,
+              cipher: encryptedBalance?.cipher || '',
+              public: balanceData.balance,
+            },
+            nonce: balanceData.nonce,
+            recentActivities,
+            lastUpdate: Date.now(),
+            version: '1.0.0',
+          });
         }
-      } catch (error) {
-        console.error('Failed to refresh data after transaction:', error);
+      } catch (err) {
+        console.warn('[silentRefresh] failed:', err);
       }
-    };
+    }, delayMs);
+  };
 
-    // Small delay to allow transaction to propagate
-    setTimeout(refreshData, 2000);
+  const handleTransactionSuccess = (newTx?: {
+    hash: string; from: string; to: string; amount: number;
+    status: 'confirmed' | 'pending' | 'failed'; finality?: string;
+    op_type?: string;
+  }) => {
+    WalletManager.refreshSessionTimeout();
+
+    // Optimistic: prepend tx to history list immediately
+    if (newTx) {
+      applyOptimisticTx({
+        ...newTx,
+        type: newTx.from?.toLowerCase() === wallet.address.toLowerCase() ? 'sent' : 'received',
+        timestamp: Date.now() / 1000,
+        message: undefined,
+        op_type: newTx.op_type || 'standard',
+      });
+    }
+
+    // Background verify + silent update
+    silentRefreshAfterTx(3000);
   };
 
   const truncateAddress = (address: string) => {
@@ -1672,47 +1760,22 @@ export function WalletDashboard({
     <div className="h-screen overflow-hidden transition-all duration-300">
       {/* PVAC Server Setup - shows only once after first wallet setup */}
       {showPvacSetup && !isPopupMode && (
-        <PvacServerSetup onComplete={() => setShowPvacSetup(false)} />
+        <PvacServerSetup onComplete={() => {
+          setShowPvacSetup(false);
+          // Immediately check PVAC status and attempt auto-decrypt
+          triggerPvacConnect();
+        }} />
       )}
 
       {/* PVAC Server Manager - manage multiple servers */}
       {showPvacManager && (
         <PvacServerManager 
           onClose={() => setShowPvacManager(false)}
-          onServerSelected={async () => {
-            // Wait a bit for server to be fully ready
-            await new Promise(resolve => setTimeout(resolve, 500));
-            
-            // Refresh PVAC status after server selection
-            setPvacStatus('checking');
-            const isAvailable = await pvacServerService.checkAvailability();
-            setPvacStatus(isAvailable ? 'connected' : 'disconnected');
-            
-            if (isAvailable && wallet && encryptedBalance?.cipher && 
-                encryptedBalance.cipher !== '0' && 
-                encryptedBalance.cipher.length > 10 && 
-                encryptedBalance.cipher.startsWith('hfhe_v1|')) {
-              try {
-                const privateKey = wallet.privateKey;
-                const decryptResult = await pvacServerService.decryptBalance(
-                  encryptedBalance.cipher,
-                  privateKey
-                );
-                
-                if (decryptResult.success && decryptResult.balance !== undefined) {
-                  setEncryptedBalance({
-                    ...encryptedBalance,
-                    encrypted: decryptResult.balance / 1_000_000
-                  });
-                  toast({
-                    title: "Encrypted Balance Decrypted",
-                    description: `Balance: ${(decryptResult.balance / 1_000_000).toFixed(6)} OCT`,
-                  });
-                }
-              } catch (error) {
-                logger.error('Auto-decrypt after server selection failed', error);
-              }
-            }
+          onServerSelected={() => {
+            setShowPvacManager(false);
+            // Reset ref so new server can attempt decrypt
+            autoDecryptedCipherRef.current = null;
+            triggerPvacConnect();
           }}
         />
       )}
@@ -1745,8 +1808,8 @@ export function WalletDashboard({
                     publicBalance={balance || 0}
                     onBalanceUpdate={setBalance}
                     onSuccess={() => {
-                      refreshWalletData();
-                      setPopupScreen('main');
+                      silentRefreshAfterTx(3000);
+                      // Don't auto-close — let user close the tx result modal manually
                     }}
                     isPopupMode={true}
                     isInline={true}
@@ -1780,8 +1843,8 @@ export function WalletDashboard({
                     currentCipher={encryptedBalance?.cipher}
                     onBalanceUpdate={setBalance}
                     onSuccess={() => {
-                      refreshWalletData();
-                      setPopupScreen('main');
+                      silentRefreshAfterTx(3000);
+                      // Don't auto-close — let user close the tx result modal manually
                     }}
                     isPopupMode={true}
                     isInline={true}
@@ -3495,7 +3558,7 @@ export function WalletDashboard({
                     </Button>
 
                     {/* Balance Pie Chart - below EVM Assets */}
-                    {balance !== null && encryptedBalance && (balance > 0 || encryptedBalance.encrypted > 0) && (
+                    {balance !== null && encryptedBalance && (balance > 0 || encryptedBalance.encrypted > 0 || isDecryptingBalance) && (
                       <>
                         <div className="border-t border-dashed border-border mt-2" />
                         <div className="mt-4">
@@ -3503,6 +3566,7 @@ export function WalletDashboard({
                             publicBalance={balance || 0}
                             encryptedBalance={encryptedBalance?.encrypted || 0}
                             isCompact={false}
+                            isDecrypting={isDecryptingBalance}
                           />
                         </div>
                       </>
@@ -3890,7 +3954,7 @@ export function WalletDashboard({
                       <div className="flex items-center justify-between mb-4 mt-2 mr-2 flex-shrink-0">
                         <h3 className={`font-semibold text-base flex items-center gap-2 ${operationMode === 'private' ? 'text-[#00E5C0]' : ''}`}>
                           <History className="h-5 w-5" />
-                          {operationMode === 'private' ? 'Encrypted Activity' : 'Public Activity'}
+                          Activity
                         </h3>
                         <div className="flex items-center gap-1">
                           <Button 
@@ -4151,8 +4215,8 @@ export function WalletDashboard({
                   publicBalance={encryptedBalance?.public || balance || 0}
                   onBalanceUpdate={setBalance}
                   onSuccess={() => {
-                    closePrivateModal();
-                    refreshWalletData();
+                    // Don't auto-close — let user close the tx result modal manually
+                    silentRefreshAfterTx(3000);
                   }}
                   isPopupMode={false}
                   isInline={true}
@@ -4169,8 +4233,8 @@ export function WalletDashboard({
                   currentCipher={encryptedBalance?.cipher}
                   onBalanceUpdate={setBalance}
                   onSuccess={() => {
-                    closePrivateModal();
-                    refreshWalletData();
+                    // Don't auto-close — let user close the tx result modal manually
+                    silentRefreshAfterTx(3000);
                   }}
                   isPopupMode={false}
                   isInline={true}

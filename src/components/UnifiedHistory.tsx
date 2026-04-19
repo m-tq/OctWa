@@ -535,24 +535,30 @@ export function UnifiedHistory({ wallet, transactions, onTransactionsUpdate, isL
                   )}
 
                   {/* To - full address */}
-                  {('to' in selectedTx || 'parsed_tx' in selectedTx) && (
-                    <div className="bg-muted/50  p-3">
-                      <div className="flex items-center justify-between mb-1">
-                        <span className="text-xs text-muted-foreground">To</span>
-                        <Button 
-                          variant="ghost" 
-                          size="sm" 
-                          className="h-6 w-6 p-0" 
-                          onClick={() => copyToClipboard('to' in selectedTx ? selectedTx.to : selectedTx.parsed_tx.to, 'Address')}
-                        >
-                          <Copy className="h-3 w-3" />
-                        </Button>
+                  {('to' in selectedTx || 'parsed_tx' in selectedTx) && (() => {
+                    const toAddr = 'to' in selectedTx ? selectedTx.to : selectedTx.parsed_tx.to;
+                    const isStealth = toAddr === 'stealth';
+                    return (
+                      <div className="bg-muted/50  p-3">
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-xs text-muted-foreground">To</span>
+                          {!isStealth && (
+                            <Button 
+                              variant="ghost" 
+                              size="sm" 
+                              className="h-6 w-6 p-0" 
+                              onClick={() => copyToClipboard(toAddr, 'Address')}
+                            >
+                              <Copy className="h-3 w-3" />
+                            </Button>
+                          )}
+                        </div>
+                        <p className="font-mono text-sm break-all">
+                          {isStealth ? '—' : toAddr}
+                        </p>
                       </div>
-                      <p className="font-mono text-sm break-all">
-                        {'to' in selectedTx ? selectedTx.to : selectedTx.parsed_tx.to}
-                      </p>
-                    </div>
-                  )}
+                    );
+                  })()}
 
                   {/* Amount, OU (Gas), Nonce */}
                   <div className="grid grid-cols-3 gap-2">
@@ -643,8 +649,12 @@ function TransferItem({
 }: TransferItemProps) {
   const isPrivate = isPrivateTransfer(tx);
   const isContract = isContractCall(tx);
-  // encrypt & decrypt are internal state changes — no directional arrow
   const isStateChange = tx.op_type === 'encrypt' || tx.op_type === 'decrypt';
+  const isStealth = tx.op_type === 'stealth' || tx.op_type === 'private';
+
+  // For display: stealth tx has to='stealth' — show '—' instead
+  const displayTo = (tx.to === 'stealth' || tx.to === '') ? '—' : truncateAddress(tx.to);
+  const displayFrom = truncateAddress(tx.from);
   
   // Get operation type label and badge config
   const getOpTypeBadge = (): { label: string; className: string } => {
@@ -742,7 +752,7 @@ function TransferItem({
                 )}
               </div>
               <div className="text-[10px] text-muted-foreground truncate">
-                {isContract ? 'To: ' : tx.type === 'sent' ? 'To: ' : 'From: '}{truncateAddress(isContract ? tx.to : (tx.type === 'sent' ? tx.to : tx.from))}
+                {isContract ? 'To: ' : isStealth ? 'Stealth: ' : tx.type === 'sent' ? 'To: ' : 'From: '}{isContract ? truncateAddress(tx.to) : isStealth ? '—' : tx.type === 'sent' ? displayTo : displayFrom}
               </div>
             </div>
           </div>
@@ -821,7 +831,7 @@ function TransferItem({
                 )}
               </div>
               <div className="text-xs text-muted-foreground truncate">
-                {isContract ? 'To: ' : tx.type === 'sent' ? 'To: ' : 'From: '}{truncateAddress(isContract ? tx.to : (tx.type === 'sent' ? tx.to : tx.from))}
+                {isContract ? 'To: ' : isStealth ? 'Stealth: ' : tx.type === 'sent' ? 'To: ' : 'From: '}{isContract ? truncateAddress(tx.to) : isStealth ? '—' : tx.type === 'sent' ? displayTo : displayFrom}
               </div>
             </div>
           </div>
@@ -892,8 +902,8 @@ function TransferItem({
           <span className="font-mono">{truncateHash(tx.hash || 'N/A')}</span>
         </div>
         <div>
-          <span className="text-muted-foreground">{isContract ? 'From: ' : tx.type === 'sent' ? 'To: ' : 'From: '}</span>
-          <span className="font-mono">{truncateAddress(isContract ? tx.from : (tx.type === 'sent' ? tx.to : tx.from))}</span>
+          <span className="text-muted-foreground">{isContract ? 'From: ' : isStealth ? 'Stealth: ' : tx.type === 'sent' ? 'To: ' : 'From: '}</span>
+          <span className="font-mono">{isContract ? truncateAddress(tx.from) : isStealth ? '—' : tx.type === 'sent' ? displayTo : displayFrom}</span>
         </div>
         <div>
           <span className="text-muted-foreground">Time: </span>

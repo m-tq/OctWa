@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { Globe, Shield, Check, AlertTriangle } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
+import { Globe, Shield, Check, AlertTriangle, Gift } from 'lucide-react';
 import { OperationMode } from '../utils/modeStorage';
 import { ModeSwitchConfirmDialog, isModeSwitchReminderDisabled } from './ModeSwitchConfirmDialog';
 
@@ -181,7 +182,7 @@ export function ModeToggle({
 
           {/* Animated Status Text */}
           <div className="flex flex-col gap-0.5">
-            <div className={`relative overflow-hidden flex items-center ${isCompact ? 'h-7' : 'h-8'}`}>
+            <div className={`relative overflow-hidden flex items-center gap-2 ${isCompact ? 'h-7' : 'h-8'}`}>
               {/* Public Mode Text */}
               <button
                 onClick={handleToggle}
@@ -208,6 +209,15 @@ export function ModeToggle({
               >
                 Private Mode
               </button>
+              {/* Claimable badge — visible when there are pending stealth transfers */}
+              {pendingTransfersCount > 0 && (
+                <div className={`flex items-center gap-1 transition-all duration-300 ${isPrivate ? 'opacity-100' : 'opacity-60'}`}>
+                  <Gift className={`${isCompact ? 'h-3 w-3' : 'h-3.5 w-3.5'} text-[#00E5C0]`} />
+                  <Badge className="bg-[#00E5C0] text-black text-[10px] h-4 min-w-4 px-1 flex items-center justify-center font-bold">
+                    {pendingTransfersCount}
+                  </Badge>
+                </div>
+              )}
             </div>
             {/* Helper text */}
             <span className={`${isCompact ? 'text-[10px]' : 'text-xs'} text-muted-foreground/60`}>

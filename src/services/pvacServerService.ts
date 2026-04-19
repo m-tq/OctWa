@@ -86,6 +86,7 @@ export interface ClaimStealthRequest {
   public_key: string;
   address: string;
   nonce: number;
+  ou?: string;
 }
 
 export interface ScanStealthRequest {
@@ -104,7 +105,7 @@ export interface PvacServerResponse {
 class PvacServerService {
   private config: PvacServerConfig = { servers: [], activeServerId: null };
   private readonly CONFIG_KEY = 'pvacServerConfig';
-  private readonly REQUEST_TIMEOUT = 30000;
+  private readonly REQUEST_TIMEOUT = 600000; // 10 minutes — PVAC crypto ops are heavy
   private readonly MAX_RETRIES = 2;
 
   constructor() {
