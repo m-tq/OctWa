@@ -46,6 +46,7 @@ export interface EncryptedBalanceResponse {
   encrypted: number;
   encrypted_raw: number;
   total: number;
+  cipher?: string; // PVAC encrypted balance cipher
 }
 
 export interface Transaction {

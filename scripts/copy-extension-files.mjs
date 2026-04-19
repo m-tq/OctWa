@@ -108,7 +108,7 @@ async function injectEnvToBackground(extDir, distDir, env) {
   
   // Environment variables to inject (with defaults)
   const envVars = {
-    '__VITE_OCTRA_RPC_URL__': env.VITE_OCTRA_RPC_URL || 'https://octra.network',
+    '__VITE_OCTRA_RPC_URL__': env.VITE_OCTRA_RPC_URL || 'http://46.101.86.250:8080',
     '__VITE_INFURA_API_KEY__': infuraApiKey,
   };
   

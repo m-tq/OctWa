@@ -27,16 +27,24 @@ export function saveOperationMode(mode: OperationMode): void {
  * 
  * @param encryptedBalance - The current encrypted balance (used for fallback logic)
  * @param pendingTransfersCount - The number of pending unclaimed transfers (optional)
+ * @param cipher - The encrypted balance cipher (optional, for checking if encrypted balance exists)
  * @returns The operation mode to use
  */
-export function loadOperationMode(encryptedBalance: number, pendingTransfersCount: number = 0): OperationMode {
+export function loadOperationMode(
+  encryptedBalance: number, 
+  pendingTransfersCount: number = 0,
+  cipher?: string
+): OperationMode {
   try {
     const storedMode = localStorage.getItem(STORAGE_KEY) as OperationMode | null;
     
+    // Check if private mode is available
+    const privateModeAvailable = isPrivateModeAvailable(encryptedBalance, pendingTransfersCount, cipher);
+    
     // Default to 'private' if no mode is stored (privacy-first)
     if (!storedMode) {
-      // But fall back to public if no encrypted balance and no pending transfers
-      if (encryptedBalance <= 0 && pendingTransfersCount <= 0) {
+      // But fall back to public if private mode is not available
+      if (!privateModeAvailable) {
         return 'public';
       }
       return 'private';
@@ -47,8 +55,8 @@ export function loadOperationMode(encryptedBalance: number, pendingTransfersCoun
       return 'private';
     }
     
-    // Fall back to 'public' if stored mode is 'private' but no encrypted balance and no pending transfers
-    if (storedMode === 'private' && encryptedBalance <= 0 && pendingTransfersCount <= 0) {
+    // Fall back to 'public' if stored mode is 'private' but private mode is not available
+    if (storedMode === 'private' && !privateModeAvailable) {
       return 'public';
     }
     
@@ -74,8 +82,20 @@ export function clearOperationMode(): void {
  * Checks if Private mode should be enabled based on encrypted balance or pending transfers.
  * @param encryptedBalance - The current encrypted balance
  * @param pendingTransfersCount - The number of pending unclaimed transfers (optional)
+ * @param cipher - The encrypted balance cipher (optional, for checking if encrypted balance exists)
  * @returns true if Private mode can be enabled
  */
-export function isPrivateModeAvailable(encryptedBalance: number, pendingTransfersCount: number = 0): boolean {
-  return encryptedBalance > 0 || pendingTransfersCount > 0;
+export function isPrivateModeAvailable(
+  encryptedBalance: number, 
+  pendingTransfersCount: number = 0,
+  cipher?: string
+): boolean {
+  // Check if there's a valid cipher (encrypted balance exists but not yet decrypted)
+  const hasValidCipher = cipher && cipher !== '0' && cipher !== '' && cipher.startsWith('hfhe_v1|');
+  
+  // Private mode is available if:
+  // 1. Encrypted balance > 0 (decrypted value available), OR
+  // 2. Valid cipher exists (encrypted balance exists but not yet decrypted), OR
+  // 3. Pending transfers > 0
+  return encryptedBalance > 0 || hasValidCipher || pendingTransfersCount > 0;
 }

@@ -40,28 +40,28 @@ export function TransactionModal({
   const [copied, setCopied] = useState(false);
   const [currentFinality, setCurrentFinality] = useState<'pending' | 'confirmed' | 'rejected' | undefined>(result.finality);
   const { toast } = useToast();
-  const scannerUrl = import.meta.env.VITE_SCANNER_URL || 'https://octrascan.io/tx.html?hash=';
+  // Hardcoded octrascan.io URL
+  const scannerUrl = 'https://octrascan.io/tx.html?hash=';
 
   // Auto-poll transaction status when hash is available and status is success
   useEffect(() => {
     if (status === 'success' && result.hash && currentFinality === 'pending') {
-      console.log(`🔍 Starting status polling for tx: ${result.hash.slice(0, 16)}...`);
-      
+
       // Start polling in background
       pollTransactionStatus(result.hash, {
         maxAttempts: 15, // Poll for up to 30 seconds (15 * 2s)
         intervalMs: 2000, // Check every 2 seconds
-        onStatusUpdate: (newStatus) => {
-          console.log(`📊 Status update for ${result.hash?.slice(0, 16)}: ${newStatus}`);
+        onStatusUpdate: () => {
+          // Status updated
         }
       }).then((finalStatus) => {
-        console.log(`✅ Final status for ${result.hash?.slice(0, 16)}: ${finalStatus.status}`);
+        
         if (finalStatus.finality) {
           setCurrentFinality(finalStatus.finality);
           
           // If confirmed, trigger callback to refresh transaction list
           if (finalStatus.finality === 'confirmed' && result.onStatusConfirmed) {
-            console.log('🔄 Transaction confirmed, triggering refresh callback');
+            
             result.onStatusConfirmed();
           }
         }

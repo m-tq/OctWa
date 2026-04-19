@@ -10,7 +10,6 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
-
 import {
   Send,
   History,
@@ -48,6 +47,7 @@ import {
   AlertCircle,
   Image,
   Settings,
+  Server,
 } from 'lucide-react';
 import { ExtensionStorageManager } from '../utils/extensionStorage';
 import { MultiSend } from './MultiSend';
@@ -67,12 +67,15 @@ import { ReceiveDialog } from './ReceiveDialog';
 import { EncryptBalanceDialog } from './EncryptBalanceDialog';
 import { DecryptBalanceDialog } from './DecryptBalanceDialog';
 import { AddressBook } from './AddressBook';
-import { OnboardingOverlay, useOnboarding, resetOnboardingState } from './OnboardingOverlay';
+import { PvacServerSetup, usePvacSetup, resetPvacSetupState } from './PvacServerSetup';
+import { PvacServerManager } from './PvacServerManager';
 import { DraggableWalletList } from './DraggableWalletList';
 import { WalletDisplayName } from './WalletLabelEditor';
+import { BalancePieChart } from './BalancePieChart';
 import { Wallet } from '../types/wallet';
 import { WalletManager } from '../utils/walletManager';
-import { fetchBalance, getTransactionHistory, fetchEncryptedBalance, fetchTransactionDetails, fetchPendingTransactionByHash, getPendingPrivateTransfers, apiCache } from '../utils/api';
+import { fetchBalance, getTransactionHistory, fetchEncryptedBalance, fetchTransactionDetails, fetchPendingTransactionByHash, getPendingPrivateTransfers } from '../utils/api';
+import { cacheService } from '../services/cacheService';
 import { getEVMWalletData, EVMWalletData } from '../utils/evmDerive';
 import {
   getEVMBalance, DEFAULT_EVM_NETWORKS, EVMNetwork, getActiveEVMNetwork,
@@ -92,6 +95,8 @@ import { verifyPassword } from '../utils/password';
 import { isPrivateTransfer } from '../utils/historyMerge';
 import { useAddressBook } from '../hooks/useAddressBook';
 import { addressBook } from '../utils/addressBook';
+import { pvacServerService } from '@/services/pvacServerService';
+import { logger } from '@/utils/logger';
 
 interface Transaction {
   hash: string;
@@ -187,6 +192,8 @@ export function WalletDashboard({
   const [isRefreshingData, setIsRefreshingData] = useState(false);
   const [encryptedBalance, setEncryptedBalance] = useState<any>(null);
   const [rpcStatus, setRpcStatus] = useState<'connected' | 'disconnected' | 'checking' | 'connecting'>('checking');
+  const [pvacStatus, setPvacStatus] = useState<'connected' | 'disconnected' | 'checking'>('checking');
+  const [showPvacManager, setShowPvacManager] = useState(false);
   const [operationMode, setOperationMode] = useState<OperationMode>('public');
   const [pendingTransfersCount, setPendingTransfersCount] = useState<number>(0);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
@@ -240,26 +247,12 @@ export function WalletDashboard({
   const activeWalletRef = useRef<Wallet | null>(null);
   const activeFetchIdRef = useRef(0);
   
-  // FIX #5: Refs for values accessed in epoch change callback to avoid stale closures
-  const walletsRef = useRef<Wallet[]>(wallets);
-  const balanceRef = useRef<number | null>(balance);
-  const nonceRef = useRef<number>(nonce);
-  const encryptedBalanceRef = useRef<any>(encryptedBalance);
-  const pendingTransfersCountRef = useRef<number>(pendingTransfersCount);
-  const transactionsRef = useRef<Transaction[]>(transactions);
-
+              
   useEffect(() => {
     activeWalletRef.current = wallet;
   }, [wallet]);
   
-  // FIX #5: Keep refs in sync with state
-  useEffect(() => { walletsRef.current = wallets; }, [wallets]);
-  useEffect(() => { balanceRef.current = balance; }, [balance]);
-  useEffect(() => { nonceRef.current = nonce; }, [nonce]);
-  useEffect(() => { encryptedBalanceRef.current = encryptedBalance; }, [encryptedBalance]);
-  useEffect(() => { pendingTransfersCountRef.current = pendingTransfersCount; }, [pendingTransfersCount]);
-  useEffect(() => { transactionsRef.current = transactions; }, [transactions]);
-  
+                
   const [evmNfts, setEvmNfts] = useState<NFTToken[]>([]);
   const [isLoadingEvmTokens, setIsLoadingEvmTokens] = useState(false);
   const [evmActiveTab, setEvmActiveTab] = useState<'tokens' | 'nfts'>('tokens');
@@ -283,29 +276,25 @@ export function WalletDashboard({
   const scannerUrl = import.meta.env.VITE_SCANNER_URL || 'https://octrascan.io/tx.html?hash=';
   const scannerName = import.meta.env.VITE_SCANNER_NAME || 'Explorer';
   const scannerAddressUrl = scannerUrl.replace('/tx.html?hash=', '/address/');
-  const scannerEpochUrl = scannerUrl.replace('/tx/', '/epoch/').replace('/transactions/', '/epoch/');
-  // Current epoch state
-  const [currentEpoch, setCurrentEpoch] = useState<number>(0);
-  const [isUpdatingEpoch, setIsUpdatingEpoch] = useState(false);
   // Track history panel state before hiding for multi/bulk send
   const [historyPanelWasOpen, setHistoryPanelWasOpen] = useState(false);
   // Message expansion state for transaction details
   const [showFullMessage, setShowFullMessage] = useState(false);
   const { autoLabelWallets, getWalletDisplayName } = useAddressBook();
-  const { shouldShow: shouldShowOnboarding } = useOnboarding();
-  const [showOnboarding, setShowOnboarding] = useState(false);
+  const { shouldShow: shouldShowPvacSetup } = usePvacSetup();
+  const [showPvacSetup, setShowPvacSetup] = useState(false);
   const { toast } = useToast();
 
-  // Show onboarding after dashboard loads (only once)
+  // Show PVAC setup after dashboard loads (only once)
   useEffect(() => {
-    if (shouldShowOnboarding && !isPopupMode) {
+    if (shouldShowPvacSetup && !isPopupMode) {
       // Small delay to let dashboard render first
       const timer = setTimeout(() => {
-        setShowOnboarding(true);
+        setShowPvacSetup(true);
       }, 500);
       return () => clearTimeout(timer);
     }
-  }, [shouldShowOnboarding, isPopupMode]);
+  }, [shouldShowPvacSetup, isPopupMode]);
 
   // Handle add to address book from AddressInput
   const handleAddToAddressBook = (address: string) => {
@@ -504,8 +493,6 @@ export function WalletDashboard({
     }
   }, [wallet?.address, encryptedBalance, balance, expandedPrivateModal]);
 
-
-
   // Check RPC status with shared cache (prevents duplicate fetching between popup/expanded)
   const [activeNetwork, setActiveNetwork] = useState<string>('mainnet');
   
@@ -521,7 +508,7 @@ export function WalletDashboard({
       
       // Listen for status changes from other contexts (popup <-> expanded)
       const unsubscribe = onRPCStatusChange((data) => {
-        console.log('📡 RPC status updated from other context:', data.status, data.network);
+        
         setRpcStatus(data.status);
         setActiveNetwork(data.network);
       });
@@ -538,15 +525,15 @@ export function WalletDashboard({
       
       const startRetryLoop = () => {
         if (retryInterval) return; // Already running
-        console.log('🔄 Starting auto-retry for RPC connection...');
+        
         retryInterval = setInterval(async () => {
-          console.log('🔄 Retrying RPC connection...');
+          
           const freshStatus = await checkRPCStatus(true);
           setRpcStatus(freshStatus.status);
           setActiveNetwork(freshStatus.network);
           
           if (freshStatus.status === 'connected') {
-            console.log('✅ RPC reconnected, stopping retry loop');
+            
             if (retryInterval) {
               clearInterval(retryInterval);
               retryInterval = null;
@@ -590,162 +577,56 @@ export function WalletDashboard({
     return () => { cleanup?.(); };
   }, []);
 
-  // Epoch-based auto-refresh: Poll for epoch changes and refresh data when epoch changes
+  // Check PVAC server status and auto-decrypt
   useEffect(() => {
-    if (!wallet) return;
-    const activeWalletAddress = wallet.address;
-    const activeWalletPrivateKey = wallet.privateKey;
-
-    // Subscribe to epoch changes
-    const unsubscribe = apiCache.onEpochChange(async (newEpoch, oldEpoch) => {
-      if (activeWalletRef.current?.address !== activeWalletAddress) {
-        return;
-      }
-      const isActiveWallet = () => activeWalletRef.current?.address === activeWalletAddress;
-      console.log(
-        `🔄 Epoch changed (${oldEpoch} → ${newEpoch}), updating all wallets...`
-      );
-
-      // Show updating indicator
-      setIsUpdatingEpoch(true);
-      
-      // FIX #8: Clear wallet nonces cache on epoch change
-      setWalletNonces({});
-
+    const checkPvacStatus = async () => {
+      setPvacStatus('checking');
       try {
-        // FIX #5: Use ref to get current wallets list (avoid stale closure)
-        const currentWallets = walletsRef.current;
+        const isAvailable = await pvacServerService.checkAvailability();
+        setPvacStatus(isAvailable ? 'connected' : 'disconnected');
         
-        // 1. Update ALL wallets cache in parallel (wait for completion)
-        console.log(`📍 Updating ${currentWallets.length} wallet(s) cache...`);
-        
-        await Promise.all(
-          currentWallets.map(async (w) => {
-            try {
-              await fetchBalance(w.address, true);
-              await fetchEncryptedBalance(w.address, w.privateKey, true);
-              await getTransactionHistory(w.address, {}, true);
-              await getPendingPrivateTransfers(w.address, w.privateKey, true);
-              console.log(`✓ Cache updated for ${w.address.slice(0, 10)}...`);
-            } catch (error) {
-              console.error(`✗ Cache update failed for ${w.address.slice(0, 10)}...`, error);
+        if (isAvailable && wallet && encryptedBalance?.cipher && 
+            encryptedBalance.cipher !== '0' && 
+            encryptedBalance.cipher.length > 10 && 
+            encryptedBalance.cipher.startsWith('hfhe_v1|') && 
+            (!encryptedBalance.encrypted || encryptedBalance.encrypted === 0)) {
+          try {
+            logger.info('Auto-decrypting encrypted balance via PVAC');
+            const privateKey = wallet.privateKey;
+            const decryptResult = await pvacServerService.decryptBalance(
+              encryptedBalance.cipher,
+              privateKey
+            );
+            
+            if (decryptResult.success && decryptResult.balance !== undefined) {
+              const decryptedAmount = decryptResult.balance / 1_000_000;
+              setEncryptedBalance({
+                ...encryptedBalance,
+                encrypted: decryptedAmount
+              });
+              logger.info('Auto-decrypt successful', { balance: decryptedAmount });
             }
-          })
-        );
-        
-        console.log('✅ All wallet caches updated');
-
-        // 2. Reload UI for active wallet from fresh cache
-        // Update history FIRST (most visible to user for pending->confirmed status)
-        console.log(`🔄 Reloading UI for active wallet...`);
-        
-        // 1. Fetch fresh transaction history FIRST
-        const result = await getTransactionHistory(activeWalletAddress);
-        if (!isActiveWallet()) {
-          return;
+          } catch (error) {
+            logger.error('Auto-decrypt failed', error);
+          }
         }
-        if (Array.isArray(result.transactions)) {
-          // FIX #5: Use ref for logging to avoid stale closure
-          console.log(
-            `📜 Updating transactions: ${transactionsRef.current.length} → ${result.transactions.length}`
-          );
-          const transformedTxs = result.transactions.map((tx) => ({
-            ...tx,
-            type:
-              tx.from?.toLowerCase() === activeWalletAddress.toLowerCase()
-                ? 'sent'
-                : 'received',
-          })) as Transaction[];
-          setTransactions(transformedTxs);
-        }
-
-        // 2. Update balance and nonce
-        const balanceData = await fetchBalance(activeWalletAddress);
-        if (!isActiveWallet()) {
-          return;
-        }
-        // FIX #5: Use refs for logging to avoid stale closure
-        console.log(
-          `💰 Balance: ${balanceRef.current} → ${balanceData.balance}, nonce: ${nonceRef.current} → ${balanceData.nonce}`
-        );
-        setBalance(balanceData.balance);
-        setNonce(balanceData.nonce);
-
-        // 3. Update encrypted balance
-        const encData = await fetchEncryptedBalance(
-          activeWalletAddress,
-          activeWalletPrivateKey
-        );
-        if (!isActiveWallet()) {
-          return;
-        }
-        if (encData) {
-          // FIX #5: Use ref for logging to avoid stale closure
-          console.log(
-            `🔐 Encrypted balance: ${encryptedBalanceRef.current?.encrypted || 0} → ${encData.encrypted}`
-          );
-          setEncryptedBalance(encData);
-        }
-
-        // 4. Fetch pending transfers count LAST
-        const pending = await getPendingPrivateTransfers(
-          activeWalletAddress,
-          activeWalletPrivateKey
-        );
-        if (!isActiveWallet()) {
-          return;
-        }
-        // FIX #5: Use ref for logging to avoid stale closure
-        console.log(
-          `🎁 Pending transfers: ${pendingTransfersCountRef.current} → ${pending.length}`
-        );
-        setPendingTransfersCount(pending.length);
-
-        console.log('✅ UI reload complete');
       } catch (error) {
-        console.error('Failed to check data after epoch change:', error);
-        // FIX #10: Notify user of sync failure
-        toast({
-          title: "Sync Warning",
-          description: "Some data may be outdated. Pull to refresh.",
-          variant: "destructive",
-        });
-      } finally {
-        // Update epoch and hide updating indicator
-        if (isActiveWallet()) {
-          setCurrentEpoch(newEpoch);
-          setIsUpdatingEpoch(false);
-        }
+        setPvacStatus('disconnected');
       }
-    });
-
-    // Poll for epoch changes every 10 seconds
-    const epochPollInterval = setInterval(async () => {
-      try {
-        await apiCache.checkEpochChange();
-        // Also update current epoch state
-        setCurrentEpoch(apiCache.getCachedEpoch());
-      } catch (error) {
-        console.error('Epoch check failed:', error);
-      }
-    }, 10000);
-
-    // Initialize current epoch on mount
-    setCurrentEpoch(apiCache.getCachedEpoch());
-
-    return () => {
-      unsubscribe();
-      clearInterval(epochPollInterval);
     };
-  }, [
-    wallet?.address,
-    wallet?.privateKey,
-    // FIX #4: Remove wallets from dependency to prevent memory leak
-    // walletsRef is used instead inside the callback
-  ]);
+
+    // Initial check
+    checkPvacStatus();
+
+    // Check every 30 seconds
+    const interval = setInterval(checkPvacStatus, 30000);
+
+    return () => clearInterval(interval);
+  }, [wallet?.address, encryptedBalance?.cipher]);
+
 
   // Initial data fetch when wallet is connected
-  // FIX #1 & #9: Batch state updates and use previous data during loading to prevent flicker
+  // With cache service for instant load
   useEffect(() => {
     const fetchInitialData = async () => {
       if (!wallet) return;
@@ -754,26 +635,59 @@ export function WalletDashboard({
       const currentPrivateKey = wallet.privateKey;
       const isStale = () => activeFetchIdRef.current !== fetchId || activeWalletRef.current?.address !== currentAddress;
 
-      // FIX #9: Don't reset to null immediately - keep showing previous data with loading indicator
-      // Only reset UI-specific states
+      // STEP 1: Try to load from cache FIRST for instant display
+      const cachedData = cacheService.getWalletCacheFast(currentAddress);
+      
+      if (cachedData) {
+        // Instant display from cache
+        setBalance(cachedData.publicBalance);
+        setNonce(cachedData.nonce);
+        setEncryptedBalance({
+          public: cachedData.publicBalance,
+          encrypted: cachedData.encryptedBalance.encrypted,
+          cipher: cachedData.encryptedBalance.cipher,
+          total: cachedData.publicBalance + cachedData.encryptedBalance.encrypted
+        });
+        
+        // Transform cached activities to transactions
+        if (cachedData.recentActivities && cachedData.recentActivities.length > 0) {
+          const cachedTxs = cachedData.recentActivities.map(activity => ({
+            hash: activity.hash,
+            from: activity.from || currentAddress,
+            to: activity.to || '',
+            amount: activity.amount,
+            timestamp: activity.timestamp,
+            status: activity.status,
+            type: activity.direction === 'out' ? 'sent' : 'received',
+            op_type: activity.type
+          } as Transaction));
+          setTransactions(cachedTxs);
+        }
+        
+        // Show cached data immediately, then fetch fresh data in background
+      } else {
+        // No cache available
+      }
+
+      // STEP 2: Reset UI-specific states
       setShowExpandedTxDetails(false);
       setSelectedTxHash(null);
       setSelectedTxDetails(null);
       
-      // Set loading states but keep previous data visible
+      // Set loading states
       setIsLoadingBalance(true);
       setIsLoadingTransactions(true);
 
-      // FIX #1: Fetch all data in parallel to reduce race condition window
+      // STEP 3: Fetch fresh data in parallel
       try {
         const [balanceData, encData, historyResult, pendingTransfers] = await Promise.all([
           fetchBalance(currentAddress).catch(err => {
             console.error('Failed to fetch balance:', err);
-            return { balance: 0, nonce: 0 };
+            return { balance: cachedData?.publicBalance || 0, nonce: cachedData?.nonce || 0 };
           }),
           fetchEncryptedBalance(currentAddress, currentPrivateKey).catch(err => {
             console.error('Failed to fetch encrypted balance:', err);
-            return null;
+            return cachedData ? { encrypted: cachedData.encryptedBalance.encrypted, cipher: cachedData.encryptedBalance.cipher } : null;
           }),
           getTransactionHistory(currentAddress).catch(err => {
             console.error('Failed to fetch transaction history:', err);
@@ -785,23 +699,18 @@ export function WalletDashboard({
           })
         ]);
 
-        // FIX #1: Check staleness once after all fetches complete
+        // Check staleness
         if (isStale()) {
-          console.log('🔄 Fetch completed but wallet changed, discarding results');
           return;
         }
 
-        // FIX #1: Batch all state updates together to prevent partial UI updates
-        // Use React 18's automatic batching or wrap in unstable_batchedUpdates if needed
-        
-        // Update balance and nonce
+        // STEP 4: Update UI with fresh data
         setBalance(balanceData.balance);
         setNonce(balanceData.nonce);
         
         // Update encrypted balance
         if (encData) {
           setEncryptedBalance(encData);
-          // Load operation mode based on encrypted balance
           const savedMode = loadOperationMode(encData.encrypted || 0, pendingTransfers.length);
           setOperationMode(savedMode);
         } else {
@@ -822,6 +731,33 @@ export function WalletDashboard({
             type: tx.from?.toLowerCase() === currentAddress.toLowerCase() ? 'sent' : 'received'
           } as Transaction));
           setTransactions(transformedTxs);
+          
+          // STEP 5: Save to cache for next time
+          const recentActivities = transformedTxs.slice(0, 11).map(tx => ({
+            hash: tx.hash,
+            type: (tx.op_type || 'standard') as any,
+            direction: tx.type === 'sent' ? 'out' : 'in' as 'in' | 'out',
+            amount: tx.amount,
+            timestamp: tx.timestamp,
+            from: tx.from,
+            to: tx.to,
+            status: tx.status,
+            finality: tx.status === 'confirmed' ? 'confirmed' : 'pending' as any
+          }));
+          
+          cacheService.setWalletCacheFast({
+            address: currentAddress,
+            publicBalance: balanceData.balance,
+            encryptedBalance: {
+              encrypted: encData?.encrypted || 0,
+              cipher: encData?.cipher || '',
+              public: balanceData.balance
+            },
+            nonce: balanceData.nonce,
+            recentActivities,
+            lastUpdate: Date.now(),
+            version: '1.0.0'
+          });
         } else {
           setTransactions([]);
         }
@@ -831,26 +767,27 @@ export function WalletDashboard({
         
       } catch (error) {
         console.error('Failed to fetch wallet data:', error);
-        // FIX #10: Notify user of fetch failure
         if (!isStale()) {
           toast({
             title: "Data Load Error",
             description: "Failed to load wallet data. Please try refreshing.",
             variant: "destructive",
           });
-          // Set safe defaults
-          setBalance(0);
-          setNonce(0);
-          setEncryptedBalance({
-            public: 0,
-            public_raw: 0,
-            encrypted: 0,
-            encrypted_raw: 0,
-            total: 0
-          });
-          setTransactions([]);
-          setPendingTransfersCount(0);
-          setOperationMode('public');
+          // Keep cached data if available, otherwise set safe defaults
+          if (!cachedData) {
+            setBalance(0);
+            setNonce(0);
+            setEncryptedBalance({
+              public: 0,
+              public_raw: 0,
+              encrypted: 0,
+              encrypted_raw: 0,
+              total: 0
+            });
+            setTransactions([]);
+            setPendingTransfersCount(0);
+            setOperationMode('public');
+          }
         }
       } finally {
         if (!isStale()) {
@@ -1372,8 +1309,8 @@ export function WalletDashboard({
       // Reset mode switch reminder preference
       resetModeSwitchReminder();
 
-      // Reset onboarding state
-      resetOnboardingState();
+      // Reset PVAC setup state
+      resetPvacSetupState();
 
       // Clear API cache from chrome.storage
       if (typeof chrome !== 'undefined' && chrome.storage?.local) {
@@ -1733,9 +1670,51 @@ export function WalletDashboard({
 
   return (
     <div className="h-screen overflow-hidden transition-all duration-300">
-      {/* Onboarding Overlay - shows only once after first wallet setup */}
-      {showOnboarding && !isPopupMode && (
-        <OnboardingOverlay onComplete={() => setShowOnboarding(false)} />
+      {/* PVAC Server Setup - shows only once after first wallet setup */}
+      {showPvacSetup && !isPopupMode && (
+        <PvacServerSetup onComplete={() => setShowPvacSetup(false)} />
+      )}
+
+      {/* PVAC Server Manager - manage multiple servers */}
+      {showPvacManager && (
+        <PvacServerManager 
+          onClose={() => setShowPvacManager(false)}
+          onServerSelected={async () => {
+            // Wait a bit for server to be fully ready
+            await new Promise(resolve => setTimeout(resolve, 500));
+            
+            // Refresh PVAC status after server selection
+            setPvacStatus('checking');
+            const isAvailable = await pvacServerService.checkAvailability();
+            setPvacStatus(isAvailable ? 'connected' : 'disconnected');
+            
+            if (isAvailable && wallet && encryptedBalance?.cipher && 
+                encryptedBalance.cipher !== '0' && 
+                encryptedBalance.cipher.length > 10 && 
+                encryptedBalance.cipher.startsWith('hfhe_v1|')) {
+              try {
+                const privateKey = wallet.privateKey;
+                const decryptResult = await pvacServerService.decryptBalance(
+                  encryptedBalance.cipher,
+                  privateKey
+                );
+                
+                if (decryptResult.success && decryptResult.balance !== undefined) {
+                  setEncryptedBalance({
+                    ...encryptedBalance,
+                    encrypted: decryptResult.balance / 1_000_000
+                  });
+                  toast({
+                    title: "Encrypted Balance Decrypted",
+                    description: `Balance: ${(decryptResult.balance / 1_000_000).toFixed(6)} OCT`,
+                  });
+                }
+              } catch (error) {
+                logger.error('Auto-decrypt after server selection failed', error);
+              }
+            }
+          }}
+        />
       )}
 
       {/* ============================================ */}
@@ -1764,6 +1743,7 @@ export function WalletDashboard({
                     }}
                     wallet={wallet}
                     publicBalance={balance || 0}
+                    onBalanceUpdate={setBalance}
                     onSuccess={() => {
                       refreshWalletData();
                       setPopupScreen('main');
@@ -1797,6 +1777,8 @@ export function WalletDashboard({
                     }}
                     wallet={wallet}
                     encryptedBalance={encryptedBalance?.encrypted || 0}
+                    currentCipher={encryptedBalance?.cipher}
+                    onBalanceUpdate={setBalance}
                     onSuccess={() => {
                       refreshWalletData();
                       setPopupScreen('main');
@@ -1909,7 +1891,7 @@ export function WalletDashboard({
                 ) : selectedTxDetails ? (
                   <>
                   <div className="divide-y divide-dashed divide-border">
-                    {/* Status with Epoch */}
+                    {/* Status */}
                     <div className="py-2 flex items-center justify-between">
                       <span className="text-[10px] text-muted-foreground">Status</span>
                       {'stage_status' in selectedTxDetails ? (
@@ -1921,9 +1903,7 @@ export function WalletDashboard({
                           <Badge variant="secondary" className="text-[10px] bg-[#3A4DFF]/20 text-[#3A4DFF] h-5">
                             confirmed
                           </Badge>
-                          {'epoch' in selectedTxDetails && (
-                            <span className="text-[10px] text-muted-foreground font-mono">#{selectedTxDetails.epoch}</span>
-                          )}
+                          {}
                         </div>
                       )}
                     </div>
@@ -3513,6 +3493,20 @@ export function WalletDashboard({
                         <span className="text-[10px] text-muted-foreground">Manage Ethereum VM Assets</span>
                       </div>
                     </Button>
+
+                    {/* Balance Pie Chart - below EVM Assets */}
+                    {balance !== null && encryptedBalance && (balance > 0 || encryptedBalance.encrypted > 0) && (
+                      <>
+                        <div className="border-t border-dashed border-border mt-2" />
+                        <div className="mt-4">
+                          <BalancePieChart 
+                            publicBalance={balance || 0}
+                            encryptedBalance={encryptedBalance?.encrypted || 0}
+                            isCompact={false}
+                          />
+                        </div>
+                      </>
+                    )}
                   </div>
                 )}
               </>
@@ -3622,14 +3616,6 @@ export function WalletDashboard({
                               </Badge>
                             )}
                           </div>
-
-                          {/* Epoch - only for confirmed */}
-                          {'epoch' in selectedTxDetails && (
-                            <div className="py-2.5 flex items-center justify-between">
-                              <span className="text-xs text-muted-foreground">Epoch</span>
-                              <span className="font-mono text-sm">{selectedTxDetails.epoch}</span>
-                            </div>
-                          )}
 
                           {/* Time */}
                           {('timestamp' in selectedTxDetails || 'parsed_tx' in selectedTxDetails) && (
@@ -4163,6 +4149,7 @@ export function WalletDashboard({
                   }}
                   wallet={wallet}
                   publicBalance={encryptedBalance?.public || balance || 0}
+                  onBalanceUpdate={setBalance}
                   onSuccess={() => {
                     closePrivateModal();
                     refreshWalletData();
@@ -4179,6 +4166,8 @@ export function WalletDashboard({
                   }}
                   wallet={wallet}
                   encryptedBalance={encryptedBalance?.encrypted || 0}
+                  currentCipher={encryptedBalance?.cipher}
+                  onBalanceUpdate={setBalance}
                   onSuccess={() => {
                     closePrivateModal();
                     refreshWalletData();
@@ -4302,35 +4291,34 @@ export function WalletDashboard({
             </div>
           )}
           
-          {/* Center: Current Epoch (only for Octra mode) / Gas price (for EVM mode) */}
+          {/* Center: PVAC Server Status (Octra mode) or Gas price (EVM mode) */}
           {evmMode ? (
-            /* EVM Mode - Center: Gas price */
+            /* EVM Mode - Gas price */
             evmGasPrice && (
               <span className="text-orange-600 dark:text-orange-400">
                 Gas: <span className="font-medium">{evmGasPrice} Gwei</span>
               </span>
             )
           ) : (
-            <span className="flex items-center justify-center gap-1.5">
-              {isUpdatingEpoch ? (
-                <>
-                  <RotateCcw className={`h-3 w-3 animate-spin ${operationMode === 'private' ? 'text-[#00E5C0]' : 'text-[#3A4DFF]'}`} />
-                  <span className={`${operationMode === 'private' ? 'text-[#00E5C0]' : 'text-[#3A4DFF]'}`}>updating data...</span>
-                </>
-              ) : (
-                <>
-                  <span className="text-muted-foreground">Epoch:</span>
-                  <a 
-                    href={currentEpoch ? `${scannerEpochUrl}${currentEpoch}` : '#'}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className={`font-mono hover:underline ${operationMode === 'private' ? 'text-[#00E5C0]' : 'text-[#3A4DFF]'}`}
-                  >
-                    #{currentEpoch || '...'}
-                  </a>
-                </>
-              )}
-            </span>
+            /* Octra Mode - PVAC Server Status - Clickable */
+            <button
+              onClick={() => setShowPvacManager(true)}
+              className="flex items-center gap-1.5 hover:opacity-80 transition-opacity"
+              title="Click to manage PVAC servers"
+            >
+              <Server className={`h-3 w-3 ${
+                pvacStatus === 'connected' ? 'text-[#00E5C0]' : 
+                pvacStatus === 'disconnected' ? 'text-muted-foreground' : 
+                'text-yellow-500'
+              }`} />
+              <span className={`text-xs ${
+                pvacStatus === 'connected' ? 'text-[#00E5C0]' : 
+                pvacStatus === 'disconnected' ? 'text-muted-foreground' : 
+                'text-yellow-500'
+              }`}>
+                PVAC: {pvacStatus === 'connected' ? 'Ready' : pvacStatus === 'disconnected' ? 'Offline' : 'Checking...'}
+              </span>
+            </button>
           )}
           
           {/* Right: GitHub + Version */}

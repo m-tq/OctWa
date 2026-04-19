@@ -98,42 +98,33 @@ export function PasswordSetup({ wallet, onPasswordSet, onBack }: PasswordSetupPr
         });
       }
 
-      console.log('🔐 PasswordSetup: Saving wallet data...');
-      
       // Store password hash and salt - localStorage FIRST (synchronous, reliable)
       localStorage.setItem('walletPasswordHash', hashedPassword);
       localStorage.setItem('walletPasswordSalt', salt);
       localStorage.setItem('isWalletLocked', 'false');
       localStorage.setItem('encryptedWallets', JSON.stringify(encryptedWallets));
       localStorage.setItem('activeWalletId', wallet.address);
-      
-      console.log('🔐 PasswordSetup: localStorage saved, now saving to ExtensionStorage...');
-      
+
       // Then save to ExtensionStorage (async)
       await ExtensionStorageManager.set('walletPasswordHash', hashedPassword);
       await ExtensionStorageManager.set('walletPasswordSalt', salt);
       await ExtensionStorageManager.set('isWalletLocked', 'false');
       await ExtensionStorageManager.set('encryptedWallets', JSON.stringify(encryptedWallets));
       await ExtensionStorageManager.set('activeWalletId', wallet.address);
-      
-      console.log('🔐 PasswordSetup: ExtensionStorage saved');
-      
+
       // Set session password for runtime operations (this also generates encryption key)
       WalletManager.setSessionPassword(password);
       
       // Store decrypted wallet in encrypted session storage
       await WalletManager.updateSessionWallets([wallet]);
-      
-      console.log('🔐 PasswordSetup: Session storage saved (encrypted)');
-      
+
       // SECURITY: Remove any unencrypted wallet data that might exist
       localStorage.removeItem('wallets');
       await ExtensionStorageManager.remove('wallets');
       
       // Verify data was saved
-      const verifyHash = localStorage.getItem('walletPasswordHash');
-      const verifyEncrypted = localStorage.getItem('encryptedWallets');
-      console.log('🔐 PasswordSetup: Verify - hash exists:', !!verifyHash, ', encrypted exists:', !!verifyEncrypted);
+      localStorage.getItem('walletPasswordHash');
+      localStorage.getItem('encryptedWallets');
 
       onPasswordSet(wallet);
     } catch (error) {

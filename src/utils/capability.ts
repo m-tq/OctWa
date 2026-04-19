@@ -150,8 +150,7 @@ export async function signCapability(
   payload: CapabilityPayload,
   privateKey: string
 ): Promise<SignedCapability> {
-  console.log('[Capability] signCapability called');
-  
+
   // Validate private key input
   if (!privateKey) {
     throw new Error('Private key is required but was empty or undefined');
@@ -162,8 +161,7 @@ export async function signCapability(
   }
   
   // SECURITY: Do not log private key details
-  console.log('[Capability] Signing capability...');
-  
+
   // Get canonical form
   const canonical = canonicalizeCapability(payload);
   
@@ -216,9 +214,7 @@ export async function signCapability(
   // Get public key hex
   const issuerPubKey = bytesToHex(keyPair.publicKey);
   const signatureHex = bytesToHex(signature);
-  
-  console.log('[Capability] Capability signed successfully');
-  
+
   return {
     ...payload,
     methods: [...payload.methods].sort(),

@@ -65,8 +65,8 @@ export function RPCProviderManager({ onRPCChange, isPopupMode = false }: RPCProv
       // Initialize with default provider
       const defaultProvider: RPCProvider = {
         id: 'default',
-        name: 'Octra Network (Default)',
-        url: 'https://octra.network',
+        name: 'Octra Mainnet',
+        url: 'http://46.101.86.250:8080',
         headers: {},
         priority: 1,
         isActive: true,
@@ -109,7 +109,7 @@ export function RPCProviderManager({ onRPCChange, isPopupMode = false }: RPCProv
         console.warn('Failed to save selectedNetwork to chrome.storage:', err);
       });
     }
-    console.log('[RPCProviderManager] Network synced:', network);
+    
   };
 
   const resetForm = () => {
@@ -339,8 +339,7 @@ export function RPCProviderManager({ onRPCChange, isPopupMode = false }: RPCProv
     
     // Get the new active provider
     const newActiveProvider = updatedProviders.find(p => p.isActive);
-    console.log('RPC provider changed to:', newActiveProvider?.name, newActiveProvider?.url, 'network:', newActiveProvider?.network);
-    
+
     // Sync selected network to chrome.storage.local for SDK/dApp access
     const selectedNetwork = newActiveProvider?.network || 'mainnet';
     syncSelectedNetwork(selectedNetwork);
@@ -401,7 +400,7 @@ export function RPCProviderManager({ onRPCChange, isPopupMode = false }: RPCProv
                   <Label htmlFor="provider-url" className={isPopupMode ? "text-xs" : ""}>URL</Label>
                   <Input
                     id="provider-url"
-                    placeholder="https://octra.network"
+                    placeholder="http://46.101.86.250:8080"
                     value={formData.url}
                     onChange={(e) => setFormData({ ...formData, url: e.target.value })}
                     className={isPopupMode ? "h-8 text-xs" : ""}

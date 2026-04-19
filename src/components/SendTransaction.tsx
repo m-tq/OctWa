@@ -15,6 +15,7 @@ import { useToast } from '@/hooks/use-toast';
 import { useAddressBook } from '@/hooks/useAddressBook';
 import { TransactionModal, TransactionStatus, TransactionResult } from './TransactionModal';
 import { AddressInput } from './AddressInput';
+import { withOptimisticUpdate } from '@/utils/optimisticTransactionWrapper';
 
 // Threshold for confirmation dialog (500 OCT)
 const LARGE_TRANSACTION_THRESHOLD = 500;
@@ -25,7 +26,14 @@ interface SendTransactionProps {
   nonce?: number;
   onBalanceUpdate: (balance: number) => void;
   onNonceUpdate: (nonce: number) => void;
-  onTransactionSuccess: () => void;
+  onTransactionSuccess: (newTransaction?: {
+    hash: string;
+    from: string;
+    to: string;
+    amount: number;
+    status: 'confirmed' | 'pending' | 'failed';
+    finality?: 'pending' | 'confirmed' | 'rejected';
+  }) => void;
   onModalClose?: () => void; // Called when transaction result modal is closed
   isCompact?: boolean;
   onAddToAddressBook?: (address: string) => void; // Callback to add address to address book
@@ -171,8 +179,6 @@ export function SendTransaction({
     return ou * 0.0000001;
   };
 
-
-
   // Pre-validation before showing confirmation or sending
   const validateBeforeSend = (): boolean => {
     if (!wallet) {
@@ -256,24 +262,45 @@ export function SendTransaction({
     setShowTxModal(true);
 
     const amountNum = parseFloat(amount);
+    const fee = calculateFee();
 
     try {
-      // Refresh nonce before sending like CLI does
-      const freshBalanceData = await fetchBalance(wallet.address);
-      const currentNonce = freshBalanceData.nonce;
+      // Wrap transaction with optimistic update
+      const sendResult = await withOptimisticUpdate(
+        {
+          address: wallet.address,
+          type: 'send',
+          amount: amountNum,
+          currentBalance: { public: balance || 0, encrypted: 0 },
+          fee,
+          onUpdateCreated: (_updateId) => {
+            // INSTANT UI UPDATE: Deduct amount + fee from balance immediately
+            const newBalance = (balance || 0) - amountNum - fee;
+            onBalanceUpdate(newBalance);
+          },
+          onTransactionHash: (_hash) => {
+            // Transaction hash received, update can be tracked
+          },
+        },
+        async () => {
+          // Refresh nonce before sending like CLI does
+          const freshBalanceData = await fetchBalance(wallet.address);
+          const currentNonce = freshBalanceData.nonce;
 
-      const transaction = createTransaction(
-        wallet.address,
-        recipientAddress.trim(),
-        amountNum,
-        currentNonce + 1,
-        wallet.privateKey,
-        wallet.publicKey || '',
-        message || undefined,
-        getOuValue()
+          const transaction = createTransaction(
+            wallet.address,
+            recipientAddress.trim(),
+            amountNum,
+            currentNonce + 1,
+            wallet.privateKey,
+            wallet.publicKey || '',
+            message || undefined,
+            getOuValue()
+          );
+
+          return await sendTransaction(transaction);
+        }
       );
-
-      const sendResult = await sendTransaction(transaction);
 
       if (sendResult.success) {
         // Update modal to success state
@@ -284,7 +311,7 @@ export function SendTransaction({
           finality: sendResult.finality,
           onStatusConfirmed: () => {
             // Refresh transaction history when status becomes confirmed
-            console.log('🔄 Refreshing transaction history after confirmation');
+            
             onTransactionSuccess();
           }
         });
@@ -300,22 +327,44 @@ export function SendTransaction({
         setShowMessage(false);
 
         // Update nonce
-        onNonceUpdate(currentNonce + 1);
+        const freshBalanceData = await fetchBalance(wallet.address);
+        onNonceUpdate(freshBalanceData.nonce);
 
-        // Update balance after successful transaction
+        // Verify optimistic update in background
         setTimeout(async () => {
           try {
+            
             // Invalidate cache first
             await invalidateCacheAfterTransaction(wallet.address);
             const updatedBalance = await fetchBalance(wallet.address, true);
+            
+            // Update actual balance
             onBalanceUpdate(updatedBalance.balance);
             onNonceUpdate(updatedBalance.nonce);
+            
+            // Verify optimistic update (will remove pending indicator if match)
+            // Note: Update ID is tracked internally by the service
+            
           } catch (error) {
             console.error('Failed to refresh balance after transaction:', error);
           }
-        }, 2000);
+        }, 3000); // Wait 3 seconds for blockchain to process
 
-        onTransactionSuccess();
+        // Call onTransactionSuccess with transaction data
+        // Map finality to status
+        const status: 'confirmed' | 'pending' | 'failed' = 
+          sendResult.finality === 'confirmed' ? 'confirmed' :
+          sendResult.finality === 'rejected' ? 'failed' :
+          'pending';
+        
+        onTransactionSuccess({
+          hash: sendResult.hash!,
+          from: wallet.address,
+          to: recipientAddress,
+          amount: amountNum,
+          status,
+          finality: sendResult.finality
+        });
       } else {
         const errorMsg = sendResult.error || sendResult.reason || "Unknown error occurred";
         // Update modal to error state

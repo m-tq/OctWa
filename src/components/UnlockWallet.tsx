@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+﻿import React, { useState, useEffect } from 'react';
 import { WalletManager } from '../utils/walletManager';
 import { Wallet } from '../types/wallet';
 import { AlertTriangle, Clock, Eye, EyeOff } from 'lucide-react';
@@ -96,14 +96,13 @@ export function UnlockWallet({
     setError('');
 
     try {
-      console.log('🔓 UnlockWallet: Attempting to unlock...');
+      
       const wallets = await WalletManager.unlockWallets(password);
-      console.log('✅ UnlockWallet: Unlock successful, wallets:', wallets.length);
 
       // Simple callback - NO state management here
       onUnlock(wallets);
     } catch (error: any) {
-      console.error('❌ UnlockWallet: Unlock failed:', error);
+      console.error('UnlockWallet: Unlock failed:', error);
 
       // Check if it's a rate limit error
       if (error.message?.includes('Too many attempts')) {

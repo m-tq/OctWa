@@ -13,6 +13,7 @@ import { DecryptBalanceDialog } from './DecryptBalanceDialog';
 import { ExportPrivateKeys } from './ExportPrivateKeys';
 import { InfoTooltip } from './InfoTooltip';
 import { SensitiveActionButton } from './SensitiveActionButton';
+import { logger } from '@/utils/logger';
 
 interface BalanceProps {
   wallet: WalletType | null;
@@ -61,7 +62,7 @@ export function Balance({ wallet, balance, encryptedBalance: propEncryptedBalanc
           });
         }
       } catch (encError) {
-        console.error('Failed to fetch encrypted balance:', encError);
+        logger.error('Failed to fetch encrypted balance', encError);
         setEncryptedBalance({
           public: balanceData.balance,
           public_raw: Math.floor(balanceData.balance * 1_000_000),
@@ -76,7 +77,7 @@ export function Balance({ wallet, balance, encryptedBalance: propEncryptedBalanc
         const pending = await getPendingPrivateTransfers(wallet.address, wallet.privateKey);
         setPendingTransfers(pending);
       } catch (error) {
-        console.error('Failed to fetch pending transfers:', error);
+        logger.warn('Failed to fetch pending transfers', error);
         // Set default values when fetch fails (new address)
       }
       
@@ -90,7 +91,7 @@ export function Balance({ wallet, balance, encryptedBalance: propEncryptedBalanc
         description: "Failed to refresh balance. This might be a new address or RPC connection issue.",
         variant: "destructive",
       });
-      console.error('Balance fetch error:', error);
+      logger.error('Balance fetch error', error);
     } finally {
       setRefreshing(false);
     }
@@ -122,13 +123,13 @@ export function Balance({ wallet, balance, encryptedBalance: propEncryptedBalanc
               return getPendingPrivateTransfers(wallet.address, wallet.privateKey)
                 .then(setPendingTransfers)
                 .catch(error => {
-                  console.error('Failed to fetch pending transfers on mount:', error);
+                  logger.warn('Failed to fetch pending transfers on mount', error);
                   setPendingTransfers([]);
                 });
             });
         })
         .catch(error => {
-          console.error('Failed to fetch balance on mount:', error);
+          logger.error('Failed to fetch balance on mount', error);
           // Set default values when fetch fails
           setEncryptedBalance({
             public: 0,
@@ -143,12 +144,14 @@ export function Balance({ wallet, balance, encryptedBalance: propEncryptedBalanc
   }, [wallet]);
 
   const handleEncryptSuccess = () => {
-    setShowEncryptDialog(false);
+    // Don't auto-close dialog - let user close manually
+    // setShowEncryptDialog(false);
     fetchWalletBalance();
   };
 
   const handleDecryptSuccess = () => {
-    setShowDecryptDialog(false);
+    // Don't auto-close dialog - let user close manually
+    // setShowDecryptDialog(false);
     fetchWalletBalance();
   };
 
@@ -233,7 +236,7 @@ export function Balance({ wallet, balance, encryptedBalance: propEncryptedBalanc
 
           {/* Total Balance */}
           {encryptedBalance && (
-            <div className="pt-5 border-t">
+            <div className="pt-5">
               <div className="flex items-center justify-between">
                 <span className="text-sm font-medium text-muted-foreground">Total Balance</span>
                 <div className="text-lg font-bold text-green-600">
@@ -305,6 +308,7 @@ export function Balance({ wallet, balance, encryptedBalance: propEncryptedBalanc
         onOpenChange={setShowDecryptDialog}
         wallet={wallet}
         encryptedBalance={encryptedBalance?.encrypted || 0}
+        currentCipher={encryptedBalance?.cipher}
         onSuccess={handleDecryptSuccess}
       />
     </div>

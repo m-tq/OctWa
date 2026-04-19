@@ -37,6 +37,7 @@ import { WalletManager } from '../utils/walletManager';
 import { createTransaction, sendTransaction, fetchBalance } from '../utils/api';
 import { sendEVMTransaction, sendERC20Transaction } from '../utils/evmRpc';
 import { deriveEvmFromOctraKey } from '../utils/evmDerive';
+import { logger } from '@/utils/logger';
 import nacl from 'tweetnacl';
 
 // Types
@@ -122,8 +123,11 @@ interface DAppRequestHandlerProps {
 type RequestType = 'connection' | 'capability' | 'invoke' | 'signMessage' | null;
 
 export function DAppRequestHandler({ wallets }: DAppRequestHandlerProps) {
-  console.log('[DAppRequestHandler] Component mounted/rendered');
-  console.log('[DAppRequestHandler] Render - wallets count:', wallets.length, 'addresses:', wallets.map(w => w.address.slice(0, 10)));
+  logger.debug('DAppRequestHandler: Component mounted/rendered');
+  logger.debug('DAppRequestHandler: Render', { 
+    walletCount: wallets.length, 
+    addresses: wallets.map(w => w.address.slice(0, 10)) 
+  });
   
   const [requestType, setRequestType] = useState<RequestType>(null);
   const [connectionRequest, setConnectionRequest] = useState<ConnectionRequest | null>(null);
@@ -156,17 +160,17 @@ export function DAppRequestHandler({ wallets }: DAppRequestHandlerProps) {
     if (invokeRequest?.connection?.walletPubKey && wallets.length > 0) {
       const connectedWallet = wallets.find(w => w.address === invokeRequest.connection!.walletPubKey);
       if (connectedWallet) {
-        console.log('[DAppRequestHandler] Using connected wallet:', connectedWallet.address);
+        logger.debug('DAppRequestHandler: Using connected wallet:', connectedWallet.address);
         setSelectedWallet(connectedWallet);
       } else {
-        console.warn('[DAppRequestHandler] Connected wallet not found:', invokeRequest.connection.walletPubKey);
-        console.warn('[DAppRequestHandler] Available wallets:', wallets.map(w => w.address));
+        logger.warn('DAppRequestHandler: Connected wallet not found:', invokeRequest.connection.walletPubKey);
+        logger.warn('DAppRequestHandler: Available wallets:', wallets.map(w => w.address));
       }
     }
   }, [invokeRequest, wallets]);
 
   useEffect(() => {
-    console.log('[DAppRequestHandler] useEffect triggered - loading pending request');
+    logger.debug('DAppRequestHandler: useEffect triggered - loading pending request');
     loadPendingRequest();
   }, []);
 
@@ -212,7 +216,7 @@ export function DAppRequestHandler({ wallets }: DAppRequestHandlerProps) {
       const appOrigin = urlParams.get('appOrigin');
       const message = urlParams.get('message');
       if (appOrigin && message) {
-        console.log('[DAppRequestHandler] Loading sign message from URL params');
+        logger.debug('DAppRequestHandler: Loading sign message from URL params');
         setRequestType('signMessage');
         setSignMessageRequest({
           message: decodeURIComponent(message),
@@ -227,7 +231,7 @@ export function DAppRequestHandler({ wallets }: DAppRequestHandlerProps) {
 
     // Check chrome storage for pending requests
     if (typeof chrome !== 'undefined' && chrome.storage) {
-      console.log('[DAppRequestHandler] Checking chrome.storage for pending requests...');
+      logger.debug('DAppRequestHandler: Checking chrome.storage for pending requests...');
       
       const pending = await chrome.storage.local.get([
         'pendingConnectionRequest',
@@ -236,7 +240,7 @@ export function DAppRequestHandler({ wallets }: DAppRequestHandlerProps) {
         'pendingSignMessageRequest'
       ]);
 
-      console.log('[DAppRequestHandler] Pending requests:', {
+      logger.debug('DAppRequestHandler: Pending requests:', {
         connection: !!pending.pendingConnectionRequest,
         capability: !!pending.pendingCapabilityRequest,
         invoke: !!pending.pendingInvokeRequest,
@@ -244,19 +248,19 @@ export function DAppRequestHandler({ wallets }: DAppRequestHandlerProps) {
       });
 
       if (pending.pendingConnectionRequest) {
-        console.log('[DAppRequestHandler] Loading connection request');
+        logger.debug('DAppRequestHandler: Loading connection request');
         setRequestType('connection');
         setConnectionRequest(pending.pendingConnectionRequest);
       } else if (pending.pendingCapabilityRequest) {
-        console.log('[DAppRequestHandler] Loading capability request');
+        logger.debug('DAppRequestHandler: Loading capability request');
         setRequestType('capability');
         setCapabilityRequest(pending.pendingCapabilityRequest);
       } else if (pending.pendingSignMessageRequest) {
-        console.log('[DAppRequestHandler] Loading sign message request:', pending.pendingSignMessageRequest);
+        logger.debug('DAppRequestHandler: Loading sign message request:', pending.pendingSignMessageRequest);
         setRequestType('signMessage');
         setSignMessageRequest(pending.pendingSignMessageRequest);
       } else if (pending.pendingInvokeRequest) {
-        console.log('[DAppRequestHandler] Loading invoke request');
+        logger.debug('DAppRequestHandler: Loading invoke request');
         setRequestType('invoke');
         setInvokeRequest(pending.pendingInvokeRequest);
         
@@ -287,10 +291,10 @@ export function DAppRequestHandler({ wallets }: DAppRequestHandlerProps) {
             
             if (txParams) {
               setParsedTxPayload(txParams);
-              console.log('[DAppRequestHandler] Parsed tx payload:', txParams);
+              logger.debug('DAppRequestHandler: Parsed tx payload:', txParams);
             }
           } catch (e) {
-            console.error('[DAppRequestHandler] Failed to parse tx payload for display:', e);
+            logger.error('DAppRequestHandler: Failed to parse tx payload for display:', e);
           }
         }
         
@@ -321,10 +325,10 @@ export function DAppRequestHandler({ wallets }: DAppRequestHandlerProps) {
             
             if (evmTxParams) {
               setParsedEvmTxPayload(evmTxParams);
-              console.log('[DAppRequestHandler] Parsed EVM tx payload:', evmTxParams);
+              logger.debug('DAppRequestHandler: Parsed EVM tx payload:', evmTxParams);
             }
           } catch (e) {
-            console.error('[DAppRequestHandler] Failed to parse EVM tx payload for display:', e);
+            logger.error('DAppRequestHandler: Failed to parse EVM tx payload for display:', e);
           }
         }
         
@@ -355,10 +359,10 @@ export function DAppRequestHandler({ wallets }: DAppRequestHandlerProps) {
             
             if (erc20TxParams) {
               setParsedErc20TxPayload(erc20TxParams);
-              console.log('[DAppRequestHandler] Parsed ERC20 tx payload:', erc20TxParams);
+              logger.debug('DAppRequestHandler: Parsed ERC20 tx payload:', erc20TxParams);
             }
           } catch (e) {
-            console.error('[DAppRequestHandler] Failed to parse ERC20 tx payload for display:', e);
+            logger.error('DAppRequestHandler: Failed to parse ERC20 tx payload for display:', e);
           }
         }
       }
@@ -370,7 +374,7 @@ export function DAppRequestHandler({ wallets }: DAppRequestHandlerProps) {
     
     // Ensure we have a wallet selected
     if (!selectedWallet) {
-      console.error('No wallet selected for connection approval');
+      logger.error('No wallet selected for connection approval');
       toast({ title: 'Error', description: 'No wallet available', variant: 'destructive' });
       return;
     }
@@ -390,7 +394,7 @@ export function DAppRequestHandler({ wallets }: DAppRequestHandlerProps) {
           const activeProvider = providers.find((p: { isActive: boolean }) => p.isActive);
           if (activeProvider?.network) {
             currentNetwork = activeProvider.network;
-            console.log('[DAppRequestHandler] Network from active RPC provider:', currentNetwork);
+            logger.debug('DAppRequestHandler: Network from active RPC provider:', currentNetwork);
           }
         } catch (e) {
           console.warn('Failed to parse rpcProviders:', e);
@@ -415,7 +419,7 @@ export function DAppRequestHandler({ wallets }: DAppRequestHandlerProps) {
         }
       }
       
-      console.log('[DAppRequestHandler] Final network:', currentNetwork);
+      logger.debug('DAppRequestHandler: Final network:', currentNetwork);
       
       // Store connection
       const connections = JSON.parse(localStorage.getItem('connectedDApps') || '[]');
@@ -439,22 +443,22 @@ export function DAppRequestHandler({ wallets }: DAppRequestHandlerProps) {
           try {
             const derived = deriveEvmFromOctraKey(selectedWallet.privateKey);
             evmAddress = derived.evmAddress;
-            console.log('[DAppRequestHandler] Derived EVM address from privateKey:', evmAddress);
+            logger.debug('DAppRequestHandler: Derived EVM address from privateKey:', evmAddress);
           } catch (e) {
-            console.error('[DAppRequestHandler] Failed to derive EVM address:', e);
+            logger.error('DAppRequestHandler: Failed to derive EVM address:', e);
           }
         } else {
-          console.warn('[DAppRequestHandler] No privateKey in selectedWallet!');
+          logger.warn('DAppRequestHandler: No privateKey in selectedWallet!');
           // Fallback: try from storage
           evmAddress = WalletManager.getEvmAddress(selectedWallet.address);
           if (evmAddress) {
-            console.log('[DAppRequestHandler] Got EVM address from storage:', evmAddress);
+            logger.debug('DAppRequestHandler: Got EVM address from storage:', evmAddress);
           }
         }
 
         if (!evmAddress) {
-          console.error('[DAppRequestHandler] ERROR: Could not get EVM address!');
-          console.error('[DAppRequestHandler] selectedWallet:', {
+          logger.error('DAppRequestHandler: ERROR: Could not get EVM address!');
+          logger.error('DAppRequestHandler: selectedWallet:', {
             address: selectedWallet.address,
             hasPrivateKey: !!selectedWallet.privateKey,
           });
@@ -463,7 +467,7 @@ export function DAppRequestHandler({ wallets }: DAppRequestHandlerProps) {
         const currentEpoch = Date.now();
         const currentBranchId = 'main';
         
-        console.log('[DAppRequestHandler] Sending CONNECTION_RESULT:', {
+        logger.debug('DAppRequestHandler: Sending CONNECTION_RESULT:', {
           appOrigin: connectionRequest.appOrigin,
           walletPubKey: selectedWallet.address,
           evmAddress: evmAddress || '(MISSING!)',
@@ -497,20 +501,20 @@ export function DAppRequestHandler({ wallets }: DAppRequestHandlerProps) {
 
   const handleCapabilityApprove = async () => {
     if (!capabilityRequest || !selectedWallet) {
-      console.error('[DAppRequestHandler] Missing capabilityRequest or selectedWallet');
+      logger.error('DAppRequestHandler: Missing capabilityRequest or selectedWallet');
       return;
     }
     
-    console.log('[DAppRequestHandler] Starting capability approval...');
-    console.log('[DAppRequestHandler] Capability request:', capabilityRequest);
-    console.log('[DAppRequestHandler] Selected wallet address:', selectedWallet.address);
+    logger.debug('DAppRequestHandler: Starting capability approval...');
+    logger.debug('DAppRequestHandler: Capability request:', capabilityRequest);
+    logger.debug('DAppRequestHandler: Selected wallet address:', selectedWallet.address);
     // SECURITY: Do not log private key details
-    console.log('[DAppRequestHandler] Wallet ready for signing:', !!selectedWallet.privateKey);
+    logger.debug('DAppRequestHandler: Wallet ready for signing:', !!selectedWallet.privateKey);
     
     // Validate private key exists
     if (!selectedWallet.privateKey) {
-      console.error('[DAppRequestHandler] ERROR: Wallet has no private key!');
-      console.error('[DAppRequestHandler] Wallet object keys:', Object.keys(selectedWallet));
+      logger.error('DAppRequestHandler: ERROR: Wallet has no private key!');
+      logger.error('DAppRequestHandler: Wallet object keys:', Object.keys(selectedWallet));
       toast({ 
         title: 'Error', 
         description: 'Wallet private key not available. Please unlock your wallet.', 
@@ -544,18 +548,18 @@ export function DAppRequestHandler({ wallets }: DAppRequestHandlerProps) {
         nonceBase: generateNonceBase()
       };
 
-      console.log('[DAppRequestHandler] Capability payload:', payload);
+      logger.debug('DAppRequestHandler: Capability payload:', payload);
 
       // Sign capability with wallet's private key
-      console.log('[DAppRequestHandler] Calling signCapability...');
+      logger.debug('DAppRequestHandler: Calling signCapability...');
       const signedCapability = await signCapability(payload, selectedWallet.privateKey);
       
-      console.log('[DAppRequestHandler] Capability signed successfully!');
+      logger.debug('DAppRequestHandler: Capability signed successfully!');
       
       // Create capability ID
       const capabilityId = createCapabilityId(signedCapability);
       
-      console.log('[DAppRequestHandler] Signed capability:', {
+      logger.debug('DAppRequestHandler: Signed capability:', {
         id: capabilityId,
         walletPubKey: signedCapability.walletPubKey,
         signature: signedCapability.signature.slice(0, 32) + '...',
@@ -564,7 +568,7 @@ export function DAppRequestHandler({ wallets }: DAppRequestHandlerProps) {
 
       // Send response with full signed capability
       if (typeof chrome !== 'undefined' && chrome.runtime) {
-        console.log('[DAppRequestHandler] Sending CAPABILITY_RESULT to background...');
+        logger.debug('DAppRequestHandler: Sending CAPABILITY_RESULT to background...');
         
         const message = {
           type: 'CAPABILITY_RESULT',
@@ -574,27 +578,27 @@ export function DAppRequestHandler({ wallets }: DAppRequestHandlerProps) {
           signedCapability
         };
         
-        console.log('[DAppRequestHandler] Message to send:', message);
+        logger.debug('DAppRequestHandler: Message to send:', message);
         
         chrome.runtime.sendMessage(message, (response) => {
-          console.log('[DAppRequestHandler] Background response:', response);
+          logger.debug('DAppRequestHandler: Background response:', response);
           if (chrome.runtime.lastError) {
-            console.error('[DAppRequestHandler] Chrome runtime error:', chrome.runtime.lastError);
+            logger.error('DAppRequestHandler: Chrome runtime error:', chrome.runtime.lastError);
           }
         });
         
         await chrome.storage.local.remove('pendingCapabilityRequest');
-        console.log('[DAppRequestHandler] Removed pendingCapabilityRequest from storage');
+        logger.debug('DAppRequestHandler: Removed pendingCapabilityRequest from storage');
       }
 
       // Success - close popup immediately (no toast needed)
-      console.log('[DAppRequestHandler] Closing window...');
+      logger.debug('DAppRequestHandler: Closing window...');
       setTimeout(() => {
         window.close();
       }, 500); // Small delay to ensure message is sent
     } catch (error) {
-      console.error('[DAppRequestHandler] Capability error:', error);
-      console.error('[DAppRequestHandler] Error stack:', error instanceof Error ? error.stack : 'No stack');
+      logger.error('DAppRequestHandler: Capability error:', error);
+      logger.error('DAppRequestHandler: Error stack:', error instanceof Error ? error.stack : 'No stack');
       toast({ title: 'Error', description: `Failed to sign capability: ${error instanceof Error ? error.message : 'Unknown error'}`, variant: 'destructive' });
       setIsProcessing(false);
     }
@@ -605,11 +609,11 @@ export function DAppRequestHandler({ wallets }: DAppRequestHandlerProps) {
     setIsProcessing(true);
 
     try {
-      console.log('[DAppRequestHandler] Processing invoke:', invokeRequest.method);
+      logger.debug('DAppRequestHandler: Processing invoke:', invokeRequest.method);
       
       // Handle send_transaction method - use existing wallet transaction functions
       if (invokeRequest.method === 'send_transaction') {
-        console.log('[DAppRequestHandler] Executing send_transaction...');
+        logger.debug('DAppRequestHandler: Executing send_transaction...');
         
         // Parse the transaction payload
         let txParams: TransactionPayload;
@@ -636,14 +640,14 @@ export function DAppRequestHandler({ wallets }: DAppRequestHandlerProps) {
             txParams = payload as TransactionPayload;
           }
         } catch (e) {
-          console.error('[DAppRequestHandler] Failed to parse tx payload:', e);
+          logger.error('DAppRequestHandler: Failed to parse tx payload:', e);
           throw new Error('Failed to parse transaction payload');
         }
         
-        console.log('[DAppRequestHandler] Transaction params:', txParams);
-        console.log('[DAppRequestHandler]   to:', txParams.to);
-        console.log('[DAppRequestHandler]   amount:', txParams.amount);
-        console.log('[DAppRequestHandler]   message:', txParams.message ? '(present)' : '(empty)');
+        logger.debug('DAppRequestHandler: Transaction params:', txParams);
+        logger.debug('DAppRequestHandler:   to:', txParams.to);
+        logger.debug('DAppRequestHandler:   amount:', txParams.amount);
+        logger.debug('DAppRequestHandler:   message:', txParams.message ? '(present)' : '(empty)');
         
         // Validate transaction parameters
         if (!txParams.to || typeof txParams.to !== 'string') {
@@ -660,7 +664,7 @@ export function DAppRequestHandler({ wallets }: DAppRequestHandlerProps) {
         
         // Get current nonce and add 1 for new transaction
         // IMPORTANT: Force refresh to get latest nonce from chain, not cached
-        console.log('[DAppRequestHandler] Fetching nonce for:', selectedWallet.address);
+        logger.debug('DAppRequestHandler: Fetching nonce for:', selectedWallet.address);
         const balanceData = await fetchBalance(selectedWallet.address, true); // Force refresh!
         const currentNonce = balanceData.nonce;
         const txNonce = currentNonce + 1; // IMPORTANT: nonce must be current + 1
@@ -670,9 +674,9 @@ export function DAppRequestHandler({ wallets }: DAppRequestHandlerProps) {
         const keyPair = nacl.sign.keyPair.fromSeed(privateKeyBuffer.slice(0, 32));
         const publicKeyHex = Buffer.from(keyPair.publicKey).toString('hex');
         
-        console.log('[DAppRequestHandler] Creating transaction...');
-        console.log('[DAppRequestHandler]   currentNonce:', currentNonce);
-        console.log('[DAppRequestHandler]   txNonce (current+1):', txNonce);
+        logger.debug('DAppRequestHandler: Creating transaction...');
+        logger.debug('DAppRequestHandler:   currentNonce:', currentNonce);
+        logger.debug('DAppRequestHandler:   txNonce (current+1):', txNonce);
         
         // Create and sign transaction using existing wallet functions
         const transaction = createTransaction(
@@ -685,10 +689,10 @@ export function DAppRequestHandler({ wallets }: DAppRequestHandlerProps) {
           txParams.message // Include intent payload as message
         );
         
-        console.log('[DAppRequestHandler] Sending transaction to Octra chain...');
+        logger.debug('DAppRequestHandler: Sending transaction to Octra chain...');
         const txResult = await sendTransaction(transaction);
         
-        console.log('[DAppRequestHandler] Transaction result:', txResult);
+        logger.debug('DAppRequestHandler: Transaction result:', txResult);
         
         if (!txResult.success || !txResult.hash) {
           throw new Error(txResult.error || 'Transaction failed');
@@ -704,7 +708,7 @@ export function DAppRequestHandler({ wallets }: DAppRequestHandlerProps) {
           timestamp: Date.now(),
         };
         
-        console.log('[DAppRequestHandler] ✅ Transaction sent! txHash:', txResult.hash);
+        logger.debug('DAppRequestHandler: ✅ Transaction sent! txHash:', txResult.hash);
         
         if (typeof chrome !== 'undefined' && chrome.runtime) {
           chrome.runtime.sendMessage({
@@ -719,7 +723,7 @@ export function DAppRequestHandler({ wallets }: DAppRequestHandlerProps) {
         // Success - close popup immediately (no toast needed)
       } else if (invokeRequest.method === 'send_evm_transaction') {
         // Handle EVM transaction (ETH on Sepolia)
-        console.log('[DAppRequestHandler] Executing send_evm_transaction...');
+        logger.debug('DAppRequestHandler: Executing send_evm_transaction...');
         
         // Parse the EVM transaction payload
         let evmTxParams: EVMTransactionPayload;
@@ -745,7 +749,7 @@ export function DAppRequestHandler({ wallets }: DAppRequestHandlerProps) {
             evmTxParams = payload as EVMTransactionPayload;
           }
         } catch (e) {
-          console.error('[DAppRequestHandler] Failed to parse EVM tx payload:', e);
+          logger.error('DAppRequestHandler: Failed to parse EVM tx payload:', e);
           throw new Error('Failed to parse EVM transaction payload');
         }
         
@@ -755,18 +759,18 @@ export function DAppRequestHandler({ wallets }: DAppRequestHandlerProps) {
           // Convert wei to ETH
           const weiValue = BigInt(evmTxParams.value);
           amountEth = (Number(weiValue) / 1e18).toString();
-          console.log('[DAppRequestHandler] Converted value (wei) to amount (ETH):', evmTxParams.value, '->', amountEth);
+          logger.debug('DAppRequestHandler: Converted value', { wei: evmTxParams.value, eth: amountEth });
         }
         
         if (!amountEth) {
           throw new Error('No amount or value provided for EVM transaction');
         }
         
-        console.log('[DAppRequestHandler] EVM Transaction params:', evmTxParams);
-        console.log('[DAppRequestHandler]   to:', evmTxParams.to);
-        console.log('[DAppRequestHandler]   amount:', amountEth, 'ETH');
-        console.log('[DAppRequestHandler]   value (wei):', evmTxParams.value || '(not provided)');
-        console.log('[DAppRequestHandler]   data:', evmTxParams.data ? '(present)' : '(empty)');
+        logger.debug('DAppRequestHandler: EVM Transaction params:', evmTxParams);
+        logger.debug('DAppRequestHandler:   to:', evmTxParams.to);
+        logger.debug('DAppRequestHandler: amount', { amount: amountEth, unit: 'ETH' });
+        logger.debug('DAppRequestHandler:   value (wei):', evmTxParams.value || '(not provided)');
+        logger.debug('DAppRequestHandler:   data:', evmTxParams.data ? '(present)' : '(empty)');
         
         // Validate EVM address format
         if (!evmTxParams.to || !/^0x[a-fA-F0-9]{40}$/.test(evmTxParams.to)) {
@@ -790,7 +794,7 @@ export function DAppRequestHandler({ wallets }: DAppRequestHandlerProps) {
           throw new Error('EVM private key not found. Please re-import your wallet.');
         }
         
-        console.log('[DAppRequestHandler] Sending EVM transaction to Sepolia...');
+        logger.debug('DAppRequestHandler: Sending EVM transaction to Sepolia...');
         
         // Send EVM transaction using sendEVMTransaction
         const txHash = await sendEVMTransaction(
@@ -801,7 +805,7 @@ export function DAppRequestHandler({ wallets }: DAppRequestHandlerProps) {
           evmTxParams.data // Intent payload as hex data
         );
         
-        console.log('[DAppRequestHandler] ✅ EVM Transaction sent! txHash:', txHash);
+        logger.debug('DAppRequestHandler: ✅ EVM Transaction sent! txHash:', txHash);
         
         // Return the result to dApp
         const resultData = {
@@ -826,7 +830,7 @@ export function DAppRequestHandler({ wallets }: DAppRequestHandlerProps) {
         // Success - close popup immediately (no toast needed)
       } else if (invokeRequest.method === 'send_erc20_transaction') {
         // Handle ERC20 token transfer (e.g., USDC on Sepolia)
-        console.log('[DAppRequestHandler] Executing send_erc20_transaction...');
+        logger.debug('DAppRequestHandler: Executing send_erc20_transaction...');
         
         // Parse the ERC20 transaction payload
         let erc20TxParams: ERC20TransactionPayload;
@@ -852,19 +856,19 @@ export function DAppRequestHandler({ wallets }: DAppRequestHandlerProps) {
             erc20TxParams = payload as ERC20TransactionPayload;
           }
         } catch (e) {
-          console.error('[DAppRequestHandler] Failed to parse ERC20 tx payload:', e);
+          logger.error('DAppRequestHandler: Failed to parse ERC20 tx payload:', e);
           throw new Error('Failed to parse ERC20 transaction payload');
         }
         
         // Calculate human-readable amount
         const amountHuman = Number(erc20TxParams.amount) / (10 ** erc20TxParams.decimals);
         
-        console.log('[DAppRequestHandler] ERC20 Transaction params:', erc20TxParams);
-        console.log('[DAppRequestHandler]   tokenContract:', erc20TxParams.tokenContract);
-        console.log('[DAppRequestHandler]   to:', erc20TxParams.to);
-        console.log('[DAppRequestHandler]   amount (raw):', erc20TxParams.amount);
-        console.log('[DAppRequestHandler]   amount (human):', amountHuman, erc20TxParams.symbol);
-        console.log('[DAppRequestHandler]   decimals:', erc20TxParams.decimals);
+        logger.debug('DAppRequestHandler: ERC20 Transaction params:', erc20TxParams);
+        logger.debug('DAppRequestHandler:   tokenContract:', erc20TxParams.tokenContract);
+        logger.debug('DAppRequestHandler:   to:', erc20TxParams.to);
+        logger.debug('DAppRequestHandler:   amount (raw):', erc20TxParams.amount);
+        logger.debug('DAppRequestHandler: amount (human)', { amount: amountHuman, symbol: erc20TxParams.symbol });
+        logger.debug('DAppRequestHandler:   decimals:', erc20TxParams.decimals);
         
         // Validate EVM addresses format
         if (!erc20TxParams.tokenContract || !/^0x[a-fA-F0-9]{40}$/.test(erc20TxParams.tokenContract)) {
@@ -895,7 +899,7 @@ export function DAppRequestHandler({ wallets }: DAppRequestHandlerProps) {
           throw new Error('EVM private key not found. Please re-import your wallet.');
         }
         
-        console.log('[DAppRequestHandler] Sending ERC20 transfer to Sepolia...');
+        logger.debug('DAppRequestHandler: Sending ERC20 transfer to Sepolia...');
         
         // Send ERC20 transaction
         const txHash = await sendERC20Transaction(
@@ -906,7 +910,7 @@ export function DAppRequestHandler({ wallets }: DAppRequestHandlerProps) {
           'eth-sepolia'
         );
         
-        console.log('[DAppRequestHandler] ✅ ERC20 Transaction sent! txHash:', txHash);
+        logger.debug('DAppRequestHandler: ✅ ERC20 Transaction sent! txHash:', txHash);
         
         // Return the result to dApp
         const resultData = {
@@ -934,7 +938,7 @@ export function DAppRequestHandler({ wallets }: DAppRequestHandlerProps) {
         // Success - close popup immediately (no toast needed)
       } else {
         // For other methods, return mock success (to be implemented)
-        console.log('[DAppRequestHandler] Executing other method:', invokeRequest.method);
+        logger.debug('DAppRequestHandler: Executing other method:', invokeRequest.method);
         
         if (typeof chrome !== 'undefined' && chrome.runtime) {
           chrome.runtime.sendMessage({
@@ -951,7 +955,7 @@ export function DAppRequestHandler({ wallets }: DAppRequestHandlerProps) {
       
       window.close();
     } catch (error) {
-      console.error('[DAppRequestHandler] Invoke error:', error);
+      logger.error('DAppRequestHandler: Invoke error:', error);
       toast({ 
         title: 'Transaction Failed', 
         description: error instanceof Error ? error.message : 'Unknown error',
@@ -1005,12 +1009,12 @@ export function DAppRequestHandler({ wallets }: DAppRequestHandlerProps) {
 
   const handleSignMessageApprove = async () => {
     if (!signMessageRequest || !selectedWallet) {
-      console.error('[DAppRequestHandler] Missing signMessageRequest or selectedWallet');
+      logger.error('DAppRequestHandler: Missing signMessageRequest or selectedWallet');
       return;
     }
 
     if (!selectedWallet.privateKey) {
-      console.error('[DAppRequestHandler] Wallet has no private key');
+      logger.error('DAppRequestHandler: Wallet has no private key');
       toast({ 
         title: 'Error', 
         description: 'Wallet private key not available. Please unlock your wallet.', 
@@ -1022,7 +1026,7 @@ export function DAppRequestHandler({ wallets }: DAppRequestHandlerProps) {
     setIsProcessing(true);
 
     try {
-      console.log('[DAppRequestHandler] Signing message...');
+      logger.debug('DAppRequestHandler: Signing message...');
       
       // Sign message with Ed25519
       const privateKeyBytes = Buffer.from(selectedWallet.privateKey, 'base64');
@@ -1031,7 +1035,7 @@ export function DAppRequestHandler({ wallets }: DAppRequestHandlerProps) {
       const signature = nacl.sign.detached(messageBytes, keyPair.secretKey);
       const signatureBase64 = Buffer.from(signature).toString('base64');
 
-      console.log('[DAppRequestHandler] Message signed successfully');
+      logger.debug('DAppRequestHandler: Message signed successfully');
 
       // Send response
       if (typeof chrome !== 'undefined' && chrome.runtime) {
@@ -1047,7 +1051,7 @@ export function DAppRequestHandler({ wallets }: DAppRequestHandlerProps) {
       // Success - close popup
       window.close();
     } catch (error) {
-      console.error('[DAppRequestHandler] Sign message error:', error);
+      logger.error('DAppRequestHandler: Sign message error:', error);
       toast({ 
         title: 'Error', 
         description: `Failed to sign message: ${error instanceof Error ? error.message : 'Unknown error'}`, 
@@ -1407,7 +1411,7 @@ export function DAppRequestHandler({ wallets }: DAppRequestHandlerProps) {
             </Button>
             <Button
               onClick={() => {
-                console.log('[DAppRequestHandler] Approve clicked, requestType:', requestType, 'selectedWallet:', selectedWallet?.address);
+                logger.debug('DAppRequestHandler: Approve clicked', { requestType, wallet: selectedWallet?.address });
                 if (requestType === 'connection') handleConnectionApprove();
                 else if (requestType === 'capability') handleCapabilityApprove();
                 else if (requestType === 'signMessage') handleSignMessageApprove();

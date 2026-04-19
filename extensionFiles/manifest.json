@@ -1,14 +1,14 @@
 {
   "manifest_version": 3,
   "name": "OctWa (Octra Wallet)",
-  "version": "1.2.1",
-  "description": "The Octra wallet for public and fully encrypted transactions. Powered by HFHE.",
+  "version": "1.2.4",
+  "description": "Just The Octra wallet.",
   "permissions": [
     "storage",
     "activeTab"
   ],
   "host_permissions": [
-    "https://octra.network/*",
+    "http://46.101.86.250:8080/*",
     "https://octrascan.io/*",
     "https://api.etherscan.io/*",
     "https://mainnet.infura.io/*",
@@ -43,7 +43,7 @@
     "128": "icons/octwa128x128.png"
   },
   "content_security_policy": {
-    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self';"
+    "extension_pages": "script-src 'self'; object-src 'self';"
   },
   "web_accessible_resources": [
     {

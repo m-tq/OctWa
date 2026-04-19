@@ -203,7 +203,6 @@ function SortableWalletItem({
   );
 }
 
-
 // Overlay item for drag preview
 function WalletDragOverlay({
   wallet,

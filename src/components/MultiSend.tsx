@@ -13,7 +13,7 @@ import { ScrollArea, ScrollAreaContent } from '@/components/ui/scroll-area';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Plus, Trash2, AlertTriangle, Wallet as WalletIcon, CheckCircle, MessageSquare, Loader2, Settings2, XCircle, ChevronDown, Clock } from 'lucide-react';
 import { Wallet } from '../types/wallet';
-import { fetchBalance, sendTransaction, createTransaction, invalidateCacheAfterTransaction } from '../utils/api';
+import { fetchBalance, createTransaction, invalidateCacheAfterTransaction, sendTransactionBatch } from '../utils/api';
 import { useToast } from '@/hooks/use-toast';
 import { AnimatedIcon } from './AnimatedIcon';
 import { AddressInput } from './AddressInput';
@@ -194,116 +194,91 @@ export function MultiSend({ wallet, balance, onBalanceUpdate, onNonceUpdate, onT
     setTxProgress({ current: 0, total: recipients.length, currentRecipient: '', currentAmount: '' });
     setElapsedTime(0);
 
-    let startTime = 0; // Will be set when first transaction is submitted
-    const MAX_RETRIES = 5;
-    const RETRY_DELAY = 5000; // 5 seconds delay between retries
+    const startTime = Date.now();
 
     try {
+      // Fetch fresh nonce
       const freshBalanceData = await fetchBalance(wallet.address);
       let currentNonce = freshBalanceData.nonce;
-      const sendResults: Array<{ success: boolean; hash?: string; error?: string; recipient: string; amount: string }> = [];
 
-      for (let i = 0; i < recipients.length; i++) {
-        const recipient = recipients[i];
+      // Create all transactions with sequential nonces
+      const transactions = recipients.map((recipient, index) => {
         const amount = parseFloat(recipient.amount);
-        setTxProgress({ 
-          current: i + 1, 
-          total: recipients.length,
-          currentRecipient: recipient.address,
-          currentAmount: recipient.amount
-        });
-        
-        let txSuccess = false;
-        let lastError = '';
-        let txHash = '';
+        return createTransaction(
+          wallet.address,
+          recipient.address.trim(),
+          amount,
+          currentNonce + index + 1, // Sequential nonces starting from currentNonce + 1
+          wallet.privateKey,
+          wallet.publicKey || '',
+          recipient.message || undefined,
+          getOuValue(amount)
+        );
+      });
 
-        // Try up to MAX_RETRIES times
-        for (let retry = 0; retry <= MAX_RETRIES && !txSuccess; retry++) {
-          try {
-            // Re-fetch nonce on retry to get the latest state
-            if (retry > 0) {
-              // Update progress to show retrying
-              setTxProgress(prev => ({ 
-                ...prev, 
-                currentRecipient: `${recipient.address} (Retry ${retry}/${MAX_RETRIES})`
-              }));
-              
-              // Wait before retry
-              await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
-              
-              // Fetch fresh nonce for retry
-              const retryBalanceData = await fetchBalance(wallet.address);
-              currentNonce = retryBalanceData.nonce;
-            }
+      // Update progress to show batch submission
+      setTxProgress({ 
+        current: 0, 
+        total: recipients.length,
+        currentRecipient: 'Submitting batch...',
+        currentAmount: ''
+      });
 
-            // Start timer when first transaction is about to be submitted
-            if (i === 0 && retry === 0) {
-              startTime = Date.now();
-            }
-
-            const transaction = createTransaction(
-              wallet.address,
-              recipient.address.trim(),
-              amount,
-              currentNonce + 1,
-              wallet.privateKey,
-              wallet.publicKey || '',
-              recipient.message || undefined,
-              getOuValue(amount)
-            );
-
-            const sendResult = await sendTransaction(transaction);
-            
-            if (sendResult.success) {
-              txSuccess = true;
-              txHash = sendResult.hash || '';
-              currentNonce++; // Only increment on success
-            } else {
-              lastError = sendResult.error || 'Transaction failed';
-              // Check if it's a nonce error - if so, retry
-              if (lastError.toLowerCase().includes('nonce') && retry < MAX_RETRIES) {
-                continue; // Will retry
-              }
-              // For non-nonce errors or last retry, break
-              if (retry === MAX_RETRIES) break;
-            }
-          } catch (error) {
-            lastError = error instanceof Error ? error.message : 'Unknown error';
-            // Check if it's a nonce error
-            if (lastError.toLowerCase().includes('nonce') && retry < MAX_RETRIES) {
-              continue; // Will retry
-            }
-            if (retry === MAX_RETRIES) break;
-          }
-        }
-
-        // Add final result
-        const resultEntry = {
-          success: txSuccess,
-          hash: txHash || undefined,
-          error: txSuccess ? undefined : lastError,
-          recipient: recipient.address,
-          amount: recipient.amount
-        };
-        sendResults.push(resultEntry);
-        setResults([...sendResults]); // Update results in real-time
-      }
+      // Submit all transactions in a single batch using octra_submitBatch
+      const batchResult = await sendTransactionBatch(transactions);
 
       // Calculate elapsed time
       const endTime = Date.now();
       const totalElapsed = (endTime - startTime) / 1000; // in seconds
       setElapsedTime(totalElapsed);
 
+      if (!batchResult.success) {
+        // Batch submission failed entirely
+        setTxModalStatus('error');
+        const failedResults = recipients.map((recipient) => ({
+          success: false,
+          error: batchResult.error || 'Batch submission failed',
+          recipient: recipient.address,
+          amount: recipient.amount
+        }));
+        setResults(failedResults);
+        return;
+      }
+
+      // Process batch results
+      const sendResults = recipients.map((recipient, index) => {
+        const result = batchResult.results[index];
+        if (result && result.status === 'accepted') {
+          return {
+            success: true,
+            hash: result.tx_hash,
+            recipient: recipient.address,
+            amount: recipient.amount
+          };
+        } else {
+          return {
+            success: false,
+            error: result?.reason || 'Transaction rejected',
+            recipient: recipient.address,
+            amount: recipient.amount
+          };
+        }
+      });
+
+      setResults(sendResults);
+
       const successCount = sendResults.filter(r => r.success).length;
       const failCount = sendResults.length - successCount;
 
       if (successCount > 0) {
         setTxModalStatus(failCount === 0 ? 'success' : 'partial');
-        onNonceUpdate(currentNonce);
+        // Update nonce to the last successful transaction's nonce
+        const newNonce = currentNonce + successCount;
+        onNonceUpdate(newNonce);
 
+        // Refresh balance after successful transactions
         setTimeout(async () => {
           try {
-            // Invalidate cache first
             await invalidateCacheAfterTransaction(wallet.address);
             const updatedBalance = await fetchBalance(wallet.address, true);
             onBalanceUpdate(updatedBalance.balance);
@@ -322,6 +297,14 @@ export function MultiSend({ wallet, balance, onBalanceUpdate, onNonceUpdate, onT
     } catch (error) {
       console.error('Multi-send error:', error);
       setTxModalStatus('error');
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      const failedResults = recipients.map((recipient) => ({
+        success: false,
+        error: errorMessage,
+        recipient: recipient.address,
+        amount: recipient.amount
+      }));
+      setResults(failedResults);
     } finally {
       setIsSending(false);
     }

@@ -83,7 +83,7 @@ export default defineConfig({
     port: 5173,
     proxy: {
       '/api': {
-        target: 'https://octra.network',
+        target: 'http://46.101.86.250:8080',
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api/, ''),
         secure: true,
@@ -104,11 +104,11 @@ export default defineConfig({
               } catch {
                 console.warn('Invalid RPC URL in header:', rpcUrl);
                 // Keep default host
-                proxyReq.setHeader('host', 'octra.network');
+                proxyReq.setHeader('host', '46.101.86.250');
               }
             } else {
               // Default host if no header provided
-              proxyReq.setHeader('host', 'octra.network');
+              proxyReq.setHeader('host', '46.101.86.250');
             }
           });
         }

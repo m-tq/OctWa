@@ -229,8 +229,19 @@ export class PreClientAdapter implements OctraClientAdapter {
   }
 
   private async executeDecryptBalance(payload: unknown): Promise<unknown> {
-    const p = payload as { address: string; amount: number; privateKey: string };
-    return api.decryptBalance(p.address, p.amount, p.privateKey);
+    const p = payload as { address: string; amount: number; privateKey: string; currentCipher?: string };
+    
+    // Fetch encrypted balance to get current cipher if not provided
+    let cipher = p.currentCipher;
+    if (!cipher) {
+      const encData = await api.fetchEncryptedBalance(p.address, p.privateKey);
+      if (!encData || !encData.cipher) {
+        throw new Error('Cannot get encrypted balance cipher');
+      }
+      cipher = encData.cipher;
+    }
+    
+    return api.decryptBalance(p.address, p.amount, p.privateKey, cipher);
   }
 
   private async executePrivateTransfer(payload: unknown): Promise<unknown> {

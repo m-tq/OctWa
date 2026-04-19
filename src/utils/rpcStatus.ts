@@ -1,8 +1,6 @@
 // Shared RPC Status Manager
 // Prevents duplicate fetching between popup and expanded modes
 
-
-
 export interface RPCStatusData {
   status: 'connected' | 'disconnected' | 'checking' | 'connecting';
   network: string;
@@ -97,7 +95,7 @@ export async function checkRPCStatus(forceRefresh = false): Promise<RPCStatusDat
   if (!forceRefresh) {
     const cached = await getCachedRPCStatus();
     if (cached) {
-      console.log('📡 Using cached RPC status:', cached.status, cached.network);
+      
       return cached;
     }
   }

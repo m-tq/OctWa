@@ -3,7 +3,7 @@ export class ExtensionStorageManager {
   private static isExtension = typeof chrome !== 'undefined' && chrome.storage;
   
   static async init() {
-    console.log('🔧 ExtensionStorageManager: init called, isExtension:', this.isExtension);
+    
     if (!this.isExtension) return;
     
     // Migrate localStorage data to chrome.storage on first run
@@ -156,7 +156,7 @@ export class ExtensionStorageManager {
     if (this.isExtension && chrome.storage.session) {
       try {
         const result = await chrome.storage.session.get(key);
-        console.log(`🔍 ExtensionStorage.getSession(${key}):`, result[key] ? 'found' : 'not found');
+        
         return result[key] || null;
       } catch (error) {
         console.error('Failed to get from chrome.storage.session:', error);
@@ -173,7 +173,7 @@ export class ExtensionStorageManager {
     if (this.isExtension && chrome.storage.session) {
       try {
         await chrome.storage.session.set({ [key]: value });
-        console.log(`✅ ExtensionStorage.setSession(${key}): saved`);
+        
       } catch (error) {
         console.error('Failed to set in chrome.storage.session:', error);
         throw error; // Propagate error - don't silently fail
@@ -188,7 +188,7 @@ export class ExtensionStorageManager {
     if (this.isExtension && chrome.storage.session) {
       try {
         await chrome.storage.session.remove(key);
-        console.log(`🗑️ ExtensionStorage.removeSession(${key}): removed`);
+        
       } catch (error) {
         console.error('Failed to remove from chrome.storage.session:', error);
       }
@@ -206,7 +206,7 @@ export class ExtensionStorageManager {
     if (this.isExtension && chrome.storage.session) {
       try {
         await chrome.storage.session.clear();
-        console.log('🧹 ExtensionStorage: Cleared all session storage');
+        
       } catch (error) {
         console.error('Failed to clear chrome.storage.session:', error);
       }

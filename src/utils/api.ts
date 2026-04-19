@@ -11,7 +11,6 @@ import {
   PrivateTransferResult,
   ClaimResult,
 } from '../types/wallet';
-import { encryptClientBalance } from './crypto';
 import { getActiveRPCProvider } from './rpc';
 import * as nacl from 'tweetnacl';
 
@@ -85,7 +84,7 @@ class APICache {
             this.memoryCache = newValue;
             this.currentEpoch = newValue.currentEpoch || 0;
             this.lastEpochCheck = newValue.lastEpochCheck || 0;
-            console.log('📦 Cache synced from storage');
+            
           }
         }
       });
@@ -102,7 +101,7 @@ class APICache {
         this.memoryCache = result[CACHE_STORAGE_KEY];
         this.currentEpoch = this.memoryCache.currentEpoch || 0;
         this.lastEpochCheck = this.memoryCache.lastEpochCheck || 0;
-        console.log('📦 Cache loaded from storage');
+        
       }
     } catch (error) {
       console.warn('📦 Failed to load cache from storage:', error);
@@ -178,7 +177,7 @@ class APICache {
     // 2. Entry is not older than MAX_CACHE_AGE (TTL fallback for when epoch check fails)
     const age = Date.now() - entry.timestamp;
     if (age > APICache.MAX_CACHE_AGE_MS) {
-      console.log(`📦 Cache expired (age: ${Math.round(age / 1000)}s > ${APICache.MAX_CACHE_AGE_MS / 1000}s)`);
+      
       return false;
     }
     
@@ -189,9 +188,7 @@ class APICache {
   async getBalance(address: string): Promise<BalanceResponse | null> {
     const entry = this.memoryCache.balance[address];
     if (this.isValid(entry)) {
-      console.log(
-        `📦 Cache hit: balance for ${address.slice(0, 8)}`
-      );
+      
       return entry!.data;
     }
     return null;
@@ -204,13 +201,13 @@ class APICache {
       epoch: currentEpoch,
       timestamp: Date.now(),
     };
-    console.log(`📦 Cache set: balance for ${address.slice(0, 8)}`);
+    
     await this.saveToStorage();
   }
 
   async invalidateBalance(address: string): Promise<void> {
     delete this.memoryCache.balance[address];
-    console.log(`📦 Cache invalidated: balance for ${address.slice(0, 8)}`);
+    
     await this.saveToStorage();
   }
 
@@ -220,9 +217,7 @@ class APICache {
   ): Promise<EncryptedBalanceResponse | null> {
     const entry = this.memoryCache.encryptedBalance[address];
     if (this.isValid(entry)) {
-      console.log(
-        `📦 Cache hit: encrypted balance for ${address.slice(0, 8)}`
-      );
+      
       return entry!.data;
     }
     return null;
@@ -238,15 +233,13 @@ class APICache {
       epoch: currentEpoch,
       timestamp: Date.now(),
     };
-    console.log(`📦 Cache set: encrypted balance for ${address.slice(0, 8)}`);
+    
     await this.saveToStorage();
   }
 
   async invalidateEncryptedBalance(address: string): Promise<void> {
     delete this.memoryCache.encryptedBalance[address];
-    console.log(
-      `📦 Cache invalidated: encrypted balance for ${address.slice(0, 8)}`
-    );
+    
     await this.saveToStorage();
   }
 
@@ -254,7 +247,7 @@ class APICache {
   async getHistory(address: string): Promise<any | null> {
     const entry = this.memoryCache.history[address];
     if (this.isValid(entry)) {
-      console.log(`📦 Cache hit: history for ${address.slice(0, 8)}`);
+      
       return entry!.data;
     }
     return null;
@@ -267,13 +260,13 @@ class APICache {
       epoch: currentEpoch,
       timestamp: Date.now(),
     };
-    console.log(`📦 Cache set: history for ${address.slice(0, 8)}`);
+    
     await this.saveToStorage();
   }
 
   async invalidateHistory(address: string): Promise<void> {
     delete this.memoryCache.history[address];
-    console.log(`📦 Cache invalidated: history for ${address.slice(0, 8)}`);
+    
     await this.saveToStorage();
   }
 
@@ -283,7 +276,7 @@ class APICache {
   ): Promise<PendingPrivateTransfer[] | null> {
     const entry = this.memoryCache.pendingTransfers[address];
     if (this.isValid(entry)) {
-      console.log(`📦 Cache hit: pending transfers for ${address.slice(0, 8)}`);
+      
       return entry!.data;
     }
     return null;
@@ -299,17 +292,13 @@ class APICache {
       epoch: currentEpoch,
       timestamp: Date.now(),
     };
-    console.log(
-      `📦 Cache set: pending transfers for ${address.slice(0, 8)} (epoch ${currentEpoch})`
-    );
+    
     await this.saveToStorage();
   }
 
   async invalidatePendingTransfers(address: string): Promise<void> {
     delete this.memoryCache.pendingTransfers[address];
-    console.log(
-      `📦 Cache invalidated: pending transfers for ${address.slice(0, 8)}`
-    );
+    
     await this.saveToStorage();
   }
 
@@ -317,60 +306,47 @@ class APICache {
   async getTransactionDetails(hash: string): Promise<TransactionDetails | null> {
     const entry = this.memoryCache.transactionDetails[hash];
     if (this.isValid(entry)) {
-      console.log(`📦 Cache hit: transaction details for ${hash.slice(0, 8)}`);
+      
       return entry!.data;
     }
     return null;
   }
 
-  async setTransactionDetails(hash: string, data: TransactionDetails): Promise<void> {
+  async setTransactionDetails(_hash: string, _data: TransactionDetails): Promise<void> {
+    // DISABLED: Transaction details caching causes quota exceeded errors
+    // Don't cache transaction details to save storage space
+    
+    return;
+    
+    /* Original code - disabled
     const currentEpoch = await this.getCurrentEpoch();
     this.memoryCache.transactionDetails[hash] = {
       data,
       epoch: currentEpoch,
       timestamp: Date.now(),
     };
-    console.log(`📦 Cache set: transaction details for ${hash.slice(0, 8)}`);
+    
     await this.saveToStorage();
+    */
   }
 
   async invalidateTransactionDetails(hash: string): Promise<void> {
     delete this.memoryCache.transactionDetails[hash];
-    console.log(`📦 Cache invalidated: transaction details for ${hash.slice(0, 8)}`);
+    
     await this.saveToStorage();
   }
 
   // Background cache transaction details for confirmed transactions
-  async cacheTransactionDetailsInBackground(hashes: string[]): Promise<void> {
-    // Run in background without blocking
-    setTimeout(async () => {
-      console.log(`📦 Background caching ${hashes.length} transaction details...`);
-      for (const hash of hashes) {
-        try {
-          // Check if already cached
-          const cached = await this.getTransactionDetails(hash);
-          if (cached) {
-            continue; // Skip if already cached
-          }
-
-          // Fetch and cache
-          const details = await this.fetchTransactionDetailsForCache(hash);
-          if (details) {
-            await this.setTransactionDetails(hash, details);
-          }
-          
-          // Small delay between requests to avoid overwhelming the server
-          await new Promise(resolve => setTimeout(resolve, 100));
-        } catch (error) {
-          console.warn(`📦 Failed to cache transaction details for ${hash.slice(0, 8)}:`, error);
-        }
-      }
-      console.log(`📦 Background caching complete`);
-    }, 0);
+  async cacheTransactionDetailsInBackground(_hashes: string[]): Promise<void> {
+    // DISABLED: Background caching causes quota exceeded errors
+    // Only cache on-demand when user views transaction details
+    
+    return;
   }
 
   // Helper method to fetch transaction details (used by background caching)
-  private async fetchTransactionDetailsForCache(hash: string): Promise<TransactionDetails | null> {
+  // DISABLED: Not used anymore since background caching is disabled
+  /* private async fetchTransactionDetailsForCache(hash: string): Promise<TransactionDetails | null> {
     try {
       const response = await makeAPIRequest(`/tx/${hash}`);
       
@@ -383,7 +359,7 @@ class APICache {
     } catch {
       return null;
     }
-  }
+  } */
 
   // Invalidate all cache for an address (call after transactions)
   async invalidateAll(address: string): Promise<void> {
@@ -393,7 +369,7 @@ class APICache {
     delete this.memoryCache.pendingTransfers[address];
     // Note: We don't clear transactionDetails here as they're indexed by hash, not address
     // Transaction details remain cached as they're immutable once confirmed
-    console.log(`📦 Cache invalidated: ALL for ${address.slice(0, 8)}`);
+    
     await this.saveToStorage();
   }
 
@@ -402,7 +378,7 @@ class APICache {
     for (const address of addresses) {
       delete this.memoryCache.balance[address];
     }
-    console.log(`📦 Cache invalidated: nonces for ${addresses.length} wallets`);
+    
     await this.saveToStorage();
   }
 
@@ -417,7 +393,7 @@ class APICache {
       currentEpoch: this.currentEpoch,
       lastEpochCheck: this.lastEpochCheck
     };
-    console.log('📦 Cache cleared: ALL');
+    
     await this.saveToStorage();
   }
 
@@ -455,7 +431,7 @@ class APICache {
     const newEpoch = await this.fetchEpoch();
     
     if (oldEpoch > 0 && newEpoch > oldEpoch) {
-      console.log(`📦 Epoch change detected: ${oldEpoch} → ${newEpoch}`);
+      
       this.notifyEpochChange(newEpoch, oldEpoch);
       return true;
     }
@@ -562,7 +538,7 @@ async function makeAPIRequest(endpoint: string, options: RequestInit = {}, retry
     headers['X-RPC-Target'] = provider.url;
   }
   
-  // console.log(`Making API request to: ${provider.url}${cleanEndpoint} (via proxy: ${url})`);
+  // 
   
   try {
     const response = await fetch(url, {
@@ -609,7 +585,13 @@ async function safeJsonParse(response: Response): Promise<any> {
     }
     return JSON.parse(text);
   } catch (error) {
-    console.error('Failed to parse JSON response:', error);
+    // Better error logging
+    if (error instanceof Error) {
+      console.error('Failed to parse JSON response:', error.message);
+      console.error('Error type:', error.name);
+    } else {
+      console.error('Failed to parse JSON response:', error);
+    }
     throw new Error('Invalid JSON response from server');
   }
 }
@@ -665,13 +647,23 @@ export async function sendTransaction(transaction: Transaction): Promise<{
   reason?: string;
 }> {
   try {
-    // WEBCLI LOGIC: Submit transaction to RPC node
-    const response = await makeAPIRequest(`/send-tx`, {
+    // WEBCLI LOGIC: Submit transaction via JSON-RPC 2.0 (rpc_client.hpp:123-125)
+    // Endpoint: POST /rpc
+    // Method: octra_submit
+    // Params: [transaction_object]
+    const rpcRequest = {
+      jsonrpc: '2.0',
+      id: Date.now(),
+      method: 'octra_submit',
+      params: [transaction]
+    };
+
+    const response = await makeAPIRequest(`/rpc`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify(transaction),
+      body: JSON.stringify(rpcRequest),
     });
 
     const text = await response.text();
@@ -680,44 +672,65 @@ export async function sendTransaction(transaction: Transaction): Promise<{
       try {
         const data = JSON.parse(text);
         
-        // WEBCLI RESPONSE FORMAT: Check for status field
-        if (data.status === 'accepted' || data.status === 'rejected') {
-          const finality = data.finality as 'pending' | 'confirmed' | 'rejected';
-          
-          if (data.status === 'accepted') {
-            return { 
-              success: true, 
-              hash: data.hash || data.tx_hash,
-              finality: finality
-            };
-          } else {
-            // Status is 'rejected'
-            return { 
-              success: false, 
-              error: data.reason || 'Transaction rejected',
-              finality: 'rejected',
-              reason: data.reason
-            };
-          }
+        // JSON-RPC 2.0 response format
+        if (data.error) {
+          return {
+            success: false,
+            error: data.error.message || data.error.reason || 'Transaction failed',
+            reason: data.error.reason
+          };
         }
         
-        // WEBCLI LEGACY FORMAT: tx_hash field
-        if (data.tx_hash) {
-          return { success: true, hash: data.tx_hash };
+        // Success response in result field
+        const result = data.result || {};
+        
+        // Check status field (accepted/rejected)
+        if (result.status === 'accepted') {
+          return { 
+            success: true, 
+            hash: result.tx_hash || result.hash,
+            finality: 'pending'
+          };
+        } else if (result.status === 'rejected') {
+          return { 
+            success: false, 
+            error: result.reason || 'Transaction rejected',
+            finality: 'rejected',
+            reason: result.reason
+          };
         }
-      } catch {
-        // Try to parse legacy format
-        const hashMatch = text.match(/OK\s+([0-9a-fA-F]{64})/);
-        if (hashMatch) {
-          return { success: true, hash: hashMatch[1] };
+        
+        // Fallback: if we have tx_hash, consider it success
+        if (result.tx_hash || result.hash) {
+          return {
+            success: true,
+            hash: result.tx_hash || result.hash,
+            finality: 'pending'
+          };
         }
+        
+        return {
+          success: false,
+          error: 'Unknown response format'
+        };
+      } catch (parseError) {
+        console.error('Failed to parse response:', parseError);
+        return { success: false, error: 'Invalid response format' };
       }
-      return { success: true, hash: text };
     }
 
-    // Handle error responses
+    // Handle error responses (non-200 status)
     try {
       const errorData = JSON.parse(text);
+      
+      // JSON-RPC error format
+      if (errorData.error) {
+        const errorMessage = errorData.error.message || errorData.error.reason || 'Transaction failed';
+        console.error('Transaction failed:', errorMessage);
+        return { success: false, error: errorMessage };
+      }
+      
+      // Legacy error format
       const errorMessage = getTransactionErrorMessage(errorData.error || errorData.reason || text);
       console.error('Transaction failed:', errorMessage);
       return { success: false, error: errorMessage };
@@ -727,7 +740,17 @@ export async function sendTransaction(transaction: Transaction): Promise<{
     }
   } catch (error) {
     console.error('Error sending transaction:', error);
-    return { success: false, error: error instanceof Error ? error.message : 'Network error occurred' };
+    // Ensure we always throw an Error object, not a plain object
+    if (error instanceof Error) {
+      return { success: false, error: error.message };
+    }
+    // If error is an object with type/reason, extract the message
+    if (typeof error === 'object' && error !== null) {
+      const errorObj = error as { type?: string; reason?: string; message?: string };
+      const errorMsg = errorObj.reason || errorObj.message || errorObj.type || 'Network error occurred';
+      return { success: false, error: errorMsg };
+    }
+    return { success: false, error: 'Network error occurred' };
   }
 }
 
@@ -746,6 +769,156 @@ function getTransactionErrorMessage(errorType: string): string {
   };
   
   return errorMessages[errorType] || errorType || 'Transaction failed';
+}
+
+// Submit multiple transactions in a single batch using octra_submitBatch
+export async function sendTransactionBatch(transactions: Transaction[]): Promise<{
+  success: boolean;
+  total: number;
+  accepted: number;
+  rejected: number;
+  results: Array<{
+    status: 'accepted' | 'rejected';
+    tx_hash?: string;
+    reason?: string;
+    nonce?: number;
+  }>;
+  error?: string;
+}> {
+  try {
+    // DOCS.HTML: octra_submitBatch accepts array of signed tx objects
+    // Returns: {total, accepted, rejected, results:[{status, tx_hash/reason, nonce}]}
+    const rpcRequest = {
+      jsonrpc: '2.0',
+      id: Date.now(),
+      method: 'octra_submitBatch',
+      params: [transactions] // Array of transaction objects
+    };
+
+    const response = await makeAPIRequest(`/rpc`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(rpcRequest),
+    });
+
+    const text = await response.text();
+
+    if (response.ok) {
+      try {
+        const data = JSON.parse(text);
+        
+        // JSON-RPC 2.0 error response
+        if (data.error) {
+          return {
+            success: false,
+            total: transactions.length,
+            accepted: 0,
+            rejected: transactions.length,
+            results: [],
+            error: data.error.message || data.error.reason || 'Batch submission failed'
+          };
+        }
+        
+        // Success response in result field
+        const result = data.result || {};
+        
+        return {
+          success: true,
+          total: result.total || transactions.length,
+          accepted: result.accepted || 0,
+          rejected: result.rejected || 0,
+          results: result.results || []
+        };
+      } catch (parseError) {
+        console.error('Failed to parse batch response:', parseError);
+        return {
+          success: false,
+          total: transactions.length,
+          accepted: 0,
+          rejected: transactions.length,
+          results: [],
+          error: 'Invalid response format'
+        };
+      }
+    }
+
+    // Handle error responses (non-200 status)
+    try {
+      const errorData = JSON.parse(text);
+      
+      // JSON-RPC error format
+      if (errorData.error) {
+        const errorMessage = errorData.error.message || errorData.error.reason || 'Batch submission failed';
+        console.error('Batch submission failed:', errorMessage);
+        return {
+          success: false,
+          total: transactions.length,
+          accepted: 0,
+          rejected: transactions.length,
+          results: [],
+          error: errorMessage
+        };
+      }
+      
+      // Legacy error format
+      const errorMessage = getTransactionErrorMessage(errorData.error || errorData.reason || text);
+      console.error('Batch submission failed:', errorMessage);
+      return {
+        success: false,
+        total: transactions.length,
+        accepted: 0,
+        rejected: transactions.length,
+        results: [],
+        error: errorMessage
+      };
+    } catch {
+      console.error('Batch submission failed:', text);
+      return {
+        success: false,
+        total: transactions.length,
+        accepted: 0,
+        rejected: transactions.length,
+        results: [],
+        error: text || 'Batch submission failed'
+      };
+    }
+  } catch (error) {
+    console.error('Error sending transaction batch:', error);
+    // Ensure we always return proper error format
+    if (error instanceof Error) {
+      return {
+        success: false,
+        total: transactions.length,
+        accepted: 0,
+        rejected: transactions.length,
+        results: [],
+        error: error.message
+      };
+    }
+    // If error is an object with type/reason, extract the message
+    if (typeof error === 'object' && error !== null) {
+      const errorObj = error as { type?: string; reason?: string; message?: string };
+      const errorMsg = errorObj.reason || errorObj.message || errorObj.type || 'Network error occurred';
+      return {
+        success: false,
+        total: transactions.length,
+        accepted: 0,
+        rejected: transactions.length,
+        results: [],
+        error: errorMsg
+      };
+    }
+    return {
+      success: false,
+      total: transactions.length,
+      accepted: 0,
+      rejected: transactions.length,
+      results: [],
+      error: 'Network error occurred'
+    };
+  }
 }
 
 // Check transaction status using octra_transaction RPC method
@@ -854,7 +1027,7 @@ export async function fetchTransactionHistory(
   address: string, 
   options: HistoryPaginationOptions = {}
 ): Promise<AddressHistoryResponse & { totalCount: number }> {
-  const { limit = 20, offset = 0 } = options;
+  const { limit = 11, offset = 0 } = options;
   
   try {
     // WEBCLI LOGIC: Fetch confirmed and pending transactions in parallel
@@ -938,7 +1111,7 @@ export async function fetchTransactionHistory(
     const confirmedTransactions = await Promise.all(confirmedTransactionPromises);
     
     const confirmedHashes = new Set(confirmedTransactions.map(tx => tx.hash));
-    
+
     // WEBCLI LOGIC: Format pending transactions
     const pendingTransactionsFormatted = pendingTransactions.map(tx => {
       // Determine op_type from message
@@ -957,18 +1130,37 @@ export async function fetchTransactionHistory(
         message: tx.message
       };
     });
+
+    // Log any pending transactions that are also in confirmed (should be filtered out)
+    const duplicates = pendingTransactionsFormatted.filter(tx => confirmedHashes.has(tx.hash));
+    if (duplicates.length > 0) {
+      
+    }
     
     // WEBCLI LOGIC: Only include pending transactions on first page (offset === 0)
+    // Filter out any pending transactions that are already confirmed
     const pendingToInclude = offset === 0
       ? pendingTransactionsFormatted.filter(tx => !confirmedHashes.has(tx.hash))
       : [];
     
     // WEBCLI LOGIC: Merge and sort by timestamp (newest first)
-    const allTransactions = [...pendingToInclude, ...confirmedTransactions]
+    // Put confirmed transactions first to ensure they take precedence
+    const allTransactions = [...confirmedTransactions, ...pendingToInclude]
       .sort((a, b) => b.timestamp - a.timestamp);
     
+    // Additional safety: Remove any duplicate hashes (keep first occurrence which is confirmed)
+    const seenHashes = new Set<string>();
+    const uniqueTransactions = allTransactions.filter(tx => {
+      if (seenHashes.has(tx.hash)) {
+        
+        return false;
+      }
+      seenHashes.add(tx.hash);
+      return true;
+    });
+    
     return {
-      transactions: allTransactions,
+      transactions: uniqueTransactions,
       balance: parseFloat(apiData.balance),
       totalCount: apiData.transaction_count || 0
     };
@@ -983,15 +1175,17 @@ export async function fetchTransactionHistory(
   }
 }
 
-export async function fetchTransactionDetails(hash: string, forceRefresh = false): Promise<TransactionDetails> {
-  // Check cache first (unless force refresh)
-  if (!forceRefresh) {
-    const cached = await apiCache.getTransactionDetails(hash);
-    if (cached) return cached;
-  }
-
+export async function fetchTransactionDetails(hash: string, _forceRefresh = false): Promise<TransactionDetails> {
+  // DISABLED: Transaction details caching causes quota exceeded errors
+  // Always fetch fresh data, don't use cache
+  
   try {
+    // Add timeout to prevent hanging requests
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+    
     const response = await makeAPIRequest(`/tx/${hash}`);
+    clearTimeout(timeoutId);
     
     if (!response.ok) {
       const errorText = await response.text();
@@ -1001,10 +1195,7 @@ export async function fetchTransactionDetails(hash: string, forceRefresh = false
     
     const data = await safeJsonParse(response);
     
-    // Cache the result (only if it's a confirmed transaction)
-    if (data && data.parsed_tx) {
-      await apiCache.setTransactionDetails(hash, data);
-    }
+    // Don't cache to save storage space
     
     return data;
   } catch (error) {
@@ -1097,7 +1288,7 @@ export async function fetchPendingTransactionByHash(hash: string, maxRetries: nu
       // If not found and we have retries left, wait and try again
       // (transaction might not be propagated yet)
       if (attempt < maxRetries) {
-        console.log(`Pending transaction not found (attempt ${attempt}), retrying...`);
+        
         await new Promise(resolve => setTimeout(resolve, 500 * attempt));
         continue;
       }
@@ -1209,137 +1400,94 @@ export async function fetchBalance(address: string, forceRefresh = false): Promi
 }
 
 export async function fetchEncryptedBalance(address: string, privateKey?: string, forceRefresh = false): Promise<EncryptedBalanceResponse | null> {
-  // Check cache first (unless force refresh)
-  if (!forceRefresh) {
-    const cached = await apiCache.getEncryptedBalance(address);
-    if (cached) return cached;
-  }
-
   try {
-    const headers: Record<string, string> = {};
+    // Step 1: Fetch public balance first
+    const publicBalance = await fetchBalance(address, forceRefresh);
+    
+    // Step 2: Try to fetch encrypted balance if private key is provided
+    let encryptedRaw = 0;
+    let cipher = '0';
+    
     if (privateKey) {
-      headers['X-Private-Key'] = privateKey;
-    }
-    
-    const response = await makeAPIRequest(`/view_encrypted_balance/${address}`, {
-      headers
-    });
-    
-    if (!response.ok) {
-      console.error('Failed to fetch encrypted balance:', response.status);
-      return null;
-    }
-    
-    let data: any;
-    try {
-      const responseText = await response.text();
-      if (!responseText.trim()) {
-        console.error('Empty response from encrypted balance API');
-        return null;
+      try {
+        // Import encrypted balance service
+        const { fetchEncryptedBalanceFromNode } = await import('../services/encryptedBalanceService');
+        
+        // Get RPC URL from active provider
+        const provider = getActiveRPCProvider();
+        if (!provider) {
+          throw new Error('No active RPC provider');
+        }
+        const rpcUrl = provider.url;
+        
+        // IMPORTANT: privateKey is 32-byte seed in base64 format
+        // The service will convert it to 64-byte secret key internally
+        const result = await fetchEncryptedBalanceFromNode(
+          address,
+          privateKey, // Pass as-is (32-byte seed base64)
+          rpcUrl
+        );
+        
+        cipher = result.cipher;
+        
+        // Try to decrypt using PVAC server if cipher exists
+        if (cipher && cipher !== '0' && cipher.startsWith('hfhe_v1|')) {
+          try {
+            const { pvacServerService } = await import('../services/pvacServerService');
+            
+            if (pvacServerService.isEnabled()) {
+              
+              const decryptResult = await pvacServerService.decryptBalance(cipher, privateKey);
+              
+              if (decryptResult.success && decryptResult.balance) {
+                encryptedRaw = decryptResult.balance;
+                
+              }
+            } else {
+              
+            }
+          } catch (decryptError) {
+            console.warn('[EncryptedBalance] Failed to decrypt balance:', decryptError);
+            // Continue with cipher only
+          }
+        }
+
+      } catch (encError) {
+        console.warn('[EncryptedBalance] Failed to fetch encrypted balance:', encError);
+        // Continue with public balance only
       }
-      data = JSON.parse(responseText);
-    } catch (parseError) {
-      console.error('Failed to parse encrypted balance response as JSON:', parseError);
-      return null;
     }
     
-    const result = {
-      public: parseFloat(data.public_balance?.split(' ')[0] || '0'),
-      public_raw: parseInt(data.public_balance_raw || '0'),
-      encrypted: parseFloat(data.encrypted_balance?.split(' ')[0] || '0'),
-      encrypted_raw: parseInt(data.encrypted_balance_raw || '0'),
-      total: parseFloat(data.total_balance?.split(' ')[0] || '0')
+    return {
+      public: publicBalance.balance,
+      public_raw: Math.floor(publicBalance.balance * MU_FACTOR),
+      encrypted: encryptedRaw / MU_FACTOR,
+      encrypted_raw: encryptedRaw,
+      total: publicBalance.balance + (encryptedRaw / MU_FACTOR),
+      cipher
     };
-    
-    // Cache the result
-    await apiCache.setEncryptedBalance(address, result);
-    return result;
   } catch (error) {
-    console.error('Error fetching encrypted balance:', error);
+    console.error('Error fetching balance:', error);
     return null;
   }
 }
 
-export async function encryptBalance(address: string, amount: number, privateKey: string): Promise<{ success: boolean; tx_hash?: string; error?: string }> {
-  try {
-    const encData = await fetchEncryptedBalance(address, privateKey);
-    if (!encData) {
-      return { success: false, error: "Cannot get balance" };
-    }
-    
-    const currentEncryptedRaw = encData.encrypted_raw;
-    const newEncryptedRaw = currentEncryptedRaw + Math.floor(amount * MU_FACTOR);
-    
-    const encryptedValue = await encryptClientBalance(newEncryptedRaw, privateKey);
-    
-    const data = {
-      address,
-      amount: Math.floor(amount * MU_FACTOR).toString(),
-      private_key: privateKey,
-      encrypted_data: encryptedValue
-    };
-    
-    const response = await makeAPIRequest('/encrypt_balance', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(data),
-    });
-    
-    if (response.ok) {
-      const result = await response.json();
-      return { success: true, tx_hash: result.tx_hash };
-    } else {
-      const error = await response.text();
-      return { success: false, error };
-    }
-  } catch (error) {
-    return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
-  }
+// Helper function removed - no longer needed
+
+export async function encryptBalance(_address: string, _amount: number, _privateKey: string): Promise<{ success: boolean; tx_hash?: string; error?: string }> {
+  // COMING SOON: Encrypted balance feature will be available in future release
+  return { 
+    success: false, 
+    error: 'Encrypted balance feature coming soon. Please use standard transactions for now.' 
+  };
 }
 
-export async function decryptBalance(address: string, amount: number, privateKey: string): Promise<{ success: boolean; tx_hash?: string; error?: string }> {
-  try {
-    const encData = await fetchEncryptedBalance(address, privateKey);
-    if (!encData) {
-      return { success: false, error: "Cannot get balance" };
-    }
-    
-    const currentEncryptedRaw = encData.encrypted_raw;
-    if (currentEncryptedRaw < Math.floor(amount * MU_FACTOR)) {
-      return { success: false, error: "Insufficient encrypted balance" };
-    }
-    
-    const newEncryptedRaw = currentEncryptedRaw - Math.floor(amount * MU_FACTOR);
-    
-    const encryptedValue = await encryptClientBalance(newEncryptedRaw, privateKey);
-    
-    const data = {
-      address,
-      amount: Math.floor(amount * MU_FACTOR).toString(),
-      private_key: privateKey,
-      encrypted_data: encryptedValue
-    };
-    
-    const response = await makeAPIRequest('/decrypt_balance', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(data),
-    });
-    
-    if (response.ok) {
-      const result = await response.json();
-      return { success: true, tx_hash: result.tx_hash };
-    } else {
-      const error = await response.text();
-      return { success: false, error };
-    }
-  } catch (error) {
-    return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
-  }
+export async function decryptBalance(_address: string, _amount: number, _privateKey: string, _currentCipher: string): Promise<{ success: boolean; tx_hash?: string; error?: string }> {
+  // COMING SOON: Encrypted balance feature will be available in future release
+  return { 
+    success: false, 
+    error: 'Encrypted balance feature coming soon. Please use standard transactions for now.' 
+  };
 }
 
 export async function createPrivateTransfer(fromAddress: string, toAddress: string, amount: number, fromPrivateKey: string): Promise<PrivateTransferResult> {
@@ -1386,47 +1534,9 @@ export async function createPrivateTransfer(fromAddress: string, toAddress: stri
   }
 }
 
-export async function getPendingPrivateTransfers(address: string, privateKey?: string, forceRefresh = false): Promise<PendingPrivateTransfer[]> {
-  // Check cache first (unless force refresh)
-  if (!forceRefresh) {
-    const cached = await apiCache.getPendingTransfers(address);
-    if (cached) return cached;
-  }
-
-  try {
-    const headers: Record<string, string> = {};
-    if (privateKey) {
-      headers['X-Private-Key'] = privateKey;
-    }
-    
-    const response = await makeAPIRequest(`/pending_private_transfers?address=${address}`, {
-      headers
-    });
-    
-    if (response.ok) {
-      let data: any;
-      try {
-        const responseText = await response.text();
-        if (!responseText.trim()) {
-          console.error('Empty response from pending private transfers API');
-          return [];
-        }
-        data = JSON.parse(responseText);
-      } catch (parseError) {
-        console.error('Failed to parse pending private transfers response as JSON:', parseError);
-        return [];
-      }
-      const transfers = data.pending_transfers || [];
-      // Cache the result
-      await apiCache.setPendingTransfers(address, transfers);
-      return transfers;
-    }
-    console.error('Failed to fetch pending private transfers:', response.status);
-    return [];
-  } catch (error) {
-    console.error('Error fetching pending private transfers:', error);
-    return [];
-  }
+export async function getPendingPrivateTransfers(_address: string, _privateKey?: string, _forceRefresh = false): Promise<PendingPrivateTransfer[]> {
+  // COMING SOON: Private transfer feature will be available in future release
+  return [];
 }
 
 export async function claimPrivateTransfer(recipientAddress: string, privateKey: string, transferId: string): Promise<ClaimResult> {
@@ -1489,7 +1599,7 @@ export function createTransaction(
     nonce,
     ou,
     timestamp,
-    op_type: 'standard', // WEBCLI: always include op_type
+    op_type: 'standard', // WEBCLI: uses 'standard' for normal transfers (see main.cpp:1056)
   };
 
   // Add message if provided - WEBCLI LOGIC
@@ -1498,8 +1608,8 @@ export function createTransaction(
   }
 
   // WEBCLI CANONICAL JSON FORMAT
-  // Build canonical JSON exactly like webcli does:
-  // {"from":"...","to_":"...","amount":"...","nonce":N,"ou":"...","timestamp":T,"op_type":"..."}
+  // Build canonical JSON exactly like webcli does (tx_builder.hpp:88-98):
+  // Order: from, to_, amount, nonce, ou, timestamp, op_type, [encrypted_data], [message]
   const canonicalFields: any = {
     from: transaction.from,
     to_: transaction.to_,
@@ -1510,7 +1620,10 @@ export function createTransaction(
     op_type: transaction.op_type,
   };
 
-  // Add optional fields in canonical order (webcli includes encrypted_data before message)
+  // Add optional fields in canonical order - WEBCLI: encrypted_data BEFORE message
+  if (transaction.encrypted_data) {
+    canonicalFields.encrypted_data = transaction.encrypted_data;
+  }
   if (transaction.message) {
     canonicalFields.message = transaction.message;
   }

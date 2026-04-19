@@ -59,8 +59,6 @@ export function SplashScreen({
   const [isAnimating, setIsAnimating] = useState(true);
   const [isFading, setIsFading] = useState(false);
 
-  console.log('🎨 SplashScreen isPopupMode:', isPopupMode);
-
   useEffect(() => {
     const fadeTimer = setTimeout(() => {
       setIsFading(true);

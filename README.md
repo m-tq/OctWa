@@ -126,7 +126,7 @@ npm run build:extension
 
 ## Configuration
 
-Default RPC: `https://octra.network`
+Default RPC: `http://46.101.86.250:8080` (Octra Mainnet)
 
 Manage providers via UI (RPC Provider Manager) or seed `localStorage` key `rpcProviders`.
 

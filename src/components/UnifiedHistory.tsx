@@ -23,6 +23,7 @@ import {
   ChevronLeft,
   ChevronRight,
   MessageSquare,
+  Lock,
 } from 'lucide-react';
 import { Wallet } from '../types/wallet';
 import { getTransactionHistory, fetchTransactionDetails, fetchPendingTransactionByHash } from '../utils/api';
@@ -63,32 +64,23 @@ export function UnifiedHistory({ wallet, transactions, onTransactionsUpdate, isL
   const historyListRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
 
-  // Scanner/Explorer configuration from environment variables
-  const scannerUrl = import.meta.env.VITE_SCANNER_URL || 'https://octrascan.io/tx.html?hash=';
-  const scannerName = import.meta.env.VITE_SCANNER_NAME || 'Explorer';
-  const scannerAddressUrl = scannerUrl.replace('/tx.html?hash=', '/address/');
+  // Hardcoded octrascan.io URLs
+  const scannerUrl = 'https://octrascan.io/tx.html?hash=';
+  const scannerName = 'Octrascan';
+  const scannerAddressUrl = 'https://octrascan.io/address.html?addr=';
 
-  // Filter transactions based on operationMode and activeFilter
-  const filteredTransactions = transactions.filter(tx => {
-    if (operationMode === 'private') {
-      // Private mode: only show private transfers (op_type === 'private')
-      return isPrivateTransfer(tx);
-    } else {
-      // Public mode: show non-private transfers, contract calls handled separately by filter
-      return !isPrivateTransfer(tx);
-    }
-  });
+  // Unified: show ALL transactions regardless of operationMode
+  const filteredTransactions = transactions;
 
-  // Count contract calls for public mode filter
-  const contractCallCount = operationMode === 'public' 
-    ? filteredTransactions.filter(tx => isContractCall(tx)).length 
-    : 0;
+  // Count contract calls
+  const contractCallCount = filteredTransactions.filter(tx => isContractCall(tx)).length;
 
-  // Count sent/received (excluding contract calls in public mode)
-  const sentCount = filteredTransactions.filter(tx => tx.type === 'sent' && !isContractCall(tx)).length;
-  const receivedCount = filteredTransactions.filter(tx => tx.type === 'received' && !isContractCall(tx)).length;
+  // Count sent/received (excluding contract calls AND state changes)
+  const sentCount = filteredTransactions.filter(tx => tx.type === 'sent' && !isContractCall(tx) && tx.op_type !== 'encrypt' && tx.op_type !== 'decrypt').length;
+  const receivedCount = filteredTransactions.filter(tx => tx.type === 'received' && !isContractCall(tx) && tx.op_type !== 'encrypt' && tx.op_type !== 'decrypt').length;
 
-
+  // Count private txs for badge
+  const privateCount = filteredTransactions.filter(tx => isPrivateTransfer(tx)).length;
 
   const fetchTransactions = async (page: number = 1) => {
     if (!wallet) return;
@@ -188,20 +180,21 @@ export function UnifiedHistory({ wallet, transactions, onTransactionsUpdate, isL
     );
   }
 
-  // Get unified history using filtered transactions (based on operationMode)
-  // Apply additional filter for contract calls in public mode
+  // Get unified history - show all transactions with op_type badges
   const getFilteredHistory = () => {
     let txsToShow = filteredTransactions;
     
-    // In public mode, apply contract filter
-    if (operationMode === 'public' && activeFilter === 'contract') {
+    if (activeFilter === 'contract') {
       txsToShow = filteredTransactions.filter(tx => isContractCall(tx));
-    } else if (operationMode === 'public' && activeFilter !== 'all') {
-      // For sent/received in public mode, exclude contract calls
-      txsToShow = filteredTransactions.filter(tx => !isContractCall(tx));
+    } else if (activeFilter === 'private') {
+      txsToShow = filteredTransactions.filter(tx => isPrivateTransfer(tx));
+    } else if (activeFilter === 'sent') {
+      txsToShow = filteredTransactions.filter(tx => tx.type === 'sent' && !isContractCall(tx) && tx.op_type !== 'encrypt' && tx.op_type !== 'decrypt');
+    } else if (activeFilter === 'received') {
+      txsToShow = filteredTransactions.filter(tx => tx.type === 'received' && !isContractCall(tx) && tx.op_type !== 'encrypt' && tx.op_type !== 'decrypt');
     }
     
-    return getUnifiedHistory(txsToShow, [], activeFilter === 'contract' ? 'all' : activeFilter);
+    return getUnifiedHistory(txsToShow, [], 'all');
   };
   
   const unifiedHistory = getFilteredHistory();
@@ -214,7 +207,7 @@ export function UnifiedHistory({ wallet, transactions, onTransactionsUpdate, isL
           <CardTitle className={`flex items-center gap-2 ${isPopupMode ? 'text-sm' : isCompact ? 'text-sm' : ''}`}>
             {!isCompact && <History className={isPopupMode ? 'h-4 w-4' : 'h-5 w-5'} />}
             {!isPopupMode && !isCompact && (
-              <span>{operationMode === 'private' ? 'Encrypted Activity' : 'Public Activity'}</span>
+              <span>Activity</span>
             )}
             {/* Pending badge only for popup mode - compact mode shows in filter row */}
             {isPopupMode && pendingCount > 0 && (
@@ -223,7 +216,7 @@ export function UnifiedHistory({ wallet, transactions, onTransactionsUpdate, isL
           </CardTitle>
           <span className={`text-muted-foreground ${isPopupMode ? 'text-[10px]' : 'text-xs'}`}>
             {isPopupMode 
-              ? `Last ${filteredTransactions.length} ${operationMode} tx` 
+              ? `Last ${filteredTransactions.length} tx` 
               : `Recent ${filteredTransactions.length} data`
             }
           </span>
@@ -311,27 +304,50 @@ export function UnifiedHistory({ wallet, transactions, onTransactionsUpdate, isL
               }`}>{receivedCount}</span>}
             </Button>
 
-            {/* Contract filter - only for public mode - purple theme */}
-            {operationMode === 'public' && (
+            {/* Contract filter - purple theme */}
+            <>
+              {/* Dashed separator */}
+              {!isPopupMode && <div className="h-4 border-l border-dashed border-border mx-1" />}
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setActiveFilter('contract')}
+                className={`group ${isPopupMode ? 'h-6 px-2 text-[10px]' : 'h-7 px-2.5 text-xs'} transition-all duration-200 hover:bg-transparent text-purple-600 dark:text-purple-400`}
+              >
+                <Code className={`${isPopupMode ? 'h-3 w-3' : 'h-3.5 w-3.5'} ${contractCallCount > 0 ? 'mr-1' : ''} transition-all duration-200 ${
+                  activeFilter === 'contract' 
+                    ? 'text-purple-500 [filter:drop-shadow(0_0_6px_#a855f7)_drop-shadow(0_0_12px_#a855f7)_drop-shadow(0_0_24px_#a855f7)]' 
+                    : 'group-hover:text-purple-500 group-hover:[filter:drop-shadow(0_0_8px_rgba(168,85,247,0.8))]'
+                }`} />
+                {contractCallCount > 0 && <span className={`transition-all duration-200 ${
+                  activeFilter === 'contract' 
+                    ? 'text-purple-500 [text-shadow:0_0_8px_#a855f7,0_0_16px_#a855f7,0_0_32px_#a855f7,0_0_48px_rgba(168,85,247,0.5)]' 
+                    : 'group-hover:text-purple-500 group-hover:[text-shadow:0_0_8px_rgba(168,85,247,0.8)]'
+                }`}>{contractCallCount}</span>}
+              </Button>
+            </>
+
+            {/* Private filter - teal theme */}
+            {privateCount > 0 && (
               <>
                 {/* Dashed separator */}
                 {!isPopupMode && <div className="h-4 border-l border-dashed border-border mx-1" />}
                 <Button
                   variant="ghost"
                   size="sm"
-                  onClick={() => setActiveFilter('contract')}
-                  className={`group ${isPopupMode ? 'h-6 px-2 text-[10px]' : 'h-7 px-2.5 text-xs'} transition-all duration-200 hover:bg-transparent text-purple-600 dark:text-purple-400`}
+                  onClick={() => setActiveFilter('private')}
+                  className={`group ${isPopupMode ? 'h-6 px-2 text-[10px]' : 'h-7 px-2.5 text-xs'} transition-all duration-200 hover:bg-transparent text-[#00E5C0]`}
                 >
-                  <Code className={`${isPopupMode ? 'h-3 w-3' : 'h-3.5 w-3.5'} ${contractCallCount > 0 ? 'mr-1' : ''} transition-all duration-200 ${
-                    activeFilter === 'contract' 
-                      ? 'text-purple-500 [filter:drop-shadow(0_0_6px_#a855f7)_drop-shadow(0_0_12px_#a855f7)_drop-shadow(0_0_24px_#a855f7)]' 
-                      : 'group-hover:text-purple-500 group-hover:[filter:drop-shadow(0_0_8px_rgba(168,85,247,0.8))]'
+                  <Lock className={`${isPopupMode ? 'h-3 w-3' : 'h-3.5 w-3.5'} mr-1 transition-all duration-200 ${
+                    activeFilter === 'private' 
+                      ? 'text-[#00E5C0] [filter:drop-shadow(0_0_6px_#00E5C0)_drop-shadow(0_0_12px_#00E5C0)]' 
+                      : 'group-hover:text-[#00E5C0] group-hover:[filter:drop-shadow(0_0_8px_rgba(0,229,192,0.8))]'
                   }`} />
-                  {contractCallCount > 0 && <span className={`transition-all duration-200 ${
-                    activeFilter === 'contract' 
-                      ? 'text-purple-500 [text-shadow:0_0_8px_#a855f7,0_0_16px_#a855f7,0_0_32px_#a855f7,0_0_48px_rgba(168,85,247,0.5)]' 
-                      : 'group-hover:text-purple-500 group-hover:[text-shadow:0_0_8px_rgba(168,85,247,0.8)]'
-                  }`}>{contractCallCount}</span>}
+                  <span className={`transition-all duration-200 ${
+                    activeFilter === 'private' 
+                      ? 'text-[#00E5C0] [text-shadow:0_0_8px_#00E5C0,0_0_16px_#00E5C0]' 
+                      : 'group-hover:text-[#00E5C0] group-hover:[text-shadow:0_0_8px_rgba(0,229,192,0.8)]'
+                  }`}>{privateCount}</span>
                 </Button>
               </>
             )}
@@ -599,7 +615,6 @@ export function UnifiedHistory({ wallet, transactions, onTransactionsUpdate, isL
   );
 }
 
-
 // Transfer Item Sub-component
 interface TransferItemProps {
   tx: Transaction;
@@ -628,6 +643,31 @@ function TransferItem({
 }: TransferItemProps) {
   const isPrivate = isPrivateTransfer(tx);
   const isContract = isContractCall(tx);
+  // encrypt & decrypt are internal state changes — no directional arrow
+  const isStateChange = tx.op_type === 'encrypt' || tx.op_type === 'decrypt';
+  
+  // Get operation type label and badge config
+  const getOpTypeBadge = (): { label: string; className: string } => {
+    const opType = tx.op_type || 'standard';
+    switch (opType) {
+      case 'encrypt':
+        return { label: 'encrypt', className: 'bg-yellow-500/15 text-yellow-600 dark:text-yellow-400 border-yellow-500/30' };
+      case 'decrypt':
+        return { label: 'decrypt', className: 'bg-orange-500/15 text-orange-600 dark:text-orange-400 border-orange-500/30' };
+      case 'private':
+        return { label: 'stealth', className: 'bg-[#00E5C0]/15 text-[#00E5C0] border-[#00E5C0]/30' };
+      case 'stealth':
+        return { label: 'stealth', className: 'bg-[#00E5C0]/15 text-[#00E5C0] border-[#00E5C0]/30' };
+      case 'claim':
+        return { label: 'claim', className: 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/30' };
+      case 'call':
+        return { label: 'contract call', className: 'bg-purple-500/15 text-purple-600 dark:text-purple-400 border-purple-500/30' };
+      default:
+        return { label: 'standard', className: 'bg-[#3A4DFF]/10 text-[#3A4DFF] border-[#3A4DFF]/30' };
+    }
+  };
+
+  const opBadge = getOpTypeBadge();
   
   // Handle item click for compact mode
   const handleItemClick = () => {
@@ -662,20 +702,32 @@ function TransferItem({
           <div className="flex items-center gap-2 flex-1 min-w-0">
             {isContract ? (
               <Code className="h-3.5 w-3.5 text-purple-500 flex-shrink-0" />
+            ) : isStateChange ? (
+              <ArrowDownLeft className="h-3.5 w-3.5 text-[#00E5C0] flex-shrink-0" />
             ) : tx.type === 'sent' ? (
               <ArrowUpRight className="h-3.5 w-3.5 text-red-500 flex-shrink-0" />
             ) : (
               <ArrowDownLeft className="h-3.5 w-3.5 text-green-500 flex-shrink-0" />
             )}
             <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-1.5">
+              <div className="flex items-center gap-1.5 flex-wrap">
                 {isContract ? (
                   <span className="text-purple-500 font-medium text-xs">Contract Call</span>
+                ) : isStateChange ? (
+                  <span className="text-[#00E5C0] font-medium text-xs">
+                    {tx.amount?.toFixed(4) || '0'} OCT
+                  </span>
                 ) : isPrivate ? (
-                  <span className="text-[#3A4DFF] font-medium text-xs">{tx.type === 'sent' ? '-' : '+'}Private</span>
+                  <span className="text-[#00E5C0] font-medium text-xs">
+                    {tx.type === 'sent' ? '-' : '+'}{tx.amount?.toFixed(4) || '0'} OCT
+                  </span>
                 ) : (
                   <span className={`font-mono text-xs ${tx.type === 'sent' ? 'text-red-500' : 'text-green-500'}`}>{tx.type === 'sent' ? '-' : '+'}{tx.amount?.toFixed(4) || '0'} OCT</span>
                 )}
+                {/* op_type badge */}
+                <span className={`inline-flex items-center px-1 py-0 rounded text-[9px] font-medium border ${opBadge.className}`}>
+                  {opBadge.label}
+                </span>
                 {tx.status === 'confirmed' ? (
                   <div className="h-1.5 w-1.5 bg-[#3A4DFF]" />
                 ) : tx.status === 'pending' ? (
@@ -729,20 +781,32 @@ function TransferItem({
           <div className="flex items-center gap-2 flex-1 min-w-0">
             {isContract ? (
               <Code className="h-4 w-4 text-purple-500 flex-shrink-0" />
+            ) : isStateChange ? (
+              <ArrowDownLeft className="h-4 w-4 text-[#00E5C0] flex-shrink-0" />
             ) : tx.type === 'sent' ? (
               <ArrowUpRight className="h-4 w-4 text-red-500 flex-shrink-0" />
             ) : (
               <ArrowDownLeft className="h-4 w-4 text-green-500 flex-shrink-0" />
             )}
             <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-1.5">
+              <div className="flex items-center gap-1.5 flex-wrap">
                 {isContract ? (
                   <span className="text-purple-500 font-medium text-sm">Contract Call</span>
+                ) : isStateChange ? (
+                  <span className="text-[#00E5C0] font-medium text-sm">
+                    {tx.amount?.toFixed(4) || '0'} OCT
+                  </span>
                 ) : isPrivate ? (
-                  <span className="text-[#3A4DFF] font-medium text-sm">{tx.type === 'sent' ? '-' : '+'}Private</span>
+                  <span className="text-[#00E5C0] font-medium text-sm">
+                    {tx.type === 'sent' ? '-' : '+'}{tx.amount?.toFixed(4) || '0'} OCT
+                  </span>
                 ) : (
                   <span className={`font-mono text-sm ${tx.type === 'sent' ? 'text-red-500' : 'text-green-500'}`}>{tx.type === 'sent' ? '-' : '+'}{tx.amount?.toFixed(4) || '0'} OCT</span>
                 )}
+                {/* op_type badge */}
+                <span className={`inline-flex items-center px-1 py-0 rounded text-[9px] font-medium border ${opBadge.className}`}>
+                  {opBadge.label}
+                </span>
                 {tx.status === 'confirmed' ? (
                   <div className="h-1.5 w-1.5 bg-[#3A4DFF]" />
                 ) : tx.status === 'pending' ? (
@@ -778,13 +842,15 @@ function TransferItem({
         <div className="flex items-center gap-2">
           {isContract ? (
             <Code className="h-4 w-4 text-purple-500" />
+          ) : isStateChange ? (
+            <ArrowDownLeft className="h-4 w-4 text-[#00E5C0]" />
           ) : tx.type === 'sent' ? (
             <ArrowUpRight className="h-4 w-4 text-red-500" />
           ) : (
             <ArrowDownLeft className="h-4 w-4 text-green-500" />
           )}
           <span className="font-medium capitalize text-sm">
-            {isContract ? 'Contract Call' : tx.type}
+            {isContract ? 'Contract Call' : isStateChange ? (tx.op_type === 'encrypt' ? 'Encrypt' : 'Decrypt') : tx.type}
           </span>
           {getStatusIcon(tx.status)}
           {hasMessage && !isContract && (
@@ -809,8 +875,14 @@ function TransferItem({
           <span className="text-muted-foreground">{isContract ? 'Contract: ' : 'Amount: '}</span>
           {isContract ? (
             <span className="font-mono">{truncateAddress(tx.to)}</span>
+          ) : isStateChange ? (
+            <span className="text-[#00E5C0] font-medium">
+              {tx.amount?.toFixed(8) || '0'} OCT
+            </span>
           ) : isPrivate ? (
-            <span className="text-[#3A4DFF] font-medium">private OCT</span>
+            <span className="text-[#00E5C0] font-medium">
+              {tx.amount?.toFixed(8) || '0'} OCT
+            </span>
           ) : (
             <span className="font-mono">{tx.amount?.toFixed(8) || '0'} OCT</span>
           )}
@@ -827,6 +899,12 @@ function TransferItem({
           <span className="text-muted-foreground">Time: </span>
           <span>{new Date(tx.timestamp * 1000).toLocaleString('en-US', { timeZone: 'UTC', hour12: false })} UTC</span>
         </div>
+      </div>
+      {/* op_type badge - bottom right */}
+      <div className="flex justify-end mt-2">
+        <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium border ${opBadge.className}`}>
+          {opBadge.label}
+        </span>
       </div>
     </div>
   );

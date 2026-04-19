@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+﻿import { useState, useEffect } from 'react';
 import { WelcomeScreen } from './components/WelcomeScreen';
 import { WalletDashboard } from './components/WalletDashboard';
 import { UnlockWallet } from './components/UnlockWallet';
@@ -30,8 +30,7 @@ function PopupApp() {
   useEffect(() => {
     const loadInitialData = async () => {
       try {
-        console.log('🚀 PopupApp: loadInitialData started');
-        
+
         // Detect if we're in popup mode
         const isPopup = window.location.pathname.includes('popup.html') || window.innerWidth <= 500;
         setIsPopupMode(isPopup);
@@ -43,14 +42,14 @@ function PopupApp() {
         try {
           sessionStorage.removeItem('sessionWallets');
           sessionStorage.removeItem('sessionKey');
-          console.log('🧹 PopupApp: Cleared legacy sessionStorage');
+          
         } catch (e) {
           // Ignore
         }
         
         // Setup auto-lock callback
         WalletManager.setAutoLockCallback(() => {
-          console.log('🔒 Auto-lock triggered, updating UI');
+          
           setWallet(null);
           setWallets([]);
           setIsLocked(true);
@@ -59,17 +58,12 @@ function PopupApp() {
         // Check localStorage FIRST (synchronous, always available)
         const localPasswordHash = localStorage.getItem('walletPasswordHash');
         const localEncryptedWallets = localStorage.getItem('encryptedWallets');
-        
-        console.log('🔍 PopupApp: localStorage check:', {
-          hasPasswordHash: !!localPasswordHash,
-          hasEncryptedWallets: !!localEncryptedWallets
-        });
-        
+
         // CRITICAL: Sync password hash from localStorage to ExtensionStorage if missing
         const extPasswordHash = await ExtensionStorageManager.get('walletPasswordHash');
         
         if (!extPasswordHash && localPasswordHash) {
-          console.log('🔄 PopupApp: Syncing password hash from localStorage to ExtensionStorage');
+          
           const localSalt = localStorage.getItem('walletPasswordSalt');
           const localIsLocked = localStorage.getItem('isWalletLocked');
           
@@ -115,7 +109,7 @@ function PopupApp() {
               ? JSON.parse(pendingCapabilityRequest) 
               : pendingCapabilityRequest;
             setCapabilityRequest(capabilityReq);
-            console.log('🔐 PopupApp: Found pending capability request:', capabilityReq);
+            
           } catch (error) {
             console.error('Failed to parse capability request:', error);
             await ExtensionStorageManager.remove('pendingCapabilityRequest');
@@ -130,7 +124,7 @@ function PopupApp() {
               ? JSON.parse(pendingInvokeRequest) 
               : pendingInvokeRequest;
             setInvokeRequest(invokeReq);
-            console.log('⚡ PopupApp: Found pending invoke request:', invokeReq);
+            
           } catch (error) {
             console.error('Failed to parse invoke request:', error);
             await ExtensionStorageManager.remove('pendingInvokeRequest');
@@ -145,7 +139,7 @@ function PopupApp() {
               ? JSON.parse(pendingSignMessageRequest) 
               : pendingSignMessageRequest;
             setSignMessageRequest(signMessageReq);
-            console.log('✍️ PopupApp: Found pending sign message request:', signMessageReq);
+            
           } catch (error) {
             console.error('Failed to parse sign message request:', error);
             await ExtensionStorageManager.remove('pendingSignMessageRequest');
@@ -164,12 +158,10 @@ function PopupApp() {
             console.error('Failed to parse localStorage encryptedWallets:', e);
           }
         }
-        
-        console.log('🔍 PopupApp: Wallet state:', { hasPassword, hasEncryptedWallets });
-        
+
         // If no wallet setup, show welcome screen
         if (!hasPassword || !hasEncryptedWallets) {
-          console.log('👋 PopupApp: No wallet setup, showing welcome screen');
+          
           setIsLocked(false);
           setIsLoading(false);
           return;
@@ -179,12 +171,7 @@ function PopupApp() {
         // Session wallets are now ENCRYPTED, need session key to decrypt
         const sessionKey = await ExtensionStorageManager.getSession('sessionKey');
         const activeWalletId = localStorage.getItem('activeWalletId') || await ExtensionStorageManager.get('activeWalletId');
-        
-        console.log('🔍 PopupApp: Session check:', {
-          hasSessionKey: !!sessionKey,
-          activeWalletId
-        });
-        
+
         // Only try to load session wallets if session key exists
         // Session wallets are encrypted and require the session encryption key in memory
         if (sessionKey) {
@@ -201,7 +188,7 @@ function PopupApp() {
               if (restoredPassword) {
                 // Re-setup auto-lock callback after session restore
                 WalletManager.setAutoLockCallback(() => {
-                  console.log('🔒 PopupApp: Auto-lock callback triggered (from session restore)!');
+                  
                   setWallet(null);
                   setWallets([]);
                   setIsLocked(true);
@@ -211,8 +198,7 @@ function PopupApp() {
                 const sessionWallets = await WalletManager.getSessionWallets();
                 
                 if (sessionWallets.length > 0) {
-                  console.log('🔓 PopupApp: Loaded wallets from encrypted session storage:', sessionWallets.length);
-                  
+
                   let activeWallet = sessionWallets[0];
                   if (activeWalletId) {
                     const foundWallet = sessionWallets.find((w: Wallet) => w.address === activeWalletId);
@@ -225,7 +211,7 @@ function PopupApp() {
                   setWallet(activeWallet);
                   setIsLocked(false);
                   setIsLoading(false);
-                  console.log('✅ PopupApp: Dashboard ready with', sessionWallets.length, 'wallets');
+                  
                   return;
                 }
               }
@@ -241,7 +227,7 @@ function PopupApp() {
         }
         
         // No session wallets, need to unlock to decrypt
-        console.log('🔐 PopupApp: No session wallets, showing unlock screen');
+        
         setIsLocked(true);
         setIsLoading(false);
         
@@ -260,7 +246,7 @@ function PopupApp() {
       // Handle wallet lock state changes - ALWAYS respond to this
       if (e.key === 'isWalletLocked') {
         const locked = e.newValue === 'true';
-        console.log('🔒 PopupApp: Lock state changed via localStorage:', locked);
+        
         setIsLocked(locked);
         
         if (locked) {
@@ -275,14 +261,14 @@ function PopupApp() {
       
       // Handle active wallet changes - reload from session to get latest
       if (e.key === 'activeWalletId' && e.newValue) {
-        console.log('🔄 PopupApp: activeWalletId changed via localStorage:', e.newValue);
+        
         WalletManager.getSessionWallets().then(sessionWallets => {
           if (sessionWallets.length > 0) {
             const foundWallet = sessionWallets.find((w: Wallet) => w.address === e.newValue);
             if (foundWallet) {
               setWallets(sessionWallets);
               setWallet(foundWallet);
-              console.log('✅ PopupApp: Synced active wallet:', foundWallet.address);
+              
             }
           }
         });
@@ -296,12 +282,11 @@ function PopupApp() {
     let chromeStorageListener: ((changes: any, areaName: string) => void) | null = null;
     if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.onChanged) {
       chromeStorageListener = (changes: any, areaName: string) => {
-        console.log('🔔 PopupApp: chrome.storage.onChanged triggered:', areaName, Object.keys(changes));
-        
+
         // Handle lock state change - ALWAYS respond to this
         if (changes.isWalletLocked) {
           const locked = changes.isWalletLocked.newValue === 'true';
-          console.log('🔒 PopupApp: Lock state changed via chrome.storage:', locked);
+          
           setIsLocked(locked);
           
           if (locked) {
@@ -315,7 +300,7 @@ function PopupApp() {
         // Handle session storage changes (wallets added/removed from expanded)
         // Session wallets are now ENCRYPTED, use WalletManager to decrypt
         if (areaName === 'session' && changes.sessionWallets) {
-          console.log('🔄 PopupApp: Session wallets changed, syncing...');
+          
           // Use async IIFE since callback is not async
           (async () => {
             try {
@@ -326,13 +311,13 @@ function PopupApp() {
               if (!restoredPassword) {
                 // Cannot decrypt - session is not active
                 // Don't clear wallets here, let the lock state handler do it
-                console.log('🔄 PopupApp: Cannot decrypt session wallets - no session password');
+                
                 return;
               }
               
               // Re-setup auto-lock callback after session restore
               WalletManager.setAutoLockCallback(() => {
-                console.log('🔒 PopupApp: Auto-lock callback triggered (from sync)!');
+                
                 setWallet(null);
                 setWallets([]);
                 setIsLocked(true);
@@ -341,7 +326,7 @@ function PopupApp() {
               // Now decrypt session wallets
               const newWallets = await WalletManager.getSessionWallets();
               if (Array.isArray(newWallets) && newWallets.length > 0) {
-                console.log('🔄 PopupApp: New wallets count:', newWallets.length);
+                
                 setWallets(newWallets);
                 setIsLocked(false); // Unlock UI since we have valid session
                 
@@ -375,7 +360,7 @@ function PopupApp() {
         
         // Handle activeWalletId change from chrome.storage.local
         if (areaName === 'local' && changes.activeWalletId && changes.activeWalletId.newValue) {
-          console.log('🔄 PopupApp: activeWalletId changed via chrome.storage:', changes.activeWalletId.newValue);
+          
           const newActiveId = changes.activeWalletId.newValue;
           
           WalletManager.getSessionWallets().then(sessionWallets => {
@@ -385,7 +370,7 @@ function PopupApp() {
                 setWallets(sessionWallets);
                 setWallet(foundWallet);
                 localStorage.setItem('activeWalletId', newActiveId);
-                console.log('✅ PopupApp: Synced active wallet from chrome.storage:', foundWallet.address);
+                
               }
             }
           });
@@ -450,12 +435,10 @@ function PopupApp() {
 
   // Enhanced unlock handler to properly restore wallet state and handle pending DApp requests
   const handleUnlock = async (unlockedWallets: Wallet[]) => {
-    console.log('🔓 PopupApp: handleUnlock called with', unlockedWallets.length, 'wallets');
-    console.log('🔓 PopupApp: Wallet addresses:', unlockedWallets.map((w, i) => `[${i}] ${w.address}`));
-    
+
     // Re-setup auto-lock callback after unlock (session password was just set)
     WalletManager.setAutoLockCallback(() => {
-      console.log('🔒 PopupApp: Auto-lock callback triggered!');
+      
       setWallet(null);
       setWallets([]);
       setIsLocked(true);
@@ -464,36 +447,33 @@ function PopupApp() {
     if (unlockedWallets.length > 0) {
       // Get active wallet FIRST before setting any state
       let activeWalletId = await ExtensionStorageManager.get('activeWalletId');
-      console.log('🔓 PopupApp: activeWalletId from ExtensionStorage:', activeWalletId);
-      
+
       // Fallback to localStorage if not in ExtensionStorage
       if (!activeWalletId) {
         activeWalletId = localStorage.getItem('activeWalletId');
-        console.log('🔓 PopupApp: activeWalletId from localStorage (fallback):', activeWalletId);
+        
       }
-      
-      console.log('🔓 PopupApp: Final activeWalletId:', activeWalletId);
-      
+
       let activeWallet = unlockedWallets[0]; // Default to first wallet
       
       if (activeWalletId) {
         const foundWallet = unlockedWallets.find(w => w.address === activeWalletId);
         if (foundWallet) {
           activeWallet = foundWallet;
-          console.log('🔓 PopupApp: Found active wallet:', activeWallet.address);
+          
         } else {
-          console.log('🔓 PopupApp: Active wallet not found in list, using first wallet');
+          
           await ExtensionStorageManager.set('activeWalletId', activeWallet.address);
           localStorage.setItem('activeWalletId', activeWallet.address);
         }
       } else {
-        console.log('🔓 PopupApp: No activeWalletId stored, using first wallet');
+        
         await ExtensionStorageManager.set('activeWalletId', activeWallet.address);
         localStorage.setItem('activeWalletId', activeWallet.address);
       }
       
       // Now set all states together
-      console.log('🔓 PopupApp: Setting wallet state to:', activeWallet.address);
+      
       setIsLocked(false);
       setWallets(unlockedWallets);
       setWallet(activeWallet);
@@ -541,7 +521,7 @@ function PopupApp() {
   };
 
   const addWallet = async (newWallet: Wallet) => {
-    console.log('📥 PopupApp: addWallet called with:', newWallet.address);
+    
     try {
       // Read current wallets from session storage
       const currentWallets = await WalletManager.getSessionWallets();
@@ -550,15 +530,14 @@ function PopupApp() {
       const walletExists = currentWallets.some(w => w.address === newWallet.address);
       
       if (walletExists) {
-        console.log('✅ PopupApp: Wallet already exists, syncing state');
+        
         setWallets(currentWallets);
         setWallet(newWallet);
         return;
       }
       
       const updatedWallets = [...currentWallets, newWallet];
-      console.log('➕ PopupApp: Adding new wallet, total:', updatedWallets.length);
-      
+
       // Update state FIRST for immediate UI feedback
       setWallets(updatedWallets);
       setWallet(newWallet);
@@ -578,33 +557,24 @@ function PopupApp() {
       const verifyEncrypted = localStorage.getItem('encryptedWallets');
       if (verifyEncrypted) {
         try {
-          const parsed = JSON.parse(verifyEncrypted);
-          const found = parsed.find((w: any) => w.address === newWallet.address);
-          console.log('🔍 PopupApp: Verify wallet stored:', !!found, 'needsEncryption:', found?.needsEncryption);
+          JSON.parse(verifyEncrypted);
         } catch (e) {
           console.error('Failed to verify wallet storage:', e);
         }
       }
-      
-      console.log('🎉 PopupApp: Wallet added successfully, total wallets:', updatedWallets.length);
+
     } catch (error) {
-      console.error('❌ PopupApp: Failed to save wallet:', error);
+      console.error('PopupApp: Failed to save wallet:', error);
     }
   };
 
   const switchWallet = async (selectedWallet: Wallet) => {
-    console.log('🔄 PopupApp: switchWallet called, switching to:', selectedWallet.address);
+    
     setWallet(selectedWallet);
     
     try {
       await ExtensionStorageManager.set('activeWalletId', selectedWallet.address);
       localStorage.setItem('activeWalletId', selectedWallet.address);
-      console.log('✅ PopupApp: activeWalletId saved to both storages:', selectedWallet.address);
-      
-      // Verify it was saved
-      const verifyExt = await ExtensionStorageManager.get('activeWalletId');
-      const verifyLocal = localStorage.getItem('activeWalletId');
-      console.log('🔍 PopupApp: Verify - ExtensionStorage:', verifyExt, ', localStorage:', verifyLocal);
     } catch (error) {
       console.error('Failed to switch wallet:', error);
     }
@@ -645,8 +615,7 @@ function PopupApp() {
       
       // Persist the new order
       await WalletManager.reorderWallets(newOrder);
-      
-      console.log('🔄 PopupApp: Wallets reordered successfully');
+
     } catch (error) {
       console.error('Failed to reorder wallets:', error);
     }
@@ -673,8 +642,6 @@ function PopupApp() {
       });
     }
   };
-
-
 
   // Show splash screen first (shorter duration for popup)
   if (showSplash) {

@@ -32,8 +32,8 @@ export function getActiveRPCProvider(): RPCProvider | null {
   // Return default if no active provider
   const defaultProvider: RPCProvider = {
     id: 'default',
-    name: 'Octra Network (Default)',
-    url: 'https://octra.network',
+    name: 'Octra Mainnet',
+    url: 'http://46.101.86.250:8080',
     headers: {},
     priority: 1,
     isActive: true,

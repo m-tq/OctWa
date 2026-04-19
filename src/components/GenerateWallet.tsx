@@ -70,7 +70,6 @@ export function GenerateWallet({ onWalletGenerated, isCompact = false, hideBorde
     };
   }, []);
 
-
   const copyToClipboard = async (text: string, field: string, isSensitive = false) => {
     try {
       await navigator.clipboard.writeText(text);
@@ -196,7 +195,6 @@ export function GenerateWallet({ onWalletGenerated, isCompact = false, hideBorde
     );
   }
 
-
   // Compact mode for popup
   if (isCompact) {
     return (
@@ -315,7 +313,6 @@ export function GenerateWallet({ onWalletGenerated, isCompact = false, hideBorde
       </>
     );
   }
-
 
   // Normal mode
   return (

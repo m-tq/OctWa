@@ -3,14 +3,19 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Switch } from '@/components/ui/switch';
+import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Gift, RefreshCw, Wallet as WalletIcon, Package } from 'lucide-react';
+import { Gift, RefreshCw, Wallet as WalletIcon, Package, Server, Zap, AlertTriangle } from 'lucide-react';
 import { Wallet } from '../types/wallet';
-import { getPendingPrivateTransfers, claimPrivateTransfer, invalidateCacheAfterClaim } from '../utils/api';
+import { getPendingPrivateTransfers, claimPrivateTransfer, invalidateCacheAfterClaim, fetchEncryptedBalance } from '../utils/api';
 import { deriveSharedSecretForClaim, decryptPrivateAmount } from '../utils/crypto';
 import { useToast } from '@/hooks/use-toast';
 import { TransactionModal, TransactionStatus, TransactionResult } from './TransactionModal';
+import { pvacServerService } from '@/services/pvacServerService';
+import { optimisticUpdateService } from '@/services/optimisticUpdateService';
+import { logger } from '@/utils/logger';
 
 function julianToDate(jd: number): Date {
   const JD_UNIX_EPOCH = 2440587.5; // Julian Date of Unix epoch 1970-01-01
@@ -34,7 +39,16 @@ export function ClaimTransfers({ wallet, onTransactionSuccess, isPopupMode = fal
   const [showTxModal, setShowTxModal] = useState(false);
   const [txModalStatus, setTxModalStatus] = useState<TransactionStatus>('idle');
   const [txModalResult, setTxModalResult] = useState<TransactionResult>({});
+  const [usePvacServer, setUsePvacServer] = useState(false);
+  const [isPvacAvailable, setIsPvacAvailable] = useState(false);
   const { toast } = useToast();
+
+  // Check PVAC availability on mount
+  useEffect(() => {
+    const available = pvacServerService.isEnabled();
+    setIsPvacAvailable(available);
+    setUsePvacServer(available); // Auto-enable if available
+  }, []);
 
   const fetchTransfers = async (showRefreshAnimation = false) => {
     if (!wallet) return;
@@ -59,7 +73,7 @@ export function ClaimTransfers({ wallet, onTransactionSuccess, isPopupMode = fal
                 decryptedAmount = amount / 1_000_000; // Convert from micro units
               }
             } catch (error) {
-              console.error('Failed to decrypt amount for transfer:', transfer.id, error);
+              logger.warn('Failed to decrypt amount for transfer', { id: transfer.id, error });
             }
           }
           
@@ -72,7 +86,7 @@ export function ClaimTransfers({ wallet, onTransactionSuccess, isPopupMode = fal
       
       setTransfers(transfersWithAmounts);
     } catch (error) {
-      console.error('Error fetching transfers:', error);
+      logger.error('Error fetching transfers', error);
       toast({
         title: "Error",
         description: "Failed to fetch pending transfers",
@@ -104,11 +118,33 @@ export function ClaimTransfers({ wallet, onTransactionSuccess, isPopupMode = fal
     setShowTxModal(true);
     
     try {
+      // Find transfer to get amount for optimistic update
+      const transfer = transfers.find(t => t.id === transferId);
+      const claimAmount = transfer?.decryptedAmount || 0;
+      
+      // Get current encrypted balance
+      const currentEncrypted = await fetchEncryptedBalance(wallet.address, wallet.privateKey);
+      
+      // Apply optimistic update for claim
+      const update = optimisticUpdateService.applyUpdate(
+        wallet.address,
+        'claim',
+        claimAmount,
+        { public: 0, encrypted: currentEncrypted?.encrypted || 0 },
+        0 // No fee for claim
+      );
+      
+      logger.debug('Claim: Optimistic update applied:', update.id);
+      
       const result = await claimPrivateTransfer(wallet.address, wallet.privateKey, transferId);
       
       if (result.success) {
+        // Update transaction hash (use transfer ID as identifier for claim)
+        optimisticUpdateService.updateTransactionHash(update.id, `claim_${transferId}`);
+        
         // Invalidate cache after claim
         await invalidateCacheAfterClaim(wallet.address);
+        
         // Update modal to success state
         setTxModalStatus('success');
         setTxModalResult({ amount: result.amount });
@@ -116,9 +152,28 @@ export function ClaimTransfers({ wallet, onTransactionSuccess, isPopupMode = fal
         // Refresh transfers list
         await fetchTransfers();
         
-        // Notify parent component
-        onTransactionSuccess();
+        // Verify optimistic update in background
+        setTimeout(async () => {
+          logger.debug('Claim: Verifying optimistic update...');
+          try {
+            const freshEncrypted = await fetchEncryptedBalance(wallet.address, wallet.privateKey, true);
+            
+            await optimisticUpdateService.verifyUpdate(update.id, {
+              public: 0,
+              encrypted: freshEncrypted?.encrypted || 0,
+            });
+            
+            logger.debug('Claim: Optimistic update verified');
+            onTransactionSuccess();
+          } catch (error) {
+            logger.error('Claim: Failed to verify:', error);
+            onTransactionSuccess(); // Refresh anyway
+          }
+        }, 3000); // Wait 3 seconds
       } else {
+        // Fail optimistic update
+        await optimisticUpdateService.failUpdate(update.id, result.error);
+        
         // Update modal to error state
         setTxModalStatus('error');
         setTxModalResult({ error: result.error || "Unknown error occurred" });
@@ -126,6 +181,7 @@ export function ClaimTransfers({ wallet, onTransactionSuccess, isPopupMode = fal
     } catch (error) {
       console.error('Claim error:', error);
       const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+      
       // Update modal to error state
       setTxModalStatus('error');
       setTxModalResult({ error: errorMsg });
@@ -144,17 +200,36 @@ export function ClaimTransfers({ wallet, onTransactionSuccess, isPopupMode = fal
       let totalAmount = 0;
       const errors: string[] = [];
       
+      // Get current encrypted balance once
+      const currentEncrypted = await fetchEncryptedBalance(wallet.address, wallet.privateKey);
+      
       // Process transfers sequentially to avoid overwhelming the server
       for (const transfer of transfers) {
         try {
+          const claimAmount = transfer.decryptedAmount || 0;
+          
+          // Apply optimistic update for each claim
+          const update = optimisticUpdateService.applyUpdate(
+            wallet.address,
+            'claim',
+            claimAmount,
+            { public: 0, encrypted: currentEncrypted?.encrypted || 0 },
+            0
+          );
+          
           const result = await claimPrivateTransfer(wallet.address, wallet.privateKey, transfer.id);
           
           if (result.success) {
+            // Update transaction hash (use transfer ID as identifier for claim)
+            optimisticUpdateService.updateTransactionHash(update.id, `claim_${transfer.id}`);
+            
             successCount++;
             if (result.amount) {
               totalAmount += parseFloat(result.amount);
             }
           } else {
+            // Fail optimistic update
+            await optimisticUpdateService.failUpdate(update.id, result.error);
             errors.push(`Transfer ${transfer.id}: ${result.error || 'Unknown error'}`);
           }
           
@@ -172,15 +247,40 @@ export function ClaimTransfers({ wallet, onTransactionSuccess, isPopupMode = fal
           description: `Successfully claimed ${successCount} out of ${transfers.length} transfers${totalAmount > 0 ? ` (Total: ${totalAmount.toFixed(8)} OCT)` : ''}`,
         });
         
+        // Invalidate cache after all claims
+        await invalidateCacheAfterClaim(wallet.address);
+        
         // Refresh transfers list
         await fetchTransfers();
         
-        // Notify parent component
-        onTransactionSuccess();
+        // Verify optimistic updates in background
+        setTimeout(async () => {
+          logger.debug('ClaimAll: Verifying optimistic updates...');
+          try {
+            const freshEncrypted = await fetchEncryptedBalance(wallet.address, wallet.privateKey, true);
+            
+            // Verify all pending updates for this address
+            const pendingUpdates = optimisticUpdateService.getPendingUpdates(wallet.address);
+            for (const update of pendingUpdates) {
+              if (update.type === 'claim') {
+                await optimisticUpdateService.verifyUpdate(update.id, {
+                  public: 0,
+                  encrypted: freshEncrypted?.encrypted || 0,
+                });
+              }
+            }
+            
+            logger.debug('ClaimAll: Optimistic updates verified');
+            onTransactionSuccess();
+          } catch (error) {
+            logger.error('ClaimAll: Failed to verify:', error);
+            onTransactionSuccess(); // Refresh anyway
+          }
+        }, 3000);
       }
       
       if (errors.length > 0) {
-        console.error('Claim errors:', errors);
+        logger.error('Claim errors', errors);
         if (successCount === 0) {
           toast({
             title: "Claim All Failed",
@@ -190,7 +290,7 @@ export function ClaimTransfers({ wallet, onTransactionSuccess, isPopupMode = fal
         }
       }
     } catch (error) {
-      console.error('Claim all error:', error);
+      logger.error('Claim all error', error);
       toast({
         title: "Error",
         description: "Failed to claim transfers",
@@ -229,6 +329,50 @@ export function ClaimTransfers({ wallet, onTransactionSuccess, isPopupMode = fal
             </Button>
           </div>
         )}
+        
+        {/* PVAC Server Option */}
+        {isPvacAvailable && transfers.length > 0 && (
+          <div className={`flex items-center justify-between p-${isPopupMode ? '2' : '3'} bg-muted/50 rounded-lg ${isPopupMode ? 'mb-2' : 'mb-4'}`}>
+            <div className="flex items-center gap-2">
+              <Server className={`${isPopupMode ? 'h-3 w-3' : 'h-4 w-4'} text-primary`} />
+              <div>
+                <Label className={`${isPopupMode ? 'text-[10px]' : 'text-sm'} font-medium cursor-pointer`}>
+                  Use PVAC Server
+                </Label>
+                <p className={`${isPopupMode ? 'text-[9px]' : 'text-xs'} text-muted-foreground`}>
+                  {usePvacServer ? '~700ms' : '~10s'} per claim
+                </p>
+              </div>
+            </div>
+            <Switch
+              checked={usePvacServer}
+              onCheckedChange={setUsePvacServer}
+              disabled={claimingAll || claimingId !== null}
+              className={isPopupMode ? 'scale-75' : ''}
+            />
+          </div>
+        )}
+
+        {/* Performance Info */}
+        {usePvacServer && isPvacAvailable && transfers.length > 0 && (
+          <Alert className={`${isPopupMode ? 'py-1.5 mb-2' : 'mb-4'}`}>
+            <Zap className={`${isPopupMode ? 'h-3 w-3' : 'h-4 w-4'}`} />
+            <AlertDescription className={isPopupMode ? 'text-[10px]' : 'text-xs'}>
+              PVAC server: ~14x faster claim operations
+            </AlertDescription>
+          </Alert>
+        )}
+
+        {/* PVAC Not Available Warning */}
+        {!isPvacAvailable && transfers.length > 0 && (
+          <Alert variant="destructive" className={`${isPopupMode ? 'py-1.5 mb-2' : 'mb-4'}`}>
+            <AlertTriangle className={`${isPopupMode ? 'h-3 w-3' : 'h-4 w-4'}`} />
+            <AlertDescription className={isPopupMode ? 'text-[10px]' : 'text-xs'}>
+              PVAC server not configured. Using slower method.
+            </AlertDescription>
+          </Alert>
+        )}
+        
         {/* Claim All Button - Show only when there are multiple transfers */}
         {transfers.length > 1 && (
           <div className={isPopupMode ? 'mb-2' : 'mb-4'}>

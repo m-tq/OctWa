@@ -1,4 +1,4 @@
-import { Wallet } from '../types/wallet';
+﻿import { Wallet } from '../types/wallet';
 import { encryptWalletData } from './password';
 import { ExtensionStorageManager } from './extensionStorage';
 
@@ -7,8 +7,7 @@ export class WalletEncryptionManager {
    * Encrypt all wallets with the given password and store them
    */
   static async encryptAllWallets(wallets: Wallet[], password: string): Promise<void> {
-    console.log(`🔐 WalletEncryptionManager: Encrypting ${wallets.length} wallets...`);
-    
+
     const encryptedWallets = [];
     
     for (const wallet of wallets) {
@@ -21,32 +20,30 @@ export class WalletEncryptionManager {
           encryptedData: encryptedWalletData,
           createdAt: Date.now()
         });
-        
-        console.log(`✅ WalletEncryptionManager: Encrypted wallet ${wallet.address.slice(0, 8)}...`);
+
       } catch (error) {
-        console.error(`❌ WalletEncryptionManager: Failed to encrypt wallet ${wallet.address}:`, error);
+        console.error(`WalletEncryptionManager: Failed to encrypt wallet ${wallet.address}:`, error);
         throw error;
       }
     }
     
     // Store encrypted wallets
     await ExtensionStorageManager.set('encryptedWallets', JSON.stringify(encryptedWallets));
-    console.log(`📦 WalletEncryptionManager: Stored ${encryptedWallets.length} encrypted wallets`);
+    
   }
 
   /**
    * Add a new wallet to encrypted storage (requires password)
    */
   static async addWalletToEncryptedStorage(wallet: Wallet, password: string): Promise<void> {
-    console.log(`🔐 WalletEncryptionManager: Adding wallet ${wallet.address.slice(0, 8)}... to encrypted storage`);
-    
+
     // Get existing encrypted wallets
     const existingEncryptedWallets = JSON.parse(await ExtensionStorageManager.get('encryptedWallets') || '[]');
     
     // Check if wallet already exists
     const walletExists = existingEncryptedWallets.some((w: any) => w.address === wallet.address);
     if (walletExists) {
-      console.log(`ℹ️ WalletEncryptionManager: Wallet ${wallet.address.slice(0, 8)}... already exists in encrypted storage`);
+      
       return;
     }
     
@@ -65,7 +62,7 @@ export class WalletEncryptionManager {
     
     // Store updated encrypted wallets
     await ExtensionStorageManager.set('encryptedWallets', JSON.stringify(updatedEncryptedWallets));
-    console.log(`✅ WalletEncryptionManager: Added wallet to encrypted storage. Total: ${updatedEncryptedWallets.length}`);
+    
   }
 
   /**
@@ -101,8 +98,7 @@ export class WalletEncryptionManager {
         return false;
       }
     }
-    
-    console.log(`✅ WalletEncryptionManager: All ${wallets.length} wallets are properly encrypted`);
+
     return true;
   }
 }

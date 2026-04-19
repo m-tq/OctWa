@@ -1,4 +1,4 @@
-import { ExtensionStorageManager } from './extensionStorage';
+﻿import { ExtensionStorageManager } from './extensionStorage';
 import { verifyPassword, decryptWalletData, encryptWalletData, isRateLimited, getRemainingAttempts, generateSessionKey, encryptSessionData, decryptSessionData } from './password';
 import { Wallet } from '../types/wallet';
 import { deriveEvmFromOctraKey } from './evmDerive';
@@ -35,9 +35,7 @@ export class WalletManager {
       if (currentVersion >= this.CURRENT_MIGRATION_VERSION) {
         return { migrated: false };
       }
-      
-      console.log('🔄 WalletManager: Starting migration from v' + currentVersion + ' to v' + this.CURRENT_MIGRATION_VERSION);
-      
+
       // Check if there's unencrypted wallet data
       const unencryptedWallets = localStorage.getItem('wallets');
       const hasPassword = localStorage.getItem('walletPasswordHash');
@@ -51,7 +49,7 @@ export class WalletManager {
           // Safe to remove unencrypted data
           localStorage.removeItem('wallets');
           await ExtensionStorageManager.remove('wallets');
-          console.log('🔐 WalletManager: Removed legacy unencrypted wallet data');
+          
         } else {
           // No encrypted wallets exist - this is a problem
           // User needs to re-enter password to encrypt their wallets
@@ -66,11 +64,10 @@ export class WalletManager {
       // Update migration version
       localStorage.setItem(this.MIGRATION_VERSION_KEY, this.CURRENT_MIGRATION_VERSION.toString());
       await ExtensionStorageManager.set(this.MIGRATION_VERSION_KEY, this.CURRENT_MIGRATION_VERSION.toString());
-      
-      console.log('✅ WalletManager: Migration completed to v' + this.CURRENT_MIGRATION_VERSION);
+
       return { migrated: true };
     } catch (error) {
-      console.error('❌ WalletManager: Migration failed:', error);
+      console.error('WalletManager: Migration failed:', error);
       return { migrated: false, message: 'Migration failed. Please contact support.' };
     }
   }
@@ -93,11 +90,10 @@ export class WalletManager {
       
       // Also sync to extension storage
       await ExtensionStorageManager.set(EVM_ADDRESS_MAP_KEY, JSON.stringify(map));
-      
-      console.log('✅ WalletManager: Stored EVM address for', octraAddress.slice(0, 8), '->', evmAddress);
+
       return evmAddress;
     } catch (error) {
-      console.error('❌ WalletManager: Failed to store EVM address:', error);
+      console.error('WalletManager: Failed to store EVM address:', error);
       return '';
     }
   }
@@ -136,9 +132,9 @@ export class WalletManager {
     try {
       localStorage.removeItem('wallets');
       await ExtensionStorageManager.remove('wallets');
-      console.log('🧹 WalletManager: Cleaned up unencrypted wallet data');
+      
     } catch (error) {
-      console.error('❌ WalletManager: Failed to cleanup unencrypted data:', error);
+      console.error('WalletManager: Failed to cleanup unencrypted data:', error);
     }
   }
 
@@ -201,7 +197,7 @@ export class WalletManager {
       const isSecure = issues.length === 0;
       
       if (isSecure) {
-        console.log('✅ Security audit passed: No unencrypted wallet data found');
+        
       } else {
         console.warn('⚠️ Security audit found issues:', issues);
       }
@@ -215,12 +211,12 @@ export class WalletManager {
 
   // Set callback for auto-lock (to trigger UI update)
   static setAutoLockCallback(callback: () => void): void {
-    console.log('🔧 WalletManager: Auto-lock callback registered, sessionPassword exists:', !!this.sessionPassword);
+    
     this.onAutoLockCallback = callback;
     
     // If session is already active, restart the timer with the callback
     if (this.sessionPassword && this.isAutoLockEnabled) {
-      console.log('🔧 WalletManager: Session active, restarting auto-lock timer');
+      
       this.startAutoLockTimer();
     }
   }
@@ -229,13 +225,13 @@ export class WalletManager {
   private static startAutoLockTimer(): void {
     // Clear any existing timeout
     if (this.sessionTimeout) {
-      console.log('⏱️ WalletManager: Clearing existing timer');
+      
       clearTimeout(this.sessionTimeout);
       this.sessionTimeout = null;
     }
     
     if (!this.isAutoLockEnabled) {
-      console.log('🔧 WalletManager: Auto-lock is disabled');
+      
       return;
     }
     
@@ -243,31 +239,25 @@ export class WalletManager {
     
     // Save session timestamp to storage for cross-instance sharing
     localStorage.setItem(this.SESSION_TIMESTAMP_KEY, this.timerStartTime.toString());
-    
-    console.log(`⏱️ WalletManager: Starting auto-lock timer (${this.SESSION_TIMEOUT_MS / 1000}s) at ${new Date().toLocaleTimeString()}`);
-    
+
     // Set auto-lock timeout for security
     this.sessionTimeout = setTimeout(() => {
-      const elapsed = Date.now() - this.timerStartTime;
-      console.log(`🔒 WalletManager: Auto-lock timer triggered after ${elapsed}ms!`);
+      
       this.executeAutoLock();
     }, this.SESSION_TIMEOUT_MS);
-    
-    console.log('⏱️ WalletManager: Timer ID:', this.sessionTimeout);
+
   }
 
   // Execute auto-lock
   private static async executeAutoLock(): Promise<void> {
-    console.log('🔒 WalletManager: Executing auto-lock...');
-    
+
     try {
       // Lock wallets first
       await this.lockWallets();
-      console.log('🔒 WalletManager: Wallets locked successfully');
-      
+
       // Trigger callback to update UI
       if (this.onAutoLockCallback) {
-        console.log('🔒 WalletManager: Triggering UI callback');
+        
         this.onAutoLockCallback();
       } else {
         console.warn('⚠️ WalletManager: No auto-lock callback registered!');
@@ -275,7 +265,7 @@ export class WalletManager {
       
       // Dispatch storage event for cross-tab sync
       if (typeof window !== 'undefined') {
-        console.log('🔒 WalletManager: Dispatching storage event');
+        
         window.dispatchEvent(new StorageEvent('storage', {
           key: 'isWalletLocked',
           oldValue: 'false',
@@ -284,13 +274,12 @@ export class WalletManager {
         }));
       }
     } catch (error) {
-      console.error('❌ WalletManager: Auto-lock failed:', error);
+      console.error('WalletManager: Auto-lock failed:', error);
     }
   }
 
   static setSessionPassword(password: string): void {
-    console.log('🔑 WalletManager: Setting session password, callback exists:', !!this.onAutoLockCallback);
-    
+
     // Clear old password first
     if (this.sessionPassword) {
       this.clearSessionPassword();
@@ -300,8 +289,7 @@ export class WalletManager {
     
     // Generate new session encryption key for encrypting session storage
     this.sessionEncryptionKey = generateSessionKey();
-    console.log('🔐 WalletManager: Generated new session encryption key');
-    
+
     // Store password and encryption key in chrome.storage.session for cross-instance access
     // This is secure because session storage is cleared when browser closes
     this.storeSessionPasswordToStorage(password);
@@ -321,7 +309,7 @@ export class WalletManager {
       // 3. Not synced to cloud
       const encoded = btoa(unescape(encodeURIComponent(password)));
       await ExtensionStorageManager.setSession('sessionKey', encoded);
-      console.log('🔑 WalletManager: Session password stored in session storage');
+      
     } catch (error) {
       console.error('❌ Failed to store session password:', error);
     }
@@ -331,7 +319,7 @@ export class WalletManager {
   private static async storeSessionEncryptionKeyToStorage(key: string): Promise<void> {
     try {
       await ExtensionStorageManager.setSession('sessionEncKey', key);
-      console.log('🔐 WalletManager: Session encryption key stored in session storage');
+      
     } catch (error) {
       console.error('❌ Failed to store session encryption key:', error);
     }
@@ -375,7 +363,7 @@ export class WalletManager {
     const storedEncKey = await this.retrieveSessionEncryptionKeyFromStorage();
     
     if (storedPassword && storedEncKey) {
-      console.log('🔑 WalletManager: Restored session password and encryption key from session storage');
+      
       this.sessionPassword = storedPassword;
       this.sessionEncryptionKey = storedEncKey;
       this.startAutoLockTimer();
@@ -386,25 +374,23 @@ export class WalletManager {
   }
 
   static clearSessionPassword(): void {
-    console.log('🔒 WalletManager: clearSessionPassword called, current password exists:', !!this.sessionPassword);
-    
+
     // Attempt to clear password from memory
     if (this.sessionPassword) {
       // Create a temporary reference and overwrite
-      const len = this.sessionPassword.length;
       // Note: JS strings are immutable, but we dereference to help GC
       this.sessionPassword = null;
-      console.log(`🔒 WalletManager: Session password cleared (was ${len} chars)`);
+      
     }
     
     // Clear session encryption key
     if (this.sessionEncryptionKey) {
       this.sessionEncryptionKey = null;
-      console.log('🔒 WalletManager: Session encryption key cleared');
+      
     }
     
     if (this.sessionTimeout) {
-      console.log('⏱️ WalletManager: Clearing auto-lock timer');
+      
       clearTimeout(this.sessionTimeout);
       this.sessionTimeout = null;
     }
@@ -422,7 +408,7 @@ export class WalletManager {
       await ExtensionStorageManager.removeSession('sessionKey');
       await ExtensionStorageManager.removeSession('sessionEncKey');
       await ExtensionStorageManager.removeSession('sessionWallets');
-      console.log('🔒 WalletManager: All session data cleared from session storage');
+      
     } catch (error) {
       console.error('❌ Failed to clear session data from storage:', error);
     }
@@ -437,7 +423,7 @@ export class WalletManager {
     
     // Only refresh if session is active
     if (this.sessionPassword) {
-      console.log('⏱️ WalletManager: Refreshing auto-lock timer due to activity');
+      
       this.startAutoLockTimer();
     }
   }
@@ -461,9 +447,7 @@ export class WalletManager {
     
     const elapsed = Date.now() - timestamp;
     const isValid = elapsed < this.SESSION_TIMEOUT_MS;
-    
-    console.log(`🔍 WalletManager: Session timestamp check - elapsed: ${Math.round(elapsed / 1000)}s, valid: ${isValid}`);
-    
+
     return isValid;
   }
   
@@ -475,7 +459,7 @@ export class WalletManager {
     
     // Session is valid in storage, restart our local timer
     if (this.sessionPassword) {
-      console.log('🔄 WalletManager: Refreshing session timer from storage');
+      
       this.startAutoLockTimer();
       return true;
     }
@@ -493,12 +477,9 @@ export class WalletManager {
   }
 
   static async unlockWallets(password: string): Promise<Wallet[]> {
-    console.log('🔓 WalletManager: unlockWallets called');
-    
+
     // Check if activeWalletId is preserved from before lock
-    const preservedActiveWalletId = await ExtensionStorageManager.get('activeWalletId');
-    console.log('🔓 WalletManager: Preserved activeWalletId:', preservedActiveWalletId);
-    
+
     try {
       // Get password hash and salt - prioritize localStorage (synchronous, more reliable)
       // then fallback to ExtensionStorage
@@ -507,13 +488,13 @@ export class WalletManager {
       
       // Fallback to ExtensionStorage if localStorage is empty
       if (!hashedPassword || !salt) {
-        console.log('🔓 WalletManager: localStorage empty, trying ExtensionStorage');
+        
         hashedPassword = await ExtensionStorageManager.get('walletPasswordHash');
         salt = await ExtensionStorageManager.get('walletPasswordSalt');
         
         // Sync back to localStorage if found in ExtensionStorage
         if (hashedPassword && salt) {
-          console.log('🔓 WalletManager: Syncing password hash from ExtensionStorage to localStorage');
+          
           localStorage.setItem('walletPasswordHash', hashedPassword);
           localStorage.setItem('walletPasswordSalt', salt);
         }
@@ -521,7 +502,7 @@ export class WalletManager {
         // Ensure ExtensionStorage is in sync with localStorage
         const extHash = await ExtensionStorageManager.get('walletPasswordHash');
         if (!extHash || extHash !== hashedPassword) {
-          console.log('🔓 WalletManager: Syncing password hash from localStorage to ExtensionStorage');
+          
           await ExtensionStorageManager.set('walletPasswordHash', hashedPassword);
           await ExtensionStorageManager.set('walletPasswordSalt', salt);
         }
@@ -538,7 +519,6 @@ export class WalletManager {
         throw new Error('Invalid password');
       }
 
-      console.log('🔓 WalletManager: Password verified, setting session password');
       // Store password in session for encrypting new wallets
       this.setSessionPassword(password);
 
@@ -547,25 +527,23 @@ export class WalletManager {
       
       // Fallback to ExtensionStorage if localStorage is empty
       if (!encryptedWallets) {
-        console.log('🔓 WalletManager: localStorage encryptedWallets empty, trying ExtensionStorage');
+        
         encryptedWallets = await ExtensionStorageManager.get('encryptedWallets');
         
         // Sync back to localStorage if found
         if (encryptedWallets) {
-          console.log('🔓 WalletManager: Syncing encryptedWallets from ExtensionStorage to localStorage');
+          
           localStorage.setItem('encryptedWallets', typeof encryptedWallets === 'string' ? encryptedWallets : JSON.stringify(encryptedWallets));
         }
       } else {
         // Ensure ExtensionStorage is in sync
         const extWallets = await ExtensionStorageManager.get('encryptedWallets');
         if (!extWallets) {
-          console.log('🔓 WalletManager: Syncing encryptedWallets from localStorage to ExtensionStorage');
+          
           await ExtensionStorageManager.set('encryptedWallets', encryptedWallets);
         }
       }
-      
-      console.log('🔓 WalletManager: encryptedWallets exists:', !!encryptedWallets);
-      
+
       const decryptedWallets: Wallet[] = [];
 
       if (encryptedWallets) {
@@ -587,12 +565,12 @@ export class WalletManager {
               let wallet: Wallet;
               
               if (encryptedWallet.needsEncryption) {
-                console.log('🔄 WalletManager: Found wallet needing encryption:', encryptedWallet.address?.slice(0, 8));
+                
                 // Legacy: wallet stored as plain JSON, decrypt and re-encrypt properly
                 try {
                   wallet = JSON.parse(encryptedWallet.encryptedData);
                 } catch (parseError) {
-                  console.error('❌ WalletManager: Failed to parse needsEncryption wallet data:', parseError);
+                  console.error('WalletManager: Failed to parse needsEncryption wallet data:', parseError);
                   continue;
                 }
                 
@@ -601,7 +579,7 @@ export class WalletManager {
                 encryptedWallet.encryptedData = properlyEncrypted;
                 delete encryptedWallet.needsEncryption; // Remove the flag completely
                 walletsWereUpgraded = true;
-                console.log('✅ WalletManager: Wallet upgraded to encrypted:', wallet.address?.slice(0, 8));
+                
               } else {
                 // Properly encrypted wallet
                 const decryptedData = await decryptWalletData(encryptedWallet.encryptedData, password);
@@ -615,18 +593,18 @@ export class WalletManager {
               
               decryptedWallets.push(wallet);
             } catch (error) {
-              console.error('❌ WalletManager: Failed to decrypt wallet:', encryptedWallet.address, error);
+              console.error('WalletManager: Failed to decrypt wallet:', encryptedWallet.address, error);
             }
           }
 
           // Save re-encrypted wallets if any were upgraded
           if (walletsWereUpgraded) {
-            console.log('💾 WalletManager: Saving upgraded encrypted wallets');
+            
             await ExtensionStorageManager.set('encryptedWallets', JSON.stringify(parsedEncrypted));
             localStorage.setItem('encryptedWallets', JSON.stringify(parsedEncrypted));
           }
         } catch (error) {
-          console.error('❌ WalletManager: Failed to parse encrypted wallets:', error);
+          console.error('WalletManager: Failed to parse encrypted wallets:', error);
           throw new Error('Failed to parse encrypted wallet data');
         }
       }
@@ -667,11 +645,9 @@ export class WalletManager {
       // Set active wallet
       if (decryptedWallets.length > 0) {
         const activeWalletId = await ExtensionStorageManager.get('activeWalletId');
-        console.log('🔓 WalletManager: Checking activeWalletId:', activeWalletId);
-        console.log('🔓 WalletManager: Decrypted wallets addresses:', decryptedWallets.map(w => w.address.slice(0, 8)));
-        
+
         if (!activeWalletId || !decryptedWallets.some(w => w.address === activeWalletId)) {
-          console.log('🔓 WalletManager: Setting activeWalletId to first wallet:', decryptedWallets[0].address.slice(0, 8));
+          
           await ExtensionStorageManager.set('activeWalletId', decryptedWallets[0].address);
           localStorage.setItem('activeWalletId', decryptedWallets[0].address);
         }
@@ -679,8 +655,7 @@ export class WalletManager {
         // Store decrypted wallets in session storage (ENCRYPTED)
         // Session encryption key is generated in setSessionPassword
         await this.updateSessionWallets(decryptedWallets);
-        console.log('🔓 WalletManager: Stored', decryptedWallets.length, 'wallets in encrypted session storage');
-        
+
         // Store EVM addresses for all wallets (safe - only stores derived addresses)
         await this.storeAllEvmAddresses(decryptedWallets);
       }
@@ -708,7 +683,7 @@ export class WalletManager {
       const encryptedWallets = await encryptSessionData(walletsJson, this.sessionEncryptionKey);
       
       await ExtensionStorageManager.setSession('sessionWallets', encryptedWallets);
-      console.log('🔐 WalletManager: Updated session wallets (encrypted), count:', wallets.length);
+      
     } catch (error) {
       console.error('❌ Failed to update session wallets:', error);
     }
@@ -779,14 +754,12 @@ export class WalletManager {
           ? JSON.parse(existingData) 
           : existingData;
       }
-      
-      console.log('🔐 addEncryptedWallet: Current encrypted wallets count:', encryptedWallets.length);
 
       // Check if wallet already exists
       const existingIndex = encryptedWallets.findIndex((w: any) => w.address === wallet.address);
       
       // Always encrypt wallet data - no exceptions
-      console.log('🔐 addEncryptedWallet: Encrypting wallet', wallet.address.slice(0, 8));
+      
       const encryptedData = await encryptWalletData(JSON.stringify(wallet), password);
       const encryptedWallet = {
         address: wallet.address,
@@ -795,10 +768,10 @@ export class WalletManager {
       };
 
       if (existingIndex >= 0) {
-        console.log('🔄 addEncryptedWallet: Updating existing wallet at index', existingIndex);
+        
         encryptedWallets[existingIndex] = encryptedWallet;
       } else {
-        console.log('➕ addEncryptedWallet: Adding new wallet');
+        
         encryptedWallets.push(encryptedWallet);
       }
 
@@ -809,13 +782,9 @@ export class WalletManager {
       
       // Store EVM address for this wallet (safe - only stores derived address)
       await this.storeEvmAddress(wallet.address, wallet.privateKey);
-      
-      console.log(`🔐 Wallet ${wallet.address.slice(0, 8)}... stored (encrypted), total: ${encryptedWallets.length}`);
-      
+
       // Verify storage
-      const verifyExt = await ExtensionStorageManager.get('encryptedWallets');
-      const verifyLocal = localStorage.getItem('encryptedWallets');
-      console.log('🔍 addEncryptedWallet: Verify - ExtensionStorage length:', verifyExt?.length, ', localStorage length:', verifyLocal?.length);
+      
     } catch (error) {
       console.error('❌ Failed to store wallet:', error);
       throw error; // Re-throw so caller knows it failed
@@ -865,8 +834,7 @@ export class WalletManager {
       
       // Update session wallets with new order
       await this.updateSessionWallets(newOrder);
-      
-      console.log('🔄 WalletManager: Wallets reordered successfully, count:', newOrder.length);
+
     } catch (error) {
       console.error('❌ Failed to reorder wallets:', error);
       throw error;
@@ -892,8 +860,7 @@ export class WalletManager {
       const currentSessionWallets = await this.getSessionWallets();
       const updatedSessionWallets = currentSessionWallets.filter(w => w.address !== address);
       await this.updateSessionWallets(updatedSessionWallets);
-      
-      console.log(`🗑️ Wallet ${address.slice(0, 8)}... removed from encrypted storage`);
+
     } catch (error) {
       console.error('❌ Failed to remove encrypted wallet:', error);
     }
@@ -901,14 +868,12 @@ export class WalletManager {
 
   static async lockWallets(): Promise<void> {
     try {
-      console.log('🔒 WalletManager: lockWallets called');
-      
+
       // FIX #7: Preserve activeWalletId BEFORE any clearing operations
       const activeWalletIdBefore = await ExtensionStorageManager.get('activeWalletId');
       const localActiveWalletId = localStorage.getItem('activeWalletId');
       const preservedActiveWalletId = activeWalletIdBefore || localActiveWalletId;
-      console.log('🔒 WalletManager: activeWalletId BEFORE lock:', preservedActiveWalletId);
-      
+
       // Clear session password (this calls clearSessionDataFromStorage internally)
       this.clearSessionPassword();
       
@@ -922,21 +887,19 @@ export class WalletManager {
       
       // Clear session wallets
       await ExtensionStorageManager.removeSession('sessionWallets');
-      console.log('🔒 WalletManager: Cleared session wallets');
-      
+
       // FIX #7: Restore activeWalletId if it was cleared
       if (preservedActiveWalletId) {
         const activeWalletIdAfter = await ExtensionStorageManager.get('activeWalletId');
         if (!activeWalletIdAfter) {
-          console.log('🔒 WalletManager: Restoring activeWalletId:', preservedActiveWalletId);
+          
           await ExtensionStorageManager.set('activeWalletId', preservedActiveWalletId);
           localStorage.setItem('activeWalletId', preservedActiveWalletId);
         }
       }
       
       // Verify activeWalletId is still preserved
-      const activeWalletIdFinal = await ExtensionStorageManager.get('activeWalletId');
-      console.log('🔒 WalletManager: activeWalletId AFTER lock:', activeWalletIdFinal);
+      
     } catch (error) {
       console.error('WalletManager lock error:', error);
       throw error;
@@ -955,7 +918,7 @@ export class WalletManager {
 
   static async shouldShowUnlockScreen(): Promise<boolean> {
     try {
-      const [hasPassword, isLocked, encryptedWallets] = await Promise.all([
+      const [hasPassword, _isLocked, encryptedWallets] = await Promise.all([
         ExtensionStorageManager.get('walletPasswordHash'),
         ExtensionStorageManager.get('isWalletLocked'),
         ExtensionStorageManager.get('encryptedWallets')
@@ -966,18 +929,10 @@ export class WalletManager {
       const localEncryptedWallets = localStorage.getItem('encryptedWallets');
       
       const hasPasswordAnywhere = !!hasPassword || !!localPasswordHash;
-      
-      console.log('🔍 shouldShowUnlockScreen check:', { 
-        hasPassword: !!hasPassword, 
-        localPasswordHash: !!localPasswordHash,
-        isLocked, 
-        hasEncryptedWallets: !!encryptedWallets,
-        localEncryptedWallets: !!localEncryptedWallets
-      });
-      
+
       // No password set anywhere = no wallet setup yet (show welcome screen)
       if (!hasPasswordAnywhere) {
-        console.log('🔍 shouldShowUnlockScreen: No password anywhere, returning false (welcome screen)');
+        
         return false;
       }
       
@@ -997,12 +952,12 @@ export class WalletManager {
       
       // If has password and encrypted wallets exist, show unlock screen
       if (hasEncryptedWallets) {
-        console.log('🔍 shouldShowUnlockScreen: Has encrypted wallets, returning true (unlock screen)');
+        
         return true;
       }
       
       // Has password but no encrypted wallets - something is wrong, show welcome
-      console.log('🔍 shouldShowUnlockScreen: Has password but no wallets, returning false');
+      
       return false;
     } catch (error) {
       console.error('Failed to check unlock status:', error);

@@ -106,9 +106,9 @@ export function UnifiedContractHandler({
     try {
       const providers = JSON.parse(localStorage.getItem('rpcProviders') || '[]');
       const activeProvider = providers.find((p: any) => p.isActive);
-      return activeProvider?.url || 'https://octra.network';
+      return activeProvider?.url || 'http://46.101.86.250:8080';
     } catch {
-      return 'https://octra.network';
+      return 'http://46.101.86.250:8080';
     }
   };
 
