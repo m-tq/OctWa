@@ -3242,8 +3242,8 @@ export function WalletDashboard({
                 )}
               </div>
 
-              {/* Recent Activity Header */}
-              <div className="flex items-center justify-between pt-1 pb-2">
+              {/* Recent Activity - Unified (same as expanded mode) */}
+              <div className="flex items-center justify-between pt-1 pb-1">
                 <h3 className={`text-sm font-semibold ${operationMode === 'private' ? 'text-[#00E5C0]' : ''}`}>
                   Recent Activity
                 </h3>
@@ -3261,96 +3261,20 @@ export function WalletDashboard({
               </div>
             </div>
 
-            {/* Transaction List - Scrollable area */}
-            <ScrollArea className="flex-1 min-h-0" stabilizeGutter>
-              <ScrollAreaContent className="divide-y divide-dashed divide-border pb-6">
-                {isLoadingTransactions ? (
-                  <div className="flex items-center justify-center py-4">
-                    <div className="w-4 h-4 rounded-full border-2 border-transparent animate-spin" style={{ borderTopColor: '#00E5C0' }} />
-                  </div>
-                ) : (() => {
-                  // Filter transactions based on operationMode
-                  const filteredTxs = transactions.filter(tx => {
-                    if (operationMode === 'private') {
-                      return isPrivateTransfer(tx);
-                    } else {
-                      return !isPrivateTransfer(tx);
-                    }
-                  });
-                  
-                  if (filteredTxs.length === 0) {
-                    return (
-                      <div className="text-center py-4 text-muted-foreground">
-                        <History className="h-5 w-5 mx-auto mb-1 opacity-50" />
-                        <p className="text-[10px]">No {operationMode} transactions yet</p>
-                      </div>
-                    );
-                  }
-                  
-                  return filteredTxs.slice(0, 20).map((tx) => {
-                    const txIsPrivate = isPrivateTransfer(tx);
-                    const txDate = new Date(tx.timestamp * 1000);
-                    const timeStr = txDate.toLocaleTimeString('en-US', { 
-                      hour: '2-digit', 
-                      minute: '2-digit', 
-                      second: '2-digit', 
-                      hour12: false,
-                      timeZone: 'UTC'
-                    });
-                    const dateStr = txDate.toLocaleDateString('en-US', {
-                      month: 'short',
-                      day: 'numeric',
-                      timeZone: 'UTC'
-                    });
-                    return (
-                      <div 
-                        key={tx.hash} 
-                        className={`py-2.5 px-1 cursor-pointer hover:bg-muted/50 transition-colors`}
-                        onClick={() => handleViewTxDetails(tx.hash, tx.status === 'pending')}
-                      >
-                        <div className="flex items-center justify-between gap-2">
-                          <div className="flex items-center gap-2 flex-1 min-w-0">
-                            {tx.type === 'sent' ? (
-                              <ArrowUpRight className="h-3.5 w-3.5 text-red-500 flex-shrink-0" />
-                            ) : (
-                              <ArrowDownLeft className="h-3.5 w-3.5 text-green-500 flex-shrink-0" />
-                            )}
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-1.5">
-                                {txIsPrivate ? (
-                                  <span className="text-[#3A4DFF] font-medium text-xs">{tx.type === 'sent' ? '-' : '+'}Private</span>
-                                ) : (
-                                  <span className={`font-mono text-xs ${tx.type === 'sent' ? 'text-red-500' : 'text-green-500'}`}>{tx.type === 'sent' ? '-' : '+'}{(tx.amount || 0).toFixed(4)} OCT</span>
-                                )}
-                                {tx.status === 'confirmed' ? (
-                                  <div className="h-1.5 w-1.5  bg-[#3A4DFF]" />
-                                ) : tx.status === 'pending' ? (
-                                  <div className="h-1.5 w-1.5  bg-yellow-500 animate-pulse" />
-                                ) : (
-                                  <div className="h-3 w-3  bg-red-500/20 flex items-center justify-center">
-                                    <div className="h-1.5 w-1.5  bg-red-500" />
-                                  </div>
-                                )}
-                                {tx.message && tx.message !== 'PRIVATE_TRANSFER' && tx.message !== '505249564154455f5452414e53464552' && (
-                                  <MessageSquare className="h-3 w-3 text-muted-foreground" />
-                                )}
-                              </div>
-                              <div className="text-[10px] text-muted-foreground truncate">
-                                {tx.type === 'sent' ? 'To: ' : 'From: '}{truncateAddress(tx.type === 'sent' ? tx.to : tx.from)}
-                              </div>
-                            </div>
-                          </div>
-                          <div className="text-[10px] text-muted-foreground flex-shrink-0 text-right">
-                            <div>{dateStr}</div>
-                            <div>{timeStr} UTC</div>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  });
-                })()}
-              </ScrollAreaContent>
-            </ScrollArea>
+            {/* Transaction List - UnifiedHistory (same as expanded mode) */}
+            <div className="flex-1 min-h-0 overflow-hidden">
+              <UnifiedHistory
+                wallet={wallet}
+                transactions={transactions}
+                onTransactionsUpdate={handleTransactionsUpdate}
+                isLoading={isLoadingTransactions}
+                isPopupMode={true}
+                hideBorder={true}
+                operationMode={operationMode}
+                isCompact={false}
+                onViewTxDetails={handleViewTxDetails}
+              />
+            </div>
           </div>
         ) : (
         /* ============================================ */
