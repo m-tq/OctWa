@@ -10,6 +10,7 @@ import {
   PendingPrivateTransfer,
   PrivateTransferResult,
   ClaimResult,
+  TransactionHistoryItem,
 } from '../types/wallet';
 import { getActiveRPCProvider } from './rpc';
 import * as nacl from 'tweetnacl';
@@ -545,7 +546,8 @@ async function makeAPIRequest(endpoint: string, options: RequestInit = {}, retry
       ...options,
       headers,
       // Add timeout to prevent hanging requests
-      signal: AbortSignal.timeout(30000) // 30 second timeout
+      // Increased to 60 seconds to handle large transaction histories
+      signal: AbortSignal.timeout(60000) // 60 second timeout
     });
     
     // Check if we should retry on server errors
@@ -589,6 +591,11 @@ async function safeJsonParse(response: Response): Promise<any> {
     if (error instanceof Error) {
       console.error('Failed to parse JSON response:', error.message);
       console.error('Error type:', error.name);
+      
+      // If it's an AbortError, throw it directly so it can be handled properly
+      if (error.name === 'AbortError') {
+        throw error;
+      }
     } else {
       console.error('Failed to parse JSON response:', error);
     }
@@ -1090,55 +1097,55 @@ export async function fetchTransactionHistory(
     }
     
     // WEBCLI LOGIC: Fetch details for each confirmed transaction
-    const confirmedTransactionPromises = apiData.recent_transactions.map(async (recentTx) => {
-      try {
-        const txDetails = await fetchTransactionDetails(recentTx.hash);
-        
-        // WEBCLI LOGIC: Determine op_type from transaction details
-        const opType = txDetails.op_type || txDetails.parsed_tx.op_type || 
-          (txDetails.parsed_tx.message === 'PRIVATE_TRANSFER' || 
-           txDetails.parsed_tx.message === '505249564154455f5452414e53464552' ? 'private' : 'standard');
-        
-        // WEBCLI LOGIC: Parse amount from amount_raw or amount field
-        let amount = 0;
-        if (txDetails.parsed_tx.amount_raw) {
-          const amountRaw = typeof txDetails.parsed_tx.amount_raw === 'string'
-            ? parseInt(txDetails.parsed_tx.amount_raw, 10)
-            : txDetails.parsed_tx.amount_raw;
-          amount = amountRaw / MU_FACTOR;
-        } else if (txDetails.parsed_tx.amount) {
-          amount = parseFloat(txDetails.parsed_tx.amount);
-        }
-        
-        // Transform to our expected format
-        return {
-          hash: txDetails.tx_hash,
-          from: txDetails.parsed_tx.from,
-          to: txDetails.parsed_tx.to,
-          amount: amount,
-          timestamp: txDetails.parsed_tx.timestamp,
-          status: 'confirmed' as const,
-          type: txDetails.parsed_tx.from.toLowerCase() === address.toLowerCase() ? 'sent' as const : 'received' as const,
-          op_type: opType,
-          message: txDetails.parsed_tx.message
-        };
-      } catch (error) {
-        console.error('Failed to fetch transaction details for hash:', recentTx.hash, error);
-        // Return a basic transaction object if details fetch fails
-        return {
-          hash: recentTx.hash,
-          from: 'unknown',
-          to: 'unknown',
-          amount: 0,
-          timestamp: Date.now() / 1000,
-          status: 'confirmed' as const,
-          type: 'received' as const,
-          op_type: 'standard'
-        };
-      }
-    });
+    // Use batching to avoid overwhelming the server with too many concurrent requests
+    const BATCH_SIZE = 5; // Process 5 transactions at a time
+    const confirmedTransactions: TransactionHistoryItem[] = [];
     
-    const confirmedTransactions = await Promise.all(confirmedTransactionPromises);
+    for (let i = 0; i < apiData.recent_transactions.length; i += BATCH_SIZE) {
+      const batch = apiData.recent_transactions.slice(i, i + BATCH_SIZE);
+      const batchPromises = batch.map(async (recentTx): Promise<TransactionHistoryItem> => {
+        try {
+          const txDetails = await fetchTransactionDetails(recentTx.hash);
+          
+          // WEBCLI LOGIC: Parse amount from amount_raw or amount field
+          let amount = 0;
+          if (txDetails.parsed_tx.amount_raw) {
+            const amountRaw = typeof txDetails.parsed_tx.amount_raw === 'string'
+              ? parseInt(txDetails.parsed_tx.amount_raw, 10)
+              : txDetails.parsed_tx.amount_raw;
+            amount = amountRaw / MU_FACTOR;
+          } else if (txDetails.parsed_tx.amount) {
+            amount = parseFloat(txDetails.parsed_tx.amount);
+          }
+          
+          // Transform to our expected format
+          return {
+            hash: txDetails.tx_hash,
+            from: txDetails.parsed_tx.from,
+            to: txDetails.parsed_tx.to,
+            amount: amount,
+            timestamp: txDetails.parsed_tx.timestamp,
+            status: 'confirmed' as const,
+            type: txDetails.parsed_tx.from.toLowerCase() === address.toLowerCase() ? 'sent' as const : 'received' as const,
+          };
+        } catch (error) {
+          console.error('Failed to fetch transaction details for hash:', recentTx.hash, error);
+          // Return a basic transaction object if details fetch fails
+          return {
+            hash: recentTx.hash,
+            from: 'unknown',
+            to: 'unknown',
+            amount: 0,
+            timestamp: Date.now() / 1000,
+            status: 'confirmed' as const,
+            type: 'received' as const,
+          };
+        }
+      });
+      
+      const batchResults = await Promise.all(batchPromises);
+      confirmedTransactions.push(...batchResults);
+    }
     
     const confirmedHashes = new Set(confirmedTransactions.map(tx => tx.hash));
 
@@ -1210,12 +1217,8 @@ export async function fetchTransactionDetails(hash: string, _forceRefresh = fals
   // Always fetch fresh data, don't use cache
   
   try {
-    // Add timeout to prevent hanging requests
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
-    
+    // makeAPIRequest already has a 30 second timeout, no need for additional timeout here
     const response = await makeAPIRequest(`/tx/${hash}`);
-    clearTimeout(timeoutId);
     
     if (!response.ok) {
       const errorText = await response.text();

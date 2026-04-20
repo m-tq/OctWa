@@ -1,6 +1,6 @@
 # PVAC Server
 
-High-performance C++ server for Private Verifiable Anonymous Computation operations.
+High-performance C++ server for Publicly Verifiable Arithmetic Computations operations.
 
 ## Quick Start
 
