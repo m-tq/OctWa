@@ -23,7 +23,7 @@ import {
   Clock
 } from 'lucide-react';
 import { Wallet } from '../types/wallet';
-import { fetchBalance, createTransaction, fetchCurrentEpoch, invalidateCacheAfterTransaction, sendTransactionBatch } from '../utils/api';
+import { fetchBalance, createTransaction, fetchCurrentEpoch, invalidateCacheAfterTransaction, sendTransaction } from '../utils/api';
 import { useToast } from '@/hooks/use-toast';
 
 interface FileRecipient {
@@ -356,11 +356,13 @@ export function FileMultiSend({ wallet, balance, onBalanceUpdate, onNonceUpdate,
       batchWithNonce: BatchRecipient[],
       batchNum: number
     ): Promise<{ recipient: BatchRecipient; success: boolean; hash?: string; error?: string }[]> => {
-      try {
-        // Create all transactions for this batch
-        const transactions = batchWithNonce.map((recipient) => {
+      // Send sequentially — node rejects multi-nonce batches for same address
+      const results: { recipient: BatchRecipient; success: boolean; hash?: string; error?: string }[] = [];
+
+      for (const recipient of batchWithNonce) {
+        try {
           const amount = parseFloat(recipient.amount);
-          return createTransaction(
+          const tx = createTransaction(
             wallet.address,
             recipient.address.trim(),
             amount,
@@ -370,56 +372,25 @@ export function FileMultiSend({ wallet, balance, onBalanceUpdate, onNonceUpdate,
             undefined,
             getOuValue(amount)
           );
-        });
 
-        // Submit all transactions in a single batch
-        const batchResult = await sendTransactionBatch(transactions);
-
-        if (!batchResult.success) {
-          // Batch submission failed entirely
-          console.error(`[Batch ${batchNum}] Batch submission failed: ${batchResult.error}`);
-          return batchWithNonce.map((recipient) => ({
-            recipient,
-            success: false,
-            hash: undefined,
-            error: batchResult.error || 'Batch submission failed'
-          }));
+          const result = await sendTransaction(tx);
+          if (result.success) {
+            results.push({ recipient, success: true, hash: result.hash, error: undefined });
+          } else {
+            results.push({ recipient, success: false, hash: undefined, error: result.error || 'Transaction rejected' });
+          }
+        } catch (error) {
+          const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+          results.push({ recipient, success: false, hash: undefined, error: errorMsg });
         }
 
-        // Process individual results from batch response
-        const results = batchWithNonce.map((recipient, index) => {
-          const result = batchResult.results[index];
-          if (result && result.status === 'accepted') {
-            
-            return {
-              recipient,
-              success: true,
-              hash: result.tx_hash,
-              error: undefined
-            };
-          } else {
-            const errorMsg = result?.reason || 'Transaction rejected';
-            
-            return {
-              recipient,
-              success: false,
-              hash: undefined,
-              error: errorMsg
-            };
-          }
-        });
-
-        return results;
-      } catch (error) {
-        const errorMsg = error instanceof Error ? error.message : 'Unknown error';
-        console.error(`[Batch ${batchNum}] Batch error: ${errorMsg}`);
-        return batchWithNonce.map((recipient) => ({
-          recipient,
-          success: false,
-          hash: undefined,
-          error: errorMsg
-        }));
+        // Small delay between sequential sends to avoid node overload
+        if (batchWithNonce.indexOf(recipient) < batchWithNonce.length - 1) {
+          await new Promise(resolve => setTimeout(resolve, 200));
+        }
       }
+
+      return results;
     };
 
     // Define recipient type for batch processing
