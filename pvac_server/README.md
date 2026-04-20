@@ -1,376 +1,162 @@
-# PVAC Server - Local Cryptographic Operations Server
+# PVAC Server
 
-## Overview
+High-performance C++ server for Private Verifiable Anonymous Computation operations.
 
-PVAC (Publicly Verifiable Arithmetic Computations) Server is a local C++ server that handles heavy cryptographic operations for the OctWa wallet extension. It uses WebSocket and REST API with secure authentication.
+## Quick Start
+
+### Linux - One-Click Build
+
+The easiest way to build on Linux:
+
+```bash
+chmod +x auto-build.sh
+./auto-build.sh
+```
+
+This script will:
+- ✅ Detect your Linux distribution automatically
+- ✅ Check for required dependencies (CMake, GCC, OpenSSL, etc.)
+- ✅ Auto-install missing dependencies (with your permission)
+- ✅ Verify CPU features (AES-NI, SSE2, SSE4.1)
+- ✅ Build the server using all available CPU cores
+
+Supported distributions:
+- Ubuntu / Debian / Linux Mint / Pop!_OS
+- Fedora / RHEL / CentOS / Rocky / AlmaLinux
+- Arch / Manjaro / EndeavourOS
+- openSUSE / SLES
+
+### Manual Build
+
+#### Linux
+
+```bash
+chmod +x build.sh
+./build.sh
+```
+
+#### Windows
+
+```powershell
+.\build-windows.ps1
+```
+
+## Requirements
+
+### Linux
+- CMake 3.15+
+- GCC/G++ with C++17 support
+- OpenSSL development files
+- Make
+- CPU with AES-NI, SSE2, and SSE4.1 support
+
+### Windows
+- CMake 3.15+
+- Visual Studio 2019+ or MinGW-w64
+- OpenSSL (automatically handled by vcpkg in build script)
+
+## Running
+
+After building:
+
+```bash
+cd build
+./pvac_server [port]
+```
+
+Default port: `8765`
+
+Example:
+```bash
+./pvac_server 8765
+```
 
 ## Architecture
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│  Browser Extension (JavaScript)                             │
-│  - UI/UX                                                     │
-│  - Wallet management                                         │
-│  - Transaction building                                      │
-└────────────────┬────────────────────────────────────────────┘
-                 │
-                 │ WebSocket/REST + Auth Token
-                 │
-┌────────────────▼────────────────────────────────────────────┐
-│  PVAC Server (C++ Local Server)                             │
-│  - Encrypted balance decryption                             │
-│  - Balance encryption                                        │
-│  - Balance decryption                                        │
-│  - Stealth send                                              │
-│  - Claim stealth                                             │
-│  - Scan stealth transfers                                    │
-└────────────────┬────────────────────────────────────────────┘
-                 │
-                 │ Uses PVAC C++ Library
-                 │
-┌────────────────▼────────────────────────────────────────────┐
-│  PVAC Library (Homomorphic Encryption)                      │
-│  - FHE operations                                            │
-│  - Cryptographic proofs                                      │
-└─────────────────────────────────────────────────────────────┘
-```
-
-## Features
-
-### Supported Operations
-
-1. **Encrypted Balance Decryption**
-   - Decrypt HFHE cipher to get actual balance
-   - Input: cipher (base64), private key
-   - Output: decrypted balance (raw integer)
-
-2. **Encrypt Balance**
-   - Encrypt public balance to private balance
-   - Input: amount, private key, public key
-   - Output: transaction proof
-
-3. **Decrypt Balance**
-   - Decrypt private balance to public balance
-   - Input: amount, private key, current cipher
-   - Output: transaction proof
-
-4. **Stealth Send**
-   - Send private transfer to recipient
-   - Input: recipient address, amount, private key
-   - Output: stealth transaction
-
-5. **Claim Stealth**
-   - Claim received stealth transfer
-   - Input: stealth output, private key
-   - Output: claim transaction
-
-6. **Scan Stealth Transfers**
-   - Scan blockchain for stealth transfers
-   - Input: private key, from_epoch
-   - Output: list of claimable transfers
-
-## Security
-
-### Authentication
-
-- **Auth Token**: Random 32-byte token generated on server start
-- **Token Storage**: Saved to `~/.octwa/pvac_token`
-- **Token Validation**: All requests must include valid token
-
-### Connection Security
-
-- **Local Only**: Server binds to `127.0.0.1` (localhost only)
-- **No Remote Access**: Cannot be accessed from network
-- **Token Required**: All endpoints require authentication
-
-### Data Security
-
-- **No Storage**: Private keys never stored on disk
-- **Memory Only**: All sensitive data in memory only
-- **Secure Cleanup**: Memory zeroed after use
+The server provides HTTP endpoints for:
+- PVAC encryption/decryption operations
+- Zero-knowledge proofs
+- Range proofs
+- Stealth address operations
+- Transaction building
 
 ## API Endpoints
 
-### REST API
-
-#### 1. Health Check
-```
-GET /health
-Response: {"status": "ok", "version": "1.0.0"}
-```
-
-#### 2. Decrypt Encrypted Balance
-```
-POST /api/decrypt_balance
-Headers: Authorization: Bearer <token>
-Body: {
-  "cipher": "hfhe_v1|<base64>",
-  "private_key": "<base64>"
-}
-Response: {
-  "success": true,
-  "balance": 50000,
-  "balance_oct": "0.05"
-}
-```
-
-#### 3. Encrypt Balance
-```
-POST /api/encrypt_balance
-Headers: Authorization: Bearer <token>
-Body: {
-  "amount": 50000,
-  "private_key": "<base64>",
-  "public_key": "<base64>",
-  "address": "oct1...",
-  "nonce": 123
-}
-Response: {
-  "success": true,
-  "tx": { ... }
-}
-```
-
-#### 4. Decrypt Balance (to public)
-```
-POST /api/decrypt_to_public
-Headers: Authorization: Bearer <token>
-Body: {
-  "amount": 50000,
-  "private_key": "<base64>",
-  "current_cipher": "hfhe_v1|...",
-  "address": "oct1...",
-  "nonce": 123
-}
-Response: {
-  "success": true,
-  "tx": { ... }
-}
-```
-
-#### 5. Create Stealth Send
-```
-POST /api/stealth_send
-Headers: Authorization: Bearer <token>
-Body: {
-  "to_address": "oct1...",
-  "amount": 50000,
-  "private_key": "<base64>",
-  "from_address": "oct1...",
-  "nonce": 123
-}
-Response: {
-  "success": true,
-  "tx": { ... }
-}
-```
-
-#### 6. Claim Stealth Transfer
-```
-POST /api/claim_stealth
-Headers: Authorization: Bearer <token>
-Body: {
-  "stealth_output": { ... },
-  "private_key": "<base64>",
-  "address": "oct1...",
-  "nonce": 123
-}
-Response: {
-  "success": true,
-  "tx": { ... }
-}
-```
-
-#### 7. Scan Stealth Transfers
-```
-POST /api/scan_stealth
-Headers: Authorization: Bearer <token>
-Body: {
-  "private_key": "<base64>",
-  "from_epoch": 0,
-  "rpc_url": "http://..."
-}
-Response: {
-  "success": true,
-  "transfers": [
-    {
-      "amount": 50000,
-      "epoch": 123,
-      "stealth_output": { ... }
-    }
-  ]
-}
-```
-
-### WebSocket API
-
-```
-ws://127.0.0.1:8765/ws?token=<auth_token>
-
-Messages:
-{
-  "id": "unique-request-id",
-  "method": "decrypt_balance",
-  "params": { ... }
-}
-
-Response:
-{
-  "id": "unique-request-id",
-  "success": true,
-  "result": { ... }
-}
-```
-
-## Installation
-
-### Prerequisites
-
-- C++17 compiler (g++ or clang++)
-- CMake 3.15+
-- OpenSSL
-- PVAC library (included)
-
-### Build
-
-```bash
-cd pvac_server
-mkdir build
-cd build
-cmake ..
-make
-```
-
-### Run
-
-```bash
-./pvac_server
-```
-
-Server will start on `http://127.0.0.1:8765`
-
-Auth token will be saved to `~/.octwa/pvac_token`
-
-## Extension Integration
-
-### 1. Read Auth Token
-
-```javascript
-// Extension reads token from file
-const token = await readAuthToken();
-```
-
-### 2. Connect to Server
-
-```javascript
-// REST API
-const response = await fetch('http://127.0.0.1:8765/api/decrypt_balance', {
-  method: 'POST',
-  headers: {
-    'Authorization': `Bearer ${token}`,
-    'Content-Type': 'application/json'
-  },
-  body: JSON.stringify({
-    cipher: 'hfhe_v1|...',
-    private_key: '...'
-  })
-});
-
-// WebSocket
-const ws = new WebSocket(`ws://127.0.0.1:8765/ws?token=${token}`);
-ws.onmessage = (event) => {
-  const response = JSON.parse(event.data);
-  console.log('Result:', response.result);
-};
-```
-
-### 3. Handle Responses
-
-```javascript
-const result = await response.json();
-if (result.success) {
-  console.log('Balance:', result.balance_oct, 'OCT');
-} else {
-  console.error('Error:', result.error);
-}
-```
+See the main documentation for API details.
 
 ## Development
+
+### Debug Build
+
+```bash
+mkdir -p build
+cd build
+cmake -DCMAKE_BUILD_TYPE=Debug ..
+make -j$(nproc)
+```
+
+Debug builds include AddressSanitizer and UndefinedBehaviorSanitizer.
 
 ### Project Structure
 
 ```
 pvac_server/
-├── src/
-│   ├── main.cpp              # Server entry point
-│   ├── server.hpp            # HTTP/WebSocket server
-│   ├── auth.hpp              # Authentication
-│   ├── handlers.hpp          # Request handlers
-│   └── pvac_ops.hpp          # PVAC operations
-├── lib/                      # Copied from webcli
-│   ├── pvac_bridge.hpp
-│   ├── stealth.hpp
-│   ├── tx_builder.hpp
-│   └── ...
-├── pvac/                     # PVAC library
-│   ├── include/
-│   └── pvac_c_api.cpp
-├── CMakeLists.txt
-└── README.md
+├── src/           # Server implementation
+├── lib/           # Third-party libraries (httplib, tweetnacl, etc.)
+├── pvac/          # PVAC cryptographic library
+├── build/         # Build output (gitignored)
+├── auto-build.sh  # Automatic build script for Linux
+├── build.sh       # Manual build script for Linux
+└── build-windows.ps1  # Build script for Windows
 ```
-
-### Testing
-
-```bash
-# Test health endpoint
-curl http://127.0.0.1:8765/health
-
-# Test decrypt balance (with token)
-curl -X POST http://127.0.0.1:8765/api/decrypt_balance \
-  -H "Authorization: Bearer <token>" \
-  -H "Content-Type: application/json" \
-  -d '{"cipher":"hfhe_v1|...","private_key":"..."}'
-```
-
-## Security Considerations
-
-1. **Local Only**: Server only accessible from localhost
-2. **Auth Token**: Required for all operations
-3. **No Storage**: Private keys never stored
-4. **Memory Security**: Sensitive data zeroed after use
-5. **Token Rotation**: Token regenerated on server restart
-
-## Performance
-
-- **Decrypt Balance**: ~100-500ms
-- **Encrypt Balance**: ~500-1000ms
-- **Stealth Send**: ~500-1000ms
-- **Scan Stealth**: ~1-5s (depends on epoch range)
 
 ## Troubleshooting
 
-### Server Won't Start
+### Missing Dependencies
 
-- Check if port 8765 is available
-- Check if PVAC library is properly linked
-- Check logs in `~/.octwa/pvac_server.log`
+If you encounter missing dependencies, the `auto-build.sh` script will detect and offer to install them automatically.
 
-### Authentication Failed
+For manual installation:
 
-- Check if token file exists: `~/.octwa/pvac_token`
-- Restart server to regenerate token
-- Ensure extension reads correct token
+**Ubuntu/Debian:**
+```bash
+sudo apt update
+sudo apt install build-essential cmake libssl-dev pkg-config
+```
 
-### Slow Performance
+**Fedora/RHEL:**
+```bash
+sudo dnf install gcc-c++ cmake openssl-devel pkg-config
+```
 
-- PVAC operations are CPU-intensive
-- Consider upgrading CPU
-- Reduce epoch range for scanning
+**Arch:**
+```bash
+sudo pacman -S base-devel cmake openssl pkg-config
+```
+
+### CPU Feature Requirements
+
+The PVAC library requires:
+- AES-NI (hardware AES acceleration)
+- SSE2
+- SSE4.1
+
+Most modern x86_64 CPUs support these features. Check with:
+```bash
+grep -E "aes|sse2|sse4_1" /proc/cpuinfo
+```
+
+### Build Errors
+
+If the build fails:
+1. Ensure all dependencies are installed
+2. Check that your CPU supports required features
+3. Try a clean build:
+   ```bash
+   rm -rf build
+   ./auto-build.sh
+   ```
 
 ## License
 
-GPL v2+ (same as webcli)
-
-## Credits
-
-Based on Octra webcli PVAC implementation
+See main project LICENSE file.
