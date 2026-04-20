@@ -24,7 +24,11 @@ interface PrivateTransferProps {
   encryptedBalance?: any;
   onBalanceUpdate: (newBalance: number) => void;
   onNonceUpdate: (newNonce: number) => void;
-  onTransactionSuccess: () => void;
+  onTransactionSuccess: (newTx?: {
+    hash: string; from: string; to: string; amount: number;
+    status: 'confirmed' | 'pending' | 'failed'; finality?: string;
+    op_type?: string;
+  }) => void;
   isCompact?: boolean;
   onAddToAddressBook?: (address: string) => void; // Callback to add address to address book
 }
@@ -365,24 +369,34 @@ export function PrivateTransfer({
 
       // Verify optimistic update in background
       setTimeout(async () => {
-        
         try {
           const freshEncrypted = await fetchEncryptedBalance(wallet!.address, wallet!.privateKey, true);
-          
           await optimisticUpdateService.verifyUpdate(update.id, {
             public: 0,
             encrypted: freshEncrypted?.encrypted || 0,
           });
-
           setLocalEncryptedBalance(freshEncrypted);
-          onTransactionSuccess();
+          onTransactionSuccess({
+            hash: txHash,
+            from: wallet!.address,
+            to: 'stealth',
+            amount: amountNum,
+            status: 'pending',
+            op_type: 'stealth',
+          });
         } catch (error) {
           console.error('[StealthSend] Failed to verify:', error);
-          // Refresh anyway
           fetchEncryptedBalance(wallet!.address, wallet!.privateKey, true).then(setLocalEncryptedBalance);
-          onTransactionSuccess();
+          onTransactionSuccess({
+            hash: txHash,
+            from: wallet!.address,
+            to: 'stealth',
+            amount: amountNum,
+            status: 'pending',
+            op_type: 'stealth',
+          });
         }
-      }, 3000); // Wait 3 seconds
+      }, 3000);
       
     } catch (error: any) {
       console.error('[StealthSend] Error:', error);

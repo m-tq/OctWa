@@ -158,9 +158,9 @@ public:
             enc_data["zero_proof"]         = zp_str;
             enc_data["blinding"]           = octra::base64_encode(blinding, 32);
 
-            json tx = build_tx(address, address, std::to_string(amount),
-                               nonce, ou, timestamp, "encrypt", enc_data.dump());
-            sign_tx(tx, sk64, pub_b64);
+            json tx = build_and_sign_tx(address, address, std::to_string(amount),
+                               nonce, ou, timestamp, "encrypt", enc_data.dump(),
+                               sk64, pub_b64);
 
             r.success  = true;
             r.tx_data  = std::move(tx);
@@ -231,9 +231,9 @@ public:
             enc_data["blinding"]            = octra::base64_encode(blinding, 32);
             enc_data["range_proof_balance"] = rp_bal_str;
 
-            json tx = build_tx(address, address, std::to_string(amount),
-                               nonce, ou, timestamp, "decrypt", enc_data.dump());
-            sign_tx(tx, sk64, pub_b64);
+            json tx = build_and_sign_tx(address, address, std::to_string(amount),
+                               nonce, ou, timestamp, "decrypt", enc_data.dump(),
+                               sk64, pub_b64);
 
             r.success = true;
             r.tx_data = std::move(tx);
@@ -326,9 +326,9 @@ public:
             stealth_data["claim_pub"]           = octra::hex_encode(claim_pub.data(), 32);
             stealth_data["amount_commitment"]   = amt_commit_b64;
 
-            json tx = build_tx(from_address, "stealth", "0",
-                               nonce, ou, timestamp, "stealth", stealth_data.dump());
-            sign_tx(tx, sk64, pub_b64);
+            json tx = build_and_sign_tx(from_address, "stealth", "0",
+                               nonce, ou, timestamp, "stealth", stealth_data.dump(),
+                               sk64, pub_b64);
 
             r.success = true;
             r.tx_data = std::move(tx);
@@ -392,15 +392,16 @@ public:
 
             json claim_data;
             claim_data["version"]      = 5;
-            claim_data["output_id"]    = output_id;
+            claim_data["output_id"]    = stealth_output["id"]; // preserve original type (int/string) — matches webcli
             claim_data["claim_cipher"] = claim_cipher_str;
             claim_data["commitment"]   = commit_b64;
             claim_data["claim_secret"] = octra::hex_encode(cs.data(), 32);
             claim_data["zero_proof"]   = zp_str;
 
-            json tx = build_tx(address, address, "0",
-                               nonce, ou, timestamp, "claim", claim_data.dump());
-            sign_tx(tx, sk64, pub_b64);
+            // Webcli uses amount="0" and to_=address for claim
+            json tx = build_and_sign_tx(address, address, "0",
+                               nonce, ou, timestamp, "claim", claim_data.dump(),
+                               sk64, pub_b64);
 
             r.success = true;
             r.tx_data = std::move(tx);
@@ -479,33 +480,37 @@ public:
     }
 
 private:
-    // Build a base transaction JSON object
-    static json build_tx(const std::string& from,
-                         const std::string& to,
-                         const std::string& amount,
-                         int nonce,
-                         const std::string& ou,
-                         double timestamp,
-                         const std::string& op_type,
-                         const std::string& encrypted_data) {
-        json tx;
-        tx["from"]           = from;
-        tx["to_"]            = to;
-        tx["amount"]         = amount;
-        tx["nonce"]          = nonce;
-        tx["ou"]             = ou;
-        tx["timestamp"]      = timestamp;
-        tx["op_type"]        = op_type;
-        tx["encrypted_data"] = encrypted_data;
-        return tx;
-    }
+    // Build and sign using Transaction struct — matches webcli exactly
+    // (avoids JSON round-trip precision loss on timestamp)
+    static json build_and_sign_tx(const std::string& from,
+                                   const std::string& to,
+                                   const std::string& amount,
+                                   int nonce,
+                                   const std::string& ou,
+                                   double timestamp,
+                                   const std::string& op_type,
+                                   const std::string& encrypted_data,
+                                   const uint8_t* sk64,
+                                   const std::string& pub_b64) {
+        // Use Transaction struct directly — same as webcli canonical_json()
+        octra::Transaction tx;
+        tx.from           = from;
+        tx.to_            = to;
+        tx.amount         = amount;
+        tx.nonce          = nonce;
+        tx.ou             = ou;
+        tx.timestamp      = timestamp;
+        tx.op_type        = op_type;
+        tx.encrypted_data = encrypted_data;
 
-    // Sign a transaction JSON in-place
-    static void sign_tx(json& tx, const uint8_t* sk64, const std::string& pub_b64) {
-        std::string msg = octra::canonical_json_from_json(tx);
-        tx["signature"]  = octra::ed25519_sign_detached(
+        // Sign using canonical_json(Transaction) — no JSON round-trip
+        std::string msg = octra::canonical_json(tx);
+        tx.signature = octra::ed25519_sign_detached(
             reinterpret_cast<const uint8_t*>(msg.data()), msg.size(), sk64);
-        tx["public_key"] = pub_b64;
+        tx.public_key = pub_b64;
+
+        // Serialize to JSON for submission
+        return octra::build_tx_json(tx);
     }
 };
 

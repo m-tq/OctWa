@@ -247,6 +247,7 @@ export function WalletDashboard({
   const [evmTokens, setEvmTokens] = useState<ERC20Token[]>([]);
   const activeWalletRef = useRef<Wallet | null>(null);
   const activeFetchIdRef = useRef(0);
+  const optimisticTxDetailsRef = useRef<Map<string, any>>(new Map());
   
               
   useEffect(() => {
@@ -664,6 +665,7 @@ export function WalletDashboard({
     setIsDecryptingBalance(false);
     autoDecryptedCipherRef.current = null;
     pvacDecryptInFlightRef.current = false;
+    optimisticTxDetailsRef.current.clear();
   }, [wallet?.address]);
 
   // Initial data fetch when wallet is connected
@@ -1600,7 +1602,7 @@ export function WalletDashboard({
     });
   };
 
-  // Silent background refresh after tx — updates state only if data changed
+  // Silent background refresh after tx — updates state and cache, upgrades pending→confirmed
   const silentRefreshAfterTx = (delayMs = 3000) => {
     setTimeout(async () => {
       try {
@@ -1615,8 +1617,14 @@ export function WalletDashboard({
             ...tx,
             type: tx.from?.toLowerCase() === wallet.address.toLowerCase() ? 'sent' : 'received'
           } as Transaction));
-          setTransactions(txs);
-          // Update cache silently
+          // Merge: confirmed txs from node override pending optimistic ones
+          setTransactions(prev => {
+            const nodeHashes = new Set(txs.map(t => t.hash));
+            // Keep optimistic pending txs that haven't appeared on node yet
+            const stillPending = prev.filter(t => t.status === 'pending' && !nodeHashes.has(t.hash));
+            return [...stillPending, ...txs].slice(0, 20);
+          });
+          // Update cache
           const recentActivities = txs.slice(0, 11).map(tx => ({
             hash: tx.hash,
             type: (tx.op_type || 'standard') as any,
@@ -1657,13 +1665,36 @@ export function WalletDashboard({
 
     // Optimistic: prepend tx to history list immediately
     if (newTx) {
-      applyOptimisticTx({
+      const txEntry: Transaction = {
         ...newTx,
         type: newTx.from?.toLowerCase() === wallet.address.toLowerCase() ? 'sent' : 'received',
         timestamp: Date.now() / 1000,
         message: undefined,
         op_type: newTx.op_type || 'standard',
-      });
+      };
+      applyOptimisticTx(txEntry);
+
+      // Cache the tx details so clicking it doesn't need a node fetch
+      if (newTx.hash && newTx.hash !== 'pending') {
+        optimisticTxDetailsRef.current.set(newTx.hash, {
+          tx_hash: newTx.hash,
+          parsed_tx: {
+            from: newTx.from,
+            to: newTx.to,
+            amount: newTx.amount.toFixed(8),
+            amount_raw: String(Math.floor(newTx.amount * 1_000_000)),
+            nonce: nonce,
+            ou: '5000',
+            timestamp: Date.now() / 1000,
+            message: null,
+            op_type: newTx.op_type || 'standard',
+          },
+          epoch: 0,
+          data: '',
+          source: 'optimistic',
+          op_type: newTx.op_type || 'standard',
+        });
+      }
     }
 
     // Background verify + silent update
@@ -1702,25 +1733,25 @@ export function WalletDashboard({
     }
     
     try {
+      // Check optimistic cache first (for recently submitted txs)
+      const optimistic = optimisticTxDetailsRef.current.get(txHash);
+      if (optimistic) {
+        setSelectedTxDetails(optimistic);
+        setLoadingTxDetails(false);
+        return;
+      }
+
       if (isPending) {
-        // Try to fetch from pending transactions first with retry
         const pendingTx = await fetchPendingTransactionByHash(txHash);
         if (pendingTx) {
           setSelectedTxDetails(pendingTx);
         } else {
-          // If not found in pending, try confirmed transactions
-          // (transaction might have been confirmed already)
           try {
             const details = await fetchTransactionDetails(txHash);
             setSelectedTxDetails(details);
           } catch {
-            // Still not found, set null
             setSelectedTxDetails(null);
-            toast({
-              title: "Not Found",
-              description: "Transaction not found. It may still be processing.",
-              variant: "destructive",
-            });
+            toast({ title: "Not Found", description: "Transaction not found. It may still be processing.", variant: "destructive" });
           }
         }
       } else {
@@ -1729,11 +1760,7 @@ export function WalletDashboard({
       }
     } catch (error) {
       console.error('Failed to fetch transaction details:', error);
-      toast({
-        title: "Error",
-        description: "Failed to fetch transaction details",
-        variant: "destructive",
-      });
+      toast({ title: "Error", description: "Failed to fetch transaction details", variant: "destructive" });
       setSelectedTxDetails(null);
     } finally {
       setLoadingTxDetails(false);
@@ -1772,8 +1799,7 @@ export function WalletDashboard({
         <PvacServerManager 
           onClose={() => setShowPvacManager(false)}
           onServerSelected={() => {
-            setShowPvacManager(false);
-            // Reset ref so new server can attempt decrypt
+            // Don't close — let user continue managing. Just refresh PVAC status.
             autoDecryptedCipherRef.current = null;
             triggerPvacConnect();
           }}
@@ -2350,6 +2376,21 @@ export function WalletDashboard({
                           <span className="transition group-hover:drop-shadow-[0_0_6px_currentColor]">RPC Provider</span>
                         </Button>
 
+                        {/* PVAC Server */}
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => {
+                            setShowPvacManager(true);
+                            setShowMobileMenu(false);
+                          }}
+                          className="group w-full justify-start gap-1.5 text-xs h-10 hover:bg-transparent"
+                        >
+                          <Server className={`h-3.5 w-3.5 transition group-hover:drop-shadow-[0_0_6px_currentColor] ${pvacStatus === 'connected' ? 'text-[#00E5C0]' : ''}`} />
+                          <span className="transition group-hover:drop-shadow-[0_0_6px_currentColor]">PVAC Server</span>
+                          {pvacStatus === 'connected' && <div className="ml-auto w-1.5 h-1.5 rounded-full bg-[#00E5C0]" />}
+                        </Button>
+
                         {/* Connected dApps */}
                         <Button
                           variant="ghost"
@@ -2484,6 +2525,16 @@ export function WalletDashboard({
                         <Button
                           variant="ghost"
                           size="sm"
+                          onClick={() => setShowPvacManager(true)}
+                          className="group flex items-center gap-2 hover:bg-transparent"
+                        >
+                          <Server className={`h-4 w-4 transition group-hover:drop-shadow-[0_0_6px_currentColor] ${pvacStatus === 'connected' ? 'text-[#00E5C0]' : ''}`} />
+                          <span className="transition group-hover:drop-shadow-[0_0_6px_currentColor]">PVAC</span>
+                          {pvacStatus === 'connected' && <div className="w-1.5 h-1.5 rounded-full bg-[#00E5C0]" />}
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
                           onClick={() => setShowDAppsManager(true)}
                           className="group flex items-center gap-2 hover:bg-transparent"
                         >
@@ -2555,6 +2606,20 @@ export function WalletDashboard({
                               >
                                 <Wifi className="h-4 w-4" />
                                 RPC Provider
+                          </Button>
+
+                          {/* PVAC Server */}
+                          <Button
+                            variant="outline"
+                            onClick={() => {
+                              setShowPvacManager(true);
+                              setShowMobileMenu(false);
+                            }}
+                            className="w-full justify-start gap-2"
+                          >
+                            <Server className={`h-4 w-4 ${pvacStatus === 'connected' ? 'text-[#00E5C0]' : ''}`} />
+                            PVAC Server
+                            {pvacStatus === 'connected' && <div className="ml-auto w-2 h-2 rounded-full bg-[#00E5C0]" />}
                           </Button>
 
                           {/* Connected dApps */}

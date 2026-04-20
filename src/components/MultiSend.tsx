@@ -13,7 +13,7 @@ import { ScrollArea, ScrollAreaContent } from '@/components/ui/scroll-area';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Plus, Trash2, AlertTriangle, Wallet as WalletIcon, CheckCircle, MessageSquare, Loader2, Settings2, XCircle, ChevronDown, Clock } from 'lucide-react';
 import { Wallet } from '../types/wallet';
-import { fetchBalance, createTransaction, invalidateCacheAfterTransaction, sendTransactionBatch } from '../utils/api';
+import { fetchBalance, createTransaction, invalidateCacheAfterTransaction, sendTransactionBatch, sendTransaction } from '../utils/api';
 import { useToast } from '@/hooks/use-toast';
 import { AnimatedIcon } from './AnimatedIcon';
 import { AddressInput } from './AddressInput';
@@ -229,11 +229,10 @@ export function MultiSend({ wallet, balance, onBalanceUpdate, onNonceUpdate, onT
 
       // Calculate elapsed time
       const endTime = Date.now();
-      const totalElapsed = (endTime - startTime) / 1000; // in seconds
+      const totalElapsed = (endTime - startTime) / 1000;
       setElapsedTime(totalElapsed);
 
       if (!batchResult.success) {
-        // Batch submission failed entirely
         setTxModalStatus('error');
         const failedResults = recipients.map((recipient) => ({
           success: false,
@@ -245,25 +244,60 @@ export function MultiSend({ wallet, balance, onBalanceUpdate, onNonceUpdate, onT
         return;
       }
 
-      // Process batch results
-      const sendResults = recipients.map((recipient, index) => {
+      // Process batch results — check if any failed due to nonce issues
+      let sendResults = recipients.map((recipient, index) => {
         const result = batchResult.results[index];
         if (result && result.status === 'accepted') {
-          return {
-            success: true,
-            hash: result.tx_hash,
-            recipient: recipient.address,
-            amount: recipient.amount
-          };
-        } else {
-          return {
-            success: false,
-            error: result?.reason || 'Transaction rejected',
-            recipient: recipient.address,
-            amount: recipient.amount
-          };
+          return { success: true, hash: result.tx_hash, recipient: recipient.address, amount: recipient.amount };
         }
+        return { success: false, error: result?.reason || 'Transaction rejected', recipient: recipient.address, amount: recipient.amount };
       });
+
+      // If partial failure due to nonce issues, retry failed txs sequentially
+      const failedIndices = sendResults.map((r, i) => (!r.success ? i : -1)).filter(i => i >= 0);
+      const hasNonceError = failedIndices.some(i => {
+        const reason = batchResult.results[i]?.reason || '';
+        return reason.includes('nonce') || reason.includes('duplicate') || reason === '';
+      });
+
+      if (failedIndices.length > 0 && hasNonceError) {
+        // Re-fetch nonce after batch partial success
+        const retryBalance = await fetchBalance(wallet.address, true);
+        let retryNonce = retryBalance.nonce;
+
+        for (const idx of failedIndices) {
+          const recipient = recipients[idx];
+          const amount = parseFloat(recipient.amount);
+          retryNonce++;
+          try {
+            const retryTx = createTransaction(
+              wallet.address,
+              recipient.address.trim(),
+              amount,
+              retryNonce,
+              wallet.privateKey,
+              wallet.publicKey || '',
+              recipient.message || undefined,
+              getOuValue(amount)
+            );
+            const retryResult = await sendTransaction(retryTx);
+            if (retryResult.success) {
+              sendResults[idx] = { success: true, hash: retryResult.hash, recipient: recipient.address, amount: recipient.amount };
+            } else {
+              sendResults[idx] = { success: false, error: retryResult.error || 'Retry failed', recipient: recipient.address, amount: recipient.amount };
+              retryNonce--; // revert nonce on failure
+            }
+          } catch (e: any) {
+            sendResults[idx] = { success: false, error: e.message || 'Retry failed', recipient: recipient.address, amount: recipient.amount };
+            retryNonce--;
+          }
+          // Small delay between sequential retries
+          await new Promise(r => setTimeout(r, 400));
+        }
+      }
+
+      const endTime2 = Date.now();
+      setElapsedTime((endTime2 - startTime) / 1000);
 
       setResults(sendResults);
 
@@ -692,7 +726,7 @@ export function MultiSend({ wallet, balance, onBalanceUpdate, onNonceUpdate, onT
                           {result.success ? `- ${result.amount}` : result.amount} OCT
                         </span>
                         {!result.success && result.error && (
-                          <span className="text-red-500 truncate max-w-[100px]" title={result.error}>!</span>
+                          <span className="text-red-500 truncate max-w-[120px] text-[10px]" title={result.error}>{result.error}</span>
                         )}
                       </div>
                     ))}

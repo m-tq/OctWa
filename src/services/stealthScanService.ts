@@ -46,16 +46,20 @@ async function sha256(data: Uint8Array): Promise<Uint8Array> {
 
 /**
  * Convert Ed25519 secret key (64 bytes) to Curve25519 secret key (32 bytes).
- * Webcli: ed25519_sk_to_curve25519 → crypto_hash(ed_sk[0..31]) → clamp
+ * Webcli: ed25519_sk_to_curve25519 → crypto_hash(ed_sk[0..31], 32) → SHA-512 → clamp
+ * IMPORTANT: crypto_hash in tweetnacl is SHA-512 (64 bytes), NOT SHA-256!
+ * Take first 32 bytes after clamping.
  */
 async function ed25519SkToCurve25519(edSk64: Uint8Array): Promise<Uint8Array> {
-  // hash the 32-byte seed (first half of ed sk)
-  const h = await sha256(edSk64.slice(0, 32));
-  // Curve25519 clamping
+  // SHA-512 of the 32-byte seed (first half of ed sk)
+  const h512 = await crypto.subtle.digest('SHA-512', edSk64.slice(0, 32));
+  const h = new Uint8Array(h512); // 64 bytes
+  // Curve25519 clamping (same as webcli)
   h[0] &= 248;
   h[31] &= 127;
   h[31] |= 64;
-  return h;
+  // Return first 32 bytes as Curve25519 sk
+  return h.slice(0, 32);
 }
 
 /**

@@ -100,13 +100,26 @@ export function ClaimTransfers({ wallet, onTransactionSuccess, isPopupMode = fal
     let successCount = 0;
     const errors: string[] = [];
 
+    // Fetch nonce once, then increment locally for each sequential claim
+    const freshBalance = await fetchBalance(wallet.address, true);
+    let nextNonce = freshBalance.nonce + 1;
+
     for (const transfer of transfers) {
       try {
-        await claimOne(transfer);
+        await claimOne(transfer, nextNonce);
+        nextNonce++;
         successCount++;
-        await new Promise(r => setTimeout(r, 300));
+        // Small delay to avoid overwhelming the node
+        await new Promise(r => setTimeout(r, 500));
       } catch (err: any) {
         errors.push(`#${transfer.id}: ${err.message}`);
+        // On error, re-fetch nonce to stay in sync
+        try {
+          const refetch = await fetchBalance(wallet.address, true);
+          nextNonce = refetch.nonce + 1;
+        } catch {
+          // keep current nonce if refetch fails
+        }
       }
     }
 
@@ -130,11 +143,17 @@ export function ClaimTransfers({ wallet, onTransactionSuccess, isPopupMode = fal
   };
 
   // ── Core claim logic ────────────────────────────────────────────────────────
-  const claimOne = async (transfer: ClaimableTransfer): Promise<string> => {
+  const claimOne = async (transfer: ClaimableTransfer, overrideNonce?: number): Promise<string> => {
     if (!wallet) throw new Error('No wallet');
 
-    const freshBalance = await fetchBalance(wallet.address);
-    const nonce = freshBalance.nonce + 1;
+    // Use provided nonce (claim-all path) or fetch fresh (single claim path)
+    let nonce: number;
+    if (overrideNonce !== undefined) {
+      nonce = overrideNonce;
+    } else {
+      const freshBalance = await fetchBalance(wallet.address, true);
+      nonce = freshBalance.nonce + 1;
+    }
 
     if (usePvacServer && isPvacAvailable) {
       // PVAC path — server builds the signed tx
