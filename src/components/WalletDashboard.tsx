@@ -39,7 +39,6 @@ import {
   BookUser,
   Layers,
   FileText,
-  MessageSquare,
   Coins,
   X,
   RefreshCw,
@@ -92,7 +91,6 @@ import {
 import { useToast } from '@/hooks/use-toast';
 import { OperationMode, saveOperationMode, loadOperationMode, isPrivateModeAvailable } from '../utils/modeStorage';
 import { verifyPassword } from '../utils/password';
-import { isPrivateTransfer } from '../utils/historyMerge';
 import { useAddressBook } from '../hooks/useAddressBook';
 import { addressBook } from '../utils/addressBook';
 import { pvacServerService } from '@/services/pvacServerService';

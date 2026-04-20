@@ -214,19 +214,18 @@ export function UnifiedHistory({ wallet, transactions, onTransactionsUpdate, isL
               <Badge variant="secondary" className="ml-1 text-[10px]">{pendingCount}</Badge>
             )}
           </CardTitle>
-          <span className={`text-muted-foreground ${isPopupMode ? 'text-[10px]' : 'text-xs'}`}>
-            {isPopupMode 
-              ? `Last ${filteredTransactions.length} tx` 
-              : `Recent ${filteredTransactions.length} data`
-            }
-          </span>
+          {!isPopupMode && (
+            <span className="text-muted-foreground text-xs">
+              {`Recent ${filteredTransactions.length} data`}
+            </span>
+          )}
         </div>
         <div className="flex items-center gap-1">
-          {!isCompact && (
-            <Button variant="ghost" size="sm" asChild className={isPopupMode ? 'h-7 px-2' : ''}>
+          {!isCompact && !isPopupMode && (
+            <Button variant="ghost" size="sm" asChild>
               <a href={`${scannerAddressUrl}${wallet.address}`} target="_blank" rel="noopener noreferrer">
-                <ExternalLink className={`${isPopupMode ? 'h-3 w-3' : 'h-4 w-4'} ${isPopupMode ? '' : 'mr-2'}`} />
-                {!isPopupMode && 'View All'}
+                <ExternalLink className="h-4 w-4 mr-2" />
+                View All
               </a>
             </Button>
           )}

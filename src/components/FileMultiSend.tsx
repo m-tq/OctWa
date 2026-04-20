@@ -354,7 +354,7 @@ export function FileMultiSend({ wallet, balance, onBalanceUpdate, onNonceUpdate,
     // Helper function to send a batch and return results using octra_submitBatch
     const sendBatch = async (
       batchWithNonce: BatchRecipient[],
-      batchNum: number
+      _batchNum: number
     ): Promise<{ recipient: BatchRecipient; success: boolean; hash?: string; error?: string }[]> => {
       // Send sequentially — node rejects multi-nonce batches for same address
       const results: { recipient: BatchRecipient; success: boolean; hash?: string; error?: string }[] = [];
