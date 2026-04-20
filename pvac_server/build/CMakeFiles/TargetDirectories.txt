@@ -1,7 +1,0 @@
-C:/Users/Administrator/Documents/Devs/Octra/OctWa/pvac_server/build/CMakeFiles/pvac_server.dir
-C:/Users/Administrator/Documents/Devs/Octra/OctWa/pvac_server/build/CMakeFiles/edit_cache.dir
-C:/Users/Administrator/Documents/Devs/Octra/OctWa/pvac_server/build/CMakeFiles/rebuild_cache.dir
-C:/Users/Administrator/Documents/Devs/Octra/OctWa/pvac_server/build/CMakeFiles/list_install_components.dir
-C:/Users/Administrator/Documents/Devs/Octra/OctWa/pvac_server/build/CMakeFiles/install.dir
-C:/Users/Administrator/Documents/Devs/Octra/OctWa/pvac_server/build/CMakeFiles/install/local.dir
-C:/Users/Administrator/Documents/Devs/Octra/OctWa/pvac_server/build/CMakeFiles/install/strip.dir
