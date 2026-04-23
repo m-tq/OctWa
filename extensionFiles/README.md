@@ -1,6 +1,6 @@
 # OctWa - Octra Wallet Extension
 
-**Version:** 1.2.0  
+**Version:** 1.2.4  
 **Manifest:** V3  
 **Status:** Production Ready ✅
 
@@ -779,7 +779,7 @@ MIT License - see LICENSE file for details
 ## Support
 
 - **Documentation**: https://docs.octra.network
-- **GitHub**: https://github.com/octra/octwa
+- **GitHub**: https://github.com/m-tq/OctWa
 - **Discord**: https://discord.gg/octra
 - **Email**: support@octra.network
 

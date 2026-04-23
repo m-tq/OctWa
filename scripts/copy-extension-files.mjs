@@ -139,6 +139,7 @@ async function main() {
     'manifest.json',
     'popup.html',
     'content.js',
+    'canonical-core.js',
     'octra-sdk.js'
   ];
 

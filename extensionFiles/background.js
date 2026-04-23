@@ -648,20 +648,38 @@ async function handleInvokeRequest(data, sender) {
 // Method Execution (wallet-side RPC calls)
 // =============================================================================
 
-// These values are injected at build time from .env
-const RPC_URL = '__VITE_OCTRA_RPC_URL__';
+// These values are injected at build time from .env as fallback defaults
+const DEFAULT_RPC_URL = '__VITE_OCTRA_RPC_URL__';
 const MU_FACTOR = 1_000_000;
 
 // Default Infura API Key (injected at build time)
 const DEFAULT_INFURA_API_KEY = '__VITE_INFURA_API_KEY__';
 
 /**
- * Fetch current epoch from Octra RPC
- * Returns real epoch number from blockchain, not timestamp
+ * Get the active Octra RPC URL from chrome.storage.local (set by RPC Provider Manager UI).
+ * Falls back to the build-time injected default.
+ */
+async function getActiveOctraRpcUrl() {
+  try {
+    const result = await chrome.storage.local.get(['rpcProviders']);
+    if (result.rpcProviders) {
+      const providers = JSON.parse(result.rpcProviders);
+      const active = providers.find(p => p.isActive);
+      if (active && active.url) return active.url;
+    }
+  } catch (e) {
+    console.warn('[Background] Failed to read rpcProviders:', e);
+  }
+  return DEFAULT_RPC_URL;
+}
+
+/**
+ * Fetch current epoch from Octra RPC using the active provider.
  */
 async function fetchCurrentEpoch() {
   try {
-    const response = await fetch(`${RPC_URL}/status`);
+    const rpcUrl = await getActiveOctraRpcUrl();
+    const response = await fetch(`${rpcUrl}/status`);
     if (response.ok) {
       const data = await response.json();
       return data.current_epoch || 0;
@@ -789,7 +807,8 @@ async function executeGetBalance(connection) {
   
   // Fetch OCT balance
   try {
-    const response = await fetch(`${RPC_URL}/address/${octAddress}`);
+    const rpcUrl = await getActiveOctraRpcUrl();
+    const response = await fetch(`${rpcUrl}/address/${octAddress}`);
     
     if (response.ok) {
       const data = await response.json();
@@ -1177,11 +1196,19 @@ async function handleSignMessageRequest(data, sender) {
 
 async function lockWallet() {
   try {
+    // Clear session storage (session key + decrypted wallets)
     if (chrome.storage.session) {
       await chrome.storage.session.clear();
     }
+    // Mark wallet as locked
     await setStorageData('isWalletLocked', 'true');
-    await chrome.storage.local.remove(['wallets']);
+    // Clear any in-memory session wallet data
+    // Note: encryptedWallets stays in localStorage (persisted) — only session data is cleared
+    await chrome.storage.local.remove([
+      'sessionWallets',
+      'sessionKey',
+      'wallets',          // legacy key
+    ]);
     console.log('[Background] Wallet locked');
   } catch (error) {
     console.error('[Background] Lock failed:', error);
@@ -1278,17 +1305,15 @@ async function saveCapability(appOrigin, capability) {
 async function handleEstimatePlainTx(data, sender) {
   const { payload } = data;
   
-  // Extract amount from payload
   let amount = 0;
   if (payload && typeof payload === 'object' && payload.amount) {
     amount = payload.amount;
   }
   
-  // Determine OU based on amount (auto mode)
+  // Determine OU based on amount (auto mode: 10k for <1000 OCT, 30k for >=1000 OCT)
   const ou = amount < 1000 ? 10000 : 30000;
-  
-  // Calculate fee: OU × 0.0000001
   const fee = ou * 0.0000001;
+  const currentEpoch = await fetchCurrentEpoch();
   
   return {
     type: 'ESTIMATE_PLAIN_TX_RESPONSE',
@@ -1297,7 +1322,7 @@ async function handleEstimatePlainTx(data, sender) {
       gasUnits: ou,
       tokenCost: fee,
       latencyEstimate: 2000,
-      epoch: 0, // PENDING
+      epoch: currentEpoch,
     }
   };
 }
@@ -1310,9 +1335,8 @@ async function handleEstimateEncryptedTx(data, sender) {
   const baseOu = 30000;
   const encryptionOverhead = 1.5;
   const ou = Math.ceil(baseOu * encryptionOverhead);
-  
-  // Calculate fee: OU × 0.0000001
   const fee = ou * 0.0000001;
+  const currentEpoch = await fetchCurrentEpoch();
   
   return {
     type: 'ESTIMATE_ENCRYPTED_TX_RESPONSE',
@@ -1321,7 +1345,7 @@ async function handleEstimateEncryptedTx(data, sender) {
       gasUnits: ou,
       tokenCost: fee,
       latencyEstimate: 4000,
-      epoch: 0, // PENDING
+      epoch: currentEpoch,
     }
   };
 }
@@ -1351,9 +1375,8 @@ async function handleEstimateComputeCost(data, sender) {
   const bootstrapOu = expectedBootstrap * 1000;
   
   const totalOu = gateOu + vectorOu + depthOu + bootstrapOu;
-  
-  // Calculate fee: OU × 0.0000001
   const fee = totalOu * 0.0000001;
+  const currentEpoch = await fetchCurrentEpoch();
   
   return {
     type: 'ESTIMATE_COMPUTE_COST_RESPONSE',
@@ -1362,7 +1385,7 @@ async function handleEstimateComputeCost(data, sender) {
       gasUnits: totalOu,
       tokenCost: fee,
       latencyEstimate: (gateCount * depth * 10) + (expectedBootstrap * 1000),
-      epoch: 0, // PENDING
+      epoch: currentEpoch,
     }
   };
 }
