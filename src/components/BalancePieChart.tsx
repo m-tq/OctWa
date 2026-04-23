@@ -78,7 +78,7 @@ export function BalancePieChart({
   }
 
   return (
-    <div className="p-4 bg-gradient-to-br from-background to-muted/20">
+    <div className="px-1">
       <div className="flex items-center gap-4">
         {/* Pie Chart */}
         <div className="relative flex-shrink-0">
