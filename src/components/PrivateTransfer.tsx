@@ -349,9 +349,24 @@ export function PrivateTransfer({
       const freshEncrypted = await fetchEncryptedBalance(wallet!.address, wallet!.privateKey, true);
       setLocalEncryptedBalance(freshEncrypted);
       
-      // Update modal to success state
+      // Update modal to success state — wire onStatusConfirmed so when node
+      // confirms the tx, we immediately refresh balance + history
       setTxModalStatus('success');
-      setTxModalResult({ hash: txHash, amount: amountNum.toFixed(8) });
+      setTxModalResult({
+        hash: txHash,
+        amount: amountNum.toFixed(8),
+        finality: 'pending',
+        onStatusConfirmed: () => {
+          onTransactionSuccess({
+            hash: txHash,
+            from: wallet!.address,
+            to: 'stealth',
+            amount: amountNum,
+            status: 'confirmed',
+            op_type: 'stealth',
+          });
+        },
+      });
 
       toast({
         title: "Transfer Successful",
@@ -362,15 +377,7 @@ export function PrivateTransfer({
       setRecipientAddress('');
       setAmount('');
       setRecipientInfo(null);
-
-      onTransactionSuccess({
-        hash: txHash,
-        from: wallet!.address,
-        to: 'stealth',
-        amount: amountNum,
-        status: 'pending',
-        op_type: 'stealth',
-      });
+      // onTransactionSuccess is called via onStatusConfirmed when node confirms
       
     } catch (error: any) {
       console.error('[StealthSend] Error:', error);
@@ -394,16 +401,23 @@ export function PrivateTransfer({
         const freshEncrypted = await fetchEncryptedBalance(wallet!.address, wallet!.privateKey, true);
         setLocalEncryptedBalance(freshEncrypted);
         
-        // Update modal to success state
+        const txHash = transferResult.tx_hash || 'pending';
+
+        // Update modal to success state — wire onStatusConfirmed for confirmed refresh
         setTxModalStatus('success');
-        setTxModalResult({ hash: transferResult.tx_hash, amount: amountNum.toFixed(8) });
+        setTxModalResult({
+          hash: txHash,
+          amount: amountNum.toFixed(8),
+          finality: 'pending',
+          onStatusConfirmed: () => {
+            onTransactionSuccess();
+          },
+        });
 
         // Reset form
         setRecipientAddress('');
         setAmount('');
         setRecipientInfo(null);
-
-        onTransactionSuccess();
       } else {
         // Update modal to error state
         setTxModalStatus('error');
