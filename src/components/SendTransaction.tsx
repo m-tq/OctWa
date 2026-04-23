@@ -15,7 +15,6 @@ import { useToast } from '@/hooks/use-toast';
 import { useAddressBook } from '@/hooks/useAddressBook';
 import { TransactionModal, TransactionStatus, TransactionResult } from './TransactionModal';
 import { AddressInput } from './AddressInput';
-import { withOptimisticUpdate } from '@/utils/optimisticTransactionWrapper';
 
 // Threshold for confirmation dialog (500 OCT)
 const LARGE_TRANSACTION_THRESHOLD = 500;
@@ -262,45 +261,24 @@ export function SendTransaction({
     setShowTxModal(true);
 
     const amountNum = parseFloat(amount);
-    const fee = calculateFee();
 
     try {
-      // Wrap transaction with optimistic update
-      const sendResult = await withOptimisticUpdate(
-        {
-          address: wallet.address,
-          type: 'send',
-          amount: amountNum,
-          currentBalance: { public: balance || 0, encrypted: 0 },
-          fee,
-          onUpdateCreated: (_updateId) => {
-            // INSTANT UI UPDATE: Deduct amount + fee from balance immediately
-            const newBalance = (balance || 0) - amountNum - fee;
-            onBalanceUpdate(newBalance);
-          },
-          onTransactionHash: (_hash) => {
-            // Transaction hash received, update can be tracked
-          },
-        },
-        async () => {
-          // Refresh nonce before sending like CLI does
-          const freshBalanceData = await fetchBalance(wallet.address);
-          const currentNonce = freshBalanceData.nonce;
+      // Fetch fresh nonce before sending
+      const freshBalanceData = await fetchBalance(wallet.address);
+      const currentNonce = freshBalanceData.nonce;
 
-          const transaction = createTransaction(
-            wallet.address,
-            recipientAddress.trim(),
-            amountNum,
-            currentNonce + 1,
-            wallet.privateKey,
-            wallet.publicKey || '',
-            message || undefined,
-            getOuValue()
-          );
-
-          return await sendTransaction(transaction);
-        }
+      const transaction = createTransaction(
+        wallet.address,
+        recipientAddress.trim(),
+        amountNum,
+        currentNonce + 1,
+        wallet.privateKey,
+        wallet.publicKey || '',
+        message || undefined,
+        getOuValue()
       );
+
+      const sendResult = await sendTransaction(transaction);
 
       if (sendResult.success) {
         // Update modal to success state
@@ -310,8 +288,6 @@ export function SendTransaction({
           amount: amountNum.toFixed(8),
           finality: sendResult.finality,
           onStatusConfirmed: () => {
-            // Refresh transaction history when status becomes confirmed
-            
             onTransactionSuccess();
           }
         });
@@ -326,31 +302,16 @@ export function SendTransaction({
         setMessage('');
         setShowMessage(false);
 
-        // Update nonce
-        const freshBalanceData = await fetchBalance(wallet.address);
-        onNonceUpdate(freshBalanceData.nonce);
+        // Immediately invalidate cache and refresh balance/nonce
+        try {
+          await invalidateCacheAfterTransaction(wallet.address);
+          const updatedBalance = await fetchBalance(wallet.address, true);
+          onBalanceUpdate(updatedBalance.balance);
+          onNonceUpdate(updatedBalance.nonce);
+        } catch (error) {
+          console.error('Failed to refresh balance after transaction:', error);
+        }
 
-        // Verify optimistic update in background
-        setTimeout(async () => {
-          try {
-            
-            // Invalidate cache first
-            await invalidateCacheAfterTransaction(wallet.address);
-            const updatedBalance = await fetchBalance(wallet.address, true);
-            
-            // Update actual balance
-            onBalanceUpdate(updatedBalance.balance);
-            onNonceUpdate(updatedBalance.nonce);
-            
-            // Verify optimistic update (will remove pending indicator if match)
-            // Note: Update ID is tracked internally by the service
-            
-          } catch (error) {
-            console.error('Failed to refresh balance after transaction:', error);
-          }
-        }, 3000); // Wait 3 seconds for blockchain to process
-
-        // Call onTransactionSuccess with transaction data
         // Map finality to status
         const status: 'confirmed' | 'pending' | 'failed' = 
           sendResult.finality === 'confirmed' ? 'confirmed' :
@@ -367,7 +328,6 @@ export function SendTransaction({
         });
       } else {
         const errorMsg = sendResult.error || sendResult.reason || "Unknown error occurred";
-        // Update modal to error state
         setTxModalStatus('error');
         setTxModalResult({ 
           error: errorMsg,
@@ -377,7 +337,6 @@ export function SendTransaction({
     } catch (error) {
       console.error('Send transaction error:', error);
       const errorMsg = error instanceof Error ? error.message : 'Unknown error';
-      // Update modal to error state
       setTxModalStatus('error');
       setTxModalResult({ error: errorMsg });
     } finally {

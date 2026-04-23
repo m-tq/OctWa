@@ -66,6 +66,8 @@ static void print_info(const std::string& token_path,
         "------------------------------------------------------------\n"
         "  Endpoints:\n"
         "    GET  /health\n"
+        "    POST /api/ensure_pvac_registered\n"
+        "    POST /api/get_pvac_pubkey\n"
         "    POST /api/decrypt_balance\n"
         "    POST /api/encrypt_balance\n"
         "    POST /api/decrypt_to_public\n"

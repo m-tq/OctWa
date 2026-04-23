@@ -109,23 +109,48 @@ export function filterHistory(
   }
 
   if (filter === 'public') {
-    return items.filter(item => item.type === 'transfer' && item.transaction && !isPrivateTransfer(item.transaction));
+    return items.filter(item =>
+      item.type === 'transfer' &&
+      item.transaction &&
+      !isPrivateTransfer(item.transaction) &&
+      !isBalanceStateChange(item.transaction) &&
+      !isContractCall(item.transaction)
+    );
   }
 
   if (filter === 'private') {
-    return items.filter(item => item.type === 'transfer' && item.transaction && isPrivateTransfer(item.transaction));
+    return items.filter(item =>
+      item.type === 'transfer' &&
+      item.transaction &&
+      (isPrivateTransfer(item.transaction) || isBalanceStateChange(item.transaction))
+    );
   }
 
   if (filter === 'sent') {
-    return items.filter(item => item.type === 'transfer' && item.transaction?.type === 'sent');
+    return items.filter(item =>
+      item.type === 'transfer' &&
+      item.transaction?.type === 'sent' &&
+      !isPrivateTransfer(item.transaction) &&
+      !isBalanceStateChange(item.transaction) &&
+      !isContractCall(item.transaction)
+    );
   }
 
   if (filter === 'received') {
-    return items.filter(item => item.type === 'transfer' && item.transaction?.type === 'received');
+    return items.filter(item =>
+      item.type === 'transfer' &&
+      item.transaction?.type === 'received' &&
+      !isPrivateTransfer(item.transaction) &&
+      !isBalanceStateChange(item.transaction) &&
+      !isContractCall(item.transaction)
+    );
   }
 
   if (filter === 'contract') {
-    return items.filter(item => item.type === 'contract');
+    return items.filter(item =>
+      item.type === 'contract' ||
+      (item.type === 'transfer' && item.transaction && isContractCall(item.transaction))
+    );
   }
 
   return items;
@@ -150,37 +175,32 @@ export function getUnifiedHistory(
 }
 
 /**
- * Checks if a transaction is a private transfer based on its op_type or message.
- * Includes: private transfers, encrypt balance, decrypt balance
- * 
- * @param tx - Transaction to check
- * @returns true if the transaction is a private/encrypted activity
+ * Checks if a transaction is a private transfer (stealth send or claim).
+ * Does NOT include encrypt/decrypt — those are balance state changes, not transfers.
  */
 export function isPrivateTransfer(tx: Transaction): boolean {
   if (tx.op_type) {
-    return tx.op_type === 'private' ||
-           tx.op_type === 'encrypt' ||
-           tx.op_type === 'decrypt' ||
-           tx.op_type === 'stealth' ||
-           tx.op_type === 'claim';
+    return tx.op_type === 'stealth' ||
+           tx.op_type === 'claim' ||
+           tx.op_type === 'private'; // legacy alias
   }
   return (
     tx.message === 'PRIVATE_TRANSFER' ||
-    tx.message === '505249564154455f5452414e53464552' ||
-    tx.message === 'ENCRYPT_BALANCE' ||
-    tx.message === 'DECRYPT_BALANCE' ||
-    tx.message === '454e43525950545f42414c414e4345' ||
-    tx.message === '444543525950545f42414c414e4345' ||
-    (tx.amount === 0 && !!tx.message)
+    tx.message === '505249564154455f5452414e53464552'
   );
 }
 
 /**
- * Checks if a transaction is a contract call based on its op_type.
- * 
- * @param tx - Transaction to check
- * @returns true if the transaction is a contract call
+ * Checks if a transaction is a balance state change (encrypt or decrypt).
+ * These are self-to-self operations that move funds between public and private balance.
+ */
+export function isBalanceStateChange(tx: Transaction): boolean {
+  return tx.op_type === 'encrypt' || tx.op_type === 'decrypt';
+}
+
+/**
+ * Checks if a transaction is a contract call or deploy.
  */
 export function isContractCall(tx: Transaction): boolean {
-  return tx.op_type === 'call';
+  return tx.op_type === 'call' || tx.op_type === 'deploy';
 }

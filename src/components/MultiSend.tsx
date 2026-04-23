@@ -310,17 +310,15 @@ export function MultiSend({ wallet, balance, onBalanceUpdate, onNonceUpdate, onT
         const newNonce = currentNonce + successCount;
         onNonceUpdate(newNonce);
 
-        // Refresh balance after successful transactions
-        setTimeout(async () => {
-          try {
-            await invalidateCacheAfterTransaction(wallet.address);
-            const updatedBalance = await fetchBalance(wallet.address, true);
-            onBalanceUpdate(updatedBalance.balance);
-            onNonceUpdate(updatedBalance.nonce);
-          } catch (error) {
-            console.error('Failed to refresh balance:', error);
-          }
-        }, 2000);
+        // Immediately invalidate cache and refresh balance after successful transactions
+        try {
+          await invalidateCacheAfterTransaction(wallet.address);
+          const updatedBalance = await fetchBalance(wallet.address, true);
+          onBalanceUpdate(updatedBalance.balance);
+          onNonceUpdate(updatedBalance.nonce);
+        } catch (error) {
+          console.error('Failed to refresh balance:', error);
+        }
 
         if (failCount === 0) {
           onTransactionSuccess();

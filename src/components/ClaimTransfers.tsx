@@ -77,10 +77,8 @@ export function ClaimTransfers({ wallet, onTransactionSuccess, isPopupMode = fal
       setTxModalStatus('success');
       setTxModalResult({ hash: txHash, amount: transfer.amount.toFixed(8) });
       await fetchTransfers();
-      setTimeout(async () => {
-        await invalidateCacheAfterClaim(wallet.address);
-        onTransactionSuccess();
-      }, 3000);
+      await invalidateCacheAfterClaim(wallet.address);
+      onTransactionSuccess();
     } catch (err: any) {
       logger.error('Claim error', err);
       setTxModalStatus('error');
@@ -132,10 +130,8 @@ export function ClaimTransfers({ wallet, onTransactionSuccess, isPopupMode = fal
         description: `Claimed ${successCount}/${transfers.length} transfers`,
       });
       await fetchTransfers();
-      setTimeout(async () => {
-        await invalidateCacheAfterClaim(wallet.address);
-        onTransactionSuccess();
-      }, 3000);
+      await invalidateCacheAfterClaim(wallet.address);
+      onTransactionSuccess();
     }
     if (errors.length > 0 && successCount === 0) {
       toast({ title: 'Claim All Failed', description: errors[0], variant: 'destructive' });

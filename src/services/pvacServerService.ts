@@ -13,6 +13,7 @@
  */
 
 import { logger } from '@/utils/logger';
+import { getActiveRPCProvider } from '@/utils/rpc';
 
 function hexToBase64(hex: string): string {
   const cleanHex = hex.replace(/^0x/i, '');
@@ -98,6 +99,36 @@ export interface PvacServerResponse {
   success: boolean;
   tx?: any;
   transfers?: any[];
+  error?: string;
+  job_id?: string;
+}
+
+export interface GetPvacPubkeyRequest {
+  private_key: string;
+  public_key: string;
+  address: string;
+}
+
+export interface GetPvacPubkeyResponse {
+  success: boolean;
+  pvac_pubkey?: string;
+  aes_kat?: string;
+  reg_sig?: string;
+  error?: string;
+  job_id?: string;
+}
+
+export interface EnsurePvacRegisteredRequest {
+  private_key: string;
+  public_key: string;
+  address: string;
+  rpc_url: string;
+}
+
+export interface EnsurePvacRegisteredResponse {
+  success: boolean;
+  registered?: boolean;
+  pvac_pubkey?: string;
   error?: string;
   job_id?: string;
 }
@@ -364,11 +395,12 @@ class PvacServerService {
     if (request.public_key && /^[0-9a-fA-F]+$/.test(request.public_key.replace(/^0x/i, ''))) {
       publicKeyBase64 = hexToBase64(request.public_key);
     }
-    
+    const rpcUrl = getActiveRPCProvider()?.url || '';
     return this.request<PvacServerResponse>('/api/encrypt_balance', {
       ...request,
       public_key: publicKeyBase64,
-      ou: request.ou || '10000'
+      ou: request.ou || '10000',
+      rpc_url: rpcUrl,
     }, 'encrypt');
   }
 
@@ -377,11 +409,12 @@ class PvacServerService {
     if (request.public_key && /^[0-9a-fA-F]+$/.test(request.public_key.replace(/^0x/i, ''))) {
       publicKeyBase64 = hexToBase64(request.public_key);
     }
-    
+    const rpcUrl = getActiveRPCProvider()?.url || '';
     return this.request<PvacServerResponse>('/api/decrypt_to_public', {
       ...request,
       public_key: publicKeyBase64,
-      ou: request.ou || '10000'
+      ou: request.ou || '10000',
+      rpc_url: rpcUrl,
     }, 'decrypt');
   }
 
@@ -390,11 +423,12 @@ class PvacServerService {
     if (request.public_key && /^[0-9a-fA-F]+$/.test(request.public_key.replace(/^0x/i, ''))) {
       publicKeyBase64 = hexToBase64(request.public_key);
     }
-    
+    const rpcUrl = getActiveRPCProvider()?.url || '';
     return this.request<PvacServerResponse>('/api/stealth_send', {
       ...request,
       public_key: publicKeyBase64,
-      ou: request.ou || '5000'
+      ou: request.ou || '5000',
+      rpc_url: rpcUrl,
     }, 'stealth_send');
   }
 
@@ -412,6 +446,28 @@ class PvacServerService {
 
   async scanStealth(request: ScanStealthRequest): Promise<PvacServerResponse> {
     return this.request<PvacServerResponse>('/api/scan_stealth', request, 'scan');
+  }
+
+  async getPvacPubkey(request: GetPvacPubkeyRequest): Promise<GetPvacPubkeyResponse> {
+    let publicKeyBase64 = request.public_key;
+    if (request.public_key && /^[0-9a-fA-F]+$/.test(request.public_key.replace(/^0x/i, ''))) {
+      publicKeyBase64 = hexToBase64(request.public_key);
+    }
+    return this.request<GetPvacPubkeyResponse>('/api/get_pvac_pubkey', {
+      ...request,
+      public_key: publicKeyBase64,
+    }, 'get_pvac_pubkey');
+  }
+
+  async ensurePvacRegistered(request: EnsurePvacRegisteredRequest): Promise<EnsurePvacRegisteredResponse> {
+    let publicKeyBase64 = request.public_key;
+    if (request.public_key && /^[0-9a-fA-F]+$/.test(request.public_key.replace(/^0x/i, ''))) {
+      publicKeyBase64 = hexToBase64(request.public_key);
+    }
+    return this.request<EnsurePvacRegisteredResponse>('/api/ensure_pvac_registered', {
+      ...request,
+      public_key: publicKeyBase64,
+    }, 'ensure_pvac_registered');
   }
 }
 

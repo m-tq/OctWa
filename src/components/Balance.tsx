@@ -22,9 +22,10 @@ interface BalanceProps {
   onEncryptedBalanceUpdate?: (encryptedBalance: any) => void;
   onBalanceUpdate: (balance: number) => void;
   isLoading?: boolean;
+  isLoadingEncrypted?: boolean;
 }
 
-export function Balance({ wallet, balance, encryptedBalance: propEncryptedBalance, onEncryptedBalanceUpdate, onBalanceUpdate, isLoading = false }: BalanceProps) {
+export function Balance({ wallet, balance, encryptedBalance: propEncryptedBalance, onEncryptedBalanceUpdate, onBalanceUpdate, isLoading = false, isLoadingEncrypted = false }: BalanceProps) {
   const [refreshing, setRefreshing] = useState(false);
   const [localEncryptedBalance, setLocalEncryptedBalance] = useState<any>(null);
   const [pendingTransfers, setPendingTransfers] = useState<any[]>([]);
@@ -219,7 +220,7 @@ export function Balance({ wallet, balance, encryptedBalance: propEncryptedBalanc
                   side="top"
                 />
               </div>
-              {isLoading ? (
+              {isLoadingEncrypted ? (
                 <Skeleton className="h-8 w-32" />
               ) : (
                 <div className="flex items-center gap-x-2">

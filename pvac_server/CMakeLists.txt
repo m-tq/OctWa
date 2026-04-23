@@ -16,6 +16,10 @@ else()
         -maes -msse2 -msse4.1
         -fstack-protector-strong
         -fno-strict-overflow
+        -Wno-unused-parameter
+        -Wno-unused-but-set-variable
+        -Wno-redundant-decls
+        -Wno-parentheses
     )
     # Address sanitizer in Debug builds
     if(CMAKE_BUILD_TYPE STREQUAL "Debug")

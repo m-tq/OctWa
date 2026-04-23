@@ -15,7 +15,7 @@ import { TransactionModal, TransactionStatus, TransactionResult } from './Transa
 import { AnimatedIcon } from './AnimatedIcon';
 import { AddressInput } from './AddressInput';
 import { pvacServerService } from '@/services/pvacServerService';
-import { optimisticUpdateService } from '@/services/optimisticUpdateService';
+import { ensurePvacRegistered } from '@/utils/ensurePvacRegistered';
 
 interface PrivateTransferProps {
   wallet: Wallet | null;
@@ -293,21 +293,21 @@ export function PrivateTransfer({
   };
 
   const handleSendWithPvac = async (toAddress: string, amountNum: number) => {
-    // Apply optimistic update for stealth send
-    const update = optimisticUpdateService.applyUpdate(
-      wallet!.address,
-      'stealth',
-      amountNum,
-      { public: 0, encrypted: encryptedBalance.encrypted },
-      0 // Fee will be deducted from encrypted balance
-    );
-
     try {
+      // Ensure PVAC pubkey is registered on the node before stealth send
+      const regResult = await ensurePvacRegistered(
+        wallet!.address,
+        wallet!.privateKey,
+        wallet!.publicKey || ''
+      );
+      if (!regResult.success) {
+        throw new Error(regResult.error || 'Failed to register PVAC pubkey on node');
+      }
+
       // Convert amount to raw units
       const amountRaw = Math.floor(amountNum * 1_000_000);
       
       // Fetch fresh nonce from blockchain
-      
       const freshBalanceData = await fetchBalance(wallet!.address);
       const nonce = freshBalanceData.nonce;
 
@@ -315,7 +315,6 @@ export function PrivateTransfer({
       const currentCipher = encryptedBalance?.cipher || "hfhe_v1|...";
       
       // Fetch recipient's Curve25519 view pubkey via RPC octra_viewPubkey
-      // (same as webcli: g_rpc.get_view_pubkey(to) → result["view_pubkey"])
       const recipientViewPubkey = await getViewPubkey(toAddress);
       if (!recipientViewPubkey) {
         throw new Error("Recipient has no view pubkey — they must register PVAC first");
@@ -335,23 +334,20 @@ export function PrivateTransfer({
       });
 
       if (!result.success) {
-        await optimisticUpdateService.failUpdate(update.id, result.error);
         throw new Error(result.error || 'PVAC server returned error');
       }
 
       // Submit signed transaction to blockchain
       const submitResult = await sendTransaction(result.tx);
       if (!submitResult.success) {
-        await optimisticUpdateService.failUpdate(update.id, submitResult.error);
         throw new Error(submitResult.error || 'Failed to submit transaction');
       }
       const txHash = submitResult.hash || 'pending';
       
-      // Update transaction hash
-      optimisticUpdateService.updateTransactionHash(update.id, txHash);
-      
-      // Invalidate cache after private send
+      // Invalidate cache and immediately refresh encrypted balance
       await invalidateCacheAfterPrivateSend(wallet!.address);
+      const freshEncrypted = await fetchEncryptedBalance(wallet!.address, wallet!.privateKey, true);
+      setLocalEncryptedBalance(freshEncrypted);
       
       // Update modal to success state
       setTxModalStatus('success');
@@ -367,54 +363,22 @@ export function PrivateTransfer({
       setAmount('');
       setRecipientInfo(null);
 
-      // Verify optimistic update in background
-      setTimeout(async () => {
-        try {
-          const freshEncrypted = await fetchEncryptedBalance(wallet!.address, wallet!.privateKey, true);
-          await optimisticUpdateService.verifyUpdate(update.id, {
-            public: 0,
-            encrypted: freshEncrypted?.encrypted || 0,
-          });
-          setLocalEncryptedBalance(freshEncrypted);
-          onTransactionSuccess({
-            hash: txHash,
-            from: wallet!.address,
-            to: 'stealth',
-            amount: amountNum,
-            status: 'pending',
-            op_type: 'stealth',
-          });
-        } catch (error) {
-          console.error('[StealthSend] Failed to verify:', error);
-          fetchEncryptedBalance(wallet!.address, wallet!.privateKey, true).then(setLocalEncryptedBalance);
-          onTransactionSuccess({
-            hash: txHash,
-            from: wallet!.address,
-            to: 'stealth',
-            amount: amountNum,
-            status: 'pending',
-            op_type: 'stealth',
-          });
-        }
-      }, 3000);
+      onTransactionSuccess({
+        hash: txHash,
+        from: wallet!.address,
+        to: 'stealth',
+        amount: amountNum,
+        status: 'pending',
+        op_type: 'stealth',
+      });
       
     } catch (error: any) {
       console.error('[StealthSend] Error:', error);
-      // Don't fallback to browser — throw so handleSend shows error modal
       throw error;
     }
   };
 
   const handleSendWithBrowser = async (toAddress: string, amountNum: number) => {
-    // Apply optimistic update for browser-based stealth send
-    const update = optimisticUpdateService.applyUpdate(
-      wallet!.address,
-      'stealth',
-      amountNum,
-      { public: 0, encrypted: encryptedBalance.encrypted },
-      0
-    );
-
     try {
       // Use existing API method (browser-based or server-based)
       const transferResult = await createPrivateTransfer(
@@ -425,11 +389,10 @@ export function PrivateTransfer({
       );
 
       if (transferResult.success) {
-        // Update transaction hash
-        optimisticUpdateService.updateTransactionHash(update.id, transferResult.tx_hash || 'unknown');
-        
-        // Invalidate cache after private send
+        // Invalidate cache and immediately refresh encrypted balance
         await invalidateCacheAfterPrivateSend(wallet!.address);
+        const freshEncrypted = await fetchEncryptedBalance(wallet!.address, wallet!.privateKey, true);
+        setLocalEncryptedBalance(freshEncrypted);
         
         // Update modal to success state
         setTxModalStatus('success');
@@ -440,37 +403,13 @@ export function PrivateTransfer({
         setAmount('');
         setRecipientInfo(null);
 
-        // Verify optimistic update in background
-        setTimeout(async () => {
-          
-          try {
-            const freshEncrypted = await fetchEncryptedBalance(wallet!.address, wallet!.privateKey, true);
-            
-            await optimisticUpdateService.verifyUpdate(update.id, {
-              public: 0,
-              encrypted: freshEncrypted?.encrypted || 0,
-            });
-
-            setLocalEncryptedBalance(freshEncrypted);
-            onTransactionSuccess();
-          } catch (error) {
-            console.error('[StealthSend-Browser] Failed to verify:', error);
-            // Refresh anyway
-            fetchEncryptedBalance(wallet!.address, wallet!.privateKey, true).then(setLocalEncryptedBalance);
-            onTransactionSuccess();
-          }
-        }, 3000);
+        onTransactionSuccess();
       } else {
-        // Fail optimistic update
-        await optimisticUpdateService.failUpdate(update.id, transferResult.error);
-        
         // Update modal to error state
         setTxModalStatus('error');
         setTxModalResult({ error: transferResult.error || "Unknown error occurred" });
       }
     } catch (error: any) {
-      // Fail optimistic update
-      await optimisticUpdateService.failUpdate(update.id, error.message);
       throw error;
     }
   };

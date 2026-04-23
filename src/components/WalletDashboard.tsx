@@ -134,6 +134,7 @@ export function WalletDashboard({
   const [balance, setBalance] = useState<number | null>(null);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [isLoadingBalance, setIsLoadingBalance] = useState(true);
+  const [isLoadingEncryptedBalance, setIsLoadingEncryptedBalance] = useState(true);
   const [isLoadingTransactions, setIsLoadingTransactions] = useState(true);
   const [isRefreshingOctraHistory, setIsRefreshingOctraHistory] = useState(false);
   const [nonce, setNonce] = useState(0);
@@ -661,13 +662,17 @@ export function WalletDashboard({
     setTransactions([]);
     setNonce(0);
     setIsDecryptingBalance(false);
+    setIsLoadingBalance(true);
+    setIsLoadingEncryptedBalance(true);
+    setIsLoadingTransactions(true);
     autoDecryptedCipherRef.current = null;
     pvacDecryptInFlightRef.current = false;
     optimisticTxDetailsRef.current.clear();
   }, [wallet?.address]);
 
   // Initial data fetch when wallet is connected
-  // With cache service for instant load
+  // Each data source updates the UI independently as soon as it resolves —
+  // no waiting for all fetches to complete before showing anything.
   useEffect(() => {
     const fetchInitialData = async () => {
       if (!wallet) return;
@@ -676,11 +681,10 @@ export function WalletDashboard({
       const currentPrivateKey = wallet.privateKey;
       const isStale = () => activeFetchIdRef.current !== fetchId || activeWalletRef.current?.address !== currentAddress;
 
-      // STEP 1: Try to load from cache FIRST for instant display
+      // STEP 1: Load from cache instantly — show whatever is available right away
       const cachedData = cacheService.getWalletCacheFast(currentAddress);
-      
+
       if (cachedData) {
-        // Instant display from cache
         setBalance(cachedData.publicBalance);
         setNonce(cachedData.nonce);
         setEncryptedBalance({
@@ -689,8 +693,6 @@ export function WalletDashboard({
           cipher: cachedData.encryptedBalance.cipher,
           total: cachedData.publicBalance + cachedData.encryptedBalance.encrypted
         });
-        
-        // Transform cached activities to transactions
         if (cachedData.recentActivities && cachedData.recentActivities.length > 0) {
           const cachedTxs = cachedData.recentActivities.map(activity => ({
             hash: activity.hash,
@@ -704,141 +706,165 @@ export function WalletDashboard({
           } as Transaction));
           setTransactions(cachedTxs);
         }
-        
-        // Show cached data immediately, then fetch fresh data in background
-      } else {
-        // No cache available
       }
 
       // STEP 2: Reset UI-specific states
       setShowExpandedTxDetails(false);
       setSelectedTxHash(null);
       setSelectedTxDetails(null);
-      
-      // Set loading states — only show skeleton if no cached data available
+
+      // Show skeletons only for data not yet in cache
       setIsLoadingBalance(!cachedData);
+      setIsLoadingEncryptedBalance(!cachedData);
       setIsLoadingTransactions(!cachedData);
 
-      // STEP 3: Fetch fresh data in parallel
-      try {
-        const [balanceData, encData, historyResult, pendingTransfers] = await Promise.all([
-          fetchBalance(currentAddress).catch(err => {
-            console.error('Failed to fetch balance:', err);
-            return { balance: cachedData?.publicBalance || 0, nonce: cachedData?.nonce || 0 };
-          }),
-          fetchEncryptedBalance(currentAddress, currentPrivateKey).catch(err => {
-            console.error('Failed to fetch encrypted balance:', err);
-            return cachedData ? { encrypted: cachedData.encryptedBalance.encrypted, cipher: cachedData.encryptedBalance.cipher } : null;
-          }),
-          getTransactionHistory(currentAddress).catch(err => {
-            console.error('Failed to fetch transaction history:', err);
-            return { transactions: [], totalCount: 0 };
-          }),
-          getPendingPrivateTransfers(currentAddress, currentPrivateKey).catch(err => {
-            console.error('Failed to fetch pending transfers:', err);
-            return [];
-          })
-        ]);
+      // STEP 3: Fire all fetches independently — each updates UI as soon as it resolves
+      // Track what we need for the final cache write
+      let latestBalance: { balance: number; nonce: number } | null = null;
+      let latestEncData: any = null;
+      let latestTxs: Transaction[] | null = null;
 
-        // Check staleness
-        if (isStale()) {
-          return;
-        }
+      const saveCache = () => {
+        // Only write cache once we have at least balance + txs
+        if (!latestBalance || !latestTxs) return;
+        const recentActivities = latestTxs.slice(0, 11).map(tx => ({
+          hash: tx.hash,
+          type: (tx.op_type || 'standard') as any,
+          direction: tx.type === 'sent' ? 'out' : 'in' as 'in' | 'out',
+          amount: tx.amount,
+          timestamp: tx.timestamp,
+          from: tx.from,
+          to: tx.to,
+          status: tx.status,
+          finality: tx.status === 'confirmed' ? 'confirmed' : 'pending' as any
+        }));
+        cacheService.setWalletCacheFast({
+          address: currentAddress,
+          publicBalance: latestBalance.balance,
+          encryptedBalance: {
+            encrypted: latestEncData?.encrypted || 0,
+            cipher: latestEncData?.cipher || '',
+            public: latestBalance.balance
+          },
+          nonce: latestBalance.nonce,
+          recentActivities,
+          lastUpdate: Date.now(),
+          version: '1.0.0'
+        });
+      };
 
-        // STEP 4: Update UI with fresh data
-        setBalance(balanceData.balance);
-        setNonce(balanceData.nonce);
-        
-        // Update encrypted balance
-        if (encData) {
-          setEncryptedBalance(encData);
-          const savedMode = loadOperationMode(encData.encrypted || 0, pendingTransfers.length);
-          setOperationMode(savedMode);
-        } else {
-          setEncryptedBalance({
-            public: balanceData.balance,
-            public_raw: Math.floor(balanceData.balance * 1_000_000),
-            encrypted: 0,
-            encrypted_raw: 0,
-            total: balanceData.balance
-          });
-          setOperationMode('public');
-        }
-        
-        // Update transactions
-        if (Array.isArray(historyResult.transactions)) {
-          const transformedTxs = historyResult.transactions.map((tx) => ({
-            ...tx,
-            type: tx.from?.toLowerCase() === currentAddress.toLowerCase() ? 'sent' : 'received'
-          } as Transaction));
-          setTransactions(transformedTxs);
-          // STEP 5: Save to cache for next time
-          const recentActivities = transformedTxs.slice(0, 11).map(tx => ({
-            hash: tx.hash,
-            type: (tx.op_type || 'standard') as any,
-            direction: tx.type === 'sent' ? 'out' : 'in' as 'in' | 'out',
-            amount: tx.amount,
-            timestamp: tx.timestamp,
-            from: tx.from,
-            to: tx.to,
-            status: tx.status,
-            finality: tx.status === 'confirmed' ? 'confirmed' : 'pending' as any
-          }));
-          
-          cacheService.setWalletCacheFast({
-            address: currentAddress,
-            publicBalance: balanceData.balance,
-            encryptedBalance: {
-              encrypted: encData?.encrypted || 0,
-              cipher: encData?.cipher || '',
-              public: balanceData.balance
-            },
-            nonce: balanceData.nonce,
-            recentActivities,
-            lastUpdate: Date.now(),
-            version: '1.0.0'
-          });
-        } else {
-          setTransactions([]);
-        }
-        
-        // Update pending transfers count
-        setPendingTransfersCount(pendingTransfers.length);
-        
-      } catch (error) {
-        console.error('Failed to fetch wallet data:', error);
-        if (!isStale()) {
-          toast({
-            title: "Data Load Error",
-            description: "Failed to load wallet data. Please try refreshing.",
-            variant: "destructive",
-          });
-          // Keep cached data if available, otherwise set safe defaults
-          if (!cachedData) {
-            setBalance(0);
-            setNonce(0);
-            setEncryptedBalance({
-              public: 0,
-              public_raw: 0,
+      // Fetch 1: Public balance + nonce (fastest)
+      const balanceFetch = fetchBalance(currentAddress)
+        .then(balanceData => {
+          if (isStale()) return;
+          setBalance(balanceData.balance);
+          setNonce(balanceData.nonce);
+          setIsLoadingBalance(false);
+          latestBalance = balanceData;
+          saveCache();
+        })
+        .catch(err => {
+          console.error('Failed to fetch balance:', err);
+          if (!isStale()) {
+            if (cachedData) {
+              setBalance(cachedData.publicBalance);
+              setNonce(cachedData.nonce);
+            } else {
+              setBalance(0);
+              setNonce(0);
+            }
+            setIsLoadingBalance(false);
+          }
+        });
+
+      // Fetch 2: Encrypted balance (medium speed)
+      const encFetch = fetchEncryptedBalance(currentAddress, currentPrivateKey)
+        .then(encData => {
+          if (isStale()) return;
+          if (encData) {
+            setEncryptedBalance(encData);
+            latestEncData = encData;
+          } else {
+            const fallback = {
+              public: cachedData?.publicBalance || 0,
+              public_raw: Math.floor((cachedData?.publicBalance || 0) * 1_000_000),
               encrypted: 0,
               encrypted_raw: 0,
-              total: 0
-            });
-            setTransactions([]);
-            setPendingTransfersCount(0);
-            setOperationMode('public');
+              total: cachedData?.publicBalance || 0
+            };
+            setEncryptedBalance(fallback);
           }
-        }
-      } finally {
-        if (!isStale()) {
-          setIsLoadingBalance(false);
+          setIsLoadingEncryptedBalance(false);
+          saveCache();
+        })
+        .catch(err => {
+          console.error('Failed to fetch encrypted balance:', err);
+          if (!isStale()) {
+            if (cachedData) {
+              setEncryptedBalance({
+                public: cachedData.publicBalance,
+                encrypted: cachedData.encryptedBalance.encrypted,
+                cipher: cachedData.encryptedBalance.cipher,
+                total: cachedData.publicBalance + cachedData.encryptedBalance.encrypted
+              });
+            }
+            setIsLoadingEncryptedBalance(false);
+          }
+        });
+
+      // Fetch 3: Transaction history (slowest)
+      const historyFetch = getTransactionHistory(currentAddress)
+        .then(historyResult => {
+          if (isStale()) return;
+          if (Array.isArray(historyResult.transactions)) {
+            const transformedTxs = historyResult.transactions.map((tx) => ({
+              ...tx,
+              type: tx.from?.toLowerCase() === currentAddress.toLowerCase() ? 'sent' : 'received'
+            } as Transaction));
+            setTransactions(transformedTxs);
+            latestTxs = transformedTxs;
+          } else {
+            setTransactions([]);
+            latestTxs = [];
+          }
           setIsLoadingTransactions(false);
-        }
+          saveCache();
+        })
+        .catch(err => {
+          console.error('Failed to fetch transaction history:', err);
+          if (!isStale()) {
+            if (!cachedData) setTransactions([]);
+            setIsLoadingTransactions(false);
+          }
+        });
+
+      // Fetch 4: Pending private transfers (independent, updates mode availability)
+      const pendingFetch = getPendingPrivateTransfers(currentAddress, currentPrivateKey)
+        .then(pendingTransfers => {
+          if (isStale()) return;
+          setPendingTransfersCount(pendingTransfers.length);
+          // Update operation mode once we know pending count + enc balance
+          // (enc balance may already be set from cache or fetch 2)
+        })
+        .catch(err => {
+          console.error('Failed to fetch pending transfers:', err);
+          if (!isStale()) setPendingTransfersCount(0);
+        });
+
+      // Wait for all to settle (errors already handled above individually)
+      await Promise.allSettled([balanceFetch, encFetch, historyFetch, pendingFetch]);
+
+      // Final: update operation mode now that all data is in
+      if (!isStale()) {
+        const encBal = latestEncData?.encrypted || cachedData?.encryptedBalance.encrypted || 0;
+        const pendingCount = pendingTransfersCount;
+        const savedMode = loadOperationMode(encBal, pendingCount);
+        setOperationMode(savedMode);
       }
     };
 
     fetchInitialData();
-  }, [wallet, toast]);
+  }, [wallet, toast]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Function to refresh all wallet data
   const refreshWalletData = async () => {
@@ -1600,29 +1626,29 @@ export function WalletDashboard({
     });
   };
 
-  // Silent background refresh after tx — updates state and cache, upgrades pending→confirmed
+  // Silent background refresh after tx — updates state and cache, upgrades pending→confirmed.
+  // Fires twice: once shortly after tx accepted (to show pending), once later after confirmation.
   const silentRefreshAfterTx = (delayMs = 3000) => {
-    setTimeout(async () => {
+    const doRefresh = async () => {
       try {
-        const [balanceData, historyResult] = await Promise.all([
+        const [balanceData, historyResult, freshEncrypted] = await Promise.all([
           fetchBalance(wallet.address),
-          getTransactionHistory(wallet.address),
+          getTransactionHistory(wallet.address, {}, true), // force refresh to get latest op_types
+          fetchEncryptedBalance(wallet.address, wallet.privateKey).catch(() => null),
         ]);
         setBalance(balanceData.balance);
         setNonce(balanceData.nonce);
+        if (freshEncrypted) setEncryptedBalance(freshEncrypted);
         if (Array.isArray(historyResult.transactions)) {
           const txs = historyResult.transactions.map(tx => ({
             ...tx,
             type: tx.from?.toLowerCase() === wallet.address.toLowerCase() ? 'sent' : 'received'
           } as Transaction));
-          // Merge: confirmed txs from node override pending optimistic ones
           setTransactions(prev => {
             const nodeHashes = new Set(txs.map(t => t.hash));
-            // Keep optimistic pending txs that haven't appeared on node yet
             const stillPending = prev.filter(t => t.status === 'pending' && !nodeHashes.has(t.hash));
             return [...stillPending, ...txs].slice(0, 20);
           });
-          // Update cache
           const recentActivities = txs.slice(0, 11).map(tx => ({
             hash: tx.hash,
             type: (tx.op_type || 'standard') as any,
@@ -1638,8 +1664,8 @@ export function WalletDashboard({
             address: wallet.address,
             publicBalance: balanceData.balance,
             encryptedBalance: {
-              encrypted: encryptedBalance?.encrypted || 0,
-              cipher: encryptedBalance?.cipher || '',
+              encrypted: freshEncrypted?.encrypted || encryptedBalance?.encrypted || 0,
+              cipher: freshEncrypted?.cipher || encryptedBalance?.cipher || '',
               public: balanceData.balance,
             },
             nonce: balanceData.nonce,
@@ -1651,7 +1677,12 @@ export function WalletDashboard({
       } catch (err) {
         console.warn('[silentRefresh] failed:', err);
       }
-    }, delayMs);
+    };
+
+    // First refresh: shortly after tx accepted (shows pending state)
+    setTimeout(doRefresh, delayMs);
+    // Second refresh: after node confirms (typically 5-10s after accepted)
+    setTimeout(doRefresh, delayMs + 8000);
   };
 
   const handleTransactionSuccess = (newTx?: {
@@ -1831,6 +1862,7 @@ export function WalletDashboard({
                     wallet={wallet}
                     publicBalance={balance || 0}
                     onBalanceUpdate={setBalance}
+                    onEncryptedBalanceUpdate={setEncryptedBalance}
                     onSuccess={() => {
                       silentRefreshAfterTx(3000);
                       // Don't auto-close — let user close the tx result modal manually
@@ -1866,6 +1898,7 @@ export function WalletDashboard({
                     encryptedBalance={encryptedBalance?.encrypted || 0}
                     currentCipher={encryptedBalance?.cipher}
                     onBalanceUpdate={setBalance}
+                    onEncryptedBalanceUpdate={setEncryptedBalance}
                     onSuccess={() => {
                       silentRefreshAfterTx(3000);
                       // Don't auto-close — let user close the tx result modal manually
@@ -3146,7 +3179,7 @@ export function WalletDashboard({
                   <p className={`text-xs font-medium ${operationMode === 'private' ? 'text-[#00E5C0]' : 'text-muted-foreground'}`}>
                     Balance
                   </p>
-                  {isLoadingBalance ? (
+                  {(operationMode === 'private' ? isLoadingEncryptedBalance : isLoadingBalance) ? (
                     <div className="h-10 flex items-center justify-center">
                       <div className="w-5 h-5 rounded-full border-2 border-transparent animate-spin" style={{ borderTopColor: '#00E5C0' }} />
                     </div>
@@ -3405,7 +3438,7 @@ export function WalletDashboard({
 
                 {/* Balance Display */}
                 <div className="text-center mb-6">
-                  {isLoadingBalance || isRefreshingData ? (
+                  {(operationMode === 'private' ? isLoadingEncryptedBalance : isLoadingBalance) || isRefreshingData ? (
                     <div className="flex items-center justify-center gap-2">
                       <div className="w-6 h-6 rounded-full border-2 border-transparent animate-spin" style={{ borderTopColor: '#00E5C0' }} />
                     </div>
@@ -4201,6 +4234,7 @@ export function WalletDashboard({
                   wallet={wallet}
                   publicBalance={encryptedBalance?.public || balance || 0}
                   onBalanceUpdate={setBalance}
+                  onEncryptedBalanceUpdate={setEncryptedBalance}
                   onSuccess={() => {
                     // Don't auto-close — let user close the tx result modal manually
                     silentRefreshAfterTx(3000);
@@ -4219,6 +4253,7 @@ export function WalletDashboard({
                   encryptedBalance={encryptedBalance?.encrypted || 0}
                   currentCipher={encryptedBalance?.cipher}
                   onBalanceUpdate={setBalance}
+                  onEncryptedBalanceUpdate={setEncryptedBalance}
                   onSuccess={() => {
                     // Don't auto-close — let user close the tx result modal manually
                     silentRefreshAfterTx(3000);

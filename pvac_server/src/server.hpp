@@ -95,6 +95,16 @@ public:
                 h->handle_health(req, res);
             });
 
+        svr_->Post("/api/ensure_pvac_registered",
+            [h](const httplib::Request& req, httplib::Response& res) {
+                h->handle_ensure_pvac_registered(req, res);
+            });
+
+        svr_->Post("/api/get_pvac_pubkey",
+            [h](const httplib::Request& req, httplib::Response& res) {
+                h->handle_get_pvac_pubkey(req, res);
+            });
+
         svr_->Post("/api/decrypt_balance",
             [h](const httplib::Request& req, httplib::Response& res) {
                 h->handle_decrypt_balance(req, res);

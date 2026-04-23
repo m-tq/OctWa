@@ -121,6 +121,128 @@ public:
         res.set_content(j.dump(), "application/json");
     }
 
+    // ── POST /api/ensure_pvac_registered ──────────────────────────────────────
+    // Checks if the PVAC pubkey is registered on the node.
+    // If not, registers it automatically.
+    // Required fields: private_key, public_key, address, rpc_url
+    // Returns: { success, already_registered, registered, error }
+    void handle_ensure_pvac_registered(const httplib::Request& req, httplib::Response& res) {
+        auto jid = Logger::start_request("POST /api/ensure_pvac_registered");
+        if (!check_auth(req, res, jid)) return;
+
+        json body;
+        if (!parse_body(req, res, jid, body)) return;
+
+        for (const char* f : {"private_key", "public_key", "address", "rpc_url"}) {
+            if (!body.contains(f) || body[f].get<std::string>().empty()) {
+                Logger::log_error(jid, std::string("Missing field: ") + f);
+                res.status = 400;
+                res.set_content(err(std::string("Missing field: ") + f).dump(), "application/json");
+                return;
+            }
+        }
+
+        std::string address  = body["address"].get<std::string>();
+        std::string rpc_url  = body["rpc_url"].get<std::string>();
+        std::string pub_b64  = body["public_key"].get<std::string>();
+
+        PvacOps pvac;
+        std::vector<uint8_t> sk64;
+        if (!init_pvac(body, res, jid, pvac, sk64)) return;
+
+        Logger::log_step(jid, "Checking PVAC registration for " + address);
+
+        // Delegate to PvacOps helper which handles check + register
+        std::string pvac_pub_b64 = pvac.get_pvac_pubkey_b64();
+        if (pvac_pub_b64.empty()) {
+            Logger::log_error(jid, "Failed to serialize PVAC pubkey");
+            res.status = 500;
+            res.set_content(err("Failed to serialize PVAC pubkey").dump(), "application/json");
+            return;
+        }
+
+        // Compute registration signature and AES KAT
+        auto pk_raw = pvac.get_pvac_pubkey_raw();
+        std::string pk_blob(pk_raw.begin(), pk_raw.end());
+        std::string reg_sig = octra::sign_register_request(address, pk_blob, sk64.data());
+
+        uint8_t kat_buf[16];
+        pvac_aes_kat(kat_buf);
+        char kat_hex[33];
+        for (int i = 0; i < 16; i++) std::snprintf(kat_hex + i * 2, 3, "%02x", kat_buf[i]);
+        kat_hex[32] = 0;
+
+        // Call node RPC to check + register
+        std::string reg_error;
+
+        bool ok = ensure_pvac_registered_on_node(
+            rpc_url, address, pvac_pub_b64,
+            reg_sig, pub_b64, std::string(kat_hex));
+
+        json resp = ok_base(jid);
+        resp["pvac_pubkey"] = pvac_pub_b64;
+        if (ok) {
+            resp["success"]    = true;
+            resp["registered"] = true;
+        } else {
+            resp["success"]    = false;
+            resp["registered"] = false;
+            resp["error"]      = "Registration failed or key conflict";
+        }
+        res.set_content(resp.dump(), "application/json");
+        Logger::log_success(jid, ok ? "PVAC registered" : "PVAC registration failed");
+    }
+
+    // ── POST /api/get_pvac_pubkey ─────────────────────────────────────────────
+    // Returns the PVAC public key (b64) + reg_sig + aes_kat derived from the wallet's private key.
+    void handle_get_pvac_pubkey(const httplib::Request& req, httplib::Response& res) {
+        auto jid = Logger::start_request("POST /api/get_pvac_pubkey");
+        if (!check_auth(req, res, jid)) return;
+
+        json body;
+        if (!parse_body(req, res, jid, body)) return;
+
+        if (!body.contains("private_key")) {
+            Logger::log_error(jid, "Missing private_key");
+            res.status = 400;
+            res.set_content(err("Missing field: private_key").dump(), "application/json");
+            return;
+        }
+
+        PvacOps pvac;
+        std::vector<uint8_t> sk64;
+        if (!init_pvac(body, res, jid, pvac, sk64)) return;
+
+        std::string pvac_pubkey_b64 = pvac.get_pvac_pubkey_b64();
+        if (pvac_pubkey_b64.empty()) {
+            Logger::log_error(jid, "Failed to serialize PVAC pubkey");
+            res.status = 500;
+            res.set_content(err("Failed to serialize PVAC pubkey").dump(), "application/json");
+            return;
+        }
+
+        uint8_t kat_buf[16];
+        pvac_aes_kat(kat_buf);
+        char kat_hex[33];
+        for (int i = 0; i < 16; i++) std::snprintf(kat_hex + i * 2, 3, "%02x", kat_buf[i]);
+        kat_hex[32] = 0;
+
+        std::string address = body.value("address", "");
+        std::string reg_sig;
+        if (!address.empty()) {
+            auto pk_raw = pvac.get_pvac_pubkey_raw();
+            std::string pk_blob(pk_raw.begin(), pk_raw.end());
+            reg_sig = octra::sign_register_request(address, pk_blob, sk64.data());
+        }
+
+        json resp = ok_base(jid);
+        resp["pvac_pubkey"] = pvac_pubkey_b64;
+        resp["aes_kat"]     = std::string(kat_hex);
+        resp["reg_sig"]     = reg_sig;
+        res.set_content(resp.dump(), "application/json");
+        Logger::log_success(jid, "PVAC pubkey retrieved");
+    }
+
     // ── POST /api/decrypt_balance ─────────────────────────────────────────────
     void handle_decrypt_balance(const httplib::Request& req, httplib::Response& res) {
         auto jid = Logger::start_request("POST /api/decrypt_balance");
@@ -182,6 +304,7 @@ public:
         int nonce = body["nonce"].get<int>();
         std::string ou = body.value("ou", "10000");
         std::string pub_b64 = body["public_key"].get<std::string>();
+        std::string rpc_url = body.value("rpc_url", "");
 
         Logger::log_step(jid, "amount=" + std::to_string(amount / 1e6) + " OCT  nonce=" + std::to_string(nonce));
 
@@ -192,7 +315,7 @@ public:
         Logger::log_step(jid, "Building encrypt tx...");
         auto result = pvac.encrypt_balance(amount, address, nonce,
                                            sk64.data(), pub_b64,
-                                           now_ts(), ou);
+                                           now_ts(), ou, rpc_url);
         Logger::log_success(jid, "Encrypted " + std::to_string(amount / 1e6) + " OCT");
         send_result(res, jid, result);
     }
@@ -221,6 +344,7 @@ public:
         std::string ou         = body.value("ou", "10000");
         std::string pub_b64    = body["public_key"].get<std::string>();
         std::string cur_cipher = body["current_cipher"].get<std::string>();
+        std::string rpc_url    = body.value("rpc_url", "");
 
         Logger::log_step(jid, "amount=" + std::to_string(amount / 1e6) + " OCT  nonce=" + std::to_string(nonce));
 
@@ -231,7 +355,7 @@ public:
         Logger::log_step(jid, "Building decrypt tx...");
         auto result = pvac.decrypt_to_public(amount, cur_cipher, address, nonce,
                                              sk64.data(), pub_b64,
-                                             now_ts(), ou);
+                                             now_ts(), ou, rpc_url);
         Logger::log_success(jid, "Decrypted " + std::to_string(amount / 1e6) + " OCT");
         send_result(res, jid, result);
     }
@@ -263,6 +387,7 @@ public:
         std::string from_addr = body["from_address"].get<std::string>();
         int nonce             = body["nonce"].get<int>();
         std::string ou        = body.value("ou", "5000");
+        std::string rpc_url   = body.value("rpc_url", "");
 
         Logger::log_step(jid, "from=" + from_addr + "  to=" + to_addr +
                               "  amount=" + std::to_string(amount / 1e6) + " OCT");
@@ -274,7 +399,7 @@ public:
         Logger::log_step(jid, "Building stealth tx...");
         auto result = pvac.stealth_send(to_addr, amount, cur_cipher, rcpt_vpub,
                                         from_addr, nonce, sk64.data(), pub_b64,
-                                        now_ts(), ou);
+                                        now_ts(), ou, rpc_url);
         Logger::log_success(jid, "Stealth send " + std::to_string(amount / 1e6) + " OCT");
         send_result(res, jid, result);
     }

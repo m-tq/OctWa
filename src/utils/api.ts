@@ -676,6 +676,73 @@ export async function getPublicKey(address: string): Promise<string | null> {
   }
 }
 
+/**
+ * Register PVAC pubkey on the node via octra_registerPvacPubkey RPC.
+ * Called before first encrypt/decrypt/stealth on a fresh wallet.
+ * Returns true if already registered or successfully registered.
+ */
+export async function ensurePvacPubkeyRegistered(
+  address: string,
+  pvacPubkeyB64: string,
+  regSig: string,
+  walletPubKeyB64: string,
+  aesKatHex: string
+): Promise<{ success: boolean; alreadyRegistered?: boolean; error?: string }> {
+  try {
+    // Check if already registered
+    const checkReq = {
+      jsonrpc: '2.0',
+      id: Date.now(),
+      method: 'octra_pvacPubkey',
+      params: [address],
+    };
+    const checkResp = await makeAPIRequest('/rpc', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(checkReq),
+    });
+    if (checkResp.ok) {
+      const checkData = await safeJsonParse(checkResp);
+      if (!checkData.error && checkData.result?.pvac_pubkey) {
+        // Already registered — check if it matches
+        if (checkData.result.pvac_pubkey === pvacPubkeyB64) {
+          return { success: true, alreadyRegistered: true };
+        }
+        // Different key registered — conflict, cannot proceed
+        return { success: false, error: 'A different PVAC key is already registered for this address. Use key switch to reset.' };
+      }
+    }
+
+    // Not registered — register now
+    const regReq = {
+      jsonrpc: '2.0',
+      id: Date.now(),
+      method: 'octra_registerPvacPubkey',
+      params: [address, pvacPubkeyB64, regSig, walletPubKeyB64, aesKatHex],
+    };
+    const regResp = await makeAPIRequest('/rpc', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(regReq),
+    });
+    if (!regResp.ok) {
+      return { success: false, error: `Registration request failed: ${regResp.status}` };
+    }
+    const regData = await safeJsonParse(regResp);
+    if (regData.error) {
+      const msg = typeof regData.error === 'object' ? regData.error.message : String(regData.error);
+      if (msg.includes('already registered')) {
+        return { success: true, alreadyRegistered: true };
+      }
+      return { success: false, error: msg };
+    }
+    return { success: true, alreadyRegistered: false };
+  } catch (error) {
+    console.error('Error registering PVAC pubkey:', error);
+    return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+  }
+}
+
 export async function sendTransaction(transaction: Transaction): Promise<{ 
   success: boolean; 
   hash?: string; 
@@ -1127,6 +1194,8 @@ export async function fetchTransactionHistory(
             timestamp: txDetails.parsed_tx.timestamp,
             status: 'confirmed' as const,
             type: txDetails.parsed_tx.from.toLowerCase() === address.toLowerCase() ? 'sent' as const : 'received' as const,
+            op_type: txDetails.parsed_tx.op_type || txDetails.op_type || 'standard',
+            message: txDetails.parsed_tx.message || undefined,
           };
         } catch (error) {
           console.error('Failed to fetch transaction details for hash:', recentTx.hash, error);
@@ -1151,10 +1220,26 @@ export async function fetchTransactionHistory(
 
     // WEBCLI LOGIC: Format pending transactions
     const pendingTransactionsFormatted = pendingTransactions.map(tx => {
-      // Determine op_type from message
-      const opType = tx.message === 'PRIVATE_TRANSFER' || 
-        tx.message === '505249564154455f5452414e53464552' ? 'private' : 'standard';
-      
+      // Use op_type from staging if available, otherwise infer from fields
+      let opType = tx.op_type || 'standard';
+      if (!tx.op_type) {
+        if (tx.message === 'PRIVATE_TRANSFER' || tx.message === '505249564154455f5452414e53464552') {
+          opType = 'private';
+        } else if (tx.encrypted_data) {
+          // Infer from encrypted_data content if op_type not provided
+          try {
+            const ed = JSON.parse(tx.encrypted_data);
+            if (ed.cipher && ed.zero_proof && !ed.delta_cipher) opType = 'encrypt';
+            else if (ed.cipher && ed.range_proof_balance && !ed.delta_cipher) opType = 'decrypt';
+            else if (ed.delta_cipher) opType = 'stealth';
+            else if (ed.claim_cipher) opType = 'claim';
+          } catch { /* keep standard */ }
+        } else if (tx.to === tx.from) {
+          // Self-to-self with no message — likely encrypt/decrypt, but can't distinguish without encrypted_data
+          opType = 'standard';
+        }
+      }
+
       return {
         hash: tx.hash,
         from: tx.from,
@@ -1164,7 +1249,7 @@ export async function fetchTransactionHistory(
         status: 'pending' as const,
         type: tx.from.toLowerCase() === address.toLowerCase() ? 'sent' as const : 'received' as const,
         op_type: opType,
-        message: tx.message
+        message: tx.message || undefined,
       };
     });
 

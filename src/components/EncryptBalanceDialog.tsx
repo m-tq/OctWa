@@ -12,8 +12,8 @@ import { useToast } from '@/hooks/use-toast';
 import { AnimatedIcon } from './AnimatedIcon';
 import { TransactionModal, TransactionStatus, TransactionResult } from './TransactionModal';
 import { pvacServerService } from '@/services/pvacServerService';
-import { sendTransaction, fetchBalance, fetchEncryptedBalance } from '@/utils/api';
-import { optimisticUpdateService } from '@/services/optimisticUpdateService';
+import { sendTransaction, fetchBalance, fetchEncryptedBalance, invalidateCacheAfterEncrypt } from '@/utils/api';
+import { ensurePvacRegistered } from '@/utils/ensurePvacRegistered';
 
 interface EncryptBalanceDialogProps {
   open: boolean;
@@ -21,7 +21,8 @@ interface EncryptBalanceDialogProps {
   wallet: Wallet;
   publicBalance: number;
   onSuccess: () => void;
-  onBalanceUpdate?: (newBalance: number) => void; // Instant UI update callback
+  onBalanceUpdate?: (newBalance: number) => void;
+  onEncryptedBalanceUpdate?: (encryptedBalance: any) => void;
   isPopupMode?: boolean;
   isInline?: boolean;
 }
@@ -33,6 +34,7 @@ export function EncryptBalanceDialog({
   publicBalance, 
   onSuccess,
   onBalanceUpdate,
+  onEncryptedBalanceUpdate,
   isPopupMode = false,
   isInline = false
 }: EncryptBalanceDialogProps) {
@@ -111,27 +113,21 @@ export function EncryptBalanceDialog({
   };
 
   const handleEncryptWithPvac = async (amountToEncrypt: number) => {
-    // Apply optimistic update
-    const update = optimisticUpdateService.applyUpdate(
-      wallet.address,
-      'encrypt',
-      amountToEncrypt,
-      { public: publicBalance, encrypted: 0 },
-      0 // No fee for encrypt
-    );
-
-    // INSTANT UI UPDATE: Deduct amount from public balance immediately
-    if (onBalanceUpdate) {
-      const newBalance = publicBalance - amountToEncrypt;
-      onBalanceUpdate(newBalance);
-    }
-
     try {
+      // Ensure PVAC pubkey is registered on the node before encrypting
+      const regResult = await ensurePvacRegistered(
+        wallet.address,
+        wallet.privateKey,
+        wallet.publicKey || ''
+      );
+      if (!regResult.success) {
+        throw new Error(regResult.error || 'Failed to register PVAC pubkey on node');
+      }
+
       // Convert amount to raw units (1 OCT = 1,000,000 raw units)
       const amountRaw = Math.floor(amountToEncrypt * 1_000_000);
       
-      // Fetch fresh nonce from blockchain (like SendTransaction does)
-      
+      // Fetch fresh nonce from blockchain
       const freshBalanceData = await fetchBalance(wallet.address);
       const currentNonce = freshBalanceData.nonce;
 
@@ -141,34 +137,25 @@ export function EncryptBalanceDialog({
         private_key: wallet.privateKey,
         public_key: wallet.publicKey || '',
         address: wallet.address,
-        nonce: currentNonce + 1, // Use currentNonce + 1
+        nonce: currentNonce + 1,
         ou: '10000'
       });
 
       if (!result.success) {
-        // Fail optimistic update
-        await optimisticUpdateService.failUpdate(update.id, result.error);
         throw new Error(result.error || 'PVAC server returned error');
       }
 
-      // Submit transaction to blockchain
       if (!result.tx) {
-        await optimisticUpdateService.failUpdate(update.id, 'No transaction data');
         throw new Error('PVAC server did not return transaction data');
       }
 
       const submitResult = await sendTransaction(result.tx as Transaction);
 
       if (!submitResult.success) {
-        // Fail optimistic update
-        await optimisticUpdateService.failUpdate(update.id, submitResult.error);
         throw new Error(submitResult.error || 'Failed to submit transaction to blockchain');
       }
 
       const txHash = submitResult.hash || 'unknown';
-      
-      // Update transaction hash
-      optimisticUpdateService.updateTransactionHash(update.id, txHash);
       
       setTxModalStatus('success');
       setTxModalResult({
@@ -184,27 +171,20 @@ export function EncryptBalanceDialog({
       // Reset form
       setAmount('');
 
-      // Verify optimistic update in background
-      setTimeout(async () => {
-        
-        try {
-          const freshBalance = await fetchBalance(wallet.address, true);
-          const freshEncrypted = await fetchEncryptedBalance(wallet.address, wallet.privateKey, true);
-          
-          await optimisticUpdateService.verifyUpdate(update.id, {
-            public: freshBalance.balance,
-            encrypted: freshEncrypted?.encrypted || 0,
-          });
-
-          onSuccess(); // Refresh UI
-        } catch (error) {
-          console.error('[Encrypt] Failed to verify:', error);
-          onSuccess(); // Refresh anyway
-        }
-      }, 3000); // Wait 3 seconds
-      
-      // Don't auto-close - let user close modal manually
-      // When modal closes, user returns to the (now reset) form
+      // Immediately invalidate cache and refresh both balances
+      try {
+        await invalidateCacheAfterEncrypt(wallet.address);
+        const [freshBalance, freshEncrypted] = await Promise.all([
+          fetchBalance(wallet.address, true),
+          fetchEncryptedBalance(wallet.address, wallet.privateKey, true),
+        ]);
+        if (onBalanceUpdate) onBalanceUpdate(freshBalance.balance);
+        if (onEncryptedBalanceUpdate && freshEncrypted) onEncryptedBalanceUpdate(freshEncrypted);
+        onSuccess();
+      } catch (error) {
+        console.error('[Encrypt] Failed to refresh balance:', error);
+        onSuccess();
+      }
             
     } catch (error: any) {
       console.error('[Encrypt] Error:', error);

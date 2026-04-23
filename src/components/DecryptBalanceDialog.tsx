@@ -12,17 +12,18 @@ import { AnimatedIcon } from './AnimatedIcon';
 import { TransactionModal, TransactionStatus, TransactionResult } from './TransactionModal';
 import { InfoTooltip } from './InfoTooltip';
 import { pvacServerService } from '@/services/pvacServerService';
-import { sendTransaction, fetchBalance, fetchEncryptedBalance } from '@/utils/api';
-import { optimisticUpdateService } from '@/services/optimisticUpdateService';
+import { sendTransaction, fetchBalance, fetchEncryptedBalance, invalidateCacheAfterDecrypt } from '@/utils/api';
+import { ensurePvacRegistered } from '@/utils/ensurePvacRegistered';
 
 interface DecryptBalanceDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   wallet: Wallet;
   encryptedBalance: number;
-  currentCipher?: string;  // Added: current encrypted balance cipher
+  currentCipher?: string;
   onSuccess: () => void;
-  onBalanceUpdate?: (newBalance: number) => void; // Instant UI update callback
+  onBalanceUpdate?: (newBalance: number) => void;
+  onEncryptedBalanceUpdate?: (encryptedBalance: any) => void;
   isPopupMode?: boolean;
   isInline?: boolean;
 }
@@ -35,6 +36,7 @@ export function DecryptBalanceDialog({
   currentCipher,
   onSuccess,
   onBalanceUpdate,
+  onEncryptedBalanceUpdate,
   isPopupMode = false,
   isInline = false
 }: DecryptBalanceDialogProps) {
@@ -113,36 +115,26 @@ export function DecryptBalanceDialog({
   };
 
   const handleDecryptWithPvac = async (amountToDecrypt: number) => {
-    // Apply optimistic update
-    const update = optimisticUpdateService.applyUpdate(
-      wallet.address,
-      'decrypt',
-      amountToDecrypt,
-      { public: 0, encrypted: encryptedBalance },
-      0 // No fee for decrypt
-    );
-
-    // INSTANT UI UPDATE: Add amount to public balance immediately
-    if (onBalanceUpdate) {
-      // Get current public balance from wallet
-      const currentPublicBalance = await fetchBalance(wallet.address).then(d => d.balance).catch(() => 0);
-      const newBalance = currentPublicBalance + amountToDecrypt;
-      onBalanceUpdate(newBalance);
-    }
-
     try {
+      // Ensure PVAC pubkey is registered on the node before decrypting
+      const regResult = await ensurePvacRegistered(
+        wallet.address,
+        wallet.privateKey,
+        wallet.publicKey || ''
+      );
+      if (!regResult.success) {
+        throw new Error(regResult.error || 'Failed to register PVAC pubkey on node');
+      }
+
       // Convert amount to raw units (1 OCT = 1,000,000 raw units)
       const amountRaw = Math.floor(amountToDecrypt * 1_000_000);
       
       // Fetch fresh nonce from blockchain
-      
       const freshBalanceData = await fetchBalance(wallet.address);
       const currentNonce = freshBalanceData.nonce;
 
       // Get current encrypted balance cipher
       if (!currentCipher || currentCipher === '0' || !currentCipher.startsWith('hfhe_v1|')) {
-        // Fail optimistic update
-        await optimisticUpdateService.failUpdate(update.id, 'No valid encrypted balance cipher');
         throw new Error('No valid encrypted balance cipher available. Please encrypt some balance first.');
       }
 
@@ -153,35 +145,25 @@ export function DecryptBalanceDialog({
         public_key: wallet.publicKey || '',
         current_cipher: currentCipher,
         address: wallet.address,
-        nonce: currentNonce + 1, // Use currentNonce + 1
+        nonce: currentNonce + 1,
         ou: '10000'
       });
 
       if (!result.success) {
-        // Fail optimistic update
-        await optimisticUpdateService.failUpdate(update.id, result.error);
         throw new Error(result.error || 'PVAC server returned error');
       }
 
-      // Submit transaction to blockchain
       if (!result.tx) {
-        // Fail optimistic update
-        await optimisticUpdateService.failUpdate(update.id, 'No transaction data');
         throw new Error('PVAC server did not return transaction data');
       }
 
       const submitResult = await sendTransaction(result.tx as Transaction);
 
       if (!submitResult.success) {
-        // Fail optimistic update
-        await optimisticUpdateService.failUpdate(update.id, submitResult.error);
         throw new Error(submitResult.error || 'Failed to submit transaction to blockchain');
       }
 
       const txHash = submitResult.hash || 'unknown';
-      
-      // Update transaction hash
-      optimisticUpdateService.updateTransactionHash(update.id, txHash);
       
       setTxModalStatus('success');
       setTxModalResult({
@@ -197,27 +179,20 @@ export function DecryptBalanceDialog({
       // Reset form
       setAmount('');
 
-      // Verify optimistic update in background
-      setTimeout(async () => {
-        
-        try {
-          const freshBalance = await fetchBalance(wallet.address, true);
-          const freshEncrypted = await fetchEncryptedBalance(wallet.address, wallet.privateKey, true);
-          
-          await optimisticUpdateService.verifyUpdate(update.id, {
-            public: freshBalance.balance,
-            encrypted: freshEncrypted?.encrypted || 0,
-          });
-
-          onSuccess(); // Refresh UI
-        } catch (error) {
-          console.error('[Decrypt] Failed to verify:', error);
-          onSuccess(); // Refresh anyway
-        }
-      }, 3000); // Wait 3 seconds
-
-      // Don't auto-close - let user close modal manually
-      // When modal closes, user returns to the (now reset) form
+      // Immediately refresh both balances after successful decrypt
+      try {
+        await invalidateCacheAfterDecrypt(wallet.address);
+        const [freshBalance, freshEncrypted] = await Promise.all([
+          fetchBalance(wallet.address, true),
+          fetchEncryptedBalance(wallet.address, wallet.privateKey, true),
+        ]);
+        if (onBalanceUpdate) onBalanceUpdate(freshBalance.balance);
+        if (onEncryptedBalanceUpdate && freshEncrypted) onEncryptedBalanceUpdate(freshEncrypted);
+        onSuccess();
+      } catch (error) {
+        console.error('[Decrypt] Failed to refresh balance:', error);
+        onSuccess();
+      }
             
     } catch (error: any) {
       console.error('[Decrypt] Error:', error);

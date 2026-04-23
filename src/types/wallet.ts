@@ -76,6 +76,8 @@ export interface TransactionHistoryItem {
   timestamp: number;
   status: 'confirmed' | 'pending' | 'failed';
   type: 'sent' | 'received';
+  op_type?: string;
+  message?: string;
 }
 
 // New interface for transaction details
@@ -111,6 +113,8 @@ export interface PendingTransaction {
   has_public_key: boolean;
   message: string | null;
   priority: string;
+  op_type?: string;
+  encrypted_data?: string;
 }
 
 export interface StagingResponse {

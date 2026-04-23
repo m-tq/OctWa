@@ -113,7 +113,7 @@ export function PvacServerSetup({ onComplete }: PvacServerSetupProps) {
               Need help setting up your PVAC server?
             </p>
             <a
-              href="https://github.com/m-tq/pvac_server"
+              href="https://github.com/m-tq/OctWa/tree/master/pvac_server"
               target="_blank"
               rel="noopener noreferrer"
               className="inline-flex items-center gap-2 text-sm text-[#00E5C0] hover:text-[#00E5C0]/80 transition-colors"

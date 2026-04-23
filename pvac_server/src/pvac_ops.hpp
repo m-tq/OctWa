@@ -13,6 +13,7 @@
 #include "../lib/crypto_utils.hpp"
 #include "../lib/tx_builder.hpp"
 #include "../lib/json.hpp"
+#include "../lib/httplib.h"
 
 extern "C" {
 #include "../lib/tweetnacl.h"
@@ -21,6 +22,86 @@ extern "C" {
 using json = nlohmann::json;
 
 namespace pvac {
+
+// ─── RPC helper: ensure PVAC pubkey is registered on the node ────────────────
+// Parses rpc_url (http://host:port/path), calls octra_pvacPubkey to check,
+// then octra_registerPvacPubkey if not yet registered.
+// Returns true if already registered or successfully registered.
+// Returns false (non-fatal) if rpc_url is empty or registration fails —
+// the tx will still be built; the node will reject it if the key is missing.
+inline bool ensure_pvac_registered_on_node(
+    const std::string& rpc_url,
+    const std::string& address,
+    const std::string& pvac_pubkey_b64,
+    const std::string& reg_sig,
+    const std::string& wallet_pub_b64,
+    const std::string& aes_kat_hex)
+{
+    if (rpc_url.empty()) return false;
+
+    // Parse URL
+    std::string host, path;
+    int port = 80;
+    std::string u = rpc_url;
+    if (u.rfind("https://", 0) == 0) { u = u.substr(8); port = 443; }
+    else if (u.rfind("http://", 0) == 0) { u = u.substr(7); }
+    auto slash = u.find('/');
+    if (slash != std::string::npos) { path = u.substr(slash); host = u.substr(0, slash); }
+    else { path = "/rpc"; host = u; }
+    auto colon = host.find(':');
+    if (colon != std::string::npos) { port = std::stoi(host.substr(colon + 1)); host = host.substr(0, colon); }
+
+    auto make_rpc = [&](const std::string& method, const json& params) -> json {
+        json req;
+        req["jsonrpc"] = "2.0";
+        req["method"] = method;
+        req["params"] = params;
+        req["id"] = 1;
+        std::string body = req.dump();
+        httplib::Headers hdrs = {{"Content-Type", "application/json"}};
+        std::string resp_body;
+        // Use plain HTTP client (SSL not required for local/LAN node)
+        httplib::Client cli(host, port);
+        cli.set_connection_timeout(10, 0);
+        cli.set_read_timeout(10, 0);
+        auto res = cli.Post(path, hdrs, body, "application/json");
+        if (!res) return {};
+        resp_body = res->body;
+        try { return json::parse(resp_body); } catch (...) { return {}; }
+    };
+
+    try {
+        // Check if already registered
+        auto check = make_rpc("octra_pvacPubkey", json::array({address}));
+        if (!check.empty() && check.contains("result")) {
+            auto& r = check["result"];
+            if (r.is_object() && r.contains("pvac_pubkey") && !r["pvac_pubkey"].is_null()) {
+                std::string remote = r["pvac_pubkey"].get<std::string>();
+                if (remote == pvac_pubkey_b64) return true; // already registered
+                // Different key — conflict, skip registration
+                fprintf(stderr, "[pvac] key conflict for %s — skipping registration\n", address.c_str());
+                return false;
+            }
+        }
+
+        // Not registered — register now
+        auto reg = make_rpc("octra_registerPvacPubkey",
+            json::array({address, pvac_pubkey_b64, reg_sig, wallet_pub_b64, aes_kat_hex}));
+        if (!reg.empty() && reg.contains("result")) {
+            fprintf(stderr, "[pvac] pubkey registered for %s\n", address.c_str());
+            return true;
+        }
+        if (!reg.empty() && reg.contains("error")) {
+            auto& e = reg["error"];
+            std::string msg = e.is_object() ? e.value("message", "") : e.dump();
+            if (msg.find("already registered") != std::string::npos) return true;
+            fprintf(stderr, "[pvac] register failed for %s: %s\n", address.c_str(), msg.c_str());
+        }
+    } catch (const std::exception& ex) {
+        fprintf(stderr, "[pvac] ensure_registered exception: %s\n", ex.what());
+    }
+    return false;
+}
 
 // ─── RAII wrappers for PVAC opaque handles ───────────────────────────────────
 
@@ -97,6 +178,44 @@ public:
 
     bool is_initialized() const { return initialized_; }
 
+    // ── 0. Get PVAC public key ────────────────────────────────────────────────
+    std::string get_pvac_pubkey_b64() {
+        if (!initialized_) return "";
+        return bridge_.serialize_pubkey_b64();
+    }
+
+    std::vector<uint8_t> get_pvac_pubkey_raw() {
+        if (!initialized_) return {};
+        return bridge_.serialize_pubkey();
+    }
+
+    // ── 0b. Ensure PVAC pubkey registered on node ─────────────────────────────
+    // Call before any encrypt/decrypt/stealth operation.
+    // rpc_url: e.g. "http://46.101.86.250:8080"
+    // sk64: 64-byte Ed25519 signing key
+    // wallet_pub_b64: base64 Ed25519 public key
+    // address: wallet address
+    void ensure_registered(const std::string& rpc_url,
+                           const std::string& address,
+                           const uint8_t* sk64,
+                           const std::string& wallet_pub_b64) {
+        if (!initialized_ || rpc_url.empty()) return;
+        auto pk_raw = bridge_.serialize_pubkey();
+        std::string pk_blob(pk_raw.begin(), pk_raw.end());
+        std::string pvac_pub_b64 = bridge_.serialize_pubkey_b64();
+        std::string reg_sig = octra::sign_register_request(address, pk_blob, sk64);
+
+        // Compute AES KAT
+        uint8_t kat_buf[16];
+        pvac_aes_kat(kat_buf);
+        char kat_hex[33];
+        for (int i = 0; i < 16; i++) std::snprintf(kat_hex + i * 2, 3, "%02x", kat_buf[i]);
+        kat_hex[32] = 0;
+
+        ensure_pvac_registered_on_node(rpc_url, address, pvac_pub_b64,
+                                       reg_sig, wallet_pub_b64, std::string(kat_hex));
+    }
+
     // ── 1. Decrypt encrypted balance ─────────────────────────────────────────
     struct DecryptBalanceResult {
         bool success = false;
@@ -132,10 +251,13 @@ public:
                               const uint8_t* sk64,
                               const std::string& pub_b64,
                               double timestamp,
-                              const std::string& ou) {
+                              const std::string& ou,
+                              const std::string& rpc_url = "") {
         TxResult r;
         if (!initialized_) { r.error = "PVAC not initialized"; return r; }
         try {
+            // Auto-register PVAC pubkey on node if rpc_url provided
+            ensure_registered(rpc_url, address, sk64, pub_b64);
             uint8_t seed[32], blinding[32];
             octra::random_bytes(seed, 32);
             octra::random_bytes(blinding, 32);
@@ -178,10 +300,13 @@ public:
                                 const uint8_t* sk64,
                                 const std::string& pub_b64,
                                 double timestamp,
-                                const std::string& ou) {
+                                const std::string& ou,
+                                const std::string& rpc_url = "") {
         TxResult r;
         if (!initialized_) { r.error = "PVAC not initialized"; return r; }
         try {
+            // Auto-register PVAC pubkey on node if rpc_url provided
+            ensure_registered(rpc_url, address, sk64, pub_b64);
             uint8_t seed[32], blinding[32];
             octra::random_bytes(seed, 32);
             octra::random_bytes(blinding, 32);
@@ -253,10 +378,13 @@ public:
                           const uint8_t* sk64,
                           const std::string& pub_b64,
                           double timestamp,
-                          const std::string& ou) {
+                          const std::string& ou,
+                          const std::string& rpc_url = "") {
         TxResult r;
         if (!initialized_) { r.error = "PVAC not initialized"; return r; }
         try {
+            // Auto-register PVAC pubkey on node if rpc_url provided
+            ensure_registered(rpc_url, from_address, sk64, pub_b64);
             auto their_vpub = octra::base64_decode(recipient_view_pubkey_b64);
             if (their_vpub.size() != 32)
                 throw std::runtime_error("Invalid recipient view pubkey size");

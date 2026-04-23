@@ -24,6 +24,7 @@ import {
   ChevronRight,
   MessageSquare,
   Lock,
+  Unlock,
 } from 'lucide-react';
 import { Wallet } from '../types/wallet';
 import { getTransactionHistory, fetchTransactionDetails, fetchPendingTransactionByHash } from '../utils/api';
@@ -35,6 +36,7 @@ import {
   HistoryFilter,
   getUnifiedHistory,
   isPrivateTransfer,
+  isBalanceStateChange,
   isContractCall
 } from '../utils/historyMerge';
 import { OperationMode } from '../utils/modeStorage';
@@ -75,12 +77,18 @@ export function UnifiedHistory({ wallet, transactions, onTransactionsUpdate, isL
   // Count contract calls
   const contractCallCount = filteredTransactions.filter(tx => isContractCall(tx)).length;
 
-  // Count sent/received (excluding contract calls AND state changes)
-  const sentCount = filteredTransactions.filter(tx => tx.type === 'sent' && !isContractCall(tx) && tx.op_type !== 'encrypt' && tx.op_type !== 'decrypt').length;
-  const receivedCount = filteredTransactions.filter(tx => tx.type === 'received' && !isContractCall(tx) && tx.op_type !== 'encrypt' && tx.op_type !== 'decrypt').length;
+  // Count sent/received (standard public transfers only)
+  const sentCount = filteredTransactions.filter(tx =>
+    tx.type === 'sent' && !isContractCall(tx) && !isBalanceStateChange(tx) && !isPrivateTransfer(tx)
+  ).length;
+  const receivedCount = filteredTransactions.filter(tx =>
+    tx.type === 'received' && !isContractCall(tx) && !isBalanceStateChange(tx) && !isPrivateTransfer(tx)
+  ).length;
 
-  // Count private txs for badge
-  const privateCount = filteredTransactions.filter(tx => isPrivateTransfer(tx)).length;
+  // Count private txs (stealth + claim + encrypt + decrypt) for badge
+  const privateCount = filteredTransactions.filter(tx =>
+    isPrivateTransfer(tx) || isBalanceStateChange(tx)
+  ).length;
 
   const fetchTransactions = async (page: number = 1) => {
     if (!wallet) return;
@@ -187,11 +195,15 @@ export function UnifiedHistory({ wallet, transactions, onTransactionsUpdate, isL
     if (activeFilter === 'contract') {
       txsToShow = filteredTransactions.filter(tx => isContractCall(tx));
     } else if (activeFilter === 'private') {
-      txsToShow = filteredTransactions.filter(tx => isPrivateTransfer(tx));
+      txsToShow = filteredTransactions.filter(tx => isPrivateTransfer(tx) || isBalanceStateChange(tx));
     } else if (activeFilter === 'sent') {
-      txsToShow = filteredTransactions.filter(tx => tx.type === 'sent' && !isContractCall(tx) && tx.op_type !== 'encrypt' && tx.op_type !== 'decrypt');
+      txsToShow = filteredTransactions.filter(tx =>
+        tx.type === 'sent' && !isContractCall(tx) && !isBalanceStateChange(tx) && !isPrivateTransfer(tx)
+      );
     } else if (activeFilter === 'received') {
-      txsToShow = filteredTransactions.filter(tx => tx.type === 'received' && !isContractCall(tx) && tx.op_type !== 'encrypt' && tx.op_type !== 'decrypt');
+      txsToShow = filteredTransactions.filter(tx =>
+        tx.type === 'received' && !isContractCall(tx) && !isBalanceStateChange(tx) && !isPrivateTransfer(tx)
+      );
     }
     
     return getUnifiedHistory(txsToShow, [], 'all');
@@ -201,11 +213,11 @@ export function UnifiedHistory({ wallet, transactions, onTransactionsUpdate, isL
   const pendingCount = filteredTransactions.filter(tx => tx.status === 'pending').length;
 
   return (
-    <Card className={`${hideBorder || isPopupMode ? 'border-0 shadow-none' : ''} ${isCompact ? 'h-full flex flex-col' : ''}`}>
+    <Card className={`${hideBorder || isPopupMode ? 'border-0 shadow-none' : ''} ${isPopupMode ? 'h-full flex flex-col' : ''} ${isCompact ? 'h-full flex flex-col' : ''}`}>
       <CardHeader className={`flex flex-row items-center justify-between space-y-0 ${isPopupMode ? 'pb-2 px-3 pt-3' : isCompact ? 'pb-2 px-0 pt-0 flex-shrink-0' : 'pb-4'}`}>
         <div className="flex flex-col gap-0.5">
           <CardTitle className={`flex items-center gap-2 ${isPopupMode ? 'text-sm' : isCompact ? 'text-sm' : ''}`}>
-            {!isCompact && <History className={isPopupMode ? 'h-4 w-4' : 'h-5 w-5'} />}
+            {!isCompact && !isPopupMode && <History className={isPopupMode ? 'h-4 w-4' : 'h-5 w-5'} />}
             {!isPopupMode && !isCompact && (
               <span>Activity</span>
             )}
@@ -231,7 +243,7 @@ export function UnifiedHistory({ wallet, transactions, onTransactionsUpdate, isL
           )}
         </div>
       </CardHeader>
-      <CardContent className={`${isPopupMode ? 'px-3 pb-3 pt-0' : ''} ${isCompact ? 'flex-1 overflow-hidden flex flex-col px-0 pb-0' : ''}`}>
+      <CardContent className={`${isPopupMode ? 'px-3 pb-3 pt-0 flex-1 overflow-hidden flex flex-col min-h-0' : ''} ${isCompact ? 'flex-1 overflow-hidden flex flex-col px-0 pb-0' : ''}`}>
         {/* Filter Buttons */}
         <div className={`flex ${isPopupMode ? 'flex-wrap gap-1 mb-2' : isCompact ? 'items-center justify-between gap-2 mb-4 flex-shrink-0' : 'items-center justify-between mb-3'}`}>
           <div className={`flex items-center ${isPopupMode ? 'flex-wrap gap-2' : 'gap-0'}`}>
@@ -374,9 +386,9 @@ export function UnifiedHistory({ wallet, transactions, onTransactionsUpdate, isL
             No history found for this filter.
           </div>
         ) : (
-          <ScrollArea className={isPopupMode ? 'h-auto' : isCompact ? 'flex-1 min-h-0' : 'h-[calc(100vh-450px)]'} stabilizeGutter>
+          <ScrollArea className={isPopupMode ? 'flex-1 min-h-0' : isCompact ? 'flex-1 min-h-0' : 'h-[calc(100vh-450px)]'} stabilizeGutter>
             <ScrollAreaContent>
-              <div ref={historyListRef} className={`${isPopupMode ? 'divide-y divide-dashed divide-border mb-[110px]' : isCompact ? 'divide-y divide-dashed divide-border' : 'space-y-3 pb-1'}`}>
+              <div ref={historyListRef} className={`${isPopupMode ? 'divide-y divide-dashed divide-border' : isCompact ? 'divide-y divide-dashed divide-border' : 'space-y-3 pb-1'}`}>
                 {unifiedHistory.map((item) => (
                 <div key={item.id} className={`${isPopupMode ? 'py-2' : isCompact ? 'py-2.5' : 'border p-3'} space-y-2`}>
                   {item.type === 'transfer' && item.transaction && (
@@ -648,8 +660,41 @@ function TransferItem({
 }: TransferItemProps) {
   const isPrivate = isPrivateTransfer(tx);
   const isContract = isContractCall(tx);
-  const isStateChange = tx.op_type === 'encrypt' || tx.op_type === 'decrypt';
+  const isStateChange = isBalanceStateChange(tx);
   const isStealth = tx.op_type === 'stealth' || tx.op_type === 'private';
+  const isClaim = tx.op_type === 'claim';
+
+  // Canonical icon + color per op_type
+  const getTxIcon = (size: 'sm' | 'md') => {
+    const sm = size === 'sm';
+    const cls = sm ? 'h-3.5 w-3.5 flex-shrink-0' : 'h-4 w-4 flex-shrink-0';
+    if (isContract)    return <Code      className={`${cls} text-purple-500`} />;
+    if (tx.op_type === 'encrypt') return <Lock    className={`${cls} text-yellow-500`} />;
+    if (tx.op_type === 'decrypt') return <Unlock  className={`${cls} text-orange-500`} />;
+    if (isStealth)     return <ArrowUpRight  className={`${cls} text-[#00E5C0]`} />;
+    if (isClaim)       return <ArrowDownLeft className={`${cls} text-[#00E5C0]`} />;
+    if (tx.type === 'sent')     return <ArrowUpRight  className={`${cls} text-red-500`} />;
+    return                        <ArrowDownLeft className={`${cls} text-green-500`} />;
+  };
+
+  // Canonical label per op_type
+  const getTxLabel = (): string => {
+    if (isContract)               return 'Contract Call';
+    if (tx.op_type === 'encrypt') return 'Encrypt';
+    if (tx.op_type === 'decrypt') return 'Decrypt';
+    if (isStealth)                return 'Stealth Send';
+    if (isClaim)                  return 'Claim';
+    return tx.type === 'sent' ? 'Sent' : 'Received';
+  };
+
+  // Canonical address line
+  const getAddressLine = (): string => {
+    if (isContract) return `To: ${truncateAddress(tx.to)}`;
+    if (tx.op_type === 'encrypt' || tx.op_type === 'decrypt') return 'Self';
+    if (isStealth)  return 'Stealth: —';
+    if (isClaim)    return 'Claim: —';
+    return tx.type === 'sent' ? `To: ${displayTo}` : `From: ${displayFrom}`;
+  };
 
   // For display: stealth tx has to='stealth' — show '—' instead
   const displayTo = (tx.to === 'stealth' || tx.to === '') ? '—' : truncateAddress(tx.to);
@@ -664,13 +709,14 @@ function TransferItem({
       case 'decrypt':
         return { label: 'decrypt', className: 'bg-orange-500/15 text-orange-600 dark:text-orange-400 border-orange-500/30' };
       case 'private':
-        return { label: 'stealth', className: 'bg-[#00E5C0]/15 text-[#00E5C0] border-[#00E5C0]/30' };
       case 'stealth':
         return { label: 'stealth', className: 'bg-[#00E5C0]/15 text-[#00E5C0] border-[#00E5C0]/30' };
       case 'claim':
         return { label: 'claim', className: 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/30' };
       case 'call':
         return { label: 'contract call', className: 'bg-purple-500/15 text-purple-600 dark:text-purple-400 border-purple-500/30' };
+      case 'deploy':
+        return { label: 'deploy', className: 'bg-indigo-500/15 text-indigo-600 dark:text-indigo-400 border-indigo-500/30' };
       default:
         return { label: 'standard', className: 'bg-[#3A4DFF]/10 text-[#3A4DFF] border-[#3A4DFF]/30' };
     }
@@ -709,29 +755,23 @@ function TransferItem({
       >
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2 flex-1 min-w-0">
-            {isContract ? (
-              <Code className="h-3.5 w-3.5 text-purple-500 flex-shrink-0" />
-            ) : isStateChange ? (
-              <ArrowDownLeft className="h-3.5 w-3.5 text-[#00E5C0] flex-shrink-0" />
-            ) : tx.type === 'sent' ? (
-              <ArrowUpRight className="h-3.5 w-3.5 text-red-500 flex-shrink-0" />
-            ) : (
-              <ArrowDownLeft className="h-3.5 w-3.5 text-green-500 flex-shrink-0" />
-            )}
+            {getTxIcon('sm')}
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-1.5 flex-wrap">
                 {isContract ? (
-                  <span className="text-purple-500 font-medium text-xs">Contract Call</span>
+                  <span className="text-purple-500 font-medium text-xs">{getTxLabel()}</span>
                 ) : isStateChange ? (
                   <span className="text-[#00E5C0] font-medium text-xs">
                     {tx.amount?.toFixed(4) || '0'} OCT
                   </span>
                 ) : isPrivate ? (
                   <span className="text-[#00E5C0] font-medium text-xs">
-                    {tx.type === 'sent' ? '-' : '+'}{tx.amount?.toFixed(4) || '0'} OCT
+                    {isStealth ? '-' : '+'}{tx.amount?.toFixed(4) || '0'} OCT
                   </span>
                 ) : (
-                  <span className={`font-mono text-xs ${tx.type === 'sent' ? 'text-red-500' : 'text-green-500'}`}>{tx.type === 'sent' ? '-' : '+'}{tx.amount?.toFixed(4) || '0'} OCT</span>
+                  <span className={`font-mono text-xs ${tx.type === 'sent' ? 'text-red-500' : 'text-green-500'}`}>
+                    {tx.type === 'sent' ? '-' : '+'}{tx.amount?.toFixed(4) || '0'} OCT
+                  </span>
                 )}
                 {/* op_type badge */}
                 <span className={`inline-flex items-center px-1 py-0 rounded text-[9px] font-medium border ${opBadge.className}`}>
@@ -751,7 +791,7 @@ function TransferItem({
                 )}
               </div>
               <div className="text-[10px] text-muted-foreground truncate">
-                {isContract ? 'To: ' : isStealth ? 'Stealth: ' : tx.type === 'sent' ? 'To: ' : 'From: '}{isContract ? truncateAddress(tx.to) : isStealth ? '—' : tx.type === 'sent' ? displayTo : displayFrom}
+                {getAddressLine()}
               </div>
             </div>
           </div>
@@ -788,29 +828,23 @@ function TransferItem({
       >
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2 flex-1 min-w-0">
-            {isContract ? (
-              <Code className="h-4 w-4 text-purple-500 flex-shrink-0" />
-            ) : isStateChange ? (
-              <ArrowDownLeft className="h-4 w-4 text-[#00E5C0] flex-shrink-0" />
-            ) : tx.type === 'sent' ? (
-              <ArrowUpRight className="h-4 w-4 text-red-500 flex-shrink-0" />
-            ) : (
-              <ArrowDownLeft className="h-4 w-4 text-green-500 flex-shrink-0" />
-            )}
+            {getTxIcon('md')}
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-1.5 flex-wrap">
                 {isContract ? (
-                  <span className="text-purple-500 font-medium text-sm">Contract Call</span>
+                  <span className="text-purple-500 font-medium text-sm">{getTxLabel()}</span>
                 ) : isStateChange ? (
                   <span className="text-[#00E5C0] font-medium text-sm">
                     {tx.amount?.toFixed(4) || '0'} OCT
                   </span>
                 ) : isPrivate ? (
                   <span className="text-[#00E5C0] font-medium text-sm">
-                    {tx.type === 'sent' ? '-' : '+'}{tx.amount?.toFixed(4) || '0'} OCT
+                    {isStealth ? '-' : '+'}{tx.amount?.toFixed(4) || '0'} OCT
                   </span>
                 ) : (
-                  <span className={`font-mono text-sm ${tx.type === 'sent' ? 'text-red-500' : 'text-green-500'}`}>{tx.type === 'sent' ? '-' : '+'}{tx.amount?.toFixed(4) || '0'} OCT</span>
+                  <span className={`font-mono text-sm ${tx.type === 'sent' ? 'text-red-500' : 'text-green-500'}`}>
+                    {tx.type === 'sent' ? '-' : '+'}{tx.amount?.toFixed(4) || '0'} OCT
+                  </span>
                 )}
                 {/* op_type badge */}
                 <span className={`inline-flex items-center px-1 py-0 rounded text-[9px] font-medium border ${opBadge.className}`}>
@@ -830,7 +864,7 @@ function TransferItem({
                 )}
               </div>
               <div className="text-xs text-muted-foreground truncate">
-                {isContract ? 'To: ' : isStealth ? 'Stealth: ' : tx.type === 'sent' ? 'To: ' : 'From: '}{isContract ? truncateAddress(tx.to) : isStealth ? '—' : tx.type === 'sent' ? displayTo : displayFrom}
+                {getAddressLine()}
               </div>
             </div>
           </div>
@@ -849,18 +883,8 @@ function TransferItem({
     <div>
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          {isContract ? (
-            <Code className="h-4 w-4 text-purple-500" />
-          ) : isStateChange ? (
-            <ArrowDownLeft className="h-4 w-4 text-[#00E5C0]" />
-          ) : tx.type === 'sent' ? (
-            <ArrowUpRight className="h-4 w-4 text-red-500" />
-          ) : (
-            <ArrowDownLeft className="h-4 w-4 text-green-500" />
-          )}
-          <span className="font-medium capitalize text-sm">
-            {isContract ? 'Contract Call' : isStateChange ? (tx.op_type === 'encrypt' ? 'Encrypt' : 'Decrypt') : tx.type}
-          </span>
+          {getTxIcon('md')}
+          <span className="font-medium text-sm">{getTxLabel()}</span>
           {getStatusIcon(tx.status)}
           {hasMessage && !isContract && (
             <MessageSquare className="h-4 w-4 text-muted-foreground" />
@@ -890,10 +914,12 @@ function TransferItem({
             </span>
           ) : isPrivate ? (
             <span className="text-[#00E5C0] font-medium">
-              {tx.amount?.toFixed(8) || '0'} OCT
+              {isStealth ? '-' : '+'}{tx.amount?.toFixed(8) || '0'} OCT
             </span>
           ) : (
-            <span className="font-mono">{tx.amount?.toFixed(8) || '0'} OCT</span>
+            <span className={`font-mono ${tx.type === 'sent' ? 'text-red-500' : 'text-green-500'}`}>
+              {tx.type === 'sent' ? '-' : '+'}{tx.amount?.toFixed(8) || '0'} OCT
+            </span>
           )}
         </div>
         <div>
@@ -901,8 +927,8 @@ function TransferItem({
           <span className="font-mono">{truncateHash(tx.hash || 'N/A')}</span>
         </div>
         <div>
-          <span className="text-muted-foreground">{isContract ? 'From: ' : isStealth ? 'Stealth: ' : tx.type === 'sent' ? 'To: ' : 'From: '}</span>
-          <span className="font-mono">{isContract ? truncateAddress(tx.from) : isStealth ? '—' : tx.type === 'sent' ? displayTo : displayFrom}</span>
+          <span className="text-muted-foreground">{getAddressLine().split(':')[0]}: </span>
+          <span className="font-mono">{getAddressLine().split(': ')[1] || '—'}</span>
         </div>
         <div>
           <span className="text-muted-foreground">Time: </span>

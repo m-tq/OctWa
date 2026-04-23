@@ -9,8 +9,8 @@ High-performance C++ server for Publicly Verifiable Arithmetic Computations oper
 The easiest way to build on Linux:
 
 ```bash
-chmod +x auto-build.sh
-./auto-build.sh
+chmod +x build-linux.sh
+./build-linux.sh
 ```
 
 This script will:
@@ -31,8 +31,8 @@ Supported distributions:
 #### Linux
 
 ```bash
-chmod +x build.sh
-./build.sh
+chmod +x build-linux.sh
+./build-linux.sh
 ```
 
 #### Windows
@@ -105,8 +105,7 @@ pvac_server/
 ├── lib/           # Third-party libraries (httplib, tweetnacl, etc.)
 ├── pvac/          # PVAC cryptographic library
 ├── build/         # Build output (gitignored)
-├── auto-build.sh  # Automatic build script for Linux
-├── build.sh       # Manual build script for Linux
+├── build-linux.sh  # Automatic build script for Linux
 └── build-windows.ps1  # Build script for Windows
 ```
 
@@ -114,7 +113,7 @@ pvac_server/
 
 ### Missing Dependencies
 
-If you encounter missing dependencies, the `auto-build.sh` script will detect and offer to install them automatically.
+If you encounter missing dependencies, the `build-linux.sh` script will detect and offer to install them automatically.
 
 For manual installation:
 
@@ -154,7 +153,7 @@ If the build fails:
 3. Try a clean build:
    ```bash
    rm -rf build
-   ./auto-build.sh
+   ./build-linux.sh
    ```
 
 ## License
