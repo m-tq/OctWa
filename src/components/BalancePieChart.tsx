@@ -6,6 +6,7 @@
 
 import { useMemo } from 'react';
 import { Globe, Lock, Loader2 } from 'lucide-react';
+import { formatUsd } from '@/hooks/useOctPrice';
 
 interface BalancePieChartProps {
   publicBalance: number;
@@ -13,6 +14,7 @@ interface BalancePieChartProps {
   isCompact?: boolean;
   /** Show spinner on encrypted balance row while PVAC is decrypting */
   isDecrypting?: boolean;
+  octPrice?: number;
 }
 
 export function BalancePieChart({
@@ -20,6 +22,7 @@ export function BalancePieChart({
   encryptedBalance,
   isCompact = false,
   isDecrypting = false,
+  octPrice,
 }: BalancePieChartProps) {
   const { publicPercent, encryptedPercent, total } = useMemo(() => {
     const total = publicBalance + encryptedBalance;
@@ -132,13 +135,18 @@ export function BalancePieChart({
           </div>
 
           {/* Total */}
-          <div className="pt-2">
+          <div className="pt-2 border-t border-dashed border-border/50">
             <div className="flex items-center justify-between">
               <span className="text-xs text-muted-foreground">Total Balance</span>
               {isDecrypting ? (
                 <span className="text-xs text-muted-foreground italic">calculating...</span>
               ) : (
-                <span className="font-mono text-sm font-bold">{total.toFixed(4)} OCT</span>
+                <div className="text-right">
+                  <span className="font-mono text-sm font-bold">{total.toFixed(4)} OCT</span>
+                  {octPrice !== undefined && (
+                    <p className="text-[10px] text-muted-foreground font-mono">≈ {formatUsd(total * octPrice)}</p>
+                  )}
+                </div>
               )}
             </div>
           </div>

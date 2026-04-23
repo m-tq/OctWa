@@ -3603,25 +3603,9 @@ export function WalletDashboard({
                             encryptedBalance={encryptedBalance?.encrypted || 0}
                             isCompact={false}
                             isDecrypting={isDecryptingBalance}
+                            octPrice={octPrice ?? undefined}
                           />
                         </div>
-                        {/* USD estimates per balance type */}
-                        {octPrice !== null && (
-                          <div className="mt-2 space-y-0.5 text-xs text-muted-foreground px-1">
-                            <div className="flex justify-between">
-                              <span>Public</span>
-                              <span className="font-mono">{formatUsd((balance || 0) * octPrice)}</span>
-                            </div>
-                            <div className="flex justify-between">
-                              <span>Encrypted</span>
-                              <span className="font-mono">{formatUsd((encryptedBalance?.encrypted || 0) * octPrice)}</span>
-                            </div>
-                            <div className="flex justify-between font-medium border-t border-dashed border-border pt-0.5">
-                              <span>Total</span>
-                              <span className="font-mono">{formatUsd(((balance || 0) + (encryptedBalance?.encrypted || 0)) * octPrice)}</span>
-                            </div>
-                          </div>
-                        )}
                       </>
                     )}
                   </div>
