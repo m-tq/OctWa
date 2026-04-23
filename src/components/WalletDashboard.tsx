@@ -92,6 +92,7 @@ import { useToast } from '@/hooks/use-toast';
 import { OperationMode, saveOperationMode, loadOperationMode, isPrivateModeAvailable } from '../utils/modeStorage';
 import { verifyPassword } from '../utils/password';
 import { useAddressBook } from '../hooks/useAddressBook';
+import { useOctPrice, formatUsd } from '../hooks/useOctPrice';
 import { addressBook } from '../utils/addressBook';
 import { pvacServerService } from '@/services/pvacServerService';
 import { logger } from '@/utils/logger';
@@ -284,6 +285,7 @@ export function WalletDashboard({
   const { autoLabelWallets, getWalletDisplayName } = useAddressBook();
   const { shouldShow: shouldShowPvacSetup } = usePvacSetup();
   const [showPvacSetup, setShowPvacSetup] = useState(false);
+  const octPrice = useOctPrice();
   const { toast } = useToast();
 
   // Show PVAC setup after dashboard loads (only once)
@@ -3184,17 +3186,24 @@ export function WalletDashboard({
                       <div className="w-5 h-5 rounded-full border-2 border-transparent animate-spin" style={{ borderTopColor: '#00E5C0' }} />
                     </div>
                   ) : (
-                    <div className="flex items-center justify-center gap-2">
-                      <span className={`text-2xl font-bold ${operationMode === 'private' ? 'text-[#00E5C0]' : ''}`}>
-                        {operationMode === 'private' 
-                          ? (encryptedBalance?.encrypted || 0).toFixed(8)
-                          : (balance || 0).toFixed(8)
-                        }
-                      </span>
-                      <Badge variant="outline" className={`text-base font-bold px-2 py-0.5 border-0 ${operationMode === 'private' ? 'text-[#00E5C0]' : ''}`}>
-                        OCT
-                      </Badge>
-                    </div>
+                    <>
+                      <div className="flex items-center justify-center gap-2">
+                        <span className={`text-2xl font-bold ${operationMode === 'private' ? 'text-[#00E5C0]' : ''}`}>
+                          {operationMode === 'private'
+                            ? (encryptedBalance?.encrypted || 0).toFixed(8)
+                            : (balance || 0).toFixed(8)
+                          }
+                        </span>
+                        <Badge variant="outline" className={`text-base font-bold px-2 py-0.5 border-0 ${operationMode === 'private' ? 'text-[#00E5C0]' : ''}`}>
+                          OCT
+                        </Badge>
+                      </div>
+                      {octPrice !== null && (
+                        <p className="text-[10px] text-muted-foreground mt-0.5">
+                          ≈ {formatUsd((operationMode === 'private' ? (encryptedBalance?.encrypted || 0) : (balance || 0)) * octPrice)}
+                        </p>
+                      )}
+                    </>
                   )}
                 </div>
               </div>
@@ -3443,41 +3452,48 @@ export function WalletDashboard({
                       <div className="w-6 h-6 rounded-full border-2 border-transparent animate-spin" style={{ borderTopColor: '#00E5C0' }} />
                     </div>
                   ) : (
-                    <div className="flex items-center justify-center gap-4">
-                      <div className={`text-4xl font-bold tracking-tight ${operationMode === 'private' ? 'text-[#00E5C0]' : ''}`}>
-                        {operationMode === 'private' 
-                          ? `${(encryptedBalance?.encrypted || 0).toFixed(8)} OCT`
-                          : `${(balance || 0).toFixed(8)} OCT`
-                        }
+                    <>
+                      <div className="flex items-center justify-center gap-4">
+                        <div className={`text-4xl font-bold tracking-tight ${operationMode === 'private' ? 'text-[#00E5C0]' : ''}`}>
+                          {operationMode === 'private'
+                            ? `${(encryptedBalance?.encrypted || 0).toFixed(8)} OCT`
+                            : `${(balance || 0).toFixed(8)} OCT`
+                          }
+                        </div>
+                        {operationMode === 'public' ? (
+                          <>
+                            <div className="h-8 border-l border-dashed border-border" />
+                            <Button
+                              variant="ghost"
+                              className="group h-auto px-0 py-1 text-sm font-medium bg-transparent text-[#00E5C0] hover:bg-transparent hover:text-[#00E5C0]"
+                              onClick={() => openPrivateModal('encrypt')}
+                              disabled={!balance || balance <= 0.001}
+                            >
+                              <Lock className="h-6 w-6 mr-3 text-[#00E5C0] transition-colors group-hover:drop-shadow-[0_0_6px_rgba(0,229,192,0.6)]" />
+                              <span className="transition-colors group-hover:text-[#00E5C0] group-hover:drop-shadow-[0_0_6px_rgba(0,229,192,0.6)]">Encrypt</span>
+                            </Button>
+                          </>
+                        ) : (
+                          <>
+                            <div className="h-8 border-l border-dashed border-border" />
+                            <Button
+                              variant="outline"
+                              className="group h-auto px-0 py-1 text-sm font-medium bg-transparent border-0 text-muted-foreground hover:bg-transparent hover:text-muted-foreground"
+                              onClick={() => openPrivateModal('decrypt')}
+                              disabled={!encryptedBalance || encryptedBalance.encrypted <= 0}
+                            >
+                              <Unlock className="h-6 w-6 mr-3 text-muted-foreground transition-colors group-hover:drop-shadow-[0_0_10px_rgba(0,0,0,0.45)] dark:group-hover:drop-shadow-[0_0_10px_rgba(255,255,255,0.35)]" />
+                              <span className="transition-colors group-hover:drop-shadow-[0_0_10px_rgba(0,0,0,0.45)] dark:group-hover:drop-shadow-[0_0_10px_rgba(255,255,255,0.35)]">Decrypt</span>
+                            </Button>
+                          </>
+                        )}
                       </div>
-                      {operationMode === 'public' ? (
-                        <>
-                          <div className="h-8 border-l border-dashed border-border" />
-                          <Button
-                            variant="ghost"
-                            className="group h-auto px-0 py-1 text-sm font-medium bg-transparent text-[#00E5C0] hover:bg-transparent hover:text-[#00E5C0]"
-                            onClick={() => openPrivateModal('encrypt')}
-                            disabled={!balance || balance <= 0.001}
-                          >
-                            <Lock className="h-6 w-6 mr-3 text-[#00E5C0] transition-colors group-hover:drop-shadow-[0_0_6px_rgba(0,229,192,0.6)]" />
-                            <span className="transition-colors group-hover:text-[#00E5C0] group-hover:drop-shadow-[0_0_6px_rgba(0,229,192,0.6)]">Encrypt</span>
-                          </Button>
-                        </>
-                      ) : (
-                        <>
-                          <div className="h-8 border-l border-dashed border-border" />
-                          <Button
-                            variant="outline"
-                            className="group h-auto px-0 py-1 text-sm font-medium bg-transparent border-0 text-muted-foreground hover:bg-transparent hover:text-muted-foreground"
-                            onClick={() => openPrivateModal('decrypt')}
-                            disabled={!encryptedBalance || encryptedBalance.encrypted <= 0}
-                          >
-                            <Unlock className="h-6 w-6 mr-3 text-muted-foreground transition-colors group-hover:drop-shadow-[0_0_10px_rgba(0,0,0,0.45)] dark:group-hover:drop-shadow-[0_0_10px_rgba(255,255,255,0.35)]" />
-                            <span className="transition-colors group-hover:drop-shadow-[0_0_10px_rgba(0,0,0,0.45)] dark:group-hover:drop-shadow-[0_0_10px_rgba(255,255,255,0.35)]">Decrypt</span>
-                          </Button>
-                        </>
+                      {octPrice !== null && (
+                        <p className="text-sm text-muted-foreground mt-1">
+                          ≈ {formatUsd((operationMode === 'private' ? (encryptedBalance?.encrypted || 0) : (balance || 0)) * octPrice)}
+                        </p>
                       )}
-                    </div>
+                    </>
                   )}
                 </div>
 
@@ -3589,6 +3605,23 @@ export function WalletDashboard({
                             isDecrypting={isDecryptingBalance}
                           />
                         </div>
+                        {/* USD estimates per balance type */}
+                        {octPrice !== null && (
+                          <div className="mt-3 space-y-1 text-xs text-muted-foreground px-1">
+                            <div className="flex justify-between">
+                              <span>Public</span>
+                              <span className="font-mono">{formatUsd((balance || 0) * octPrice)}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span>Encrypted</span>
+                              <span className="font-mono">{formatUsd((encryptedBalance?.encrypted || 0) * octPrice)}</span>
+                            </div>
+                            <div className="flex justify-between font-medium border-t border-dashed border-border pt-1">
+                              <span>Total</span>
+                              <span className="font-mono">{formatUsd(((balance || 0) + (encryptedBalance?.encrypted || 0)) * octPrice)}</span>
+                            </div>
+                          </div>
+                        )}
                       </>
                     )}
                   </div>
