@@ -135,7 +135,8 @@ export function BalancePieChart({
           </div>
 
           {/* Total */}
-          <div className="pt-2 border-t border-dashed border-border/50">
+          <div className="mt-2">
+            <div className="border-t border-dashed border-border/50 mb-2" />
             <div className="flex items-center justify-between">
               <span className="text-xs text-muted-foreground">Total Balance</span>
               {isDecrypting ? (
