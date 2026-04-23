@@ -3322,7 +3322,7 @@ export function WalletDashboard({
         /* ============================================ */
         <div className="flex flex-col h-[calc(100vh-149px)]">
           {/* Main Content Area */}
-          <div className={`flex-1 flex flex-col items-center justify-start ${evmMode ? 'pt-2' : 'pt-20'} pb-4 overflow-auto`}>
+          <div className={`flex-1 flex flex-col items-center justify-start ${evmMode ? 'pt-2' : 'pt-14'} pb-2 overflow-hidden`}>
             {/* EVM Mode Content */}
             {evmMode ? (
               <>
@@ -3441,12 +3441,12 @@ export function WalletDashboard({
               /* Normal Octra Wallet Content */
               <>
                 {/* Mode Label */}
-                <div className="text-sm text-muted-foreground mb-2">
+                <div className="text-xs text-muted-foreground mb-1">
                   {operationMode === 'private' ? 'Encrypted Balance' : 'Public Balance'}
                 </div>
 
                 {/* Balance Display */}
-                <div className="text-center mb-6">
+                <div className="text-center mb-3">
                   {(operationMode === 'private' ? isLoadingEncryptedBalance : isLoadingBalance) || isRefreshingData ? (
                     <div className="flex items-center justify-center gap-2">
                       <div className="w-6 h-6 rounded-full border-2 border-transparent animate-spin" style={{ borderTopColor: '#00E5C0' }} />
@@ -3454,7 +3454,7 @@ export function WalletDashboard({
                   ) : (
                     <>
                       <div className="flex items-center justify-center gap-4">
-                        <div className={`text-4xl font-bold tracking-tight ${operationMode === 'private' ? 'text-[#00E5C0]' : ''}`}>
+                        <div className={`text-3xl font-bold tracking-tight ${operationMode === 'private' ? 'text-[#00E5C0]' : ''}`}>
                           {operationMode === 'private'
                             ? `${(encryptedBalance?.encrypted || 0).toFixed(8)} OCT`
                             : `${(balance || 0).toFixed(8)} OCT`
@@ -3489,7 +3489,7 @@ export function WalletDashboard({
                         )}
                       </div>
                       {octPrice !== null && (
-                        <p className="text-sm text-muted-foreground mt-1">
+                        <p className="text-xs text-muted-foreground mt-0.5">
                           ≈ {formatUsd((operationMode === 'private' ? (encryptedBalance?.encrypted || 0) : (balance || 0)) * octPrice)}
                         </p>
                       )}
@@ -3500,14 +3500,14 @@ export function WalletDashboard({
                 {/* Action Buttons */}
                 {operationMode === 'public' ? (
                   /* Public Mode Actions */
-                  <div className="grid grid-cols-3 gap-4 w-full max-w-lg">
+                  <div className="grid grid-cols-3 gap-3 w-full max-w-lg">
                     {/* Standard Send */}
                     <Button
                       variant="outline"
-                      className="group flex flex-col items-center gap-3 h-auto py-6 border-0 rounded-none bg-transparent shadow-none hover:bg-transparent hover:text-primary transition-colors"
+                      className="group flex flex-col items-center gap-2 h-auto py-4 border-0 rounded-none bg-transparent shadow-none hover:bg-transparent hover:text-primary transition-colors"
                       onClick={() => openSendModal('standard')}
                     >
-                      <Send className="h-8 w-8 transition-colors group-hover:drop-shadow-[0_0_12px_rgba(58,77,255,0.7)]" />
+                      <Send className="h-7 w-7 transition-colors group-hover:drop-shadow-[0_0_12px_rgba(58,77,255,0.7)]" />
                       <span className="text-sm font-medium transition-colors group-hover:drop-shadow-[0_0_12px_rgba(58,77,255,0.7)]">Send</span>
                       <span className="text-[10px] text-muted-foreground">Single transfer</span>
                     </Button>
@@ -3515,10 +3515,10 @@ export function WalletDashboard({
                     {/* Multi Send */}
                     <Button
                       variant="outline"
-                      className="group flex flex-col items-center gap-3 h-auto py-6 border-0 rounded-none bg-transparent shadow-none hover:bg-transparent hover:text-primary transition-colors"
+                      className="group flex flex-col items-center gap-2 h-auto py-4 border-0 rounded-none bg-transparent shadow-none hover:bg-transparent hover:text-primary transition-colors"
                       onClick={() => openSendModal('multi')}
                     >
-                      <Layers className="h-8 w-8 transition-colors group-hover:drop-shadow-[0_0_8px_rgba(58,77,255,0.5)]" />
+                      <Layers className="h-7 w-7 transition-colors group-hover:drop-shadow-[0_0_8px_rgba(58,77,255,0.5)]" />
                       <span className="text-sm font-medium transition-colors group-hover:drop-shadow-[0_0_8px_rgba(58,77,255,0.5)]">Multi Send</span>
                       <span className="text-[10px] text-muted-foreground">Multiple recipients</span>
                     </Button>
@@ -3526,24 +3526,24 @@ export function WalletDashboard({
                     {/* Bulk Send */}
                     <Button
                       variant="outline"
-                      className="group flex flex-col items-center gap-3 h-auto py-6 border-0 rounded-none bg-transparent shadow-none hover:bg-transparent hover:text-primary transition-colors"
+                      className="group flex flex-col items-center gap-2 h-auto py-4 border-0 rounded-none bg-transparent shadow-none hover:bg-transparent hover:text-primary transition-colors"
                       onClick={() => openSendModal('bulk')}
                     >
-                      <FileText className="h-8 w-8 transition-colors group-hover:drop-shadow-[0_0_8px_rgba(58,77,255,0.5)]" />
+                      <FileText className="h-7 w-7 transition-colors group-hover:drop-shadow-[0_0_8px_rgba(58,77,255,0.5)]" />
                       <span className="text-sm font-medium transition-colors group-hover:drop-shadow-[0_0_8px_rgba(58,77,255,0.5)]">Bulk Send</span>
                       <span className="text-[10px] text-muted-foreground">Import from file</span>
                     </Button>
                   </div>
                 ) : (
                   /* Private Mode Actions */
-                  <div className="grid grid-cols-3 gap-4 w-full max-w-lg">
+                  <div className="grid grid-cols-3 gap-3 w-full max-w-lg">
                     {/* Send (Private Transfer) */}
                     <Button
                       variant="outline"
-                      className="group flex flex-col items-center gap-3 h-auto py-6 border-0 rounded-none bg-transparent shadow-none text-[#00E5C0] hover:bg-transparent transition-colors"
+                      className="group flex flex-col items-center gap-2 h-auto py-4 border-0 rounded-none bg-transparent shadow-none text-[#00E5C0] hover:bg-transparent transition-colors"
                       onClick={() => openSendModal('standard')}
                     >
-                      <Send className="h-8 w-8 transition-colors group-hover:drop-shadow-[0_0_8px_rgba(0,229,192,0.5)]" />
+                      <Send className="h-7 w-7 transition-colors group-hover:drop-shadow-[0_0_8px_rgba(0,229,192,0.5)]" />
                       <span className="text-sm font-medium transition-colors group-hover:drop-shadow-[0_0_8px_rgba(0,229,192,0.5)]">Send</span>
                       <span className="text-[10px] text-muted-foreground">Private transfer</span>
                     </Button>
@@ -3551,10 +3551,10 @@ export function WalletDashboard({
                     {/* Multi Send - Coming Soon */}
                     <Button
                       variant="outline"
-                      className="group flex flex-col items-center gap-3 h-auto py-6 border-0 rounded-none bg-transparent shadow-none opacity-50 cursor-not-allowed"
+                      className="group flex flex-col items-center gap-2 h-auto py-4 border-0 rounded-none bg-transparent shadow-none opacity-50 cursor-not-allowed"
                       disabled
                     >
-                      <Layers className="h-8 w-8 transition-colors group-hover:drop-shadow-[0_0_8px_rgba(0,229,192,0.5)]" />
+                      <Layers className="h-7 w-7 transition-colors group-hover:drop-shadow-[0_0_8px_rgba(0,229,192,0.5)]" />
                       <span className="text-sm font-medium transition-colors group-hover:drop-shadow-[0_0_8px_rgba(0,229,192,0.5)]">Multi Send</span>
                       <span className="text-[10px] text-muted-foreground">Coming soon</span>
                     </Button>
@@ -3562,10 +3562,10 @@ export function WalletDashboard({
                     {/* Claim */}
                     <Button
                       variant="outline"
-                      className="group flex flex-col items-center gap-3 h-auto py-6 border-0 rounded-none bg-transparent shadow-none text-[#00E5C0] hover:bg-transparent transition-colors relative"
+                      className="group flex flex-col items-center gap-2 h-auto py-4 border-0 rounded-none bg-transparent shadow-none text-[#00E5C0] hover:bg-transparent transition-colors relative"
                       onClick={openClaimScreen}
                     >
-                      <Gift className="h-8 w-8 transition-colors group-hover:drop-shadow-[0_0_12px_rgba(0,229,192,0.7)]" />
+                      <Gift className="h-7 w-7 transition-colors group-hover:drop-shadow-[0_0_12px_rgba(0,229,192,0.7)]" />
                       <span className="text-sm font-medium transition-colors group-hover:drop-shadow-[0_0_12px_rgba(0,229,192,0.7)]">Claim</span>
                       <span className="text-[10px] text-muted-foreground">Pending transfers</span>
                       {pendingTransfersCount > 0 && (
@@ -3580,10 +3580,10 @@ export function WalletDashboard({
                 {/* EVM Assets Section - Only in Public Mode */}
                 {operationMode === 'public' && (
                   <div className="w-full max-w-lg">
-                    <div className="border-t border-dashed border-border mt-4" />
+                    <div className="border-t border-dashed border-border mt-2" />
                     <Button
                       variant="outline"
-                      className="group w-full flex items-center justify-center gap-2 h-14 mt-2 rounded-none bg-transparent border-0 shadow-none text-orange-600 dark:text-orange-400 hover:bg-transparent transition-colors"
+                      className="group w-full flex items-center justify-center gap-2 h-11 mt-1 rounded-none bg-transparent border-0 shadow-none text-orange-600 dark:text-orange-400 hover:bg-transparent transition-colors"
                       onClick={enterEvmMode}
                     >
                       <Coins className="h-5 w-5 transition-colors group-hover:text-orange-600 dark:group-hover:text-orange-300 group-hover:drop-shadow-[0_0_6px_rgba(249,115,22,0.6)]" />
@@ -3596,8 +3596,8 @@ export function WalletDashboard({
                     {/* Balance Pie Chart - below EVM Assets */}
                     {balance !== null && encryptedBalance && (balance > 0 || encryptedBalance.encrypted > 0 || isDecryptingBalance) && (
                       <>
-                        <div className="border-t border-dashed border-border mt-2" />
-                        <div className="mt-4">
+                        <div className="border-t border-dashed border-border mt-1" />
+                        <div className="mt-2">
                           <BalancePieChart 
                             publicBalance={balance || 0}
                             encryptedBalance={encryptedBalance?.encrypted || 0}
@@ -3607,7 +3607,7 @@ export function WalletDashboard({
                         </div>
                         {/* USD estimates per balance type */}
                         {octPrice !== null && (
-                          <div className="mt-3 space-y-1 text-xs text-muted-foreground px-1">
+                          <div className="mt-2 space-y-0.5 text-xs text-muted-foreground px-1">
                             <div className="flex justify-between">
                               <span>Public</span>
                               <span className="font-mono">{formatUsd((balance || 0) * octPrice)}</span>
@@ -3616,7 +3616,7 @@ export function WalletDashboard({
                               <span>Encrypted</span>
                               <span className="font-mono">{formatUsd((encryptedBalance?.encrypted || 0) * octPrice)}</span>
                             </div>
-                            <div className="flex justify-between font-medium border-t border-dashed border-border pt-1">
+                            <div className="flex justify-between font-medium border-t border-dashed border-border pt-0.5">
                               <span>Total</span>
                               <span className="font-mono">{formatUsd(((balance || 0) + (encryptedBalance?.encrypted || 0)) * octPrice)}</span>
                             </div>
