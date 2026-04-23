@@ -442,6 +442,13 @@ public:
             auto amt_commit = bridge_.pedersen_commit((uint64_t)amount, r_blind);
             std::string amt_commit_b64 = octra::base64_encode(amt_commit.data(), 32);
 
+            // send_zero_proof: bound zero proof on ct_delta using r_blind
+            // Proves delta_cipher encrypts the same value as amount_commitment
+            // Required by node: "send_zero_proof does not bind delta_cipher to amount_commitment"
+            ZeroProofGuard send_zp(bridge_.make_zero_proof_bound(ct_delta.get(), (uint64_t)amount, r_blind));
+            if (!send_zp.get()) throw std::runtime_error("send_zero_proof returned null");
+            std::string send_zp_str = bridge_.encode_zero_proof(send_zp.get());
+
             json stealth_data;
             stealth_data["version"]             = 5;
             stealth_data["delta_cipher"]        = delta_cipher_str;
@@ -453,6 +460,7 @@ public:
             stealth_data["enc_amount"]          = enc_amount;
             stealth_data["claim_pub"]           = octra::hex_encode(claim_pub.data(), 32);
             stealth_data["amount_commitment"]   = amt_commit_b64;
+            stealth_data["send_zero_proof"]     = send_zp_str;
 
             json tx = build_and_sign_tx(from_address, "stealth", "0",
                                nonce, ou, timestamp, "stealth", stealth_data.dump(),
