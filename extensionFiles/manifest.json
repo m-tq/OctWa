@@ -5,8 +5,7 @@
   "description": "Just The Octra wallet. ( Alt )",
   "permissions": [
     "storage",
-    "activeTab",
-    "scripting"
+    "activeTab"
   ],
   "host_permissions": [
     "*://*/*"
