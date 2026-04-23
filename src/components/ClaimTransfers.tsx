@@ -74,11 +74,18 @@ export function ClaimTransfers({ wallet, onTransactionSuccess, isPopupMode = fal
 
     try {
       const txHash = await claimOne(transfer);
+      // Wire onStatusConfirmed: re-scan + refresh only after node confirms
       setTxModalStatus('success');
-      setTxModalResult({ hash: txHash, amount: transfer.amount.toFixed(8) });
-      await fetchTransfers();
-      await invalidateCacheAfterClaim(wallet.address);
-      onTransactionSuccess();
+      setTxModalResult({
+        hash: txHash,
+        amount: transfer.amount.toFixed(8),
+        finality: 'pending',
+        onStatusConfirmed: async () => {
+          await invalidateCacheAfterClaim(wallet.address);
+          await fetchTransfers();
+          onTransactionSuccess();
+        },
+      });
     } catch (err: any) {
       logger.error('Claim error', err);
       setTxModalStatus('error');
@@ -129,9 +136,13 @@ export function ClaimTransfers({ wallet, onTransactionSuccess, isPopupMode = fal
         title: 'Claim All Completed',
         description: `Claimed ${successCount}/${transfers.length} transfers`,
       });
-      await fetchTransfers();
-      await invalidateCacheAfterClaim(wallet.address);
-      onTransactionSuccess();
+      // Wait for node to confirm all txs before re-scanning
+      // (immediate scan would still show outputs as unclaimed)
+      setTimeout(async () => {
+        await invalidateCacheAfterClaim(wallet.address);
+        await fetchTransfers();
+        onTransactionSuccess();
+      }, 8000);
     }
     if (errors.length > 0 && successCount === 0) {
       toast({ title: 'Claim All Failed', description: errors[0], variant: 'destructive' });
