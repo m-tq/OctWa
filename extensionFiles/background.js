@@ -393,14 +393,24 @@ async function handleCapabilityRequest(data, sender) {
     timestamp: Date.now()
   });
 
-  // Open approval UI
+  // Open approval UI — always use popup window, never new tab
   try {
     await chrome.action.openPopup();
   } catch (error) {
-    const url = chrome.runtime.getURL(
-      `index.html?action=capability&circle=${encodeURIComponent(circle)}&methods=${encodeURIComponent(JSON.stringify(methods))}&scope=${encodeURIComponent(scope)}&encrypted=${encrypted}`
-    );
-    await chrome.tabs.create({ url, active: true });
+    try {
+      await chrome.windows.create({
+        url: chrome.runtime.getURL('index.html?action=capability'),
+        type: 'popup',
+        width: 420,
+        height: 640,
+        focused: true
+      });
+    } catch (e2) {
+      await chrome.tabs.create({
+        url: chrome.runtime.getURL('index.html?action=capability'),
+        active: true
+      });
+    }
   }
 
   // Wait for user response
@@ -594,14 +604,14 @@ async function handleInvokeRequest(data, sender) {
     requestTimestamp: Date.now()
   });
 
-  // Open approval UI
+  // Open approval UI — extension popup only (no new windows/tabs)
+  // The popup will load pendingInvokeRequest from storage and show the invoke screen
   try {
     await chrome.action.openPopup();
   } catch (error) {
-    const url = chrome.runtime.getURL(
-      `index.html?action=invoke&capabilityId=${encodeURIComponent(capabilityId)}&method=${encodeURIComponent(method)}`
-    );
-    await chrome.tabs.create({ url, active: true });
+    // openPopup() failed — popup may already be open (storage change listener handles it)
+    // or user needs to click extension icon
+    console.log('[Background] openPopup failed for invoke, storage change listener will handle it');
   }
 
   // Wait for user response

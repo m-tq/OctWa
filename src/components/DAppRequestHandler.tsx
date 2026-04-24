@@ -74,9 +74,10 @@ interface TransactionPayload {
 
 interface EVMTransactionPayload {
   to: string;
-  amount?: string; // ETH amount as string (optional, use value if not provided)
-  value?: string;  // Wei amount as string (alternative to amount)
-  data?: string;   // Hex encoded intent payload
+  amount?: string;
+  value?: string;
+  data?: string;
+  network?: string;  // optional network override, e.g. 'eth-mainnet'
 }
 
 interface ERC20TransactionPayload {
@@ -139,6 +140,9 @@ export function DAppRequestHandler({ wallets }: DAppRequestHandlerProps) {
   const [parsedErc20TxPayload, setParsedErc20TxPayload] = useState<ERC20TransactionPayload | null>(null);
   const [selectedWallet, setSelectedWallet] = useState<Wallet | null>(wallets[0] || null);
   const [isProcessing, setIsProcessing] = useState(false);
+  // Custom gas settings for EVM transactions — defaults from successful bridge tx
+  const [customGasLimit, setCustomGasLimit] = useState('150000');
+  const [customMaxFeeGwei, setCustomMaxFeeGwei] = useState('3');
   const { toast } = useToast();
 
   // Sync selectedWallet when wallets prop changes
@@ -169,9 +173,49 @@ export function DAppRequestHandler({ wallets }: DAppRequestHandlerProps) {
     }
   }, [invokeRequest, wallets]);
 
+  // For signMessage: select wallet matching the stored connection for this origin
+  useEffect(() => {
+    if (!signMessageRequest || wallets.length === 0) return;
+    const selectWalletForOrigin = async () => {
+      try {
+        if (typeof chrome !== 'undefined' && chrome.storage?.local) {
+          const data = await chrome.storage.local.get(['connectedDApps']);
+          const connections: Array<{ appOrigin: string; walletPubKey: string }> = data.connectedDApps || [];
+          const conn = connections.find(c => c.appOrigin === signMessageRequest.appOrigin);
+          if (conn?.walletPubKey) {
+            const wallet = wallets.find(w => w.address === conn.walletPubKey);
+            if (wallet) {
+              logger.debug('DAppRequestHandler: signMessage — using wallet from connection:', wallet.address);
+              setSelectedWallet(wallet);
+              return;
+            }
+          }
+        }
+      } catch (e) {
+        logger.warn('DAppRequestHandler: Could not resolve wallet for signMessage origin');
+      }
+    };
+    selectWalletForOrigin();
+  }, [signMessageRequest, wallets]);
+
   useEffect(() => {
     logger.debug('DAppRequestHandler: useEffect triggered - loading pending request');
     loadPendingRequest();
+
+    // Listen for new pending requests while popup is open
+    if (typeof chrome !== 'undefined' && chrome.storage?.onChanged) {
+      const listener = (changes: Record<string, chrome.storage.StorageChange>, area: string) => {
+        if (area === 'local' && changes.pendingInvokeRequest?.newValue) {
+          logger.debug('DAppRequestHandler: New invoke request detected via storage change');
+          // Reset state then load — ensures invoke screen shows fresh
+          setRequestType(null);
+          setIsProcessing(false);
+          setTimeout(() => loadPendingRequest(), 50);
+        }
+      };
+      chrome.storage.onChanged.addListener(listener);
+      return () => chrome.storage.onChanged.removeListener(listener);
+    }
   }, []);
 
   const loadPendingRequest = async () => {
@@ -591,11 +635,27 @@ export function DAppRequestHandler({ wallets }: DAppRequestHandlerProps) {
         logger.debug('DAppRequestHandler: Removed pendingCapabilityRequest from storage');
       }
 
-      // Success - close popup immediately (no toast needed)
-      logger.debug('DAppRequestHandler: Closing window...');
-      setTimeout(() => {
-        window.close();
-      }, 500); // Small delay to ensure message is sent
+      // Success — don't close popup. Wait for invoke request to arrive in storage,
+      // then switch to invoke screen. Background stores pendingInvokeRequest after
+      // processing CAPABILITY_RESULT, which triggers our storage change listener.
+      logger.debug('DAppRequestHandler: Capability approved, waiting for invoke request...');
+      setIsProcessing(false);
+      // Give background time to store pendingInvokeRequest (usually <500ms)
+      // Storage change listener will auto-switch to invoke screen
+      setTimeout(async () => {
+        if (typeof chrome !== 'undefined' && chrome.storage) {
+          const pending = await chrome.storage.local.get(['pendingInvokeRequest']);
+          if (pending.pendingInvokeRequest) {
+            setRequestType(null);
+            setTimeout(() => loadPendingRequest(), 50);
+          } else {
+            // No invoke request — close popup
+            window.close();
+          }
+        } else {
+          window.close();
+        }
+      }, 1000);
     } catch (error) {
       logger.error('DAppRequestHandler: Capability error:', error);
       logger.error('DAppRequestHandler: Error stack:', error instanceof Error ? error.stack : 'No stack');
@@ -793,16 +853,37 @@ export function DAppRequestHandler({ wallets }: DAppRequestHandlerProps) {
         if (!evmPrivateKey) {
           throw new Error('EVM private key not found. Please re-import your wallet.');
         }
+
+        // Determine network: use payload network if provided, else active wallet network
+        let evmNetworkId = evmTxParams.network || 'eth-mainnet';
+        if (!evmTxParams.network) {
+          try {
+            const stored = await chrome.storage.local.get(['active_evm_network']);
+            if (stored.active_evm_network) evmNetworkId = stored.active_evm_network;
+          } catch { /* use default */ }
+        }
         
-        logger.debug('DAppRequestHandler: Sending EVM transaction to Sepolia...');
+        logger.debug('DAppRequestHandler: Sending EVM transaction on network:', evmNetworkId);
         
+        // Build gas overrides from custom inputs
+        const gasOverrides: { gasLimit?: bigint; maxFeePerGas?: bigint; maxPriorityFeePerGas?: bigint } = {}
+        if (customGasLimit && parseInt(customGasLimit) > 0) {
+          gasOverrides.gasLimit = BigInt(parseInt(customGasLimit))
+        }
+        if (customMaxFeeGwei && parseFloat(customMaxFeeGwei) > 0) {
+          const { ethers: e } = await import('ethers')
+          gasOverrides.maxFeePerGas = e.parseUnits(customMaxFeeGwei, 'gwei')
+          gasOverrides.maxPriorityFeePerGas = e.parseUnits('0.1', 'gwei')
+        }
+
         // Send EVM transaction using sendEVMTransaction
         const txHash = await sendEVMTransaction(
           evmPrivateKey,
           evmTxParams.to,
           amountEth,
-          'eth-sepolia', // Network ID for Sepolia
-          evmTxParams.data // Intent payload as hex data
+          evmNetworkId,
+          evmTxParams.data,
+          Object.keys(gasOverrides).length > 0 ? gasOverrides : undefined
         );
         
         logger.debug('DAppRequestHandler: ✅ EVM Transaction sent! txHash:', txHash);
@@ -1279,7 +1360,13 @@ export function DAppRequestHandler({ wallets }: DAppRequestHandlerProps) {
                   <div className="space-y-1">
                     <div className="flex items-center justify-between">
                       <span className="text-xs text-blue-700">Network</span>
-                      <span className="font-medium text-xs text-blue-900">Sepolia Testnet</span>
+                      <span className="font-medium text-xs text-blue-900">
+                        {parsedEvmTxPayload.network === 'eth-mainnet' ? 'Ethereum Mainnet'
+                          : parsedEvmTxPayload.network === 'eth-sepolia' ? 'Sepolia Testnet'
+                          : parsedEvmTxPayload.network === 'polygon-mainnet' ? 'Polygon Mainnet'
+                          : parsedEvmTxPayload.network === 'base-mainnet' ? 'Base Mainnet'
+                          : parsedEvmTxPayload.network || 'Ethereum Mainnet'}
+                      </span>
                     </div>
                     <div className="flex items-center justify-between">
                       <span className="text-xs text-blue-700">To</span>
@@ -1298,7 +1385,7 @@ export function DAppRequestHandler({ wallets }: DAppRequestHandlerProps) {
                     </div>
                     {parsedEvmTxPayload.data && (
                       <div className="pt-1 border-t border-blue-200">
-                        <span className="text-xs text-blue-700">Data (Intent Payload)</span>
+                        <span className="text-xs text-blue-700">Data (Contract Call)</span>
                         <div className="mt-1 p-1 bg-blue-100 rounded text-xs font-mono text-blue-800 max-h-[60px] overflow-y-auto break-all">
                           {parsedEvmTxPayload.data.length > 100 
                             ? parsedEvmTxPayload.data.slice(0, 100) + '...' 
@@ -1306,6 +1393,38 @@ export function DAppRequestHandler({ wallets }: DAppRequestHandlerProps) {
                         </div>
                       </div>
                     )}
+                    {/* Custom Gas Settings */}
+                    <div className="pt-2 border-t border-blue-200 space-y-2">
+                      <span className="text-xs font-medium text-blue-800">Gas Settings <span className="font-normal text-blue-600">(optional override)</span></span>
+                      <div className="flex gap-2">
+                        <div className="flex-1">
+                          <label className="text-[10px] text-blue-700 block mb-0.5">Gas Limit</label>
+                          <input
+                            type="number"
+                            placeholder="150000"
+                            value={customGasLimit}
+                            onChange={e => setCustomGasLimit(e.target.value)}
+                            className="w-full text-xs px-2 py-1 border border-blue-200 bg-white rounded focus:outline-none focus:border-blue-400 font-mono"
+                          />
+                        </div>
+                        <div className="flex-1">
+                          <label className="text-[10px] text-blue-700 block mb-0.5">Max Fee (Gwei)</label>
+                          <input
+                            type="number"
+                            step="0.1"
+                            placeholder="3"
+                            value={customMaxFeeGwei}
+                            onChange={e => setCustomMaxFeeGwei(e.target.value)}
+                            className="w-full text-xs px-2 py-1 border border-blue-200 bg-white rounded focus:outline-none focus:border-blue-400 font-mono"
+                          />
+                        </div>
+                      </div>
+                      {customGasLimit && customMaxFeeGwei && (
+                        <p className="text-[10px] text-blue-600">
+                          Est. max cost: {(parseInt(customGasLimit) * parseFloat(customMaxFeeGwei) / 1e9).toFixed(6)} ETH
+                        </p>
+                      )}
+                    </div>
                   </div>
                 </div>
               )}
@@ -1349,7 +1468,7 @@ export function DAppRequestHandler({ wallets }: DAppRequestHandlerProps) {
                   <>
                     <AlertTriangle className="h-3 w-3 text-amber-600" />
                     <AlertDescription className="text-xs text-amber-800">
-                      This will send ETH from your wallet on Sepolia. Make sure you trust this dApp.
+                      This will send an ETH transaction from your wallet. Make sure you trust this dApp.
                     </AlertDescription>
                   </>
                 ) : invokeRequest.method === 'send_erc20_transaction' ? (

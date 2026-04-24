@@ -440,6 +440,7 @@ export const USDT_CONTRACTS: Record<number, string> = {
 // Common ERC20 tokens per chain
 export const COMMON_TOKENS: Record<number, Array<{ address: string; name: string; symbol: string; decimals: number }>> = {
   1: [ // Ethereum
+    { address: '0x4647e1fe715c9e23959022c2416c71867f5a6e80', name: 'Wrapped OCT', symbol: 'wOCT', decimals: 6 },
     { address: '0xdac17f958d2ee523a2206206994597c13d831ec7', name: 'Tether USD', symbol: 'USDT', decimals: 6 },
     { address: '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48', name: 'USD Coin', symbol: 'USDC', decimals: 6 },
     { address: '0x6b175474e89094c44da98b954eedeac495271d0f', name: 'Dai Stablecoin', symbol: 'DAI', decimals: 18 },
@@ -993,7 +994,8 @@ export async function sendEVMTransaction(
   to: string,
   amountEth: string,
   networkId?: string,
-  data?: string // Optional hex data for intent payload
+  data?: string,
+  gasOverrides?: { gasLimit?: bigint; maxFeePerGas?: bigint; maxPriorityFeePerGas?: bigint }
 ): Promise<string> {
   const network = networkId 
     ? getAllNetworks().find(n => n.id === networkId) || getActiveEVMNetwork()
@@ -1002,39 +1004,61 @@ export async function sendEVMTransaction(
   const rpcUrl = getEVMRpcUrl(network.id);
   
   try {
-    // Import ethers for transaction signing
     const { ethers } = await import('ethers');
     
-    // Create provider
     const provider = new ethers.JsonRpcProvider(rpcUrl);
-    
-    // Create wallet from private key
     const wallet = new ethers.Wallet(privateKeyHex.startsWith('0x') ? privateKeyHex : `0x${privateKeyHex}`, provider);
     
-    // Parse amount to wei
     const amountWei = ethers.parseEther(amountEth);
     
-    // Create transaction object
-    const txRequest: { to: string; value: bigint; data?: string } = {
+    const txRequest: { to: string; value: bigint; data?: string; maxFeePerGas?: bigint; maxPriorityFeePerGas?: bigint; type?: number; gasLimit?: bigint } = {
       to,
       value: amountWei,
     };
     
-    // Add data if provided (for intent payload)
     if (data) {
       txRequest.data = data.startsWith('0x') ? data : `0x${data}`;
     }
+
+    // EIP-1559: fetch current base fee, use minimal tip
+    try {
+      const feeData = await provider.getFeeData()
+      if (feeData.maxFeePerGas && feeData.maxPriorityFeePerGas) {
+        const minTip = ethers.parseUnits('0.1', 'gwei')
+        const baseFee = feeData.maxFeePerGas - feeData.maxPriorityFeePerGas
+        txRequest.type = 2
+        txRequest.maxPriorityFeePerGas = gasOverrides?.maxPriorityFeePerGas ?? minTip
+        txRequest.maxFeePerGas = gasOverrides?.maxFeePerGas ?? (baseFee * 110n / 100n + minTip)
+      }
+    } catch {
+      // fallback: let ethers auto-estimate fees
+    }
+
+    // Gas limit: user override → dynamic estimate → fallback to known actual usage
+    if (gasOverrides?.gasLimit) {
+      txRequest.gasLimit = gasOverrides.gasLimit
+    } else {
+      try {
+        const estimated = await provider.estimateGas({ ...txRequest, from: wallet.address })
+        txRequest.gasLimit = estimated * 110n / 100n
+      } catch {
+        txRequest.gasLimit = 150_000n  // default from successful bridge tx
+      }
+    }
     
-    // Create transaction
     const tx = await wallet.sendTransaction(txRequest);
-    
-    // Wait for transaction to be mined
-    await tx.wait();
-    
+    // Don't wait for confirmation — return hash immediately so popup can close
+    // Caller is responsible for tracking confirmation status
     return tx.hash;
   } catch (error: any) {
     console.error('Failed to send transaction:', error);
-    throw new Error(error.message || 'Transaction failed');
+    const msg: string = error?.message || String(error)
+    if (msg.includes('gas required exceeds allowance') || msg.includes('insufficient funds')) {
+      throw new Error(
+        `Insufficient ETH for gas fees. Please top up your EVM address to at least 0.002 ETH to cover gas costs.`
+      )
+    }
+    throw new Error(msg || 'Transaction failed');
   }
 }
 

@@ -202,6 +202,9 @@ export function WalletDashboard({
   const [showResetPassword, setShowResetPassword] = useState(false);
   const [isVerifyingReset, setIsVerifyingReset] = useState(false);
   const [showExportKeys, setShowExportKeys] = useState(false);
+  const [showEvmExportKey, setShowEvmExportKey] = useState(false);
+  const [evmExportKeyVisible, setEvmExportKeyVisible] = useState(false);
+  const [evmExportKeyCopied, setEvmExportKeyCopied] = useState(false);
   // Expanded mode send modal states
   const [expandedSendModal, setExpandedSendModal] = useState<'standard' | 'multi' | 'bulk' | null>(null);
   const [sendModalAnimating, setSendModalAnimating] = useState(false);
@@ -1040,7 +1043,13 @@ export function WalletDashboard({
       const chainId = evmNetwork.chainId;
       const commonTokens = COMMON_TOKENS[chainId] || [];
       const customTokens = getCustomTokens(chainId);
-      const allTokenAddresses = [...commonTokens.map(t => ({ ...t, chainId })), ...customTokens];
+
+      // Deduplicate: custom tokens take priority over common tokens with same address
+      const customAddresses = new Set(customTokens.map(t => t.address.toLowerCase()));
+      const filteredCommon = commonTokens
+        .filter(t => !customAddresses.has(t.address.toLowerCase()))
+        .map(t => ({ ...t, chainId }));
+      const allTokenAddresses = [...filteredCommon, ...customTokens];
       
       const tokenBalances = await Promise.all(
         allTokenAddresses.map(async (token) => {
@@ -2528,6 +2537,18 @@ export function WalletDashboard({
                       </div>
                       {/* Dashed separator */}
                       <div className="h-5 border-l border-dashed border-border mx-1" />
+                      {/* Export EVM Key */}
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => { setEvmExportKeyVisible(false); setShowEvmExportKey(true); }}
+                        className="group h-9 text-xs text-orange-600 dark:text-orange-400 hover:bg-transparent"
+                      >
+                        <Key className="h-3.5 w-3.5 mr-1.5 transition group-hover:drop-shadow-[0_0_6px_currentColor]" />
+                        <span className="transition group-hover:drop-shadow-[0_0_6px_currentColor]">Export Key</span>
+                      </Button>
+                      {/* Dashed separator */}
+                      <div className="h-5 border-l border-dashed border-border mx-1" />
                       {/* Exit EVM Mode Button - Red color */}
                       <Button
                         variant="ghost"
@@ -2842,6 +2863,80 @@ export function WalletDashboard({
                 onOpenChange={setShowExportKeys}
                 isPopupMode={isPopupMode}
               />
+
+              {/* EVM Export Key Dialog — MetaMask-compatible hex private key */}
+              <Dialog open={showEvmExportKey} onOpenChange={(o) => { setShowEvmExportKey(o); if (!o) { setEvmExportKeyVisible(false); setEvmExportKeyCopied(false); } }}>
+                <DialogContent className="max-w-sm">
+                  <DialogHeader>
+                    <DialogTitle className="flex items-center gap-2 text-orange-600 dark:text-orange-400">
+                      <Key className="h-4 w-4" />
+                      Export EVM Private Key
+                    </DialogTitle>
+                    <DialogDescription>
+                      This is your Ethereum-compatible private key. Import it into MetaMask or any EVM wallet.
+                    </DialogDescription>
+                  </DialogHeader>
+                  <div className="space-y-3 py-2">
+                    <div className="p-3 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-md">
+                      <p className="text-xs text-amber-800 dark:text-amber-300 font-medium">⚠️ Keep this key secret. Anyone with this key controls your EVM funds.</p>
+                    </div>
+                    {selectedEVMWallet ? (
+                      <>
+                        <div className="space-y-1">
+                          <p className="text-xs text-muted-foreground">EVM Address</p>
+                          <p className="text-xs font-mono bg-muted px-2 py-1.5 rounded break-all">{selectedEVMWallet.evmAddress}</p>
+                        </div>
+                        <div className="space-y-1">
+                          <p className="text-xs text-muted-foreground">Private Key (hex)</p>
+                          <div className="relative">
+                            <p className="text-xs font-mono bg-muted px-2 py-1.5 rounded break-all pr-16">
+                              {evmExportKeyVisible
+                                ? `0x${selectedEVMWallet.privateKeyHex}`
+                                : '•'.repeat(64)}
+                            </p>
+                            <div className="absolute right-1 top-1 flex gap-1">
+                              <Button
+                                variant="ghost" size="sm"
+                                className="h-6 w-6 p-0 hover:bg-transparent"
+                                onClick={() => setEvmExportKeyVisible(v => !v)}
+                              >
+                                {evmExportKeyVisible ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
+                              </Button>
+                              {evmExportKeyVisible && (
+                                <Button
+                                  variant="ghost" size="sm"
+                                  className="h-6 w-6 p-0 hover:bg-transparent"
+                                  onClick={() => {
+                                    navigator.clipboard.writeText(`0x${selectedEVMWallet.privateKeyHex}`)
+                                    setEvmExportKeyCopied(true)
+                                    setTimeout(() => setEvmExportKeyCopied(false), 1500)
+                                  }}
+                                >
+                                  {evmExportKeyCopied
+                                    ? <Check className="h-3 w-3 text-green-500" />
+                                    : <Copy className="h-3 w-3" />}
+                                </Button>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                        {!evmExportKeyVisible && (
+                          <Button
+                            variant="outline"
+                            className="w-full border-orange-500/30 text-orange-600 dark:text-orange-400 hover:bg-orange-500/5"
+                            onClick={() => setEvmExportKeyVisible(true)}
+                          >
+                            <Eye className="h-4 w-4 mr-2" />
+                            Reveal Private Key
+                          </Button>
+                        )}
+                      </>
+                    ) : (
+                      <p className="text-xs text-muted-foreground text-center py-4">No EVM wallet selected.</p>
+                    )}
+                  </div>
+                </DialogContent>
+              </Dialog>
 
               {/* Receive QR Dialog for expanded mode */}
               {!isPopupMode && (
