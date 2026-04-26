@@ -286,7 +286,7 @@ export function WalletDashboard({
   // Scanner/Explorer configuration from environment variables
   const scannerUrl = import.meta.env.VITE_SCANNER_URL || 'https://octrascan.io/tx.html?hash=';
   const scannerName = import.meta.env.VITE_SCANNER_NAME || 'Explorer';
-  const scannerAddressUrl = scannerUrl.replace('/tx.html?hash=', '/address/');
+  const scannerAddressUrl = import.meta.env.VITE_SCANNER_ADDRESS_URL || 'https://octrascan.io/address.html?addr=';
   // Track history panel state before hiding for multi/bulk send
   const [historyPanelWasOpen, setHistoryPanelWasOpen] = useState(false);
   // Message expansion state for transaction details
@@ -905,23 +905,22 @@ export function WalletDashboard({
           }
         });
 
-      // Fetch 4: Pending private transfers (independent, updates mode availability)
-      const pendingFetch = getPendingPrivateTransfers(currentAddress, currentPrivateKey)
+      // Fetch 4: Pending private transfers — runs independently, does NOT block syncing indicator
+      // (scanStealthOutputs can be slow — don't make user wait for it)
+      getPendingPrivateTransfers(currentAddress, currentPrivateKey)
         .then(pendingTransfers => {
           if (isStale()) return;
           setPendingTransfersCount(pendingTransfers.length);
-          // Update operation mode once we know pending count + enc balance
-          // (enc balance may already be set from cache or fetch 2)
         })
         .catch(err => {
           console.error('Failed to fetch pending transfers:', err);
           if (!isStale()) setPendingTransfersCount(0);
         });
 
-      // Wait for all to settle (errors already handled above individually)
-      await Promise.allSettled([balanceFetch, encFetch, historyFetch, pendingFetch]);
+      // Wait only for balance + history — these are fast
+      await Promise.allSettled([balanceFetch, encFetch, historyFetch]);
 
-      // Done syncing
+      // Done syncing — pending transfers continue in background
       if (!isStale()) setIsSyncing(false);
 
       // Final: update operation mode now that all data is in
@@ -942,67 +941,59 @@ export function WalletDashboard({
     
     setIsRefreshingData(true);
     setIsSyncing(true);
-    
+
+    const addr = wallet.address;
+    const pk = wallet.privateKey;
+
     try {
-      // Fetch balance and nonce
-      const balanceData = await fetchBalance(wallet.address);
-      
-      setBalance(balanceData.balance);
-      setNonce(balanceData.nonce);
-      
-      // Fetch encrypted balance when RPC provider changes
-      try {
-        const encData = await fetchEncryptedBalance(wallet.address, wallet.privateKey);
+      // Run balance + history in parallel — these are fast
+      const [balanceData] = await Promise.all([
+        fetchBalance(addr).then(data => {
+          setBalance(data.balance);
+          setNonce(data.nonce);
+          return data;
+        }).catch(err => { console.error('Balance fetch failed:', err); return null; }),
+
+        getTransactionHistory(addr, {}, false, (progressTxs) => {
+          const withType = progressTxs.map(tx => ({
+            ...tx,
+            type: tx.from?.toLowerCase() === addr.toLowerCase() ? 'sent' : 'received'
+          } as Transaction));
+          setTransactions(withType);
+        }).then(result => {
+          if (Array.isArray(result.transactions) && result.transactions.length > 0) {
+            const txs = result.transactions.map(tx => ({
+              ...tx,
+              type: tx.from?.toLowerCase() === addr.toLowerCase() ? 'sent' : 'received'
+            } as Transaction));
+            setTransactions(txs);
+          }
+        }).catch(err => console.error('History fetch failed:', err)),
+      ]);
+
+      // Clear syncing as soon as balance + history are done
+      setIsSyncing(false);
+
+      // Encrypted balance runs independently (can be slow due to PVAC)
+      fetchEncryptedBalance(addr, pk).then(encData => {
         if (encData) {
           setEncryptedBalance(encData);
-        } else {
-          // Reset encrypted balance to default values when fetch fails
+        } else if (balanceData) {
           setEncryptedBalance({
             public: balanceData.balance,
             public_raw: Math.floor(balanceData.balance * 1_000_000),
-            encrypted: 0,
-            encrypted_raw: 0,
-            total: balanceData.balance
+            encrypted: 0, encrypted_raw: 0,
+            total: balanceData.balance,
           });
         }
-      } catch (encError) {
-        console.error('Failed to fetch encrypted balance during refresh:', encError);
-        setEncryptedBalance({
-          public: balanceData.balance,
-          public_raw: Math.floor(balanceData.balance * 1_000_000),
-          encrypted: 0,
-          encrypted_raw: 0,
-          total: balanceData.balance
-        });
-      }
-      
-      // Fetch transaction history
-      try {
-        const result = await getTransactionHistory(wallet.address);
-        
-        if (Array.isArray(result.transactions)) {
-          const transformedTxs = result.transactions.map((tx) => ({
-            ...tx,
-            type: tx.from?.toLowerCase() === wallet.address.toLowerCase() ? 'sent' : 'received'
-          } as Transaction));
-          setTransactions(transformedTxs);
-        }
-        // Don't clear on empty result — keep existing cached data
-      } catch (historyError) {
-        console.error('Failed to fetch transaction history:', historyError);
-        // Don't clear transactions on error — keep showing cached data
-      }
-      
+      }).catch(err => console.error('Enc balance fetch failed:', err));
+
     } catch (error) {
       console.error('Failed to refresh wallet data:', error);
-      toast({
-        title: "Refresh Failed",
-        description: "Failed to refresh data.",
-        variant: "destructive",
-      });
+      toast({ title: "Refresh Failed", description: "Failed to refresh data.", variant: "destructive" });
     } finally {
       setIsRefreshingData(false);
-      setIsSyncing(false);
+      setIsSyncing(false); // ensure cleared even on error
     }
   };
 

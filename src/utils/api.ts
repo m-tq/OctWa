@@ -1117,14 +1117,15 @@ export async function fetchTransactionHistory(
   const { limit = 11, offset = 0 } = options;
   
   try {
-    // Fetch confirmed history and pending staging in parallel via JSON-RPC
+    // Use octra_account — fast (~2s), returns full tx objects with all fields
+    // octra_transactionsByAddress is too slow (times out)
     const [confirmedResponse, pendingTransactions] = await Promise.all([
       makeAPIRequest('/rpc', {
         method: 'POST',
         body: JSON.stringify({
           jsonrpc: '2.0', id: 1,
-          method: 'octra_transactionsByAddress',
-          params: [address, limit, offset],
+          method: 'octra_account',
+          params: [address, limit],
         }),
       }),
       fetchPendingTransactions(address).catch(() => []),
@@ -1143,39 +1144,26 @@ export async function fetchTransactionHistory(
     }
 
     if (rpcData.error) {
-      console.error('octra_transactionsByAddress error:', rpcData.error);
+      console.error('octra_account error:', rpcData.error);
       return { transactions: [], balance: 0, totalCount: 0 };
     }
 
     const apiData = rpcData.result;
     if (!apiData) return { transactions: [], balance: 0, totalCount: 0 };
 
-    // octra_transactionsByAddress returns: { address, total, count, offset, limit, has_more, transactions[], rejected[] }
-    // Each tx in transactions[] is a full tx object with flat fields
-    const recentTxList: Array<any> = apiData.transactions || [];
+    // octra_account returns: { address, balance, nonce, tx_count, recent_txs[{epoch,hash}], rejected_txs[] }
+    // recent_txs only has {epoch, hash} — need to fetch full details per tx
+    const recentTxList: Array<any> = apiData.recent_txs || [];
 
     // Fetch details for each confirmed tx — fire onProgress as each one resolves
     const confirmedTransactions: TransactionHistoryItem[] = [];
     const progressBuffer: TransactionHistoryItem[] = [];
 
     const parseTx = async (recentTx: any): Promise<TransactionHistoryItem> => {
-      if (recentTx.from && recentTx.timestamp) {
-        const to = recentTx.to || recentTx.to_ || '';
-        const amount = parseAmount(recentTx.amount_raw, recentTx.amount);
-        return {
-          hash: recentTx.tx_hash || recentTx.hash,
-          from: recentTx.from,
-          to,
-          amount,
-          timestamp: recentTx.timestamp,
-          status: 'confirmed' as const,
-          type: recentTx.from?.toLowerCase() === address.toLowerCase() ? 'sent' as const : 'received' as const,
-          op_type: recentTx.op_type || 'standard',
-          message: recentTx.message || undefined,
-        };
-      }
-      // Fallback: fetch by hash
-      const txDetails = await fetchTransactionDetails(recentTx.hash || recentTx.tx_hash);
+      // octra_account recent_txs only has {epoch, hash} — always fetch details
+      const hash = recentTx.hash || recentTx.tx_hash;
+      if (!hash) throw new Error('No hash');
+      const txDetails = await fetchTransactionDetails(hash);
       const amount = parseAmount(txDetails.amount_raw, txDetails.amount);
       return {
         hash: txDetails.tx_hash,
@@ -1267,7 +1255,7 @@ export async function fetchTransactionHistory(
     return {
       transactions: uniqueTransactions,
       balance: parseFloat(apiData.balance || '0'),
-      totalCount: apiData.total || apiData.transaction_count || uniqueTransactions.length,
+      totalCount: apiData.tx_count || apiData.total || uniqueTransactions.length,
     };
   } catch (error) {
     console.error('Error fetching transaction history:', error);
