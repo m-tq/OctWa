@@ -6,6 +6,7 @@ export interface RPCStatusData {
   network: string;
   lastChecked: number;
   rpcUrl: string;
+  latestEpoch?: number;
 }
 
 const STATUS_CACHE_KEY = 'rpcStatusCache';
@@ -41,10 +42,7 @@ export async function getCachedRPCStatus(): Promise<RPCStatusData | null> {
       if (result[STATUS_CACHE_KEY]) {
         const cached = JSON.parse(result[STATUS_CACHE_KEY]) as RPCStatusData;
         const now = Date.now();
-        
-        // Check if cache is still valid (within 3 minutes)
         if (now - cached.lastChecked < STATUS_VALID_DURATION) {
-          // Also verify RPC URL hasn't changed
           const activeProvider = await getActiveRPCProvider();
           if (activeProvider && activeProvider.url === cached.rpcUrl) {
             return cached;
@@ -52,13 +50,12 @@ export async function getCachedRPCStatus(): Promise<RPCStatusData | null> {
         }
       }
     }
-    
+
     // Fallback to localStorage
     const localCached = localStorage.getItem(STATUS_CACHE_KEY);
     if (localCached) {
       const cached = JSON.parse(localCached) as RPCStatusData;
       const now = Date.now();
-      
       if (now - cached.lastChecked < STATUS_VALID_DURATION) {
         const activeProvider = await getActiveRPCProvider();
         if (activeProvider && activeProvider.url === cached.rpcUrl) {
@@ -76,11 +73,7 @@ export async function getCachedRPCStatus(): Promise<RPCStatusData | null> {
 export async function saveRPCStatus(data: RPCStatusData): Promise<void> {
   try {
     const json = JSON.stringify(data);
-    
-    // Save to localStorage
     localStorage.setItem(STATUS_CACHE_KEY, json);
-    
-    // Save to chrome.storage for cross-context sharing
     if (typeof chrome !== 'undefined' && chrome.storage?.local) {
       await chrome.storage.local.set({ [STATUS_CACHE_KEY]: json });
     }
@@ -89,69 +82,82 @@ export async function saveRPCStatus(data: RPCStatusData): Promise<void> {
   }
 }
 
+// Call node_stats via JSON-RPC to check connectivity and get latest epoch
+async function callNodeStats(rpcUrl: string): Promise<{ ok: boolean; latestEpoch?: number }> {
+  const isDevelopment = import.meta.env.DEV;
+  const isExtension =
+    typeof chrome !== 'undefined' &&
+    chrome.runtime &&
+    typeof chrome.runtime.id === 'string' &&
+    chrome.runtime.id.length > 0;
+
+  let url: string;
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+
+  if (isExtension) {
+    url = `${rpcUrl.replace(/\/$/, '')}/rpc`;
+  } else if (isDevelopment) {
+    url = '/api/rpc';
+    headers['X-RPC-URL'] = rpcUrl;
+  } else {
+    url = '/rpc-proxy/rpc';
+    headers['X-RPC-Target'] = rpcUrl;
+  }
+
+  const response = await fetch(url, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'node_stats', params: [] }),
+    signal: AbortSignal.timeout(10000),
+  });
+
+  if (!response.ok) return { ok: false };
+
+  const json = await response.json();
+  if (json.error || !json.result) return { ok: false };
+
+  const latestEpochs: number[] = json.result.latest_epochs || [];
+  const latestEpoch = latestEpochs.length > 0 ? latestEpochs[0] : undefined;
+
+  return { ok: true, latestEpoch };
+}
+
 // Check RPC status with caching
 export async function checkRPCStatus(forceRefresh = false): Promise<RPCStatusData> {
   // Check cache first (unless force refresh)
   if (!forceRefresh) {
     const cached = await getCachedRPCStatus();
-    if (cached) {
-      
-      return cached;
-    }
+    if (cached) return cached;
   }
-  
+
   // Get active provider
   const activeProvider = await getActiveRPCProvider();
-  const rpcUrl = activeProvider?.url || 'https://rpc.octra.org';
+  const rpcUrl = activeProvider?.url || 'http://46.101.86.250:8080';
   const network = activeProvider?.network || 'mainnet';
-  
+
   const result: RPCStatusData = {
     status: 'checking',
     network,
     lastChecked: Date.now(),
-    rpcUrl
+    rpcUrl,
   };
-  
+
   const MAX_RETRIES = 3;
   const RETRY_DELAY = 2000;
-  
-  const isDevelopment = import.meta.env.DEV;
-  const isExtension = typeof chrome !== 'undefined' && 
-                      chrome.runtime && 
-                      typeof chrome.runtime.id === 'string' &&
-                      chrome.runtime.id.length > 0;
-  
-  let url: string;
-  const headers: Record<string, string> = {};
-  
-  if (isExtension) {
-    url = `${rpcUrl}/status`;
-  } else if (isDevelopment) {
-    url = '/api/status';
-    headers['X-RPC-URL'] = rpcUrl;
-  } else {
-    url = '/rpc-proxy/status';
-    headers['X-RPC-Target'] = rpcUrl;
-  }
-  
+
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
     try {
-      const response = await fetch(url, {
-        method: 'GET',
-        headers,
-        signal: AbortSignal.timeout(10000)
-      });
-      
-      if (response.status === 200) {
+      const { ok, latestEpoch } = await callNodeStats(rpcUrl);
+      if (ok) {
         result.status = 'connected';
+        result.latestEpoch = latestEpoch;
         result.lastChecked = Date.now();
         await saveRPCStatus(result);
         return result;
       }
-      throw new Error(`HTTP ${response.status}`);
+      throw new Error('node_stats returned error');
     } catch (error) {
       console.warn(`RPC status check attempt ${attempt}/${MAX_RETRIES} failed:`, error);
-      
       if (attempt < MAX_RETRIES) {
         result.status = 'connecting';
         await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
@@ -160,10 +166,20 @@ export async function checkRPCStatus(forceRefresh = false): Promise<RPCStatusDat
       }
     }
   }
-  
+
   result.lastChecked = Date.now();
   await saveRPCStatus(result);
   return result;
+}
+
+// Fetch only the latest epoch (lightweight, no cache invalidation)
+export async function fetchLatestEpoch(rpcUrl: string): Promise<number | null> {
+  try {
+    const { latestEpoch } = await callNodeStats(rpcUrl);
+    return latestEpoch ?? null;
+  } catch {
+    return null;
+  }
 }
 
 // Listen for RPC status changes from other contexts
@@ -179,11 +195,8 @@ export function onRPCStatusChange(callback: (data: RPCStatusData) => void): () =
         }
       }
     };
-    
     chrome.storage.onChanged.addListener(listener);
     return () => chrome.storage.onChanged.removeListener(listener);
   }
-  
-  // Fallback: no-op cleanup
   return () => {};
 }

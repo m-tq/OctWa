@@ -45,14 +45,37 @@ export function RPCProviderManager({ onRPCChange, isPopupMode = false }: RPCProv
   }, []);
 
   const loadProviders = () => {
+    const DEVNET_ENTRY: RPCProvider = {
+      id: 'devnet',
+      name: 'Octra DevNet',
+      url: 'https://devnet.octrascan.io',  // placeholder — update when devnet URL is available
+      headers: {},
+      priority: 2,
+      isActive: false,
+      createdAt: Date.now(),
+      network: 'testnet'
+    };
+
     const savedProviders = localStorage.getItem('rpcProviders');
     if (savedProviders) {
-      const parsed = JSON.parse(savedProviders);
+      let parsed: RPCProvider[] = JSON.parse(savedProviders);
+
+      // Upsert devnet entry for existing users who don't have it yet
+      const hasDevnet = parsed.some((p: RPCProvider) => p.id === 'devnet');
+      if (!hasDevnet) {
+        parsed = [...parsed, DEVNET_ENTRY];
+        const updated = JSON.stringify(parsed);
+        localStorage.setItem('rpcProviders', updated);
+        if (typeof chrome !== 'undefined' && chrome.storage?.local) {
+          chrome.storage.local.set({ rpcProviders: updated }).catch(() => {});
+        }
+      }
+
       setProviders(parsed.sort((a: RPCProvider, b: RPCProvider) => a.priority - b.priority));
       
       // Sync to chrome.storage.local for background script access
       if (typeof chrome !== 'undefined' && chrome.storage?.local) {
-        chrome.storage.local.set({ rpcProviders: savedProviders }).catch(err => {
+        chrome.storage.local.set({ rpcProviders: JSON.stringify(parsed) }).catch(err => {
           console.warn('Failed to sync rpcProviders to chrome.storage:', err);
         });
         
@@ -62,19 +85,31 @@ export function RPCProviderManager({ onRPCChange, isPopupMode = false }: RPCProv
         syncSelectedNetwork(selectedNetwork);
       }
     } else {
-      // Initialize with default provider
-      const defaultProvider: RPCProvider = {
-        id: 'default',
-        name: 'Octra Mainnet',
-        url: 'http://46.101.86.250:8080',
-        headers: {},
-        priority: 1,
-        isActive: true,
-        createdAt: Date.now(),
-        network: 'mainnet'
-      };
-      setProviders([defaultProvider]);
-      const providersJson = JSON.stringify([defaultProvider]);
+      // Initialize with default providers (mainnet + devnet)
+      const defaultProviders: RPCProvider[] = [
+        {
+          id: 'default',
+          name: 'Octra Mainnet',
+          url: 'http://46.101.86.250:8080',
+          headers: {},
+          priority: 1,
+          isActive: true,
+          createdAt: Date.now(),
+          network: 'mainnet'
+        },
+        {
+          id: 'devnet',
+          name: 'Octra DevNet',
+          url: 'https://devnet.octrascan.io',
+          headers: {},
+          priority: 2,
+          isActive: false,
+          createdAt: Date.now(),
+          network: 'testnet'
+        },
+      ];
+      setProviders(defaultProviders);
+      const providersJson = JSON.stringify(defaultProviders);
       localStorage.setItem('rpcProviders', providersJson);
       
       // Also save to chrome.storage.local for background script access

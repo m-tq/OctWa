@@ -5,7 +5,6 @@ import {
   AddressHistoryResponse,
   TransactionDetails,
   PendingTransaction,
-  StagingResponse,
   EncryptedBalanceResponse,
   PendingPrivateTransfer,
   PrivateTransferResult,
@@ -53,6 +52,27 @@ function isExtensionContext(): boolean {
   return typeof chrome !== 'undefined' && 
          chrome.storage && 
          typeof chrome.storage.local !== 'undefined';
+}
+
+// Get a short network identifier from the active RPC URL
+// Used to namespace cache keys so mainnet/devnet have separate buckets
+function getNetworkCacheKey(): string {
+  try {
+    const providers = JSON.parse(localStorage.getItem('rpcProviders') || '[]');
+    const active = providers.find((p: any) => p.isActive);
+    if (active?.url) {
+      const url = (active.url as string).replace(/\/$/, '').toLowerCase();
+      if (url.includes('devnet')) return 'devnet';
+      const host = url.replace(/https?:\/\//, '').split('/')[0].split(':')[0];
+      return host.replace(/\./g, '_');
+    }
+  } catch { /* ignore */ }
+  return 'mainnet';
+}
+
+// Prefix address with network key so each RPC has its own cache bucket
+function netKey(address: string): string {
+  return `${getNetworkCacheKey()}:${address}`;
 }
 
 class APICache {
@@ -147,14 +167,14 @@ class APICache {
 
   private async fetchEpoch(): Promise<number> {
     try {
-      const response = await makeAPIRequest('/status');
+      const response = await makeAPIRequest('/rpc', {
+        method: 'POST',
+        body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'node_stats', params: [] }),
+      });
       if (response.ok) {
         const data = await response.json();
-        const newEpoch = data.current_epoch;
-
-        // Just update epoch tracking, don't auto-invalidate cache
-        // Cache invalidation is handled manually after user actions
-        // or by WalletDashboard when it detects data changes
+        const epochs: number[] = data?.result?.latest_epochs || [];
+        const newEpoch = epochs.length > 0 ? epochs[0] : 0;
         this.currentEpoch = newEpoch;
         this.lastEpochCheck = Date.now();
         await this.saveToStorage();
@@ -187,119 +207,73 @@ class APICache {
 
   // Balance cache
   async getBalance(address: string): Promise<BalanceResponse | null> {
-    const entry = this.memoryCache.balance[address];
-    if (this.isValid(entry)) {
-      
-      return entry!.data;
-    }
+    const entry = this.memoryCache.balance[netKey(address)];
+    if (this.isValid(entry)) return entry!.data;
     return null;
   }
 
   async setBalance(address: string, data: BalanceResponse): Promise<void> {
     const currentEpoch = await this.getCurrentEpoch();
-    this.memoryCache.balance[address] = {
-      data,
-      epoch: currentEpoch,
-      timestamp: Date.now(),
-    };
-    
+    this.memoryCache.balance[netKey(address)] = { data, epoch: currentEpoch, timestamp: Date.now() };
     await this.saveToStorage();
   }
 
   async invalidateBalance(address: string): Promise<void> {
-    delete this.memoryCache.balance[address];
-    
+    delete this.memoryCache.balance[netKey(address)];
     await this.saveToStorage();
   }
 
   // Encrypted balance cache
-  async getEncryptedBalance(
-    address: string
-  ): Promise<EncryptedBalanceResponse | null> {
-    const entry = this.memoryCache.encryptedBalance[address];
-    if (this.isValid(entry)) {
-      
-      return entry!.data;
-    }
+  async getEncryptedBalance(address: string): Promise<EncryptedBalanceResponse | null> {
+    const entry = this.memoryCache.encryptedBalance[netKey(address)];
+    if (this.isValid(entry)) return entry!.data;
     return null;
   }
 
-  async setEncryptedBalance(
-    address: string,
-    data: EncryptedBalanceResponse
-  ): Promise<void> {
+  async setEncryptedBalance(address: string, data: EncryptedBalanceResponse): Promise<void> {
     const currentEpoch = await this.getCurrentEpoch();
-    this.memoryCache.encryptedBalance[address] = {
-      data,
-      epoch: currentEpoch,
-      timestamp: Date.now(),
-    };
-    
+    this.memoryCache.encryptedBalance[netKey(address)] = { data, epoch: currentEpoch, timestamp: Date.now() };
     await this.saveToStorage();
   }
 
   async invalidateEncryptedBalance(address: string): Promise<void> {
-    delete this.memoryCache.encryptedBalance[address];
-    
+    delete this.memoryCache.encryptedBalance[netKey(address)];
     await this.saveToStorage();
   }
 
   // History cache
   async getHistory(address: string): Promise<any | null> {
-    const entry = this.memoryCache.history[address];
-    if (this.isValid(entry)) {
-      
-      return entry!.data;
-    }
+    const entry = this.memoryCache.history[netKey(address)];
+    if (this.isValid(entry)) return entry!.data;
     return null;
   }
 
   async setHistory(address: string, data: any): Promise<void> {
     const currentEpoch = await this.getCurrentEpoch();
-    this.memoryCache.history[address] = {
-      data,
-      epoch: currentEpoch,
-      timestamp: Date.now(),
-    };
-    
+    this.memoryCache.history[netKey(address)] = { data, epoch: currentEpoch, timestamp: Date.now() };
     await this.saveToStorage();
   }
 
   async invalidateHistory(address: string): Promise<void> {
-    delete this.memoryCache.history[address];
-    
+    delete this.memoryCache.history[netKey(address)];
     await this.saveToStorage();
   }
 
   // Pending transfers cache
-  async getPendingTransfers(
-    address: string
-  ): Promise<PendingPrivateTransfer[] | null> {
-    const entry = this.memoryCache.pendingTransfers[address];
-    if (this.isValid(entry)) {
-      
-      return entry!.data;
-    }
+  async getPendingTransfers(address: string): Promise<PendingPrivateTransfer[] | null> {
+    const entry = this.memoryCache.pendingTransfers[netKey(address)];
+    if (this.isValid(entry)) return entry!.data;
     return null;
   }
 
-  async setPendingTransfers(
-    address: string,
-    data: PendingPrivateTransfer[]
-  ): Promise<void> {
+  async setPendingTransfers(address: string, data: PendingPrivateTransfer[]): Promise<void> {
     const currentEpoch = await this.getCurrentEpoch();
-    this.memoryCache.pendingTransfers[address] = {
-      data,
-      epoch: currentEpoch,
-      timestamp: Date.now(),
-    };
-    
+    this.memoryCache.pendingTransfers[netKey(address)] = { data, epoch: currentEpoch, timestamp: Date.now() };
     await this.saveToStorage();
   }
 
   async invalidatePendingTransfers(address: string): Promise<void> {
-    delete this.memoryCache.pendingTransfers[address];
-    
+    delete this.memoryCache.pendingTransfers[netKey(address)];
     await this.saveToStorage();
   }
 
@@ -364,22 +338,18 @@ class APICache {
 
   // Invalidate all cache for an address (call after transactions)
   async invalidateAll(address: string): Promise<void> {
-    delete this.memoryCache.balance[address];
-    delete this.memoryCache.encryptedBalance[address];
-    delete this.memoryCache.history[address];
-    delete this.memoryCache.pendingTransfers[address];
-    // Note: We don't clear transactionDetails here as they're indexed by hash, not address
-    // Transaction details remain cached as they're immutable once confirmed
-    
+    delete this.memoryCache.balance[netKey(address)];
+    delete this.memoryCache.encryptedBalance[netKey(address)];
+    delete this.memoryCache.history[netKey(address)];
+    delete this.memoryCache.pendingTransfers[netKey(address)];
     await this.saveToStorage();
   }
 
-  // FIX #8: Clear wallet nonces cache - called on epoch change
+  // Clear wallet nonces cache - called on epoch change
   async invalidateAllWalletNonces(addresses: string[]): Promise<void> {
     for (const address of addresses) {
-      delete this.memoryCache.balance[address];
+      delete this.memoryCache.balance[netKey(address)];
     }
-    
     await this.saveToStorage();
   }
 
@@ -447,6 +417,11 @@ export const apiCache = new APICache();
 export async function invalidateCacheAfterTransaction(address: string): Promise<void> {
   await apiCache.invalidateBalance(address);
   await apiCache.invalidateHistory(address);
+}
+
+// Invalidate ALL cached data when switching RPC so stale data is never shown.
+export async function invalidateCacheForNetworkSwitch(): Promise<void> {
+  await apiCache.clearAll();
 }
 
 export async function invalidateCacheAfterEncrypt(address: string): Promise<void> {
@@ -606,9 +581,14 @@ async function safeJsonParse(response: Response): Promise<any> {
 // Update other API functions to use the helper
 export async function getAddressInfo(address: string): Promise<any> {
   try {
-    const response = await makeAPIRequest(`/address/${address}`);
+    // octra_balance includes has_public_key field
+    const response = await makeAPIRequest('/rpc', {
+      method: 'POST',
+      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'octra_balance', params: [address] }),
+    });
     if (response.ok) {
-      return await safeJsonParse(response);
+      const data = await safeJsonParse(response);
+      if (data?.result) return data.result;
     }
     return null;
   } catch (error) {
@@ -647,15 +627,19 @@ export async function getViewPubkey(address: string): Promise<string | null> {
   }
 }
 
-// Fetch current epoch from RPC status
+// Fetch current epoch from node_stats RPC
 export async function fetchCurrentEpoch(): Promise<number> {
   try {
-    const response = await makeAPIRequest('/status');
+    const response = await makeAPIRequest('/rpc', {
+      method: 'POST',
+      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'node_stats', params: [] }),
+    });
     if (response.ok) {
       const data = await safeJsonParse(response);
-      return data.current_epoch;
+      const epochs: number[] = data?.result?.latest_epochs || [];
+      if (epochs.length > 0) return epochs[0];
     }
-    throw new Error('Failed to fetch status');
+    throw new Error('Failed to fetch node_stats');
   } catch (error) {
     console.error('Error fetching current epoch:', error);
     throw error;
@@ -664,10 +648,14 @@ export async function fetchCurrentEpoch(): Promise<number> {
 
 export async function getPublicKey(address: string): Promise<string | null> {
   try {
-    const response = await makeAPIRequest(`/public_key/${address}`);
+    const response = await makeAPIRequest('/rpc', {
+      method: 'POST',
+      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'octra_publicKey', params: [address] }),
+    });
     if (response.ok) {
       const data = await safeJsonParse(response);
-      return data.public_key;
+      if (data?.result?.public_key) return data.result.public_key;
+      if (typeof data?.result === 'string') return data.result;
     }
     return null;
   } catch (error) {
@@ -1032,50 +1020,23 @@ export async function checkTransactionStatus(hash: string): Promise<{
   reason?: string;
 }> {
   try {
-    const response = await makeAPIRequest(`/tx/${hash}`);
-    
-    if (!response.ok) {
-      if (response.status === 404) {
-        return { status: 'not_found' };
-      }
-      return { status: 'not_found' };
-    }
-    
-    const data = await safeJsonParse(response);
-    
-    // Check if transaction is in staging (pending)
-    if (data.stage_status) {
-      return { 
-        status: 'pending',
-        finality: 'pending'
-      };
-    }
-    
-    // Check if transaction is confirmed (has epoch)
-    if (data.epoch !== undefined) {
-      return { 
-        status: 'confirmed',
-        finality: 'confirmed'
-      };
-    }
-    
-    // Check for rejected status
-    if (data.status === 'rejected') {
-      return { 
-        status: 'rejected',
-        finality: 'rejected',
-        reason: data.reason
-      };
-    }
-    
-    // Check for dropped status
-    if (data.status === 'dropped') {
-      return { 
-        status: 'dropped',
-        reason: data.reason
-      };
-    }
-    
+    const response = await makeAPIRequest('/rpc', {
+      method: 'POST',
+      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'octra_transaction', params: [hash] }),
+    });
+
+    if (!response.ok) return { status: 'not_found' };
+
+    const json = await safeJsonParse(response);
+    if (json.error) return { status: 'not_found' };
+    const data = json.result;
+    if (!data) return { status: 'not_found' };
+
+    if (data.stage_status) return { status: 'pending', finality: 'pending' };
+    if (data.epoch !== undefined) return { status: 'confirmed', finality: 'confirmed' };
+    if (data.status === 'rejected') return { status: 'rejected', finality: 'rejected', reason: data.reason };
+    if (data.status === 'dropped') return { status: 'dropped', reason: data.reason };
+
     return { status: 'not_found' };
   } catch (error) {
     console.error('Error checking transaction status:', error);
@@ -1126,7 +1087,30 @@ export async function pollTransactionStatus(
   return { status: 'pending', finality: 'pending' };
 }
 
-// WEBCLI LOGIC: Fetch transaction history with proper parsing
+// Parse amount from a tx object — handles both raw integer and formatted string.
+// octra_transactionsByAddress returns amount as raw integer string (no decimal, e.g. "1000")
+// octra_transaction returns amount as formatted string (with decimal, e.g. "0.001000")
+function parseAmount(raw: string | number | undefined, formatted: string | number | undefined): number {
+  // Prefer amount_raw field — always a raw integer, divide by MU_FACTOR
+  if (raw !== undefined && raw !== null && raw !== '') {
+    const n = typeof raw === 'string' ? parseInt(raw, 10) : raw;
+    if (!isNaN(n)) return n / MU_FACTOR;
+  }
+  // Fallback: use amount field
+  if (formatted !== undefined && formatted !== null && formatted !== '') {
+    const s = String(formatted);
+    // If no decimal point → raw integer string, divide by MU_FACTOR
+    if (!s.includes('.')) {
+      const n = parseInt(s, 10);
+      if (!isNaN(n)) return n / MU_FACTOR;
+    }
+    // Has decimal → already human-readable formatted value
+    const n = parseFloat(s);
+    if (!isNaN(n)) return n;
+  }
+  return 0;
+}
+
 export async function fetchTransactionHistory(
   address: string, 
   options: HistoryPaginationOptions = {}
@@ -1134,99 +1118,102 @@ export async function fetchTransactionHistory(
   const { limit = 11, offset = 0 } = options;
   
   try {
-    // WEBCLI LOGIC: Fetch confirmed and pending transactions in parallel
+    // Fetch confirmed history and pending staging in parallel via JSON-RPC
     const [confirmedResponse, pendingTransactions] = await Promise.all([
-      makeAPIRequest(`/address/${address}?limit=${limit}&offset=${offset}`),
-      fetchPendingTransactions(address).catch(() => []) // Return empty array on error
+      makeAPIRequest('/rpc', {
+        method: 'POST',
+        body: JSON.stringify({
+          jsonrpc: '2.0', id: 1,
+          method: 'octra_transactionsByAddress',
+          params: [address, limit, offset],
+        }),
+      }),
+      fetchPendingTransactions(address).catch(() => []),
     ]);
-    
+
     if (!confirmedResponse.ok) {
-      const errorText = await confirmedResponse.text();
-      console.error('Failed to fetch transaction history:', confirmedResponse.status, errorText);
-      // Return empty history instead of throwing
-      return {
-        transactions: [],
-        balance: 0,
-        totalCount: 0
-      };
+      console.error('Failed to fetch transaction history:', confirmedResponse.status);
+      return { transactions: [], balance: 0, totalCount: 0 };
     }
-    
-    let apiData: AddressApiResponse;
+
+    let rpcData: any;
     try {
-      apiData = await safeJsonParse(confirmedResponse);
-    } catch (parseError) {
-      console.error('Failed to parse transaction history JSON:', parseError);
-      return {
-        transactions: [],
-        balance: 0,
-        totalCount: 0
-      };
+      rpcData = await safeJsonParse(confirmedResponse);
+    } catch {
+      return { transactions: [], balance: 0, totalCount: 0 };
     }
-    
-    // WEBCLI LOGIC: Fetch details for each confirmed transaction
-    // Use batching to avoid overwhelming the server with too many concurrent requests
-    const BATCH_SIZE = 5; // Process 5 transactions at a time
+
+    if (rpcData.error) {
+      console.error('octra_transactionsByAddress error:', rpcData.error);
+      return { transactions: [], balance: 0, totalCount: 0 };
+    }
+
+    const apiData = rpcData.result;
+    if (!apiData) return { transactions: [], balance: 0, totalCount: 0 };
+
+    // octra_transactionsByAddress returns: { address, total, count, offset, limit, has_more, transactions[], rejected[] }
+    // Each tx in transactions[] is a full tx object with flat fields
+    const recentTxList: Array<any> = apiData.transactions || [];
+
+    // Fetch details for each confirmed tx
+    const BATCH_SIZE = 5;
     const confirmedTransactions: TransactionHistoryItem[] = [];
-    
-    for (let i = 0; i < apiData.recent_transactions.length; i += BATCH_SIZE) {
-      const batch = apiData.recent_transactions.slice(i, i + BATCH_SIZE);
-      const batchPromises = batch.map(async (recentTx): Promise<TransactionHistoryItem> => {
-        try {
-          const txDetails = await fetchTransactionDetails(recentTx.hash);
-          
-          // WEBCLI LOGIC: Parse amount from amount_raw or amount field
-          let amount = 0;
-          if (txDetails.parsed_tx.amount_raw) {
-            const amountRaw = typeof txDetails.parsed_tx.amount_raw === 'string'
-              ? parseInt(txDetails.parsed_tx.amount_raw, 10)
-              : txDetails.parsed_tx.amount_raw;
-            amount = amountRaw / MU_FACTOR;
-          } else if (txDetails.parsed_tx.amount) {
-            amount = parseFloat(txDetails.parsed_tx.amount);
-          }
-          
-          // Transform to our expected format
+
+    for (let i = 0; i < recentTxList.length; i += BATCH_SIZE) {
+      const batch = recentTxList.slice(i, i + BATCH_SIZE);
+      const batchResults = await Promise.allSettled(batch.map(async (recentTx): Promise<TransactionHistoryItem> => {
+        // If the tx object already has full fields (from, amount_raw, timestamp), use them directly
+        // Otherwise fetch details by hash
+        if (recentTx.from && recentTx.timestamp) {
+          const to = recentTx.to || recentTx.to_ || '';
+          const amount = parseAmount(recentTx.amount_raw, recentTx.amount);
           return {
-            hash: txDetails.tx_hash,
-            from: txDetails.parsed_tx.from,
-            to: txDetails.parsed_tx.to,
-            amount: amount,
-            timestamp: txDetails.parsed_tx.timestamp,
+            hash: recentTx.tx_hash || recentTx.hash,
+            from: recentTx.from,
+            to,
+            amount,
+            timestamp: recentTx.timestamp,
             status: 'confirmed' as const,
-            type: txDetails.parsed_tx.from.toLowerCase() === address.toLowerCase() ? 'sent' as const : 'received' as const,
-            op_type: txDetails.parsed_tx.op_type || txDetails.op_type || 'standard',
-            message: txDetails.parsed_tx.message || undefined,
-          };
-        } catch (error) {
-          console.error('Failed to fetch transaction details for hash:', recentTx.hash, error);
-          // Return a basic transaction object if details fetch fails
-          return {
-            hash: recentTx.hash,
-            from: 'unknown',
-            to: 'unknown',
-            amount: 0,
-            timestamp: Date.now() / 1000,
-            status: 'confirmed' as const,
-            type: 'received' as const,
+            type: recentTx.from?.toLowerCase() === address.toLowerCase() ? 'sent' as const : 'received' as const,
+            op_type: recentTx.op_type || 'standard',
+            message: recentTx.message || undefined,
           };
         }
-      });
-      
-      const batchResults = await Promise.all(batchPromises);
-      confirmedTransactions.push(...batchResults);
+        // Fallback: fetch by hash
+        try {
+          const txDetails = await fetchTransactionDetails(recentTx.hash || recentTx.tx_hash);
+          const amount = parseAmount(txDetails.amount_raw, txDetails.amount);
+          return {
+            hash: txDetails.tx_hash,
+            from: txDetails.from,
+            to: txDetails.to,
+            amount,
+            timestamp: txDetails.timestamp,
+            status: 'confirmed' as const,
+            type: txDetails.from?.toLowerCase() === address.toLowerCase() ? 'sent' as const : 'received' as const,
+            op_type: txDetails.op_type || 'standard',
+            message: txDetails.message || undefined,
+          };
+        } catch {
+          return {
+            hash: recentTx.hash || recentTx.tx_hash || '',
+            from: 'unknown', to: 'unknown', amount: 0,
+            timestamp: Date.now() / 1000,
+            status: 'confirmed' as const, type: 'received' as const,
+          };
+        }
+      }));
+      batchResults.forEach(r => { if (r.status === 'fulfilled') confirmedTransactions.push(r.value); });
     }
-    
+
     const confirmedHashes = new Set(confirmedTransactions.map(tx => tx.hash));
 
-    // WEBCLI LOGIC: Format pending transactions
-    const pendingTransactionsFormatted = pendingTransactions.map(tx => {
-      // Use op_type from staging if available, otherwise infer from fields
+    const pendingFormatted = pendingTransactions.map(tx => {
       let opType = tx.op_type || 'standard';
       if (!tx.op_type) {
         if (tx.message === 'PRIVATE_TRANSFER' || tx.message === '505249564154455f5452414e53464552') {
           opType = 'private';
         } else if (tx.encrypted_data) {
-          // Infer from encrypted_data content if op_type not provided
           try {
             const ed = JSON.parse(tx.encrypted_data);
             if (ed.cipher && ed.zero_proof && !ed.delta_cipher) opType = 'encrypt';
@@ -1234,17 +1221,11 @@ export async function fetchTransactionHistory(
             else if (ed.delta_cipher) opType = 'stealth';
             else if (ed.claim_cipher) opType = 'claim';
           } catch { /* keep standard */ }
-        } else if (tx.to === tx.from) {
-          // Self-to-self with no message — likely encrypt/decrypt, but can't distinguish without encrypted_data
-          opType = 'standard';
         }
       }
-
       return {
-        hash: tx.hash,
-        from: tx.from,
-        to: tx.to,
-        amount: parseFloat(tx.amount),
+        hash: tx.hash, from: tx.from, to: tx.to,
+        amount: parseAmount(undefined, tx.amount),
         timestamp: tx.timestamp,
         status: 'pending' as const,
         type: tx.from.toLowerCase() === address.toLowerCase() ? 'sent' as const : 'received' as const,
@@ -1253,171 +1234,143 @@ export async function fetchTransactionHistory(
       };
     });
 
-    // Log any pending transactions that are also in confirmed (should be filtered out)
-    const duplicates = pendingTransactionsFormatted.filter(tx => confirmedHashes.has(tx.hash));
-    if (duplicates.length > 0) {
-      
-    }
-    
-    // WEBCLI LOGIC: Only include pending transactions on first page (offset === 0)
-    // Filter out any pending transactions that are already confirmed
     const pendingToInclude = offset === 0
-      ? pendingTransactionsFormatted.filter(tx => !confirmedHashes.has(tx.hash))
+      ? pendingFormatted.filter(tx => !confirmedHashes.has(tx.hash))
       : [];
-    
-    // WEBCLI LOGIC: Merge and sort by timestamp (newest first)
-    // Put confirmed transactions first to ensure they take precedence
+
     const allTransactions = [...confirmedTransactions, ...pendingToInclude]
       .sort((a, b) => b.timestamp - a.timestamp);
-    
-    // Additional safety: Remove any duplicate hashes (keep first occurrence which is confirmed)
+
     const seenHashes = new Set<string>();
     const uniqueTransactions = allTransactions.filter(tx => {
-      if (seenHashes.has(tx.hash)) {
-        
-        return false;
-      }
+      if (seenHashes.has(tx.hash)) return false;
       seenHashes.add(tx.hash);
       return true;
     });
-    
+
     return {
       transactions: uniqueTransactions,
-      balance: parseFloat(apiData.balance),
-      totalCount: apiData.transaction_count || 0
+      balance: parseFloat(apiData.balance || '0'),
+      totalCount: apiData.total || apiData.transaction_count || uniqueTransactions.length,
     };
   } catch (error) {
     console.error('Error fetching transaction history:', error);
-    // Return empty history instead of throwing
-    return {
-      transactions: [],
-      balance: 0,
-      totalCount: 0
-    };
+    return { transactions: [], balance: 0, totalCount: 0 };
   }
 }
 
 export async function fetchTransactionDetails(hash: string, _forceRefresh = false): Promise<TransactionDetails> {
-  // DISABLED: Transaction details caching causes quota exceeded errors
-  // Always fetch fresh data, don't use cache
-  
   try {
-    // makeAPIRequest already has a 30 second timeout, no need for additional timeout here
-    const response = await makeAPIRequest(`/tx/${hash}`);
-    
+    const response = await makeAPIRequest('/rpc', {
+      method: 'POST',
+      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'octra_transaction', params: [hash] }),
+    });
+
     if (!response.ok) {
       const errorText = await response.text();
       console.error('Failed to fetch transaction details:', response.status, errorText);
       throw new Error(`Error ${response.status}`);
     }
-    
-    const data = await safeJsonParse(response);
-    
-    // Don't cache to save storage space
-    
-    return data;
+
+    const json = await safeJsonParse(response);
+    if (json.error) throw new Error(json.error.message || `RPC error: ${JSON.stringify(json.error)}`);
+
+    const data = json.result;
+    if (!data) throw new Error('Empty result from octra_transaction');
+
+    // octra_transaction returns flat fields per docs:
+    // { status, tx_hash, epoch, from, to, amount, amount_raw, nonce, ou, timestamp, op_type, message }
+    // Normalize: ensure tx_hash exists, handle to_ alias
+    const to = data.to || data.to_ || '';
+    const normalized: TransactionDetails = {
+      tx_hash: data.tx_hash || hash,
+      status: data.status || 'confirmed',
+      epoch: data.epoch ?? null,
+      from: data.from || '',
+      to,
+      amount: data.amount || '0',
+      amount_raw: data.amount_raw || '0',
+      nonce: data.nonce || 0,
+      ou: data.ou || '0',
+      timestamp: data.timestamp || 0,
+      op_type: data.op_type || 'standard',
+      message: data.message || null,
+      // Legacy compat shim for any callers still using parsed_tx
+      parsed_tx: {
+        from: data.from || '',
+        to,
+        amount: data.amount || '0',
+        amount_raw: data.amount_raw || '0',
+        nonce: data.nonce || 0,
+        ou: data.ou || '0',
+        timestamp: data.timestamp || 0,
+        message: data.message || null,
+        op_type: data.op_type || 'standard',
+      },
+    };
+
+    return normalized;
   } catch (error) {
     console.error('Error fetching transaction details:', error);
     throw error;
   }
 }
 
-// New function to fetch pending transactions from staging
 export async function fetchPendingTransactions(address: string): Promise<PendingTransaction[]> {
   try {
-    const response = await makeAPIRequest(`/staging`);
-    
+    const response = await makeAPIRequest('/rpc', {
+      method: 'POST',
+      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'staging_view', params: [] }),
+    });
+
     if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Failed to fetch pending transactions:', response.status, errorText);
+      console.error('Failed to fetch pending transactions:', response.status);
       return [];
     }
-    
-    let data: StagingResponse;
-    try {
-      data = await safeJsonParse(response);
-      
-      if (!data.staged_transactions || !Array.isArray(data.staged_transactions)) {
-        console.warn('Staging response does not contain staged_transactions array:', data);
-        return [];
-      }
-    } catch (parseError) {
-      console.error('Failed to parse staging JSON:', parseError);
-      return [];
-    }
-    
-    // Filter transactions for the specific address
-    const userTransactions = data.staged_transactions.filter(tx => 
-      tx.from.toLowerCase() === address.toLowerCase() || 
-      tx.to.toLowerCase() === address.toLowerCase()
+
+    const json = await safeJsonParse(response);
+    if (json.error) return [];
+
+    const result = json.result || json;
+    // staging_view returns { count, transactions[] }
+    const staged: any[] = result.transactions || result.staged_transactions || [];
+
+    return staged.filter((tx: any) =>
+      tx.from?.toLowerCase() === address.toLowerCase() ||
+      tx.to?.toLowerCase() === address.toLowerCase()
     );
-    
-    return userTransactions;
   } catch (error) {
     console.error('Error fetching pending transactions:', error);
     return [];
   }
 }
 
-// New function to fetch specific pending transaction by hash with retry
-export async function fetchPendingTransactionByHash(hash: string, maxRetries: number = 3): Promise<PendingTransaction | null> {
+export async function fetchPendingTransactionByHash(hash: string, maxRetries = 3): Promise<PendingTransaction | null> {
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
-      const response = await makeAPIRequest(`/staging`);
-      
+      const response = await makeAPIRequest('/rpc', {
+        method: 'POST',
+        body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'staging_view', params: [] }),
+      });
+
       if (!response.ok) {
-        const errorText = await response.text();
-        console.error(`Failed to fetch pending transactions (attempt ${attempt}):`, response.status, errorText);
-        if (attempt < maxRetries) {
-          await new Promise(resolve => setTimeout(resolve, 500 * attempt)); // Exponential backoff
-          continue;
-        }
+        if (attempt < maxRetries) { await new Promise(r => setTimeout(r, 500 * attempt)); continue; }
         return null;
       }
-      
-      let data: StagingResponse;
-      try {
-        data = await safeJsonParse(response);
-        
-        if (!data.staged_transactions || !Array.isArray(data.staged_transactions)) {
-          console.warn('Staging response does not contain staged_transactions array:', data);
-          if (attempt < maxRetries) {
-            await new Promise(resolve => setTimeout(resolve, 500 * attempt));
-            continue;
-          }
-          return null;
-        }
-      } catch (parseError) {
-        console.error('Failed to parse staging JSON:', parseError);
-        if (attempt < maxRetries) {
-          await new Promise(resolve => setTimeout(resolve, 500 * attempt));
-          continue;
-        }
-        return null;
-      }
-      
-      // Find transaction by hash
-      const transaction = data.staged_transactions.find(tx => tx.hash === hash);
-      
-      if (transaction) {
-        return transaction;
-      }
-      
-      // If not found and we have retries left, wait and try again
-      // (transaction might not be propagated yet)
-      if (attempt < maxRetries) {
-        
-        await new Promise(resolve => setTimeout(resolve, 500 * attempt));
-        continue;
-      }
-      
+
+      const json = await safeJsonParse(response);
+      if (json.error) return null;
+
+      const result = json.result || json;
+      const staged: any[] = result.transactions || result.staged_transactions || [];
+      const tx = staged.find((t: any) => t.hash === hash);
+      if (tx) return tx;
+
+      if (attempt < maxRetries) { await new Promise(r => setTimeout(r, 500 * attempt)); continue; }
       return null;
     } catch (error) {
-      console.error(`Error fetching pending transaction by hash (attempt ${attempt}):`, error);
-      if (attempt < maxRetries) {
-        await new Promise(resolve => setTimeout(resolve, 500 * attempt));
-        continue;
-      }
+      console.error(`Error fetching pending tx by hash (attempt ${attempt}):`, error);
+      if (attempt < maxRetries) { await new Promise(r => setTimeout(r, 500 * attempt)); continue; }
       return null;
     }
   }
@@ -1432,79 +1385,73 @@ export async function fetchBalance(address: string, forceRefresh = false): Promi
   }
 
   try {
-    // WEBCLI LOGIC: Fetch balance and staging in parallel
+    // Use octra_balance JSON-RPC — works on both mainnet and devnet
     const [balanceResponse, stagingResponse] = await Promise.all([
-      makeAPIRequest(`/balance/${address}`),
-      makeAPIRequest(`/staging`).catch(() => ({ ok: false }))
+      makeAPIRequest('/rpc', {
+        method: 'POST',
+        body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'octra_balance', params: [address] }),
+      }),
+      makeAPIRequest('/rpc', {
+        method: 'POST',
+        body: JSON.stringify({ jsonrpc: '2.0', id: 2, method: 'staging_view', params: [] }),
+      }).catch(() => ({ ok: false })),
     ]);
-    
+
     if (!balanceResponse.ok) {
-      const errorText = await balanceResponse.text();
-      console.error('Failed to fetch balance:', balanceResponse.status, errorText);
-      
-      // Check if this is a 404 error (new address with no transactions)
-      if (balanceResponse.status === 404) {
-        return { balance: 0, nonce: 0 };
-      }
-      
-      return { balance: 0, nonce: 0 };
-    }
-    
-    let data: any;
-    try {
-      const responseText = await balanceResponse.text();
-      if (!responseText.trim()) {
-        console.error('Empty response from balance API');
-        return { balance: 0, nonce: 0 };
-      }
-      data = JSON.parse(responseText);
-    } catch (parseError) {
-      console.error('Failed to parse balance response as JSON:', parseError);
+      console.error('Failed to fetch balance:', balanceResponse.status);
       return { balance: 0, nonce: 0 };
     }
 
-    // WEBCLI LOGIC: Parse balance from balance_raw or balance field
+    let rpcData: any;
+    try {
+      rpcData = await balanceResponse.json();
+    } catch {
+      console.error('Failed to parse balance RPC response');
+      return { balance: 0, nonce: 0 };
+    }
+
+    if (rpcData.error) {
+      console.error('octra_balance RPC error:', rpcData.error);
+      return { balance: 0, nonce: 0 };
+    }
+
+    const data = rpcData.result;
+    if (!data) return { balance: 0, nonce: 0 };
+
+    // Parse balance — prefer balance_raw (micro units), fallback to balance string
     let balance = 0;
-    if (data.balance_raw) {
-      // Parse from raw micro units
-      const balanceRaw = typeof data.balance_raw === 'string' 
-        ? parseInt(data.balance_raw, 10) 
-        : data.balance_raw;
-      balance = balanceRaw / MU_FACTOR;
+    if (data.balance_raw !== undefined) {
+      const raw = typeof data.balance_raw === 'string' ? parseInt(data.balance_raw, 10) : data.balance_raw;
+      balance = raw / MU_FACTOR;
     } else if (data.balance !== undefined) {
       balance = typeof data.balance === 'string' ? parseFloat(data.balance) : data.balance;
     }
-    
-    // WEBCLI LOGIC: Nonce calculation
-    // Use pending_nonce if available, otherwise use nonce
+
+    // Nonce: prefer pending_nonce
     let nonce = data.pending_nonce !== undefined ? data.pending_nonce : (data.nonce || 0);
-    
-    // WEBCLI LOGIC: Check staging for pending transactions from this address
-    // and update nonce to max of pending nonces
+
+    // Check staging for pending nonces from this address
     if ('ok' in stagingResponse && stagingResponse.ok) {
       try {
-        const stagingData = await (stagingResponse as Response).json();
-        if (stagingData.staged_transactions || stagingData.transactions) {
-          const transactions = stagingData.staged_transactions || stagingData.transactions || [];
-          const ourPendingTxs = transactions.filter(
-            (tx: any) => tx.from === address
-          );
-          if (ourPendingTxs.length > 0) {
-            const maxPendingNonce = Math.max(...ourPendingTxs.map((tx: any) => {
-              const txNonce = parseInt(tx.nonce, 10);
-              return isNaN(txNonce) ? 0 : txNonce;
-            }));
-            // WEBCLI: nonce = max(current_nonce, max_pending_nonce)
-            nonce = Math.max(nonce, maxPendingNonce);
-          }
+        const stagingRpc = await (stagingResponse as Response).json();
+        const stagingData = stagingRpc.result || stagingRpc;
+        // staging_view returns { count, transactions[] }
+        const transactions = stagingData.transactions || stagingData.staged_transactions || [];
+        const ourPendingTxs = transactions.filter((tx: any) => tx.from === address);
+        if (ourPendingTxs.length > 0) {
+          const maxPendingNonce = Math.max(...ourPendingTxs.map((tx: any) => {
+            const n = parseInt(tx.nonce, 10);
+            return isNaN(n) ? 0 : n;
+          }));
+          nonce = Math.max(nonce, maxPendingNonce);
         }
-      } catch (error) {
-        console.warn('Failed to parse staging data for nonce calculation:', error);
+      } catch {
+        // staging check is best-effort
       }
     }
 
     if (isNaN(balance) || isNaN(nonce)) {
-      console.warn('Invalid balance or nonce in API response', { balance, nonce });
+      console.warn('Invalid balance or nonce', { balance, nonce });
       return { balance: 0, nonce: 0 };
     }
 
@@ -1786,21 +1733,6 @@ export function createTransaction(
   return transaction;
 }
 
-// Updated interface to match actual API response
-interface AddressApiResponse {
-  address: string;
-  balance: string;
-  nonce: number;
-  balance_raw: string;
-  has_public_key: boolean;
-  transaction_count: number;
-  recent_transactions: Array<{
-    epoch: number;
-    hash: string;
-    url: string;
-  }>;
-}
-
 // Pagination options for transaction history
 export interface HistoryPaginationOptions {
   limit?: number;
@@ -1814,7 +1746,7 @@ export async function getBalance(address: string): Promise<number> {
     return result.balance;
   } catch (error) {
     console.error('Error fetching balance:', error);
-    return Math.random() * 100; // Mock data for development
+    return 0;
   }
 }
 

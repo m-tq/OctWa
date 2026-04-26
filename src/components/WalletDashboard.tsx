@@ -47,6 +47,7 @@ import {
   Image,
   Settings,
   Server,
+  Code2,
 } from 'lucide-react';
 import { ExtensionStorageManager } from '../utils/extensionStorage';
 import { MultiSend } from './MultiSend';
@@ -71,6 +72,7 @@ import { PvacServerManager } from './PvacServerManager';
 import { DraggableWalletList } from './DraggableWalletList';
 import { WalletDisplayName } from './WalletLabelEditor';
 import { BalancePieChart } from './BalancePieChart';
+import { DevTools } from './DevTools';
 import { Wallet } from '../types/wallet';
 import { WalletManager } from '../utils/walletManager';
 import { fetchBalance, getTransactionHistory, fetchEncryptedBalance, fetchTransactionDetails, fetchPendingTransactionByHash, getPendingPrivateTransfers } from '../utils/api';
@@ -193,6 +195,8 @@ export function WalletDashboard({
   const [encryptedBalance, setEncryptedBalance] = useState<any>(null);
   const [isDecryptingBalance, setIsDecryptingBalance] = useState(false); // spinner for pie chart
   const [rpcStatus, setRpcStatus] = useState<'connected' | 'disconnected' | 'checking' | 'connecting'>('checking');
+  const [latestEpoch, setLatestEpoch] = useState<number | null>(null);
+  const [isSyncing, setIsSyncing] = useState(false); // background data sync indicator
   const [pvacStatus, setPvacStatus] = useState<'connected' | 'disconnected' | 'checking'>('checking');
   const [showPvacManager, setShowPvacManager] = useState(false);
   const [operationMode, setOperationMode] = useState<OperationMode>('public');
@@ -229,6 +233,8 @@ export function WalletDashboard({
   const [addressBookPrefilledAddress, setAddressBookPrefilledAddress] = useState<string>('');
   // EVM Mode state (integrated mode, not popup)
   const [evmMode, setEvmMode] = useState(false);
+  // Dev Tools Mode state
+  const [devToolsMode, setDevToolsMode] = useState(false);
   const [evmWallets, setEvmWallets] = useState<(EVMWalletData & { balance: string | null; isLoading: boolean })[]>([]);
   const [selectedEVMWallet, setSelectedEVMWallet] = useState<(EVMWalletData & { balance: string | null; isLoading: boolean }) | null>(null);
   const [evmNetwork, setEvmNetwork] = useState<EVMNetwork>(getActiveEVMNetwork());
@@ -505,25 +511,35 @@ export function WalletDashboard({
   useEffect(() => {
     // Import dynamically to avoid circular deps
     const initRPCStatus = async () => {
-      const { checkRPCStatus, onRPCStatusChange } = await import('../utils/rpcStatus');
+      const { checkRPCStatus, onRPCStatusChange, fetchLatestEpoch, getActiveRPCProvider } = await import('../utils/rpcStatus');
       
       // Get initial status (uses cache if available)
       const status = await checkRPCStatus();
       setRpcStatus(status.status);
       setActiveNetwork(status.network);
+      if (status.latestEpoch !== undefined) setLatestEpoch(status.latestEpoch);
       
       // Listen for status changes from other contexts (popup <-> expanded)
       const unsubscribe = onRPCStatusChange((data) => {
-        
         setRpcStatus(data.status);
         setActiveNetwork(data.network);
+        if (data.latestEpoch !== undefined) setLatestEpoch(data.latestEpoch);
       });
+
+      // Poll epoch every 3 seconds (lightweight node_stats call)
+      const epochInterval = setInterval(async () => {
+        const provider = await getActiveRPCProvider();
+        if (!provider) return;
+        const epoch = await fetchLatestEpoch(provider.url);
+        if (epoch !== null) setLatestEpoch(epoch);
+      }, 3000);
       
-      // Check every 3 minutes (force refresh) when connected
+      // Check full RPC status every 3 minutes
       const interval = setInterval(async () => {
         const freshStatus = await checkRPCStatus(true);
         setRpcStatus(freshStatus.status);
         setActiveNetwork(freshStatus.network);
+        if (freshStatus.latestEpoch !== undefined) setLatestEpoch(freshStatus.latestEpoch);
       }, 3 * 60 * 1000);
       
       // Auto-retry every 7 seconds when disconnected
@@ -533,13 +549,12 @@ export function WalletDashboard({
         if (retryInterval) return; // Already running
         
         retryInterval = setInterval(async () => {
-          
           const freshStatus = await checkRPCStatus(true);
           setRpcStatus(freshStatus.status);
           setActiveNetwork(freshStatus.network);
+          if (freshStatus.latestEpoch !== undefined) setLatestEpoch(freshStatus.latestEpoch);
           
           if (freshStatus.status === 'connected') {
-            
             if (retryInterval) {
               clearInterval(retryInterval);
               retryInterval = null;
@@ -573,6 +588,7 @@ export function WalletDashboard({
         unsubscribe();
         unsubscribeRetry();
         clearInterval(interval);
+        clearInterval(epochInterval);
         stopRetryLoop();
       };
     };
@@ -718,11 +734,12 @@ export function WalletDashboard({
       setSelectedTxHash(null);
       setSelectedTxDetails(null);
 
-      // Show skeletons only for data not yet in cache
+      // Show skeletons only for data not yet in cache; always background-sync
       setIsLoadingBalance(!cachedData);
       setIsLoadingEncryptedBalance(!cachedData);
       setIsLoadingTransactions(!cachedData);
-
+      // Show syncing indicator when we have cached data but are refreshing in background
+      if (cachedData) setIsSyncing(true);
       // STEP 3: Fire all fetches independently — each updates UI as soon as it resolves
       // Track what we need for the final cache write
       let latestBalance: { balance: number; nonce: number } | null = null;
@@ -859,6 +876,9 @@ export function WalletDashboard({
       // Wait for all to settle (errors already handled above individually)
       await Promise.allSettled([balanceFetch, encFetch, historyFetch, pendingFetch]);
 
+      // Done syncing
+      if (!isStale()) setIsSyncing(false);
+
       // Final: update operation mode now that all data is in
       if (!isStale()) {
         const encBal = latestEncData?.encrypted || cachedData?.encryptedBalance.encrypted || 0;
@@ -876,6 +896,7 @@ export function WalletDashboard({
     if (!wallet) return;
     
     setIsRefreshingData(true);
+    setIsSyncing(true);
     
     try {
       // Fetch balance and nonce
@@ -930,7 +951,6 @@ export function WalletDashboard({
       
     } catch (error) {
       console.error('Failed to refresh wallet data:', error);
-      
       toast({
         title: "Refresh Failed",
         description: "Failed to refresh data.",
@@ -938,14 +958,32 @@ export function WalletDashboard({
       });
     } finally {
       setIsRefreshingData(false);
+      setIsSyncing(false);
     }
   };
 
-  const handleRPCChange = () => {
+  const handleRPCChange = async () => {
     // Close the RPC manager dialog
     setShowRPCManager(false);
-    
-    // Refresh wallet data with new RPC
+
+    // Invalidate the API-level cache (network-keyed) so next fetch goes to new RPC
+    // But keep the fast wallet cache so UI shows data instantly while syncing
+    const { invalidateCacheForNetworkSwitch } = await import('../utils/api');
+    await invalidateCacheForNetworkSwitch();
+
+    // Force fresh RPC status check — updates activeNetwork + rpcStatus in footer
+    setRpcStatus('checking');
+    try {
+      const { checkRPCStatus } = await import('../utils/rpcStatus');
+      const freshStatus = await checkRPCStatus(true);
+      setRpcStatus(freshStatus.status);
+      setActiveNetwork(freshStatus.network);
+      if (freshStatus.latestEpoch !== undefined) setLatestEpoch(freshStatus.latestEpoch);
+    } catch {
+      setRpcStatus('disconnected');
+    }
+
+    // Background-refresh wallet data with new RPC (shows syncing indicator)
     refreshWalletData();
   };
 
@@ -1825,6 +1863,15 @@ export function WalletDashboard({
 
   return (
     <div className="h-screen overflow-hidden transition-all duration-300">
+      {/* Dev Tools — true fullscreen, rendered at root level to cover everything */}
+      {devToolsMode && !isPopupMode && (
+        <DevTools
+          wallet={wallet}
+          onExit={() => setDevToolsMode(false)}
+          activeNetwork={activeNetwork}
+        />
+      )}
+
       {/* PVAC Server Setup - shows only once after first wallet setup */}
       {showPvacSetup && !isPopupMode && (
         <PvacServerSetup onComplete={() => {
@@ -2570,13 +2617,24 @@ export function WalletDashboard({
                         <Button
                           variant="ghost"
                           size="sm"
+                          onClick={() => setDevToolsMode(true)}
+                          className="group flex items-center gap-2 hover:bg-transparent"
+                        >
+                          <Code2 className="h-4 w-4 transition group-hover:drop-shadow-[0_0_6px_currentColor]" />
+                          <span className="transition group-hover:drop-shadow-[0_0_6px_currentColor]">Dev Tools</span>
+                          {activeNetwork === 'testnet' && (
+                            <span className="text-[9px] px-1 py-0 bg-yellow-500/20 text-yellow-600 dark:text-yellow-400 border border-yellow-500/30">DevNet</span>
+                          )}
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
                           onClick={() => setShowRPCManager(true)}
                           className="group flex items-center gap-2 hover:bg-transparent"
                         >
                           <Wifi className="h-4 w-4 transition group-hover:drop-shadow-[0_0_6px_currentColor]" />
                           <span className="transition group-hover:drop-shadow-[0_0_6px_currentColor]">RPC</span>
-                        </Button>
-                        <Button
+                        </Button>                        <Button
                           variant="ghost"
                           size="sm"
                           onClick={() => setShowPvacManager(true)}
@@ -2943,8 +3001,7 @@ export function WalletDashboard({
                 <ReceiveDialog
                   wallet={wallet}
                   open={showReceiveDialog}
-                  onOpenChange={setShowReceiveDialog}
-                  isPopupMode={false}
+                  onOpenChange={setShowReceiveDialog}                  isPopupMode={false}
                   isFullscreen={false}
                   customAddress={evmMode && selectedEVMWallet ? selectedEVMWallet.evmAddress : undefined}
                   customTitle={evmMode ? `Receive ${evmNetwork.symbol}` : undefined}
@@ -4387,18 +4444,24 @@ export function WalletDashboard({
             {/* Left: Connection Status */}
             <div className="flex items-center gap-1.5">
               <div className={`w-1.5 h-1.5 rounded-full ${
+                isSyncing ? 'bg-yellow-500 animate-pulse' :
                 rpcStatus === 'connected' ? (operationMode === 'private' ? 'bg-[#00E5C0]' : 'bg-[#3A4DFF]') : 
                 rpcStatus === 'disconnected' ? 'bg-red-500' : 
                 'bg-yellow-500 animate-pulse'
               }`} />
               <span className={`text-[10px] ${
+                isSyncing ? 'text-yellow-500' :
                 rpcStatus === 'connected' ? (operationMode === 'private' ? 'text-[#00E5C0]' : 'text-[#3A4DFF]') : 
                 rpcStatus === 'disconnected' ? 'text-red-500' : 
                 'text-yellow-500'
               }`}>
-                {rpcStatus === 'connected' ? `Connected (${activeNetwork.charAt(0).toUpperCase() + activeNetwork.slice(1)})` : 
+                {isSyncing ? 'Syncing...' :
+                 rpcStatus === 'connected' ? `Connected (${activeNetwork === 'testnet' ? 'DevNet' : activeNetwork.charAt(0).toUpperCase() + activeNetwork.slice(1)})` : 
                  rpcStatus === 'disconnected' ? 'Disconnected' : 
                  'Connecting...'}
+                {!isSyncing && rpcStatus === 'connected' && latestEpoch !== null && (
+                  <span className="text-muted-foreground"> | #{latestEpoch}</span>
+                )}
               </span>
             </div>
             {/* Right: GitHub + Version */}
@@ -4473,18 +4536,24 @@ export function WalletDashboard({
             /* Normal Octra Footer */
             <div className="flex items-center gap-1.5">
               <div className={`w-1.5 h-1.5 rounded-full ${
+                isSyncing ? 'bg-yellow-500 animate-pulse' :
                 rpcStatus === 'connected' ? (operationMode === 'private' ? 'bg-[#00E5C0]' : 'bg-[#3A4DFF]') : 
                 rpcStatus === 'disconnected' ? 'bg-red-500' : 
                 'bg-yellow-500 animate-pulse'
               }`} />
               <span className={`${
+                isSyncing ? 'text-yellow-500' :
                 rpcStatus === 'connected' ? (operationMode === 'private' ? 'text-[#00E5C0]' : 'text-[#3A4DFF]') : 
                 rpcStatus === 'disconnected' ? 'text-red-500' : 
                 'text-yellow-500'
               }`}>
-                {rpcStatus === 'connected' ? `Connected (${activeNetwork.charAt(0).toUpperCase() + activeNetwork.slice(1)})` : 
+                {isSyncing ? 'Syncing...' :
+                 rpcStatus === 'connected' ? `Connected (${activeNetwork === 'testnet' ? 'DevNet' : activeNetwork.charAt(0).toUpperCase() + activeNetwork.slice(1)})` : 
                  rpcStatus === 'disconnected' ? 'Disconnected' : 
                  'Connecting...'}
+                {!isSyncing && rpcStatus === 'connected' && latestEpoch !== null && (
+                  <span className="text-muted-foreground"> | #{latestEpoch}</span>
+                )}
               </span>
             </div>
           )}

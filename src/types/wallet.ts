@@ -81,10 +81,25 @@ export interface TransactionHistoryItem {
 }
 
 // New interface for transaction details
+// octra_transaction returns flat fields (no parsed_tx wrapper)
 export interface TransactionDetails {
+  tx_hash: string;
+  status: string;
+  epoch: number | null;
+  from: string;
+  to: string;
+  amount: string;
+  amount_raw: string;
+  nonce: number;
+  ou: string;
+  timestamp: number;
+  op_type: string;
+  message: string | null;
+  // Legacy compat shim — always populated by fetchTransactionDetails
   parsed_tx: {
     from: string;
     to: string;
+    to_?: string;
     amount: string;
     amount_raw: string;
     nonce: number;
@@ -93,11 +108,8 @@ export interface TransactionDetails {
     message: string | null;
     op_type?: string;
   };
-  epoch: number;
-  tx_hash: string;
-  data: string;
-  source: string;
-  op_type?: string;
+  data?: string;
+  source?: string;
 }
 
 // New interface for pending transactions from staging
@@ -119,8 +131,8 @@ export interface PendingTransaction {
 
 export interface StagingResponse {
   count: number;
-  staged_transactions: PendingTransaction[];
-  message: string;
+  transactions: PendingTransaction[]; // staging_view returns 'transactions' not 'staged_transactions'
+  message?: string;
 }
 
 // Transaction send response with finality
