@@ -8,7 +8,6 @@
  */
 
 import { useState, useEffect } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -1167,384 +1166,253 @@ export function DAppRequestHandler({ wallets }: DAppRequestHandlerProps) {
 
   // Render based on request type - optimized for popup size (400x600)
   return (
-    <div className="h-full flex flex-col p-3">
-      <Card className="border-0 shadow-none flex-1 flex flex-col">
-        <CardHeader className="text-center pb-2 pt-1 space-y-1">
-          {/* App Icon */}
-          <div className="flex justify-center mb-1">
-            <Avatar className="h-10 w-10">
-              {(connectionRequest?.appIcon || capabilityRequest?.appIcon || signMessageRequest?.appIcon) && (
-                <AvatarImage src={connectionRequest?.appIcon || capabilityRequest?.appIcon || signMessageRequest?.appIcon} />
-              )}
-              <AvatarFallback className="bg-primary text-primary-foreground">
-                {requestType === 'connection' && <Globe className="h-5 w-5" />}
-                {requestType === 'capability' && <Shield className="h-5 w-5" />}
-                {requestType === 'invoke' && <Zap className="h-5 w-5" />}
-                {requestType === 'signMessage' && <Edit className="h-5 w-5" />}
-              </AvatarFallback>
-            </Avatar>
+    <div className="h-full flex flex-col overflow-hidden bg-background">
+
+      {/* ── HEADER ── */}
+      <div className="flex-shrink-0 px-4 pt-4 pb-3 border-b border-border">
+        <div className="flex items-center gap-3">
+          <Avatar className="h-10 w-10 flex-shrink-0">
+            {(connectionRequest?.appIcon || capabilityRequest?.appIcon || signMessageRequest?.appIcon) && (
+              <AvatarImage src={connectionRequest?.appIcon || capabilityRequest?.appIcon || signMessageRequest?.appIcon} />
+            )}
+            <AvatarFallback className="bg-primary/10 text-primary">
+              {requestType === 'connection' && <Globe className="h-5 w-5" />}
+              {requestType === 'capability' && <Shield className="h-5 w-5" />}
+              {requestType === 'invoke' && <Zap className="h-5 w-5" />}
+              {requestType === 'signMessage' && <Edit className="h-5 w-5" />}
+            </AvatarFallback>
+          </Avatar>
+          <div className="flex-1 min-w-0">
+            <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+              {requestType === 'connection' && 'Connection Request'}
+              {requestType === 'capability' && 'Capability Request'}
+              {requestType === 'invoke' && 'Invoke Request'}
+              {requestType === 'signMessage' && 'Sign Message'}
+            </p>
+            <p className="text-sm font-semibold truncate">
+              {connectionRequest?.appName || capabilityRequest?.appName || invokeRequest?.appName || signMessageRequest?.appName || 'Unknown App'}
+            </p>
+            <p className="text-[11px] text-muted-foreground truncate">
+              {connectionRequest?.appOrigin || capabilityRequest?.appOrigin || invokeRequest?.appOrigin || signMessageRequest?.appOrigin}
+            </p>
           </div>
+        </div>
+      </div>
 
-          {/* Title */}
-          <CardTitle className="text-base">
-            {requestType === 'connection' && 'Connection Request'}
-            {requestType === 'capability' && 'Capability Request'}
-            {requestType === 'invoke' && 'Invoke Request'}
-            {requestType === 'signMessage' && 'Sign Message'}
-          </CardTitle>
+      {/* ── CONTENT ── */}
+      <div className="flex-1 overflow-y-auto px-4 py-3 space-y-2.5 min-h-0">
 
-          {/* App Info */}
-          <p className="text-sm font-medium text-foreground truncate">
-            {connectionRequest?.appName || capabilityRequest?.appName || invokeRequest?.appName || signMessageRequest?.appName || 'Octra DEX'}
-          </p>
-          <p className="text-xs text-muted-foreground truncate">
-            {connectionRequest?.appOrigin || capabilityRequest?.appOrigin || invokeRequest?.appOrigin || signMessageRequest?.appOrigin}
-          </p>
-        </CardHeader>
+        {/* Connection */}
+        {requestType === 'connection' && connectionRequest && (
+          <>
+            <div className="p-2.5 bg-muted/50 border border-border rounded space-y-1.5">
+              <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1">
+                <Globe className="h-3 w-3" /><span className="font-medium">Circle</span>
+              </div>
+              <p className="text-xs font-mono break-all">{connectionRequest.circle}</p>
+            </div>
+            <div className="space-y-1.5">
+              <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Select Account</h3>
+              <select
+                className="w-full p-2 border border-border rounded bg-background text-sm focus:outline-none focus:border-primary"
+                value={selectedWallet?.address || ''}
+                onChange={(e) => { const w = wallets.find(w => w.address === e.target.value); if (w) setSelectedWallet(w); }}
+              >
+                {wallets.map((w, i) => (
+                  <option key={w.address} value={w.address}>Account {i + 1} — {truncateAddress(w.address)}</option>
+                ))}
+              </select>
+            </div>
+            <Alert className="py-2">
+              <Shield className="h-3 w-3" />
+              <AlertDescription className="text-xs">Creates a session. No authority granted until you approve capabilities.</AlertDescription>
+            </Alert>
+          </>
+        )}
 
-        <CardContent className="flex-1 flex flex-col space-y-2 overflow-hidden pt-0">
-          {/* Connection Request */}
-          {requestType === 'connection' && connectionRequest && (
-            <>
-              <div className="p-2 bg-muted rounded-lg">
-                <div className="flex items-center gap-2 mb-1">
-                  <Globe className="h-3 w-3" />
-                  <span className="font-medium text-sm">Circle</span>
+        {/* Capability */}
+        {requestType === 'capability' && capabilityRequest && (
+          <>
+            <div className="p-2.5 bg-muted/50 border border-border rounded space-y-2 text-xs">
+              <div className="flex items-center justify-between">
+                <span className="text-muted-foreground">Circle</span>
+                <span className="font-mono truncate max-w-[200px]">{capabilityRequest.circle}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-muted-foreground">Scope</span>
+                <Badge className={`${getScopeColor(capabilityRequest.scope)} text-[10px] py-0 h-5`}>
+                  {getScopeIcon(capabilityRequest.scope)}<span className="ml-1 capitalize">{capabilityRequest.scope}</span>
+                </Badge>
+              </div>
+              {capabilityRequest.encrypted && (
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">Encrypted</span>
+                  <Badge variant="secondary" className="text-[10px] py-0 h-5"><Lock className="h-3 w-3 mr-1" />Yes</Badge>
                 </div>
-                <p className="text-xs font-mono truncate">{connectionRequest.circle}</p>
+              )}
+            </div>
+            <div>
+              <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1.5">Requested Methods</h3>
+              <div className="space-y-1">
+                {capabilityRequest.methods.map((m, i) => (
+                  <div key={i} className="flex items-center gap-2 px-2.5 py-1.5 bg-muted/50 border border-border rounded text-xs">
+                    <Check className="h-3 w-3 text-green-500 flex-shrink-0" />
+                    <span className="font-mono">{m}</span>
+                  </div>
+                ))}
               </div>
-
-              <div className="space-y-2">
-                <h3 className="font-medium text-sm">Select Account</h3>
-                <select
-                  className="w-full p-2 border rounded-lg bg-background text-sm"
-                  value={selectedWallet?.address || ''}
-                  onChange={(e) => {
-                    const wallet = wallets.find(w => w.address === e.target.value);
-                    if (wallet) setSelectedWallet(wallet);
-                  }}
-                >
-                  {wallets.map((wallet, index) => (
-                    <option key={wallet.address} value={wallet.address}>
-                      Account {index + 1} - {truncateAddress(wallet.address)}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <Alert className="py-2">
-                <Shield className="h-3 w-3" />
-                <AlertDescription className="text-xs">
-                  This will create a session. No authority is granted until you approve capabilities.
+            </div>
+            {capabilityRequest.scope === 'write' || capabilityRequest.scope === 'compute' ? (
+              <Alert className="py-2 border-amber-500/30 bg-amber-500/10">
+                <AlertTriangle className="h-3 w-3 text-amber-500" />
+                <AlertDescription className="text-xs text-amber-600 dark:text-amber-400">
+                  Allows {capabilityRequest.scope} operations. Only approve if you trust this app.
                 </AlertDescription>
               </Alert>
-            </>
-          )}
+            ) : (
+              <Alert className="py-2"><Shield className="h-3 w-3" /><AlertDescription className="text-xs">Read-only — cannot modify data.</AlertDescription></Alert>
+            )}
+          </>
+        )}
 
-          {/* Capability Request */}
-          {requestType === 'capability' && capabilityRequest && (
-            <>
-              <div className="p-2 bg-muted rounded-lg space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs text-muted-foreground">Circle</span>
-                  <span className="font-mono text-xs truncate max-w-[180px]">{capabilityRequest.circle}</span>
+        {/* Invoke */}
+        {requestType === 'invoke' && invokeRequest && (
+          <>
+            <div className="p-2.5 bg-muted/50 border border-border rounded space-y-2 text-xs">
+              <div className="flex items-center justify-between">
+                <span className="text-muted-foreground">Method</span>
+                <span className="font-mono font-medium">{invokeRequest.method}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-muted-foreground">Circle</span>
+                <span className="font-mono truncate max-w-[200px]">{invokeRequest.capability.circle}</span>
+              </div>
+            </div>
+
+            {invokeRequest.method === 'send_transaction' && parsedTxPayload && (
+              <div className="p-2.5 bg-amber-500/10 border border-amber-500/30 rounded space-y-2 text-xs">
+                <h4 className="font-medium text-amber-600 dark:text-amber-400">OCT Transaction</h4>
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between"><span className="text-muted-foreground">To</span><span className="font-mono truncate max-w-[200px]">{parsedTxPayload.to}</span></div>
+                  <div className="flex items-center justify-between"><span className="text-muted-foreground">Amount</span><span className="font-bold text-sm">{parsedTxPayload.amount} OCT</span></div>
+                  {parsedTxPayload.message && (
+                    <details className="pt-1 border-t border-amber-500/20">
+                      <summary className="text-muted-foreground cursor-pointer select-none">Message / Payload</summary>
+                      <div className="mt-1 p-1.5 bg-background rounded font-mono break-all max-h-24 overflow-y-auto">{parsedTxPayload.message}</div>
+                    </details>
+                  )}
                 </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-xs text-muted-foreground">Scope</span>
-                  <Badge className={`${getScopeColor(capabilityRequest.scope)} text-xs py-0`}>
-                    {getScopeIcon(capabilityRequest.scope)}
-                    <span className="ml-1">
-                      {(() => {
-                        // Check if methods include both read and write operations
-                        const hasReadMethod = capabilityRequest.methods.some(m => 
-                          m.includes('get_') || m.includes('read_') || m === 'get_balance'
-                        );
-                        const hasWriteMethod = capabilityRequest.methods.some(m => 
-                          m.includes('send_') || m.includes('write_') || m === 'send_transaction'
-                        );
-                        
-                        if (hasReadMethod && hasWriteMethod) {
-                          return 'read & write';
-                        }
-                        return capabilityRequest.scope;
-                      })()}
-                    </span>
-                  </Badge>
-                </div>
-                {capabilityRequest.encrypted && (
+              </div>
+            )}
+
+            {invokeRequest.method === 'send_evm_transaction' && parsedEvmTxPayload && (
+              <div className="p-2.5 bg-blue-500/10 border border-blue-500/30 rounded space-y-2 text-xs">
+                <h4 className="font-medium text-blue-600 dark:text-blue-400">ETH Transaction</h4>
+                <div className="space-y-1.5">
                   <div className="flex items-center justify-between">
-                    <span className="text-xs text-muted-foreground">Encrypted</span>
-                    <Badge variant="secondary" className="text-xs py-0">
-                      <Lock className="h-3 w-3 mr-1" />
-                      Yes
-                    </Badge>
+                    <span className="text-muted-foreground">Network</span>
+                    <span className="font-medium">{parsedEvmTxPayload.network === 'eth-mainnet' ? 'Ethereum Mainnet' : parsedEvmTxPayload.network === 'eth-sepolia' ? 'Sepolia' : parsedEvmTxPayload.network || 'Ethereum Mainnet'}</span>
                   </div>
-                )}
-              </div>
-
-              <div className="flex-1 overflow-hidden">
-                <h3 className="font-medium text-sm mb-1">Requested Methods</h3>
-                <div className="space-y-1 max-h-[120px] overflow-y-auto">
-                  {capabilityRequest.methods.map((method, i) => (
-                    <div key={i} className="flex items-center gap-2 p-1.5 bg-muted rounded text-xs">
-                      <Check className="h-3 w-3 text-green-600 flex-shrink-0" />
-                      <span className="font-mono truncate">{method}</span>
+                  <div className="flex items-center justify-between"><span className="text-muted-foreground">To</span><span className="font-mono truncate max-w-[200px]">{parsedEvmTxPayload.to}</span></div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-muted-foreground">Amount</span>
+                    <span className="font-bold text-sm">{parsedEvmTxPayload.amount ? `${parsedEvmTxPayload.amount} ETH` : parsedEvmTxPayload.value ? `${(Number(parsedEvmTxPayload.value) / 1e18).toFixed(8)} ETH` : '0 ETH'}</span>
+                  </div>
+                  {parsedEvmTxPayload.data && (
+                    <details className="pt-1 border-t border-blue-500/20">
+                      <summary className="text-muted-foreground cursor-pointer select-none">Contract Data</summary>
+                      <div className="mt-1 p-1.5 bg-background rounded font-mono break-all max-h-20 overflow-y-auto text-[10px]">{parsedEvmTxPayload.data}</div>
+                    </details>
+                  )}
+                  <details className="pt-1 border-t border-blue-500/20">
+                    <summary className="text-muted-foreground cursor-pointer select-none">Gas Settings</summary>
+                    <div className="mt-2 flex gap-2">
+                      <div className="flex-1">
+                        <label className="text-[10px] text-muted-foreground block mb-0.5">Gas Limit</label>
+                        <input type="number" value={customGasLimit} onChange={e => setCustomGasLimit(e.target.value)} className="w-full text-xs px-2 py-1 border border-border bg-background rounded focus:outline-none focus:border-primary font-mono" />
+                      </div>
+                      <div className="flex-1">
+                        <label className="text-[10px] text-muted-foreground block mb-0.5">Max Fee (Gwei)</label>
+                        <input type="number" step="0.1" value={customMaxFeeGwei} onChange={e => setCustomMaxFeeGwei(e.target.value)} className="w-full text-xs px-2 py-1 border border-border bg-background rounded focus:outline-none focus:border-primary font-mono" />
+                      </div>
                     </div>
-                  ))}
+                    {customGasLimit && customMaxFeeGwei && (
+                      <p className="text-[10px] text-muted-foreground mt-1">Est. max: {(parseInt(customGasLimit) * parseFloat(customMaxFeeGwei) / 1e9).toFixed(6)} ETH</p>
+                    )}
+                  </details>
                 </div>
               </div>
+            )}
 
-              {capabilityRequest.scope === 'write' || capabilityRequest.scope === 'compute' ? (
-                <Alert className="border-amber-200 bg-amber-50 py-2">
-                  <AlertTriangle className="h-3 w-3 text-amber-600" />
-                  <AlertDescription className="text-xs text-amber-800">
-                    This allows {capabilityRequest.scope} operations. Only approve if you trust this app.
-                  </AlertDescription>
-                </Alert>
+            {invokeRequest.method === 'send_erc20_transaction' && parsedErc20TxPayload && (
+              <div className="p-2.5 bg-green-500/10 border border-green-500/30 rounded space-y-2 text-xs">
+                <h4 className="font-medium text-green-600 dark:text-green-400">{parsedErc20TxPayload.symbol} Transfer</h4>
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between"><span className="text-muted-foreground">Token</span><span className="font-mono">{parsedErc20TxPayload.symbol}</span></div>
+                  <div className="flex items-center justify-between"><span className="text-muted-foreground">To</span><span className="font-mono truncate max-w-[200px]">{parsedErc20TxPayload.to}</span></div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-muted-foreground">Amount</span>
+                    <span className="font-bold text-sm">{(Number(parsedErc20TxPayload.amount) / (10 ** parsedErc20TxPayload.decimals)).toFixed(2)} {parsedErc20TxPayload.symbol}</span>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <Alert className={`py-2 ${invokeRequest.method === 'send_transaction' || invokeRequest.method === 'send_evm_transaction' || invokeRequest.method === 'send_erc20_transaction' ? 'border-amber-500/30 bg-amber-500/10' : ''}`}>
+              {invokeRequest.method === 'send_transaction' || invokeRequest.method === 'send_evm_transaction' || invokeRequest.method === 'send_erc20_transaction' ? (
+                <><AlertTriangle className="h-3 w-3 text-amber-500" /><AlertDescription className="text-xs text-amber-600 dark:text-amber-400">This will send funds from your wallet. Only approve if you trust this dApp.</AlertDescription></>
               ) : (
-                <Alert className="py-2">
-                  <Shield className="h-3 w-3" />
-                  <AlertDescription className="text-xs">
-                    This capability only allows read operations.
-                  </AlertDescription>
-                </Alert>
+                <><Zap className="h-3 w-3" /><AlertDescription className="text-xs">Executes the method using your granted capability.</AlertDescription></>
               )}
-            </>
-          )}
+            </Alert>
+          </>
+        )}
 
-          {/* Invoke Request */}
-          {requestType === 'invoke' && invokeRequest && (
-            <>
-              <div className="p-2 bg-muted rounded-lg space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs text-muted-foreground">Method</span>
-                  <span className="font-mono font-medium text-sm">{invokeRequest.method}</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-xs text-muted-foreground">Circle</span>
-                  <span className="font-mono text-xs truncate max-w-[180px]">{invokeRequest.capability.circle}</span>
-                </div>
+        {/* Sign Message */}
+        {requestType === 'signMessage' && signMessageRequest && (
+          <>
+            <div className="p-2.5 bg-purple-500/10 border border-purple-500/30 rounded space-y-2">
+              <h4 className="text-xs font-medium text-purple-600 dark:text-purple-400 flex items-center gap-1.5">
+                <Edit className="h-3.5 w-3.5" />Message to Sign
+              </h4>
+              <div className="p-2 bg-background border border-border rounded max-h-52 overflow-y-auto">
+                <pre className="text-xs font-mono whitespace-pre-wrap break-all">{signMessageRequest.message}</pre>
               </div>
+            </div>
+            <Alert className="py-2 border-purple-500/30 bg-purple-500/10">
+              <AlertTriangle className="h-3 w-3 text-purple-500" />
+              <AlertDescription className="text-xs text-purple-600 dark:text-purple-400">Only sign messages you understand. This proves you own this wallet.</AlertDescription>
+            </Alert>
+          </>
+        )}
+      </div>
 
-              {/* Transaction Details for send_transaction */}
-              {invokeRequest.method === 'send_transaction' && parsedTxPayload && (
-                <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg space-y-2">
-                  <h4 className="font-medium text-sm text-amber-800">Transaction Details</h4>
-                  <div className="space-y-1">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs text-amber-700">To</span>
-                      <span className="font-mono text-xs text-amber-900 truncate max-w-[180px]">{parsedTxPayload.to}</span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs text-amber-700">Amount</span>
-                      <span className="font-bold text-sm text-amber-900">{parsedTxPayload.amount} OCT</span>
-                    </div>
-                    {parsedTxPayload.message && (
-                      <div className="pt-1 border-t border-amber-200">
-                        <span className="text-xs text-amber-700">Message (Intent Payload)</span>
-                        <div className="mt-1 p-1 bg-amber-100 rounded text-xs font-mono text-amber-800 max-h-[60px] overflow-y-auto break-all">
-                          {parsedTxPayload.message.length > 100 
-                            ? parsedTxPayload.message.slice(0, 100) + '...' 
-                            : parsedTxPayload.message}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
-
-              {/* EVM Transaction Details for send_evm_transaction */}
-              {invokeRequest.method === 'send_evm_transaction' && parsedEvmTxPayload && (
-                <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg space-y-2">
-                  <h4 className="font-medium text-sm text-blue-800">ETH Transaction Details</h4>
-                  <div className="space-y-1">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs text-blue-700">Network</span>
-                      <span className="font-medium text-xs text-blue-900">
-                        {parsedEvmTxPayload.network === 'eth-mainnet' ? 'Ethereum Mainnet'
-                          : parsedEvmTxPayload.network === 'eth-sepolia' ? 'Sepolia Testnet'
-                          : parsedEvmTxPayload.network === 'polygon-mainnet' ? 'Polygon Mainnet'
-                          : parsedEvmTxPayload.network === 'base-mainnet' ? 'Base Mainnet'
-                          : parsedEvmTxPayload.network || 'Ethereum Mainnet'}
-                      </span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs text-blue-700">To</span>
-                      <span className="font-mono text-xs text-blue-900 truncate max-w-[180px]">{parsedEvmTxPayload.to}</span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs text-blue-700">Amount</span>
-                      <span className="font-bold text-sm text-blue-900">
-                        {parsedEvmTxPayload.amount 
-                          ? `${parsedEvmTxPayload.amount} ETH`
-                          : parsedEvmTxPayload.value 
-                            ? `${(Number(parsedEvmTxPayload.value) / 1e18).toFixed(8)} ETH`
-                            : '0 ETH'
-                        }
-                      </span>
-                    </div>
-                    {parsedEvmTxPayload.data && (
-                      <div className="pt-1 border-t border-blue-200">
-                        <span className="text-xs text-blue-700">Data (Contract Call)</span>
-                        <div className="mt-1 p-1 bg-blue-100 rounded text-xs font-mono text-blue-800 max-h-[60px] overflow-y-auto break-all">
-                          {parsedEvmTxPayload.data.length > 100 
-                            ? parsedEvmTxPayload.data.slice(0, 100) + '...' 
-                            : parsedEvmTxPayload.data}
-                        </div>
-                      </div>
-                    )}
-                    {/* Custom Gas Settings */}
-                    <div className="pt-2 border-t border-blue-200 space-y-2">
-                      <span className="text-xs font-medium text-blue-800">Gas Settings <span className="font-normal text-blue-600">(optional override)</span></span>
-                      <div className="flex gap-2">
-                        <div className="flex-1">
-                          <label className="text-[10px] text-blue-700 block mb-0.5">Gas Limit</label>
-                          <input
-                            type="number"
-                            placeholder="150000"
-                            value={customGasLimit}
-                            onChange={e => setCustomGasLimit(e.target.value)}
-                            className="w-full text-xs px-2 py-1 border border-blue-200 bg-white rounded focus:outline-none focus:border-blue-400 font-mono"
-                          />
-                        </div>
-                        <div className="flex-1">
-                          <label className="text-[10px] text-blue-700 block mb-0.5">Max Fee (Gwei)</label>
-                          <input
-                            type="number"
-                            step="0.1"
-                            placeholder="3"
-                            value={customMaxFeeGwei}
-                            onChange={e => setCustomMaxFeeGwei(e.target.value)}
-                            className="w-full text-xs px-2 py-1 border border-blue-200 bg-white rounded focus:outline-none focus:border-blue-400 font-mono"
-                          />
-                        </div>
-                      </div>
-                      {customGasLimit && customMaxFeeGwei && (
-                        <p className="text-[10px] text-blue-600">
-                          Est. max cost: {(parseInt(customGasLimit) * parseFloat(customMaxFeeGwei) / 1e9).toFixed(6)} ETH
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* ERC20 Transaction Details for send_erc20_transaction */}
-              {invokeRequest.method === 'send_erc20_transaction' && parsedErc20TxPayload && (
-                <div className="p-3 bg-green-50 border border-green-200 rounded-lg space-y-2">
-                  <h4 className="font-medium text-sm text-green-800">{parsedErc20TxPayload.symbol} Transfer Details</h4>
-                  <div className="space-y-1">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs text-green-700">Network</span>
-                      <span className="font-medium text-xs text-green-900">Sepolia Testnet</span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs text-green-700">Token</span>
-                      <span className="font-mono text-xs text-green-900">{parsedErc20TxPayload.symbol}</span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs text-green-700">To</span>
-                      <span className="font-mono text-xs text-green-900 truncate max-w-[180px]">{parsedErc20TxPayload.to}</span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs text-green-700">Amount</span>
-                      <span className="font-bold text-sm text-green-900">
-                        {(Number(parsedErc20TxPayload.amount) / (10 ** parsedErc20TxPayload.decimals)).toFixed(2)} {parsedErc20TxPayload.symbol}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              <Alert className={invokeRequest.method === 'send_transaction' || invokeRequest.method === 'send_evm_transaction' || invokeRequest.method === 'send_erc20_transaction' ? "border-amber-200 bg-amber-50 py-2" : "py-2"}>
-                {invokeRequest.method === 'send_transaction' ? (
-                  <>
-                    <AlertTriangle className="h-3 w-3 text-amber-600" />
-                    <AlertDescription className="text-xs text-amber-800">
-                      This will send OCT from your wallet. Make sure you trust this dApp.
-                    </AlertDescription>
-                  </>
-                ) : invokeRequest.method === 'send_evm_transaction' ? (
-                  <>
-                    <AlertTriangle className="h-3 w-3 text-amber-600" />
-                    <AlertDescription className="text-xs text-amber-800">
-                      This will send an ETH transaction from your wallet. Make sure you trust this dApp.
-                    </AlertDescription>
-                  </>
-                ) : invokeRequest.method === 'send_erc20_transaction' ? (
-                  <>
-                    <AlertTriangle className="h-3 w-3 text-amber-600" />
-                    <AlertDescription className="text-xs text-amber-800">
-                      This will transfer {parsedErc20TxPayload?.symbol || 'tokens'} from your wallet. Make sure you trust this dApp.
-                    </AlertDescription>
-                  </>
-                ) : (
-                  <>
-                    <Zap className="h-3 w-3" />
-                    <AlertDescription className="text-xs">
-                      This will execute the method using your granted capability.
-                    </AlertDescription>
-                  </>
-                )}
-              </Alert>
-            </>
-          )}
-
-          {/* Sign Message Request */}
-          {requestType === 'signMessage' && signMessageRequest && (
-            <>
-              <div className="p-3 bg-purple-50 border border-purple-200 rounded-lg space-y-2">
-                <h4 className="font-medium text-sm text-purple-800 flex items-center gap-2">
-                  <Edit className="h-4 w-4" />
-                  Message to Sign
-                </h4>
-                <div className="p-2 bg-white rounded border border-purple-200 max-h-[200px] overflow-y-auto">
-                  <pre className="text-xs font-mono text-purple-900 whitespace-pre-wrap break-all">
-                    {signMessageRequest.message}
-                  </pre>
-                </div>
-              </div>
-
-              <Alert className="border-purple-200 bg-purple-50 py-2">
-                <AlertTriangle className="h-3 w-3 text-purple-600" />
-                <AlertDescription className="text-xs text-purple-800">
-                  Only sign messages you understand and trust. This proves you own this wallet.
-                </AlertDescription>
-              </Alert>
-            </>
-          )}
-
-          {/* Spacer to push buttons to bottom */}
-          <div className="flex-1 min-h-2" />
-
-          {/* Action Buttons */}
-          <div className="flex gap-2 pt-1">
-            <Button
-              variant="outline"
-              onClick={handleReject}
-              disabled={isProcessing}
-              className="flex-1 h-9"
-            >
-              <X className="h-4 w-4 mr-1" />
-              Reject
-            </Button>
-            <Button
-              onClick={() => {
-                logger.debug('DAppRequestHandler: Approve clicked', { requestType, wallet: selectedWallet?.address });
-                if (requestType === 'connection') handleConnectionApprove();
-                else if (requestType === 'capability') handleCapabilityApprove();
-                else if (requestType === 'signMessage') handleSignMessageApprove();
-                else if (requestType === 'invoke') handleInvokeApprove();
-              }}
-              disabled={isProcessing || !selectedWallet}
-              className="flex-1 h-9"
-            >
-              <Check className="h-4 w-4 mr-1" />
-              {isProcessing ? 'Processing...' : !selectedWallet ? 'Loading...' : 'Approve'}
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
+      {/* ── FOOTER ── */}
+      <div className="flex-shrink-0 px-4 py-3 border-t border-border bg-background">
+        {selectedWallet && (
+          <p className="text-[10px] text-muted-foreground text-center mb-2 font-mono truncate">{selectedWallet.address}</p>
+        )}
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={handleReject} disabled={isProcessing}
+            className="flex-1 h-10 text-red-500 border-red-500/30 hover:bg-red-500/10 hover:text-red-500">
+            <X className="h-4 w-4 mr-1.5" />Reject
+          </Button>
+          <Button
+            onClick={() => {
+              logger.debug('DAppRequestHandler: Approve clicked', { requestType, wallet: selectedWallet?.address });
+              if (requestType === 'connection') handleConnectionApprove();
+              else if (requestType === 'capability') handleCapabilityApprove();
+              else if (requestType === 'signMessage') handleSignMessageApprove();
+              else if (requestType === 'invoke') handleInvokeApprove();
+            }}
+            disabled={isProcessing || !selectedWallet}
+            className="flex-1 h-10">
+            <Check className="h-4 w-4 mr-1.5" />
+            {isProcessing ? 'Processing...' : !selectedWallet ? 'Loading...' : 'Approve'}
+          </Button>
+        </div>
+      </div>
     </div>
   );
 }
+

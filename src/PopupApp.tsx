@@ -1,4 +1,4 @@
-﻿import { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { WelcomeScreen } from './components/WelcomeScreen';
 import { WalletDashboard } from './components/WalletDashboard';
 import { UnlockWallet } from './components/UnlockWallet';
@@ -691,10 +691,8 @@ function PopupApp() {
     return (
       <ThemeProvider defaultTheme="dark" storageKey="octra-wallet-theme">
         <div className="w-[400px] h-[600px] bg-background popup-view overflow-hidden">
-          <div className="popup-container h-full overflow-y-auto">
-            <PageTransition variant="scale">
-              <DAppRequestHandler wallets={wallets} />
-            </PageTransition>
+          <div className="popup-container h-full overflow-hidden">
+            <PageTransition variant="scale" className="h-full"><DAppRequestHandler wallets={wallets} /></PageTransition>
           </div>
           <Toaster />
         </div>
@@ -707,10 +705,8 @@ function PopupApp() {
     return (
       <ThemeProvider defaultTheme="dark" storageKey="octra-wallet-theme">
         <div className="w-[400px] h-[600px] bg-background popup-view overflow-hidden">
-          <div className="popup-container h-full overflow-y-auto">
-            <PageTransition variant="scale">
-              <DAppRequestHandler wallets={wallets} />
-            </PageTransition>
+          <div className="popup-container h-full overflow-hidden">
+            <PageTransition variant="scale" className="h-full"><DAppRequestHandler wallets={wallets} /></PageTransition>
           </div>
           <Toaster />
         </div>
@@ -723,10 +719,8 @@ function PopupApp() {
     return (
       <ThemeProvider defaultTheme="dark" storageKey="octra-wallet-theme">
         <div className="w-[400px] h-[600px] bg-background popup-view overflow-hidden">
-          <div className="popup-container h-full overflow-y-auto">
-            <PageTransition variant="scale">
-              <DAppRequestHandler wallets={wallets} />
-            </PageTransition>
+          <div className="popup-container h-full overflow-hidden">
+            <PageTransition variant="scale" className="h-full"><DAppRequestHandler wallets={wallets} /></PageTransition>
           </div>
           <Toaster />
         </div>
@@ -739,10 +733,8 @@ function PopupApp() {
     return (
       <ThemeProvider defaultTheme="dark" storageKey="octra-wallet-theme">
         <div className="w-[400px] h-[600px] bg-background popup-view overflow-hidden">
-          <div className="popup-container h-full overflow-y-auto">
-            <PageTransition variant="scale">
-              <DAppRequestHandler wallets={wallets} />
-            </PageTransition>
+          <div className="popup-container h-full overflow-hidden">
+            <PageTransition variant="scale" className="h-full"><DAppRequestHandler wallets={wallets} /></PageTransition>
           </div>
           <Toaster />
         </div>
@@ -755,10 +747,8 @@ function PopupApp() {
     return (
       <ThemeProvider defaultTheme="dark" storageKey="octra-wallet-theme">
         <div className="w-[400px] h-[600px] bg-background popup-view overflow-hidden">
-          <div className="popup-container h-full overflow-y-auto">
-            <PageTransition variant="scale">
-              <DAppRequestHandler wallets={wallets} />
-            </PageTransition>
+          <div className="popup-container h-full overflow-hidden">
+            <PageTransition variant="scale" className="h-full"><DAppRequestHandler wallets={wallets} /></PageTransition>
           </div>
           <Toaster />
         </div>
