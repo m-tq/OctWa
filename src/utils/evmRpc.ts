@@ -809,11 +809,9 @@ export async function getEVMTransactions(
  */
 export async function getERC20Transactions(
   address: string,
-  tokenAddresses: string[],
+  tokenAddresses: string[] = [],
   networkId?: string
 ): Promise<EVMTransaction[]> {
-  if (tokenAddresses.length === 0) return [];
-  
   const network = networkId 
     ? getAllNetworks().find(n => n.id === networkId) || getActiveEVMNetwork()
     : getActiveEVMNetwork();
@@ -821,37 +819,26 @@ export async function getERC20Transactions(
   const apiKey = import.meta.env.VITE_ETHERSCAN_API_KEY || '';
   
   try {
-    // Etherscan API V2 with tokentx action for ERC20 transfers
+    // Fetch ALL ERC-20 transfers for this address (no token filter)
     const url = `https://api.etherscan.io/v2/api?chainid=${network.chainId}&module=account&action=tokentx&address=${address}&startblock=0&endblock=99999999&page=1&offset=100&sort=desc${apiKey ? `&apikey=${apiKey}` : ''}`;
     
     const response = await fetch(url);
-    
-    if (!response.ok) {
-      console.error('ERC20 Transactions API response not ok:', response.status);
-      return [];
-    }
+    if (!response.ok) return [];
     
     const data = await response.json();
     
-    if (data.status === '0' && data.message === 'No transactions found') {
-      return [];
-    }
+    if (data.status === '0') return []; // No transactions found
+    if (!Array.isArray(data.result)) return [];
     
-    if (data.status !== '1' || !Array.isArray(data.result)) {
-      console.error('ERC20 Transactions API error:', data.message || data.result || 'Unknown error');
-      return [];
-    }
-    
-    // Filter by token addresses (case-insensitive)
+    // If specific token addresses provided, filter to those; otherwise return all
     const lowerTokenAddresses = tokenAddresses.map(a => a.toLowerCase());
-    const filteredTxs = data.result.filter((tx: any) => 
-      lowerTokenAddresses.includes(tx.contractAddress?.toLowerCase())
-    );
+    const txList = tokenAddresses.length > 0
+      ? data.result.filter((tx: any) => lowerTokenAddresses.includes(tx.contractAddress?.toLowerCase()))
+      : data.result;
     
-    return filteredTxs.map((tx: any) => {
+    return txList.map((tx: any) => {
       const decimals = parseInt(tx.tokenDecimal) || 18;
       const value = (Number(tx.value) / Math.pow(10, decimals)).toFixed(6);
-      
       return {
         hash: tx.hash,
         from: tx.from,
@@ -878,23 +865,51 @@ export async function getERC20Transactions(
  */
 export async function getAllEVMTransactions(
   address: string,
-  customTokenAddresses: string[] = [],
+  _customTokenAddresses: string[] = [],
   networkId?: string
 ): Promise<EVMTransaction[]> {
   try {
-    // Fetch native transactions and ERC20 transactions in parallel
     const [nativeTxs, erc20Txs] = await Promise.all([
       getEVMTransactions(address, networkId),
-      customTokenAddresses.length > 0 
-        ? getERC20Transactions(address, customTokenAddresses, networkId)
-        : Promise.resolve([])
+      getERC20Transactions(address, [], networkId),
     ]);
-    
-    // Merge and sort by timestamp (newest first)
-    const allTxs = [...nativeTxs, ...erc20Txs];
-    allTxs.sort((a, b) => b.timestamp - a.timestamp);
-    
-    return allTxs;
+
+    // Build a map of ERC-20 txs by hash (one entry per hash — last token transfer wins)
+    const erc20ByHash = new Map<string, EVMTransaction>();
+    for (const tx of erc20Txs) {
+      erc20ByHash.set(tx.hash.toLowerCase(), tx);
+    }
+
+    const result: EVMTransaction[] = [];
+    const seenHashes = new Set<string>();
+
+    for (const nativeTx of nativeTxs) {
+      const key = nativeTx.hash.toLowerCase();
+      seenHashes.add(key);
+      const erc20Match = erc20ByHash.get(key);
+
+      if (erc20Match && parseFloat(nativeTx.value) === 0) {
+        // Zero-value native tx = pure token transfer — show the ERC-20 entry
+        result.push(erc20Match);
+      } else if (erc20Match && parseFloat(nativeTx.value) > 0) {
+        // Real ETH transfer that also moved tokens — show both
+        result.push(nativeTx);
+        result.push({ ...erc20Match, hash: erc20Match.hash + '_erc20' });
+      } else {
+        // Native-only tx (no token transfer)
+        result.push(nativeTx);
+      }
+    }
+
+    // Add ERC-20 txs whose hash didn't appear in native list at all
+    for (const erc20Tx of erc20Txs) {
+      if (!seenHashes.has(erc20Tx.hash.toLowerCase())) {
+        result.push(erc20Tx);
+      }
+    }
+
+    result.sort((a, b) => b.timestamp - a.timestamp);
+    return result;
   } catch (error) {
     console.error('Failed to fetch all EVM transactions:', error);
     return [];

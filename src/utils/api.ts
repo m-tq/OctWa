@@ -277,32 +277,30 @@ class APICache {
     await this.saveToStorage();
   }
 
-  // Transaction details cache (by hash)
+  // Transaction details cache (by hash) — in-memory only, no storage write to avoid quota
   async getTransactionDetails(hash: string): Promise<TransactionDetails | null> {
     const entry = this.memoryCache.transactionDetails[hash];
-    if (this.isValid(entry)) {
-      
-      return entry!.data;
-    }
+    if (this.isValid(entry)) return entry!.data;
     return null;
   }
 
-  async setTransactionDetails(_hash: string, _data: TransactionDetails): Promise<void> {
-    // DISABLED: Transaction details caching causes quota exceeded errors
-    // Don't cache transaction details to save storage space
-    
-    return;
-    
-    /* Original code - disabled
-    const currentEpoch = await this.getCurrentEpoch();
+  async setTransactionDetails(hash: string, data: TransactionDetails): Promise<void> {
+    // In-memory only — no saveToStorage() to avoid quota exceeded errors
+    const currentEpoch = this.currentEpoch || 0;
     this.memoryCache.transactionDetails[hash] = {
       data,
       epoch: currentEpoch,
       timestamp: Date.now(),
     };
-    
-    await this.saveToStorage();
-    */
+    // Limit cache size to prevent unbounded memory growth
+    const keys = Object.keys(this.memoryCache.transactionDetails);
+    if (keys.length > 200) {
+      // Remove oldest 50 entries
+      const sorted = keys.sort((a, b) =>
+        this.memoryCache.transactionDetails[a].timestamp - this.memoryCache.transactionDetails[b].timestamp
+      );
+      sorted.slice(0, 50).forEach(k => delete this.memoryCache.transactionDetails[k]);
+    }
   }
 
   async invalidateTransactionDetails(hash: string): Promise<void> {
@@ -522,7 +520,7 @@ async function makeAPIRequest(endpoint: string, options: RequestInit = {}, retry
       headers,
       // Add timeout to prevent hanging requests
       // Increased to 60 seconds to handle large transaction histories
-      signal: AbortSignal.timeout(60000) // 60 second timeout
+      signal: AbortSignal.timeout(300_000) // 5 minute timeout for large histories
     });
     
     // Check if we should retry on server errors
@@ -1112,8 +1110,9 @@ function parseAmount(raw: string | number | undefined, formatted: string | numbe
 }
 
 export async function fetchTransactionHistory(
-  address: string, 
-  options: HistoryPaginationOptions = {}
+  address: string,
+  options: HistoryPaginationOptions = {},
+  onProgress?: (txs: TransactionHistoryItem[]) => void
 ): Promise<AddressHistoryResponse & { totalCount: number }> {
   const { limit = 11, offset = 0 } = options;
   
@@ -1155,56 +1154,73 @@ export async function fetchTransactionHistory(
     // Each tx in transactions[] is a full tx object with flat fields
     const recentTxList: Array<any> = apiData.transactions || [];
 
-    // Fetch details for each confirmed tx
-    const BATCH_SIZE = 5;
+    // Fetch details for each confirmed tx — fire onProgress as each one resolves
     const confirmedTransactions: TransactionHistoryItem[] = [];
+    const progressBuffer: TransactionHistoryItem[] = [];
 
-    for (let i = 0; i < recentTxList.length; i += BATCH_SIZE) {
-      const batch = recentTxList.slice(i, i + BATCH_SIZE);
-      const batchResults = await Promise.allSettled(batch.map(async (recentTx): Promise<TransactionHistoryItem> => {
-        // If the tx object already has full fields (from, amount_raw, timestamp), use them directly
-        // Otherwise fetch details by hash
-        if (recentTx.from && recentTx.timestamp) {
-          const to = recentTx.to || recentTx.to_ || '';
-          const amount = parseAmount(recentTx.amount_raw, recentTx.amount);
-          return {
-            hash: recentTx.tx_hash || recentTx.hash,
-            from: recentTx.from,
-            to,
-            amount,
-            timestamp: recentTx.timestamp,
-            status: 'confirmed' as const,
-            type: recentTx.from?.toLowerCase() === address.toLowerCase() ? 'sent' as const : 'received' as const,
-            op_type: recentTx.op_type || 'standard',
-            message: recentTx.message || undefined,
-          };
-        }
-        // Fallback: fetch by hash
+    const parseTx = async (recentTx: any): Promise<TransactionHistoryItem> => {
+      if (recentTx.from && recentTx.timestamp) {
+        const to = recentTx.to || recentTx.to_ || '';
+        const amount = parseAmount(recentTx.amount_raw, recentTx.amount);
+        return {
+          hash: recentTx.tx_hash || recentTx.hash,
+          from: recentTx.from,
+          to,
+          amount,
+          timestamp: recentTx.timestamp,
+          status: 'confirmed' as const,
+          type: recentTx.from?.toLowerCase() === address.toLowerCase() ? 'sent' as const : 'received' as const,
+          op_type: recentTx.op_type || 'standard',
+          message: recentTx.message || undefined,
+        };
+      }
+      // Fallback: fetch by hash
+      const txDetails = await fetchTransactionDetails(recentTx.hash || recentTx.tx_hash);
+      const amount = parseAmount(txDetails.amount_raw, txDetails.amount);
+      return {
+        hash: txDetails.tx_hash,
+        from: txDetails.from,
+        to: txDetails.to,
+        amount,
+        timestamp: txDetails.timestamp,
+        status: 'confirmed' as const,
+        type: txDetails.from?.toLowerCase() === address.toLowerCase() ? 'sent' as const : 'received' as const,
+        op_type: txDetails.op_type || 'standard',
+        message: txDetails.message || undefined,
+      };
+    };
+
+    // Launch all tx fetches concurrently (max 5 at a time) and call onProgress as each resolves
+    const CONCURRENCY = 5;
+    const slots = new Array(Math.min(CONCURRENCY, recentTxList.length)).fill(null);
+    let nextIdx = 0;
+
+    const runSlot = async () => {
+      while (nextIdx < recentTxList.length) {
+        const idx = nextIdx++;
+        const recentTx = recentTxList[idx];
         try {
-          const txDetails = await fetchTransactionDetails(recentTx.hash || recentTx.tx_hash);
-          const amount = parseAmount(txDetails.amount_raw, txDetails.amount);
-          return {
-            hash: txDetails.tx_hash,
-            from: txDetails.from,
-            to: txDetails.to,
-            amount,
-            timestamp: txDetails.timestamp,
-            status: 'confirmed' as const,
-            type: txDetails.from?.toLowerCase() === address.toLowerCase() ? 'sent' as const : 'received' as const,
-            op_type: txDetails.op_type || 'standard',
-            message: txDetails.message || undefined,
-          };
+          const tx = await parseTx(recentTx);
+          confirmedTransactions.push(tx);
+          progressBuffer.push(tx);
+          // Fire progress callback with all resolved txs so far (sorted newest first)
+          if (onProgress) {
+            const sorted = [...progressBuffer].sort((a, b) => b.timestamp - a.timestamp);
+            onProgress(sorted);
+          }
         } catch {
-          return {
+          const fallback: TransactionHistoryItem = {
             hash: recentTx.hash || recentTx.tx_hash || '',
             from: 'unknown', to: 'unknown', amount: 0,
             timestamp: Date.now() / 1000,
             status: 'confirmed' as const, type: 'received' as const,
           };
+          confirmedTransactions.push(fallback);
         }
-      }));
-      batchResults.forEach(r => { if (r.status === 'fulfilled') confirmedTransactions.push(r.value); });
-    }
+      }
+    };
+
+    await Promise.all(slots.map(() => runSlot()));
 
     const confirmedHashes = new Set(confirmedTransactions.map(tx => tx.hash));
 
@@ -1260,6 +1276,10 @@ export async function fetchTransactionHistory(
 }
 
 export async function fetchTransactionDetails(hash: string, _forceRefresh = false): Promise<TransactionDetails> {
+  // Check in-memory cache first for instant display
+  const cached = await apiCache.getTransactionDetails(hash);
+  if (cached) return cached;
+
   try {
     const response = await makeAPIRequest('/rpc', {
       method: 'POST',
@@ -1278,9 +1298,6 @@ export async function fetchTransactionDetails(hash: string, _forceRefresh = fals
     const data = json.result;
     if (!data) throw new Error('Empty result from octra_transaction');
 
-    // octra_transaction returns flat fields per docs:
-    // { status, tx_hash, epoch, from, to, amount, amount_raw, nonce, ou, timestamp, op_type, message }
-    // Normalize: ensure tx_hash exists, handle to_ alias
     const to = data.to || data.to_ || '';
     const normalized: TransactionDetails = {
       tx_hash: data.tx_hash || hash,
@@ -1295,7 +1312,6 @@ export async function fetchTransactionDetails(hash: string, _forceRefresh = fals
       timestamp: data.timestamp || 0,
       op_type: data.op_type || 'standard',
       message: data.message || null,
-      // Legacy compat shim for any callers still using parsed_tx
       parsed_tx: {
         from: data.from || '',
         to,
@@ -1308,6 +1324,9 @@ export async function fetchTransactionDetails(hash: string, _forceRefresh = fals
         op_type: data.op_type || 'standard',
       },
     };
+
+    // Cache for instant display on next access
+    await apiCache.setTransactionDetails(hash, normalized);
 
     return normalized;
   } catch (error) {
@@ -1779,9 +1798,10 @@ export async function sendMultipleTransactions(transactions: any[]): Promise<str
 }
 
 export async function getTransactionHistory(
-  address: string, 
+  address: string,
   options: HistoryPaginationOptions = {},
-  forceRefresh = false
+  forceRefresh = false,
+  onProgress?: (txs: any[]) => void
 ): Promise<{ transactions: any[]; totalCount: number }> {
   // Check cache first (unless force refresh or pagination)
   if (!forceRefresh && (options.offset === 0 || options.offset === undefined)) {
@@ -1790,27 +1810,17 @@ export async function getTransactionHistory(
   }
 
   try {
-    const result = await fetchTransactionHistory(address, options);
-    const historyResult = { 
-      transactions: result.transactions || [], 
-      totalCount: result.totalCount || 0 
+    const result = await fetchTransactionHistory(address, options, onProgress);
+    const historyResult = {
+      transactions: result.transactions || [],
+      totalCount: result.totalCount || 0,
     };
-    
+
     // Cache only first page results
     if (options.offset === 0 || options.offset === undefined) {
       await apiCache.setHistory(address, historyResult);
-      
-      // Background cache transaction details for confirmed transactions only
-      const confirmedHashes = historyResult.transactions
-        .filter(tx => tx.status === 'confirmed')
-        .map(tx => tx.hash);
-      
-      if (confirmedHashes.length > 0) {
-        // Start background caching (non-blocking)
-        apiCache.cacheTransactionDetailsInBackground(confirmedHashes);
-      }
     }
-    
+
     return historyResult;
   } catch (error) {
     console.error('Error fetching transaction history:', error);

@@ -75,7 +75,7 @@ import { BalancePieChart } from './BalancePieChart';
 import { DevTools } from './DevTools';
 import { Wallet } from '../types/wallet';
 import { WalletManager } from '../utils/walletManager';
-import { fetchBalance, getTransactionHistory, fetchEncryptedBalance, fetchTransactionDetails, fetchPendingTransactionByHash, getPendingPrivateTransfers } from '../utils/api';
+import { fetchBalance, getTransactionHistory, fetchEncryptedBalance, fetchTransactionDetails, fetchPendingTransactionByHash, getPendingPrivateTransfers, apiCache } from '../utils/api';
 import { cacheService } from '../services/cacheService';
 import { getEVMWalletData, EVMWalletData } from '../utils/evmDerive';
 import {
@@ -621,6 +621,10 @@ export function WalletDashboard({
       if (encryptedBalance?.encrypted && encryptedBalance.encrypted > 0) return;
       if (autoDecryptedCipherRef.current === cipher) return;
 
+      // Capture wallet address before async work — used to discard stale results
+      const decryptingForAddress = wallet.address;
+      const decryptingPrivateKey = wallet.privateKey;
+
       // Mark in-flight before any await to prevent race
       pvacDecryptInFlightRef.current = true;
       autoDecryptedCipherRef.current = cipher;
@@ -628,7 +632,14 @@ export function WalletDashboard({
       setIsDecryptingBalance(true);
       try {
         logger.info('Auto-decrypting encrypted balance via PVAC');
-        const result = await pvacServerService.decryptBalance(cipher, wallet.privateKey);
+        const result = await pvacServerService.decryptBalance(cipher, decryptingPrivateKey);
+
+        // Discard result if wallet switched while decrypt was in-flight
+        if (activeWalletRef.current?.address !== decryptingForAddress) {
+          logger.info('Auto-decrypt discarded — wallet switched during decrypt');
+          return;
+        }
+
         if (result.success && result.balance !== undefined) {
           const amount = result.balance / 1_000_000;
           setEncryptedBalance((prev: any) => ({ ...prev, encrypted: amount }));
@@ -639,7 +650,10 @@ export function WalletDashboard({
         logger.error('Auto-decrypt failed', err);
       } finally {
         pvacDecryptInFlightRef.current = false;
-        setIsDecryptingBalance(false);
+        // Only clear spinner if still on the same wallet
+        if (activeWalletRef.current?.address === decryptingForAddress) {
+          setIsDecryptingBalance(false);
+        }
       }
     } catch {
       setPvacStatus('disconnected');
@@ -678,9 +692,10 @@ export function WalletDashboard({
   // Reset display data immediately when wallet changes — clears pie chart and
   // balance display so stale data from previous wallet doesn't show during transition.
   useEffect(() => {
+    // Don't clear transactions here — fetchInitialData will load from cache instantly
+    // Clearing here causes a flash of empty list before cache loads
     setBalance(null);
     setEncryptedBalance(null);
-    setTransactions([]);
     setNonce(0);
     setIsDecryptingBalance(false);
     setIsLoadingBalance(true);
@@ -834,8 +849,22 @@ export function WalletDashboard({
           }
         });
 
-      // Fetch 3: Transaction history (slowest)
-      const historyFetch = getTransactionHistory(currentAddress)
+      // Fetch 3: Transaction history (slowest) — progressive display via onProgress
+      const historyFetch = getTransactionHistory(
+        currentAddress,
+        {},
+        false,
+        (progressTxs) => {
+          // Called as each tx resolves — update display immediately
+          if (isStale()) return;
+          const withType = progressTxs.map(tx => ({
+            ...tx,
+            type: tx.from?.toLowerCase() === currentAddress.toLowerCase() ? 'sent' : 'received'
+          } as Transaction));
+          setTransactions(withType);
+          setIsLoadingTransactions(false);
+        }
+      )
         .then(historyResult => {
           if (isStale()) return;
           if (Array.isArray(historyResult.transactions)) {
@@ -845,9 +874,25 @@ export function WalletDashboard({
             } as Transaction));
             setTransactions(transformedTxs);
             latestTxs = transformedTxs;
+            // Pre-warm tx details cache in background (fire-and-forget, no await)
+            // This makes opening tx details instant on next access
+            transformedTxs
+              .filter(tx => tx.status === 'confirmed')
+              .slice(0, 10)
+              .forEach(tx => {
+                apiCache.getTransactionDetails(tx.hash).then(cached => {
+                  if (!cached) {
+                    // Not cached yet — fetch and cache silently
+                    fetchTransactionDetails(tx.hash).catch(() => {/* ignore */});
+                  }
+                });
+              });
           } else {
-            setTransactions([]);
-            latestTxs = [];
+            // Empty result — only clear if no cached data to fall back on
+            if (!cachedData) {
+              setTransactions([]);
+              latestTxs = [];
+            }
           }
           setIsLoadingTransactions(false);
           saveCache();
@@ -941,12 +986,11 @@ export function WalletDashboard({
             type: tx.from?.toLowerCase() === wallet.address.toLowerCase() ? 'sent' : 'received'
           } as Transaction));
           setTransactions(transformedTxs);
-        } else {
-          setTransactions([]);
         }
+        // Don't clear on empty result — keep existing cached data
       } catch (historyError) {
         console.error('Failed to fetch transaction history:', historyError);
-        setTransactions([]);
+        // Don't clear transactions on error — keep showing cached data
       }
       
     } catch (error) {
@@ -3735,7 +3779,7 @@ export function WalletDashboard({
                     <div className="border-t border-dashed border-border mt-2" />
                     <Button
                       variant="outline"
-                      className="group w-full flex items-center justify-center gap-2 h-11 mt-1 rounded-none bg-transparent border-0 shadow-none text-orange-600 dark:text-orange-400 hover:bg-transparent transition-colors"
+                      className="group w-full flex items-center justify-center gap-2 h-11 mt-2 mb-2 rounded-none bg-transparent border-0 shadow-none text-orange-600 dark:text-orange-400 hover:bg-transparent transition-colors"
                       onClick={enterEvmMode}
                     >
                       <Coins className="h-5 w-5 transition-colors group-hover:text-orange-600 dark:group-hover:text-orange-300 group-hover:drop-shadow-[0_0_6px_rgba(249,115,22,0.6)]" />

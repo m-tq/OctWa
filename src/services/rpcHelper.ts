@@ -68,8 +68,7 @@ export async function makeRpcCall(
         ...extraHeaders,
       },
       body,
-      // Increased timeout for large stealth output lists
-      signal: AbortSignal.timeout(60_000), // 60 seconds
+      signal: AbortSignal.timeout(300_000), // 5 minutes — stealth outputs can be large
     });
 
     if (!response.ok) {

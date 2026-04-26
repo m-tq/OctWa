@@ -140,8 +140,8 @@ export function DAppRequestHandler({ wallets }: DAppRequestHandlerProps) {
   const [selectedWallet, setSelectedWallet] = useState<Wallet | null>(wallets[0] || null);
   const [isProcessing, setIsProcessing] = useState(false);
   // Custom gas settings for EVM transactions — defaults from successful bridge tx
-  const [customGasLimit, setCustomGasLimit] = useState('150000');
-  const [customMaxFeeGwei, setCustomMaxFeeGwei] = useState('3');
+  const [customGasLimit, setCustomGasLimit] = useState('130000');
+  const [customMaxFeeGwei, setCustomMaxFeeGwei] = useState('2');
   const { toast } = useToast();
 
   // Sync selectedWallet when wallets prop changes
