@@ -75,7 +75,7 @@ import { BalancePieChart } from './BalancePieChart';
 import { DevTools } from './DevTools';
 import { Wallet } from '../types/wallet';
 import { WalletManager } from '../utils/walletManager';
-import { fetchBalance, getTransactionHistory, fetchEncryptedBalance, fetchTransactionDetails, fetchPendingTransactionByHash, getPendingPrivateTransfers, apiCache } from '../utils/api';
+import { fetchBalance, getTransactionHistory, fetchEncryptedBalance, fetchTransactionDetails, fetchPendingTransactionByHash, getPendingPrivateTransfers, apiCache, TxCountPoller } from '../utils/api';
 import { cacheService } from '../services/cacheService';
 import { getEVMWalletData, EVMWalletData } from '../utils/evmDerive';
 import {
@@ -119,8 +119,10 @@ interface WalletDashboardProps {
   onAddWallet: (wallet: Wallet) => void;
   onRemoveWallet: (wallet: Wallet) => void;
   onReorderWallets: (wallets: Wallet[]) => void;
-  onExpandedView?: () => void;
+  onExpandedView?: (mode?: 'evm') => void;
   isPopupMode?: boolean;
+  initialEvmMode?: boolean;
+  onEvmReady?: (enterFn: () => void) => void;
 }
 
 export function WalletDashboard({ 
@@ -131,7 +133,10 @@ export function WalletDashboard({
   onAddWallet, 
   onRemoveWallet,
   onReorderWallets,
-  isPopupMode = false
+  onExpandedView,
+  isPopupMode = false,
+  initialEvmMode = false,
+  onEvmReady
 }: WalletDashboardProps) {
   const [activeTab, setActiveTab] = useState<string>('balance');
   const [balance, setBalance] = useState<number | null>(null);
@@ -232,7 +237,7 @@ export function WalletDashboard({
   const [showAddressBook, setShowAddressBook] = useState(false);
   const [addressBookPrefilledAddress, setAddressBookPrefilledAddress] = useState<string>('');
   // EVM Mode state (integrated mode, not popup)
-  const [evmMode, setEvmMode] = useState(false);
+  const [evmMode, setEvmMode] = useState(initialEvmMode);
   // Dev Tools Mode state
   const [devToolsMode, setDevToolsMode] = useState(false);
   const [evmWallets, setEvmWallets] = useState<(EVMWalletData & { balance: string | null; isLoading: boolean })[]>([]);
@@ -262,8 +267,7 @@ export function WalletDashboard({
   useEffect(() => {
     activeWalletRef.current = wallet;
   }, [wallet]);
-  
-                
+
   const [evmNfts, setEvmNfts] = useState<NFTToken[]>([]);
   const [isLoadingEvmTokens, setIsLoadingEvmTokens] = useState(false);
   const [evmActiveTab, setEvmActiveTab] = useState<'tokens' | 'nfts'>('tokens');
@@ -470,7 +474,11 @@ export function WalletDashboard({
   };
 
   // Fetch pending transfers count for private mode availability check
+  const [activeNetwork, setActiveNetwork] = useState<string>('mainnet');
+
   useEffect(() => {
+    // Reset immediately on network change so stale badge clears right away
+    setPendingTransfersCount(0);
     const fetchPendingCount = async () => {
       if (!wallet?.address || !wallet?.privateKey) return;
       try {
@@ -482,7 +490,7 @@ export function WalletDashboard({
       }
     };
     fetchPendingCount();
-  }, [wallet?.address, wallet?.privateKey]);
+  }, [wallet?.address, wallet?.privateKey, activeNetwork]); // re-run on network switch
 
   // Load operation mode on mount and when encrypted balance or pending transfers change
   useEffect(() => {
@@ -506,8 +514,6 @@ export function WalletDashboard({
   }, [wallet?.address, encryptedBalance, balance, expandedPrivateModal]);
 
   // Check RPC status with shared cache (prevents duplicate fetching between popup/expanded)
-  const [activeNetwork, setActiveNetwork] = useState<string>('mainnet');
-  
   useEffect(() => {
     // Import dynamically to avoid circular deps
     const initRPCStatus = async () => {
@@ -935,6 +941,33 @@ export function WalletDashboard({
     fetchInitialData();
   }, [wallet, toast]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // ============================================
+  // TX COUNT POLLER — smart sync trigger
+  // ============================================
+  // Every 3s: lightweight octra_account call to get tx_count.
+  // Only triggers a full refresh when tx_count changes — no blind polling.
+  const txCountPollerRef = useRef<TxCountPoller | null>(null);
+
+  useEffect(() => {
+    if (!wallet?.address) return;
+
+    // Create poller once
+    if (!txCountPollerRef.current) {
+      txCountPollerRef.current = new TxCountPoller();
+    }
+
+    txCountPollerRef.current.start(wallet.address, () => {
+      // tx_count changed — invalidate cache and re-fetch
+      apiCache.invalidateBalance(wallet.address);
+      apiCache.invalidateHistory(wallet.address);
+      refreshWalletData();
+    });
+
+    return () => {
+      txCountPollerRef.current?.stop();
+    };
+  }, [wallet?.address, activeNetwork]); // restart when wallet or network changes
+
   // Function to refresh all wallet data
   const refreshWalletData = async () => {
     if (!wallet) return;
@@ -1074,6 +1107,24 @@ export function WalletDashboard({
     setEvmMode(true);
     await initializeEvmMode();
   };
+
+  // Expose enterEvmMode to parent via callback
+  useEffect(() => {
+    onEvmReady?.(enterEvmMode);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Check chrome.storage.local directly for pendingEvmMode on mount
+  // This is the most reliable approach — no prop chain, no timing issues
+  useEffect(() => {
+    if (typeof chrome !== 'undefined' && chrome.storage && !isPopupMode) {
+      chrome.storage.local.get('pendingEvmMode', (result) => {
+        if (result['pendingEvmMode'] === 'true') {
+          chrome.storage.local.remove('pendingEvmMode');
+          enterEvmMode();
+        }
+      });
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Exit EVM mode
   const exitEvmMode = () => {
@@ -2486,6 +2537,22 @@ export function WalletDashboard({
                           </div>
                         )}
 
+                        {/* EVM Assets */}
+                        {typeof chrome !== 'undefined' && chrome.tabs && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => {
+                              onExpandedView?.('evm');
+                              setShowMobileMenu(false);
+                            }}
+                            className="group w-full justify-start gap-1.5 text-xs h-10 text-orange-600 dark:text-orange-400 hover:text-orange-600 dark:hover:text-orange-300 hover:bg-transparent"
+                          >
+                            <Coins className="h-3.5 w-3.5 transition group-hover:drop-shadow-[0_0_6px_currentColor]" />
+                            <span className="transition group-hover:drop-shadow-[0_0_6px_currentColor]">EVM Assets</span>
+                          </Button>
+                        )}
+
                         {/* RPC Provider */}
                         <Button
                           variant="ghost"
@@ -3771,7 +3838,13 @@ export function WalletDashboard({
                     <Button
                       variant="outline"
                       className="group w-full flex items-center justify-center gap-2 h-11 mt-2 mb-2 rounded-none bg-transparent border-0 shadow-none text-orange-600 dark:text-orange-400 hover:bg-transparent transition-colors"
-                      onClick={enterEvmMode}
+                      onClick={() => {
+                        if (isPopupMode) {
+                          onExpandedView?.('evm');
+                        } else {
+                          enterEvmMode();
+                        }
+                      }}
                     >
                       <Coins className="h-5 w-5 transition-colors group-hover:text-orange-600 dark:group-hover:text-orange-300 group-hover:drop-shadow-[0_0_6px_rgba(249,115,22,0.6)]" />
                       <div className="flex flex-col items-start">

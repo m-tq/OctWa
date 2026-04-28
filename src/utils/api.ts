@@ -1815,3 +1815,98 @@ export async function getTransactionHistory(
     return { transactions: [], totalCount: 0 };
   }
 }
+
+// ============================================
+// TX COUNT POLLER — Smart sync trigger
+// ============================================
+// Every 3s: call octra_account to get tx_count.
+// If tx_count changed → fire onChanged callback so WalletDashboard re-fetches.
+// This avoids blind polling — only syncs when there's actually new data.
+
+const TX_COUNT_POLL_INTERVAL = 5000; // 5 seconds
+const TX_COUNT_STORAGE_KEY = 'octwa_tx_counts'; // persisted per address+network
+
+function getTxCountKey(address: string): string {
+  return `${getNetworkCacheKey()}:${address}`;
+}
+
+async function fetchTxCount(address: string): Promise<number | null> {
+  try {
+    const response = await makeAPIRequest('/rpc', {
+      method: 'POST',
+      body: JSON.stringify({
+        jsonrpc: '2.0', id: 1,
+        method: 'octra_account',
+        params: [address, 1], // limit=1, we only need tx_count
+      }),
+    });
+    if (!response.ok) return null;
+    const data = await response.json();
+    const txCount = data?.result?.tx_count;
+    if (typeof txCount === 'number') return txCount;
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+function loadStoredTxCounts(): Record<string, number> {
+  try {
+    const raw = localStorage.getItem(TX_COUNT_STORAGE_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch {
+    return {};
+  }
+}
+
+function saveStoredTxCount(key: string, count: number): void {
+  try {
+    const counts = loadStoredTxCounts();
+    counts[key] = count;
+    localStorage.setItem(TX_COUNT_STORAGE_KEY, JSON.stringify(counts));
+  } catch { /* ignore */ }
+}
+
+export class TxCountPoller {
+  private intervalId: ReturnType<typeof setInterval> | null = null;
+  private address: string = '';
+  private onChanged: () => void = () => {};
+  private isRunning = false;
+
+  start(address: string, onChanged: () => void): void {
+    this.stop();
+    this.address = address;
+    this.onChanged = onChanged;
+    this.isRunning = true;
+    this.intervalId = setInterval(() => this.poll(), TX_COUNT_POLL_INTERVAL);
+  }
+
+  stop(): void {
+    this.isRunning = false;
+    if (this.intervalId !== null) {
+      clearInterval(this.intervalId);
+      this.intervalId = null;
+    }
+  }
+
+  private async poll(): Promise<void> {
+    if (!this.isRunning || !this.address) return;
+    const count = await fetchTxCount(this.address);
+    if (count === null) return; // RPC error — skip
+
+    const key = getTxCountKey(this.address);
+    const stored = loadStoredTxCounts();
+    const prev = stored[key];
+
+    if (prev === undefined) {
+      // First poll — just store, don't trigger sync
+      saveStoredTxCount(key, count);
+      return;
+    }
+
+    if (count !== prev) {
+      saveStoredTxCount(key, count);
+      this.onChanged();
+    }
+  }
+}

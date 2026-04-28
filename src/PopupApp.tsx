@@ -635,11 +635,14 @@ function PopupApp() {
     }
   };
 
-  const openExpandedView = () => {
+  const openExpandedView = async (mode?: 'evm') => {
     if (typeof chrome !== 'undefined' && chrome.tabs) {
-      chrome.tabs.create({
-        url: chrome.runtime.getURL('index.html')
-      });
+      if (mode === 'evm') {
+        // Store intent in chrome.storage.local so ExpandedApp can read it
+        await ExtensionStorageManager.set('pendingEvmMode', 'true');
+      }
+      const url = chrome.runtime.getURL('index.html');
+      chrome.tabs.create({ url });
     }
   };
 

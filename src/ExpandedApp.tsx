@@ -134,7 +134,7 @@ function ExpandedApp() {
                       activeWallet = foundWallet;
                     }
                   }
-                  
+
                   setWallets(sessionWallets);
                   setWallet(activeWallet);
                   setIsLocked(false);

@@ -1199,6 +1199,13 @@ export function DAppRequestHandler({ wallets }: DAppRequestHandlerProps) {
         </div>
       </div>
 
+      {/* ── ACTIVE ADDRESS (below header) ── */}
+      {selectedWallet && (
+        <div className="flex-shrink-0 px-4 py-1.5 border-b border-border bg-muted/30">
+          <p className="text-[10px] text-muted-foreground font-mono truncate text-center">{selectedWallet.address}</p>
+        </div>
+      )}
+
       {/* ── CONTENT ── */}
       <div className="flex-1 overflow-y-auto px-4 py-3 space-y-2.5 min-h-0">
 
@@ -1389,9 +1396,6 @@ export function DAppRequestHandler({ wallets }: DAppRequestHandlerProps) {
 
       {/* ── FOOTER ── */}
       <div className="flex-shrink-0 px-4 py-3 border-t border-border bg-background">
-        {selectedWallet && (
-          <p className="text-[10px] text-muted-foreground text-center mb-2 font-mono truncate">{selectedWallet.address}</p>
-        )}
         <div className="flex gap-2">
           <Button variant="outline" onClick={handleReject} disabled={isProcessing}
             className="flex-1 h-10 text-red-500 border-red-500/30 hover:bg-red-500/10 hover:text-red-500">
