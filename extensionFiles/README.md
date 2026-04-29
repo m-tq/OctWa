@@ -186,7 +186,7 @@ extensionFiles/
 ├── background.js              # Background service worker (main logic)
 ├── content.js                 # Content script (message bridge)
 ├── provider.js                # Provider script (window.octra API)
-├── canonical-core.js          # Canonical serialization (shared with SDK)
+├── core.js                    # Core crypto utilities (SHA-256, canonical serialization)
 ├── manifest.json              # Extension manifest (V3)
 ├── popup.html                 # Popup UI entry point
 ├── icons/                     # Extension icons
@@ -655,7 +655,7 @@ npm run test:extension -- --grep "capability"
 
 All requirements from `OCTRA_SDK_AND_WALLET_EXTENSION_AUDIT.md` have been implemented:
 
-✅ **Transaction Canonicalization** - `canonical-core.js`  
+✅ **Transaction Canonicalization** - `core.js`  
 ✅ **Signature Domain Separation** - Prefixes applied before hashing  
 ✅ **Nonce Handling** - Wallet is final authority  
 ✅ **Async Race Conditions** - Signing mutex implemented  

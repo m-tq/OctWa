@@ -365,6 +365,35 @@
 
   if (typeof window !== 'undefined') {
     window.octra = new OctraProvider();
+
+    // ── Octra Provider Discovery (analog EIP-6963) ──────────────────────────
+    // Allows DApps to detect OctWa without polling window.octra.
+    // Multiple Octra-compatible wallets can coexist via this event bus.
+    const _providerInfo = Object.freeze({
+      uuid:    typeof crypto !== 'undefined' && crypto.randomUUID
+               ? crypto.randomUUID()
+               : 'octwa-' + Date.now().toString(36),
+      name:    'OctWa',
+      rdns:    'network.octra.octwa',
+      version: PROVIDER_VERSION,
+    });
+
+    const _announceProvider = () => {
+      window.dispatchEvent(new CustomEvent('octra:announceProvider', {
+        detail: Object.freeze({
+          info:     _providerInfo,
+          provider: window.octra,
+        }),
+      }));
+    };
+
+    // Re-announce when a DApp explicitly requests it
+    window.addEventListener('octra:requestProvider', _announceProvider);
+
+    // Announce immediately on inject
+    _announceProvider();
+
+    // ── Legacy compat ────────────────────────────────────────────────────────
     window.dispatchEvent(new Event('octraLoaded'));
 
     Object.defineProperty(window, 'isOctra', {

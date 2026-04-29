@@ -14,11 +14,38 @@
     (document.head || document.documentElement).appendChild(script);
   };
 
+  // Whitelist of valid message types (prevents injection attacks)
+  const VALID_MESSAGE_TYPES = new Set([
+    'CONNECTION_REQUEST',
+    'CAPABILITY_REQUEST',
+    'INVOKE_REQUEST',
+    'SIGN_MESSAGE_REQUEST',
+    'DISCONNECT_REQUEST',
+    'ESTIMATE_PLAIN_TX',
+    'ESTIMATE_ENCRYPTED_TX',
+    'ESTIMATE_COMPUTE_COST',
+    'LIST_CAPABILITIES_REQUEST',
+    'RENEW_CAPABILITY_REQUEST',
+    'REVOKE_CAPABILITY_REQUEST'
+  ]);
+
   // Handle messages from provider
   const handleMessage = (event) => {
     if (event.source !== window) return;
     if (!isSameOrigin(event)) return;
     if (event.data.source !== 'octra-provider') return;
+
+    // Validate message type (security: prevent unknown message types)
+    if (!VALID_MESSAGE_TYPES.has(event.data.type)) {
+      console.warn('[Content] Rejected unknown message type:', event.data.type);
+      return;
+    }
+
+    // Validate requestId (security: prevent oversized IDs)
+    if (typeof event.data.requestId !== 'string' || event.data.requestId.length > 128) {
+      console.warn('[Content] Rejected invalid requestId');
+      return;
+    }
 
     console.log('[Content] Received:', event.data.type);
 

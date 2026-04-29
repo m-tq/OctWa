@@ -52,6 +52,19 @@ async function withSigningLock(fn) {
 }
 
 // =============================================================================
+// Pending Request Registry (replaces single-slot storage — prevents race)
+// =============================================================================
+
+/**
+ * In-memory registry for pending dApp requests.
+ * Keyed by requestId so concurrent requests from different origins
+ * never overwrite each other.
+ *
+ * Structure: Map<requestId, { resolve, reject, timer, type, appOrigin }>
+ */
+const _pendingRegistry = new Map();
+
+// =============================================================================
 // Normalized Error Model
 // =============================================================================
 
@@ -503,14 +516,12 @@ async function handleInvokeRequest(data, sender) {
   const capability = await getCapability(appOrigin, capabilityId);
   if (!capability) {
     console.error('[Background] Capability not found for:', appOrigin, capabilityId);
-    // Log all stored capabilities for debugging
     const allCaps = await getStorageData('capabilities') || {};
     console.log('[Background] All stored capabilities:', Object.keys(allCaps));
     throw new Error(`Capability '${capabilityId}' not found`);
   }
 
   // SECURITY: Verify origin binding (cryptographic enforcement)
-  // Capability is cryptographically bound to appOrigin
   if (capability.appOrigin !== appOrigin) {
     console.error('[Background] Origin mismatch:', { expected: capability.appOrigin, actual: appOrigin });
     throw new Error('Origin mismatch - capability bound to different origin');
@@ -521,14 +532,12 @@ async function handleInvokeRequest(data, sender) {
     throw new Error('Capability expired');
   }
 
-  // SECURITY: Check method is allowed (methods are sorted in capability)
+  // SECURITY: Check method is allowed
   if (!capability.methods.includes(method)) {
     throw new Error(`Method '${method}' not allowed by capability`);
   }
-  
-  // SECURITY: Nonce validation
-  // Wallet is the final authority on nonce correctness
-  // SDK provides nonce for ordering, but wallet MUST validate
+
+  // SECURITY: Nonce validation — wallet is final authority
   if (nonce !== undefined && nonce <= capability.lastNonce) {
     throw new Error(`Nonce violation: ${nonce} <= ${capability.lastNonce}`);
   }
@@ -538,42 +547,25 @@ async function handleInvokeRequest(data, sender) {
   if (!connection) {
     throw new Error('Not connected to wallet');
   }
-  
-  // SECURITY: HFHE encrypted payload handling
-  // Encrypted payloads MUST remain opaque and untouched
-  // - Do NOT inspect ciphertext
-  // - Do NOT coerce numeric values
-  // - Do NOT mutate encrypted fields
-  // - Treat as deterministic blob for hashing only
 
   // ==========================================================================
-  // AUTO-EXECUTE READ METHODS (no user approval needed for read scope)
-  // These methods are safe to execute automatically because:
-  // 1. User already approved the capability with these methods
-  // 2. Read scope doesn't modify state
-  // 3. Data is bound to the capability's origin
-  // 
-  // SECURITY: send_transaction and send_evm_transaction are NOT auto-execute
-  // They ALWAYS require popup approval as they transfer funds
+  // AUTO-EXECUTE READ METHODS (no user approval needed)
+  // SECURITY: send_transaction and send_evm_transaction are NOT auto-execute —
+  // they ALWAYS require popup approval as they transfer funds.
   // ==========================================================================
   const autoExecuteMethods = ['get_balance', 'get_quote', 'create_intent', 'submit_intent', 'get_intent_status'];
-  
+
   console.log('[Background] Checking auto-execute for method:', method, 'scope:', capability.scope);
-  console.log('[Background] autoExecuteMethods includes:', autoExecuteMethods.includes(method));
-  
+
   if (autoExecuteMethods.includes(method)) {
     console.log('[Background] Auto-executing read method:', method);
-    
     try {
       const result = await executeMethod(method, payload, connection, capability);
       console.log('[Background] Auto-execute result:', result);
       return {
         type: 'INVOKE_RESPONSE',
         success: true,
-        result: {
-          success: true,
-          data: result
-        }
+        result: { success: true, data: result }
       };
     } catch (error) {
       console.error('[Background] Auto-execute error:', error);
@@ -586,12 +578,17 @@ async function handleInvokeRequest(data, sender) {
   }
 
   // ==========================================================================
-  // WRITE METHODS - Require user approval
-  // send_transaction requires popup approval and actual chain submission
+  // WRITE METHODS — require user approval
+  // Use _pendingRegistry (in-memory Map) keyed by a unique requestId so that
+  // concurrent requests from different origins never overwrite each other.
   // ==========================================================================
-  
-  // Store pending request
-  await setStorageData('pendingInvokeRequest', {
+
+  // Generate a unique key for this pending request
+  const pendingKey = `invoke_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+
+  // Store full context in chrome.storage so the popup can read it
+  await setStorageData(`pendingInvokeRequest_${pendingKey}`, {
+    pendingKey,
     capabilityId,
     method,
     payload,
@@ -600,34 +597,42 @@ async function handleInvokeRequest(data, sender) {
     appOrigin,
     appName,
     capability,
-    connection, // Include connection for tx execution
+    connection,
     requestTimestamp: Date.now()
   });
 
-  // Open approval UI — extension popup only (no new windows/tabs)
-  // The popup will load pendingInvokeRequest from storage and show the invoke screen
+  // Also write the latest key so the popup knows which request to show
+  await setStorageData('pendingInvokeRequestKey', pendingKey);
+
+  // Open approval UI — extension popup only
   try {
     await chrome.action.openPopup();
   } catch (error) {
-    // openPopup() failed — popup may already be open (storage change listener handles it)
-    // or user needs to click extension icon
     console.log('[Background] openPopup failed for invoke, storage change listener will handle it');
   }
 
-  // Wait for user response
+  // Wait for user response — keyed by pendingKey to avoid cross-request collision
   return new Promise((resolve) => {
-    const listener = (msg) => {
-      if (msg.type === 'INVOKE_RESULT' && msg.appOrigin === appOrigin) {
-        chrome.runtime.onMessage.removeListener(listener);
+    const cleanup = () => {
+      chrome.runtime.onMessage.removeListener(listener);
+      clearTimeout(timer);
+      chrome.storage.local.remove([
+        `pendingInvokeRequest_${pendingKey}`,
+        'pendingInvokeRequestKey'
+      ]);
+      _pendingRegistry.delete(pendingKey);
+    };
 
+    const listener = (msg) => {
+      if (msg.type === 'INVOKE_RESULT'
+          && msg.appOrigin === appOrigin
+          && msg.pendingKey === pendingKey) {
+        cleanup();
         if (msg.approved) {
           resolve({
             type: 'INVOKE_RESPONSE',
             success: true,
-            result: {
-              success: true,
-              data: msg.data
-            }
+            result: { success: true, data: msg.data }
           });
         } else {
           resolve({
@@ -639,18 +644,17 @@ async function handleInvokeRequest(data, sender) {
       }
     };
 
-    chrome.runtime.onMessage.addListener(listener);
-
-    // Timeout after 5 minutes
-    setTimeout(() => {
-      chrome.runtime.onMessage.removeListener(listener);
-      chrome.storage.local.remove('pendingInvokeRequest');
+    const timer = setTimeout(() => {
+      cleanup();
       resolve({
         type: 'INVOKE_RESPONSE',
         success: false,
         error: 'Invocation request timeout'
       });
     }, 300000);
+
+    _pendingRegistry.set(pendingKey, { resolve, cleanup });
+    chrome.runtime.onMessage.addListener(listener);
   });
 }
 
@@ -685,14 +689,24 @@ async function getActiveOctraRpcUrl() {
 
 /**
  * Fetch current epoch from Octra RPC using the active provider.
+ * Uses the JSON-RPC endpoint (epoch_current) — consistent with all other RPC calls.
  */
 async function fetchCurrentEpoch() {
   try {
     const rpcUrl = await getActiveOctraRpcUrl();
-    const response = await fetch(`${rpcUrl}/status`);
+    const response = await fetch(`${rpcUrl}/rpc`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'epoch_current',
+        params: []
+      })
+    });
     if (response.ok) {
       const data = await response.json();
-      return data.current_epoch || 0;
+      return data?.result?.epoch_id ?? 0;
     }
   } catch (error) {
     console.error('[Background] Failed to fetch current epoch:', error);
