@@ -1840,6 +1840,7 @@ export function WalletDashboard({
     hash: string; from: string; to: string; amount: number;
     status: 'confirmed' | 'pending' | 'failed'; finality?: string;
     op_type?: string;
+    ou?: string | number;
   }) => {
     WalletManager.refreshSessionTimeout();
 
@@ -1864,7 +1865,7 @@ export function WalletDashboard({
             amount: newTx.amount.toFixed(8),
             amount_raw: String(Math.floor(newTx.amount * 1_000_000)),
             nonce: nonce,
-            ou: '5000',
+            ou: newTx.ou !== undefined ? String(newTx.ou) : '0',
             timestamp: Date.now() / 1000,
             message: null,
             op_type: newTx.op_type || 'standard',

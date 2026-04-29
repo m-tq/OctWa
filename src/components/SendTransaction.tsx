@@ -32,6 +32,8 @@ interface SendTransactionProps {
     amount: number;
     status: 'confirmed' | 'pending' | 'failed';
     finality?: 'pending' | 'confirmed' | 'rejected';
+    op_type?: string;
+    ou?: string | number;
   }) => void;
   onModalClose?: () => void; // Called when transaction result modal is closed
   isCompact?: boolean;
@@ -295,7 +297,16 @@ export function SendTransaction({
           amount: amountNum.toFixed(8),
           finality: sendResult.finality,
           onStatusConfirmed: () => {
-            onTransactionSuccess();
+            onTransactionSuccess({
+              hash: sendResult.hash || 'pending',
+              from: wallet.address,
+              to: recipientAddress.trim(),
+              amount: amountNum,
+              status: 'pending',
+              finality: sendResult.finality,
+              op_type: 'standard',
+              ou: getOuValue(),
+            });
           }
         });
         

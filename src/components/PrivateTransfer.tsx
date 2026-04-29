@@ -28,6 +28,7 @@ interface PrivateTransferProps {
     hash: string; from: string; to: string; amount: number;
     status: 'confirmed' | 'pending' | 'failed'; finality?: string;
     op_type?: string;
+    ou?: string | number;
   }) => void;
   isCompact?: boolean;
   onAddToAddressBook?: (address: string) => void; // Callback to add address to address book
@@ -368,6 +369,7 @@ export function PrivateTransfer({
             amount: amountNum,
             status: 'confirmed',
             op_type: 'stealth',
+            ou: customFee ? parseInt(customFee) || recommendedFee : recommendedFee,
           });
         },
       });
