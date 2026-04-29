@@ -290,6 +290,9 @@ export function SendTransaction({
       const sendResult = await sendTransaction(transaction);
 
       if (sendResult.success) {
+        // Capture ou BEFORE state reset
+        const submittedOu = getOuValue();
+
         // Update modal to success state
         setTxModalStatus('success');
         setTxModalResult({ 
@@ -305,7 +308,7 @@ export function SendTransaction({
               status: 'pending',
               finality: sendResult.finality,
               op_type: 'standard',
-              ou: getOuValue(),
+              ou: submittedOu,
             });
           }
         });
@@ -342,7 +345,9 @@ export function SendTransaction({
           to: recipientAddress,
           amount: amountNum,
           status,
-          finality: sendResult.finality
+          finality: sendResult.finality,
+          op_type: 'standard',
+          ou: submittedOu,
         });
       } else {
         const errorMsg = sendResult.error || sendResult.reason || "Unknown error occurred";
