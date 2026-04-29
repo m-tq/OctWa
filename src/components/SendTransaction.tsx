@@ -10,7 +10,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { AlertTriangle, Wallet as WalletIcon, Plus, BookUser, Search, Shield, Globe } from 'lucide-react';
 import { Wallet } from '../types/wallet';
-import { fetchBalance, sendTransaction, createTransaction, invalidateCacheAfterTransaction, fetchRecommendedFee } from '../utils/api';
+import { fetchBalance, sendTransaction, createTransaction, invalidateCacheAfterTransaction, fetchRecommendedFee, ouToOct } from '../utils/api';
 import { useToast } from '@/hooks/use-toast';
 import { useAddressBook } from '@/hooks/useAddressBook';
 import { TransactionModal, TransactionStatus, TransactionResult } from './TransactionModal';
@@ -564,7 +564,7 @@ export function SendTransaction({
           <div className="flex items-center justify-between">
             <Label className="text-xs">Network Fee (OU)</Label>
             <span className="text-[10px] text-muted-foreground">
-              {isFetchingFee ? 'Fetching...' : `Recommended: ${recommendedFee.toLocaleString()} ≈ ${(recommendedFee / 1_000_000).toFixed(6)} OCT`}
+              {isFetchingFee ? 'Fetching...' : `Recommended: ${recommendedFee.toLocaleString()} ≈ ${ouToOct(recommendedFee)} OCT`}
             </span>
           </div>
           <Select value={ouOption} onValueChange={setOuOption}>
@@ -572,8 +572,8 @@ export function SendTransaction({
               <SelectValue placeholder="Recommended" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="recommended" className="text-xs">Recommended ({recommendedFee.toLocaleString()} OU ≈ {(recommendedFee / 1_000_000).toFixed(6)} OCT)</SelectItem>
-              <SelectItem value="fast" className="text-xs">Fast ({(recommendedFee * 2).toLocaleString()} OU ≈ {(recommendedFee * 2 / 1_000_000).toFixed(6)} OCT)</SelectItem>
+              <SelectItem value="recommended" className="text-xs">Recommended ({recommendedFee.toLocaleString()} OU ≈ {ouToOct(recommendedFee)} OCT)</SelectItem>
+              <SelectItem value="fast" className="text-xs">Fast ({(recommendedFee * 2).toLocaleString()} OU ≈ {ouToOct(recommendedFee * 2)} OCT)</SelectItem>
               <SelectItem value="custom" className="text-xs">Custom</SelectItem>
             </SelectContent>
           </Select>
@@ -814,7 +814,7 @@ export function SendTransaction({
         <div className="flex items-center justify-between">
           <Label>Network Fee (OU)</Label>
           <span className="text-xs text-muted-foreground">
-            {isFetchingFee ? 'Fetching...' : `Recommended: ${recommendedFee.toLocaleString()} ≈ ${(recommendedFee / 1_000_000).toFixed(6)} OCT`}
+            {isFetchingFee ? 'Fetching...' : `Recommended: ${recommendedFee.toLocaleString()} ≈ ${ouToOct(recommendedFee)} OCT`}
           </span>
         </div>
         <Select value={ouOption} onValueChange={setOuOption}>
@@ -822,8 +822,8 @@ export function SendTransaction({
             <SelectValue placeholder="Recommended" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="recommended">Recommended ({recommendedFee.toLocaleString()} OU ≈ {(recommendedFee / 1_000_000).toFixed(6)} OCT)</SelectItem>
-            <SelectItem value="fast">Fast ({(recommendedFee * 2).toLocaleString()} OU ≈ {(recommendedFee * 2 / 1_000_000).toFixed(6)} OCT)</SelectItem>
+            <SelectItem value="recommended">Recommended ({recommendedFee.toLocaleString()} OU ≈ {ouToOct(recommendedFee)} OCT)</SelectItem>
+            <SelectItem value="fast">Fast ({(recommendedFee * 2).toLocaleString()} OU ≈ {ouToOct(recommendedFee * 2)} OCT)</SelectItem>
             <SelectItem value="custom">Custom</SelectItem>
           </SelectContent>
         </Select>

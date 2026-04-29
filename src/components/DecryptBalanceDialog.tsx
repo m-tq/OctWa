@@ -12,7 +12,7 @@ import { AnimatedIcon } from './AnimatedIcon';
 import { TransactionModal, TransactionStatus, TransactionResult } from './TransactionModal';
 import { InfoTooltip } from './InfoTooltip';
 import { pvacServerService } from '@/services/pvacServerService';
-import { sendTransaction, fetchBalance, fetchEncryptedBalance, invalidateCacheAfterDecrypt, fetchRecommendedFee } from '@/utils/api';
+import { sendTransaction, fetchBalance, fetchEncryptedBalance, invalidateCacheAfterDecrypt, fetchRecommendedFee, ouToOct } from '@/utils/api';
 import { ensurePvacRegistered } from '@/utils/ensurePvacRegistered';
 
 interface DecryptBalanceDialogProps {
@@ -325,7 +325,7 @@ export function DecryptBalanceDialog({
           </Label>
           <span className={`text-muted-foreground ${isPopupMode ? 'text-[10px]' : 'text-xs'}`}>
             Recommended: <span className="font-mono text-[#00E5C0]">{recommendedFee.toLocaleString()}</span>
-            <span className="ml-1">≈ {(recommendedFee / 1_000_000).toFixed(6)} OCT</span>
+            <span className="ml-1">≈ {ouToOct(recommendedFee)} OCT</span>
           </span>
         </div>
         <Input

@@ -1319,6 +1319,13 @@ export async function fetchPendingTransactionByHash(hash: string, maxRetries = 3
 
 export type FeeOpType = 'standard' | 'stealth' | 'decrypt' | 'encrypt' | 'call' | 'deploy' | 'upgrade';
 
+/** Convert OU to OCT string, stripping trailing zeros. e.g. 1000 → "0.001", 10000000 → "10" */
+export function ouToOct(ou: number): string {
+  const oct = ou / 1_000_000;
+  // Use up to 6 decimal places, then strip trailing zeros
+  return parseFloat(oct.toFixed(6)).toString();
+}
+
 // Fallback fees (OU) per op_type — used when RPC call fails
 const FEE_FALLBACKS: Record<FeeOpType, number> = {
   standard: 1000,

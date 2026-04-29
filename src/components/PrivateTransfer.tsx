@@ -8,7 +8,7 @@ import { Switch } from '@/components/ui/switch';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Shield, AlertTriangle, Wallet as WalletIcon, Loader2, Plus, BookUser, Search, Globe, Server, Zap } from 'lucide-react';
 import { Wallet } from '../types/wallet';
-import { fetchEncryptedBalance, createPrivateTransfer, getAddressInfo, getViewPubkey, invalidateCacheAfterPrivateSend, fetchBalance, sendTransaction, fetchRecommendedFee } from '../utils/api';
+import { fetchEncryptedBalance, createPrivateTransfer, getAddressInfo, getViewPubkey, invalidateCacheAfterPrivateSend, fetchBalance, sendTransaction, fetchRecommendedFee, ouToOct } from '../utils/api';
 import { useToast } from '@/hooks/use-toast';
 import { useAddressBook } from '@/hooks/useAddressBook';
 import { TransactionModal, TransactionStatus, TransactionResult } from './TransactionModal';
@@ -678,7 +678,7 @@ export function PrivateTransfer({
                 <Label className="text-xs text-muted-foreground">Network Fee (OU)</Label>
                 <span className="text-[10px] text-muted-foreground">
                   Recommended: <span className="font-mono text-[#00E5C0]">{recommendedFee.toLocaleString()}</span>
-                  <span className="ml-1">≈ {(recommendedFee / 1_000_000).toFixed(6)} OCT</span>
+                  <span className="ml-1">≈ {ouToOct(recommendedFee)} OCT</span>
                 </span>
               </div>
               <Input
@@ -852,7 +852,7 @@ export function PrivateTransfer({
               <Label className="text-sm text-muted-foreground">Network Fee (OU)</Label>
               <span className="text-xs text-muted-foreground">
                 Recommended: <span className="font-mono text-[#00E5C0]">{recommendedFee.toLocaleString()}</span>
-                <span className="ml-1">≈ {(recommendedFee / 1_000_000).toFixed(6)} OCT</span>
+                <span className="ml-1">≈ {ouToOct(recommendedFee)} OCT</span>
               </span>
             </div>
             <Input

@@ -13,7 +13,7 @@ import { ScrollArea, ScrollAreaContent } from '@/components/ui/scroll-area';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Plus, Trash2, AlertTriangle, Wallet as WalletIcon, CheckCircle, MessageSquare, Loader2, Settings2, XCircle, ChevronDown, Clock } from 'lucide-react';
 import { Wallet } from '../types/wallet';
-import { fetchBalance, createTransaction, invalidateCacheAfterTransaction, sendTransactionBatch, sendTransaction, fetchRecommendedFee } from '../utils/api';
+import { fetchBalance, createTransaction, invalidateCacheAfterTransaction, sendTransactionBatch, sendTransaction, fetchRecommendedFee, ouToOct } from '../utils/api';
 import { useToast } from '@/hooks/use-toast';
 import { AnimatedIcon } from './AnimatedIcon';
 import { AddressInput } from './AddressInput';
@@ -412,7 +412,7 @@ export function MultiSend({ wallet, balance, onBalanceUpdate, onNonceUpdate, onT
                 <Settings2 className="h-4 w-4" />
                 Network Fee (OU)
               </span>
-              <span className="text-xs text-muted-foreground mr-2">{recommendedFee.toLocaleString()} OU ≈ {(recommendedFee / 1_000_000).toFixed(6)} OCT</span>
+              <span className="text-xs text-muted-foreground mr-2">{recommendedFee.toLocaleString()} OU ≈ {ouToOct(recommendedFee)} OCT</span>
               <ChevronDown className={`h-4 w-4 transition-transform ${showOuSettings ? 'rotate-180' : ''}`} />
             </Button>
           </CollapsibleTrigger>
@@ -422,8 +422,8 @@ export function MultiSend({ wallet, balance, onBalanceUpdate, onNonceUpdate, onT
                 <SelectValue placeholder="Recommended" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="recommended">Recommended ({recommendedFee.toLocaleString()} OU ≈ {(recommendedFee / 1_000_000).toFixed(6)} OCT)</SelectItem>
-                <SelectItem value="fast">Fast ({(recommendedFee * 2).toLocaleString()} OU ≈ {(recommendedFee * 2 / 1_000_000).toFixed(6)} OCT)</SelectItem>
+                <SelectItem value="recommended">Recommended ({recommendedFee.toLocaleString()} OU ≈ {ouToOct(recommendedFee)} OCT)</SelectItem>
+                <SelectItem value="fast">Fast ({(recommendedFee * 2).toLocaleString()} OU ≈ {ouToOct(recommendedFee * 2)} OCT)</SelectItem>
                 <SelectItem value="custom">Custom</SelectItem>
               </SelectContent>
             </Select>
