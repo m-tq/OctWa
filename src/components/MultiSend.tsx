@@ -107,11 +107,10 @@ export function MultiSend({ wallet, balance, onBalanceUpdate, onNonceUpdate, onT
     return parseInt(ouOption) || recommendedFee;
   };
 
-  // Calculate fee based on OU: OU * 0.0000001 (1 OU = 0.0000001 OCT)
-  // Example: 10000 OU = 0.001 OCT, 30000 OU = 0.003 OCT
+  // Calculate fee based on OU: 1 OCT = 1,000,000 OU
   const calculateFee = (amount: number): number => {
     const ou = getOuValue(amount);
-    return ou * 0.0000001;
+    return ou / 1_000_000;
   };
 
   const validateAndUpdateRecipient = (index: number, field: keyof Recipient, value: string | boolean) => {

@@ -179,10 +179,10 @@ export function SendTransaction({
   };
 
   // Calculate fee based on OU (gas)
-  // Fee formula: OU * 0.0000001 (1 OU = 0.0000001 OCT)
+  // Correct formula: 1 OCT = 1,000,000 OU → fee = OU / 1,000,000
   const calculateFee = (): number => {
     const ou = getOuValue();
-    return ou * 0.0000001;
+    return ou / 1_000_000;
   };
 
   // Pre-validation before showing confirmation or sending
@@ -512,9 +512,7 @@ export function SendTransaction({
               <button
                 type="button"
                 onClick={() => {
-                  // Calculate fee based on OU selection
-                  // Fee formula: OU * 0.0000001
-                  const feeForMax = getOuValue() * 0.0000001;
+                  const feeForMax = getOuValue() / 1_000_000;
                   
                   if (currentBalance > feeForMax) {
                     const maxAmount = currentBalance - feeForMax;
@@ -719,9 +717,7 @@ export function SendTransaction({
             <button
               type="button"
               onClick={() => {
-                // Calculate fee based on OU selection
-                // Fee formula: OU * 0.0000001
-                const feeForMax = getOuValue() * 0.0000001;
+                const feeForMax = getOuValue() / 1_000_000;
                 
                 if (currentBalance > feeForMax) {
                   const maxAmount = currentBalance - feeForMax;

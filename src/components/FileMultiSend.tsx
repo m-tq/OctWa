@@ -149,10 +149,10 @@ export function FileMultiSend({ wallet, balance, onBalanceUpdate, onNonceUpdate,
     return parseInt(ouOption) || recommendedFee;
   };
 
-  // Calculate fee based on OU: OU * 0.0000001
+  // Calculate fee based on OU: 1 OCT = 1,000,000 OU
   const calculateFee = (amount: number): number => {
     const ou = getOuValue(amount);
-    return ou * 0.0000001;
+    return ou / 1_000_000;
   };
 
   const validateAmount = (amountStr: string) => {

@@ -2272,7 +2272,7 @@ export function WalletDashboard({
                       {('ou' in selectedTxDetails || 'parsed_tx' in selectedTxDetails) && (() => {
                         const ouValue = 'ou' in selectedTxDetails ? selectedTxDetails.ou : selectedTxDetails.parsed_tx.ou;
                         const ouNum = parseInt(ouValue) || 0;
-                        const feeOct = (ouNum * 0.0000001).toFixed(7);
+                        const feeOct = (ouNum / 1_000_000).toFixed(6);
                         return (
                           <div className="text-center">
                             <span className="text-[10px] text-muted-foreground">OU (Gas)</span>
@@ -4079,7 +4079,7 @@ export function WalletDashboard({
                           {('ou' in selectedTxDetails || 'parsed_tx' in selectedTxDetails) && (() => {
                             const ouValue = 'ou' in selectedTxDetails ? selectedTxDetails.ou : selectedTxDetails.parsed_tx.ou;
                             const ouNum = parseInt(ouValue) || 0;
-                            const feeOct = (ouNum * 0.0000001).toFixed(7);
+                            const feeOct = (ouNum / 1_000_000).toFixed(6);
                             return (
                               <div className="py-2.5 flex items-center justify-between">
                                 <span className="text-xs text-muted-foreground">OU (Gas)</span>

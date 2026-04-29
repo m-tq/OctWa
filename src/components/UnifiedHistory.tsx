@@ -562,7 +562,7 @@ export function UnifiedHistory({ wallet, transactions, onTransactionsUpdate, isL
                         <div className="bg-muted/50 p-2">
                           <span className="text-muted-foreground block">OU</span>
                           <p className="font-mono mt-0.5">{selectedTx.ou}</p>
-                          <p className="text-[9px] text-muted-foreground">≈{(ouNum * 0.0000001).toFixed(7)}</p>
+                          <p className="text-[9px] text-muted-foreground">≈{(ouNum / 1_000_000).toFixed(6)} OCT</p>
                         </div>
                       );
                     })()}
