@@ -1317,13 +1317,14 @@ export async function fetchPendingTransactionByHash(hash: string, maxRetries = 3
   return null;
 }
 
-export type FeeOpType = 'standard' | 'stealth' | 'decrypt' | 'call' | 'deploy' | 'upgrade';
+export type FeeOpType = 'standard' | 'stealth' | 'decrypt' | 'encrypt' | 'call' | 'deploy' | 'upgrade';
 
 // Fallback fees (OU) per op_type — used when RPC call fails
 const FEE_FALLBACKS: Record<FeeOpType, number> = {
   standard: 1000,
   stealth:  5000,
   decrypt:  3000,
+  encrypt:  3000,
   call:     1000,
   deploy:   200000,
   upgrade:  200000,

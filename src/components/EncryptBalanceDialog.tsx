@@ -45,7 +45,8 @@ export function EncryptBalanceDialog({
   const [txModalResult, setTxModalResult] = useState<TransactionResult>({});
   const [usePvacServer, setUsePvacServer] = useState(false);
   const [isPvacAvailable, setIsPvacAvailable] = useState(false);
-  const [recommendedFee, setRecommendedFee] = useState(3000); // decrypt/encrypt default
+  const [recommendedFee, setRecommendedFee] = useState(3000); // encrypt default
+  const [customFee, setCustomFee] = useState('');
   const { toast } = useToast();
   
   // Check PVAC availability when dialog opens + fetch dynamic fee
@@ -54,9 +55,14 @@ export function EncryptBalanceDialog({
       const available = pvacServerService.isEnabled();
       setIsPvacAvailable(available);
       setUsePvacServer(available);
-      fetchRecommendedFee('decrypt').then(fee => setRecommendedFee(fee)).catch(() => {});
+      // Always refetch to get latest fee from node
+      fetchRecommendedFee('encrypt').then(fee => setRecommendedFee(fee)).catch(() => {});
     }
   }, [open]);
+
+  const effectiveFee = customFee ? (parseInt(customFee) || recommendedFee) : recommendedFee;
+  // Reserve = effectiveFee OU converted to OCT + small buffer
+  const feeReserveOct = (effectiveFee / 1_000_000) + 0.0001;
   
   const handleTxModalOpenChange = (open: boolean) => {
     setShowTxModal(open);
@@ -65,7 +71,7 @@ export function EncryptBalanceDialog({
     }
   };
 
-  const maxEncryptable = Math.max(0, publicBalance - 0.001); // Reserve 0.001 OCT for fees
+  const maxEncryptable = Math.max(0, publicBalance - feeReserveOct);
 
   const handleEncrypt = async () => {
     if (!amount || parseFloat(amount) <= 0) {
@@ -140,7 +146,7 @@ export function EncryptBalanceDialog({
         public_key: wallet.publicKey || '',
         address: wallet.address,
         nonce: currentNonce + 1,
-        ou: String(recommendedFee)
+        ou: String(effectiveFee)
       });
 
       if (!result.success) {
@@ -291,8 +297,29 @@ export function EncryptBalanceDialog({
           className={isPopupMode ? "h-9 text-sm" : ""}
         />
         <p className={`text-muted-foreground ${isPopupMode ? 'text-[10px]' : 'text-xs'}`}>
-          (0.001 OCT reserved for fees)
+          ({feeReserveOct.toFixed(6)} OCT reserved for fees)
         </p>
+      </div>
+
+      {/* Network Fee */}
+      <div className={isPopupMode ? "space-y-1" : "space-y-2"}>
+        <div className="flex items-center justify-between">
+          <Label className={isPopupMode ? "text-xs text-muted-foreground" : "text-sm text-muted-foreground"}>
+            Network Fee (OU)
+          </Label>
+          <span className={`text-muted-foreground ${isPopupMode ? 'text-[10px]' : 'text-xs'}`}>
+            Recommended: <span className="font-mono text-[#00E5C0]">{recommendedFee.toLocaleString()}</span>
+          </span>
+        </div>
+        <Input
+          type="number"
+          placeholder={String(recommendedFee)}
+          value={customFee}
+          onChange={(e) => setCustomFee(e.target.value)}
+          min="1"
+          disabled={isEncrypting}
+          className={`font-mono ${isPopupMode ? 'h-9 text-xs' : ''}`}
+        />
       </div>
 
       {/* PVAC Server Option */}

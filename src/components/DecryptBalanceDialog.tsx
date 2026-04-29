@@ -48,6 +48,7 @@ export function DecryptBalanceDialog({
   const [usePvacServer, setUsePvacServer] = useState(false);
   const [isPvacAvailable, setIsPvacAvailable] = useState(false);
   const [recommendedFee, setRecommendedFee] = useState(3000); // decrypt default
+  const [customFee, setCustomFee] = useState('');
   const { toast } = useToast();
   
   // Check PVAC availability when dialog opens + fetch dynamic fee
@@ -56,9 +57,12 @@ export function DecryptBalanceDialog({
       const available = pvacServerService.isEnabled();
       setIsPvacAvailable(available);
       setUsePvacServer(available);
+      // Always refetch to get latest fee from node
       fetchRecommendedFee('decrypt').then(fee => setRecommendedFee(fee)).catch(() => {});
     }
   }, [open]);
+
+  const effectiveFee = customFee ? (parseInt(customFee) || recommendedFee) : recommendedFee;
   
   const handleTxModalOpenChange = (open: boolean) => {
     
@@ -148,7 +152,7 @@ export function DecryptBalanceDialog({
         current_cipher: currentCipher,
         address: wallet.address,
         nonce: currentNonce + 1,
-        ou: String(recommendedFee)
+        ou: String(effectiveFee)
       });
 
       if (!result.success) {
@@ -310,6 +314,27 @@ export function DecryptBalanceDialog({
           max={encryptedBalance}
           disabled={isDecrypting}
           className={isPopupMode ? "h-9 text-sm" : ""}
+        />
+      </div>
+
+      {/* Network Fee */}
+      <div className={isPopupMode ? "space-y-1" : "space-y-2"}>
+        <div className="flex items-center justify-between">
+          <Label className={isPopupMode ? "text-xs text-muted-foreground" : "text-sm text-muted-foreground"}>
+            Network Fee (OU)
+          </Label>
+          <span className={`text-muted-foreground ${isPopupMode ? 'text-[10px]' : 'text-xs'}`}>
+            Recommended: <span className="font-mono text-[#00E5C0]">{recommendedFee.toLocaleString()}</span>
+          </span>
+        </div>
+        <Input
+          type="number"
+          placeholder={String(recommendedFee)}
+          value={customFee}
+          onChange={(e) => setCustomFee(e.target.value)}
+          min="1"
+          disabled={isDecrypting}
+          className={`font-mono ${isPopupMode ? 'h-9 text-xs' : ''}`}
         />
       </div>
 
