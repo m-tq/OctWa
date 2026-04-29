@@ -14,7 +14,7 @@
     (document.head || document.documentElement).appendChild(script);
   };
 
-  // Whitelist of valid message types (prevents injection attacks)
+  // Whitelist of valid message types (must stay in sync with background.js switch)
   const VALID_MESSAGE_TYPES = new Set([
     'CONNECTION_REQUEST',
     'CAPABILITY_REQUEST',
@@ -23,11 +23,26 @@
     'DISCONNECT_REQUEST',
     'ESTIMATE_PLAIN_TX',
     'ESTIMATE_ENCRYPTED_TX',
-    'ESTIMATE_COMPUTE_COST',
     'LIST_CAPABILITIES_REQUEST',
     'RENEW_CAPABILITY_REQUEST',
     'REVOKE_CAPABILITY_REQUEST'
   ]);
+
+  // Explicit field allowlist per message type.
+  // Only known fields are forwarded to background — prevents prototype pollution
+  // and field injection from a malicious DApp spreading arbitrary data.
+  const MESSAGE_FIELDS = {
+    CONNECTION_REQUEST:        ['circle', 'appOrigin', 'appName', 'appIcon', 'requestedCapabilities'],
+    CAPABILITY_REQUEST:        ['circle', 'methods', 'scope', 'encrypted', 'ttlSeconds', 'branchId', 'appOrigin', 'appName', 'appIcon'],
+    INVOKE_REQUEST:            ['capabilityId', 'method', 'payload', 'nonce', 'timestamp', 'appOrigin', 'appName'],
+    SIGN_MESSAGE_REQUEST:      ['message', 'appOrigin', 'appName', 'appIcon'],
+    DISCONNECT_REQUEST:        ['appOrigin'],
+    ESTIMATE_PLAIN_TX:         ['payload'],
+    ESTIMATE_ENCRYPTED_TX:     ['payload'],
+    LIST_CAPABILITIES_REQUEST: [],
+    RENEW_CAPABILITY_REQUEST:  ['capabilityId'],
+    REVOKE_CAPABILITY_REQUEST: ['capabilityId'],
+  };
 
   // Handle messages from provider
   const handleMessage = (event) => {
@@ -49,15 +64,21 @@
 
     console.log('[Content] Received:', event.data.type);
 
+    // Extract only the known fields for this message type — never spread raw data
+    const allowedFields = MESSAGE_FIELDS[event.data.type] || [];
+    const safeData = { appOrigin: window.location.origin };
+    for (const field of allowedFields) {
+      if (field !== 'appOrigin' && Object.prototype.hasOwnProperty.call(event.data.data || {}, field)) {
+        safeData[field] = (event.data.data)[field];
+      }
+    }
+
     // Forward to background
     chrome.runtime.sendMessage({
       source: 'octra-content-script',
       type: event.data.type,
       requestId: event.data.requestId,
-      data: {
-        ...(event.data.data || {}),
-        appOrigin: window.location.origin
-      }
+      data: safeData
     }).then(response => {
       console.log('[Content] Response:', response);
       

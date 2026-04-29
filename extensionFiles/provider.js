@@ -3,11 +3,21 @@
 
   const PROVIDER_VERSION = '2.0.0';
 
+  // Per-request timeout values (ms)
+  const TIMEOUT = {
+    CONNECTION:  60_000,   // 1 min  — user must approve in popup
+    CAPABILITY:  300_000,  // 5 min  — user must approve in popup
+    INVOKE:      300_000,  // 5 min  — user must approve write ops
+    SIGN:        60_000,   // 1 min  — user must approve in popup
+    QUICK:       15_000,   // 15 s   — instant ops (list, renew, revoke, disconnect)
+  };
+
   class OctraProvider {
     constructor() {
-      this.isOctra = true;
-      this.version = PROVIDER_VERSION;
-      this._eventListeners = {};
+      this.isOctra  = true;
+      this.version  = PROVIDER_VERSION;
+
+      this._eventListeners  = {};
       this._pendingRequests = new Map();
       this._nonceControllers = new Map();
       this._state = { state: 'DISCONNECTED' };
@@ -20,294 +30,205 @@
       });
     }
 
+    // ── Event emitter ────────────────────────────────────────────────────────
+
     on(event, callback) {
-      if (!this._eventListeners[event]) {
-        this._eventListeners[event] = [];
-      }
+      if (!this._eventListeners[event]) this._eventListeners[event] = [];
       this._eventListeners[event].push(callback);
     }
 
     off(event, callback) {
       if (!this._eventListeners[event]) return;
-      const index = this._eventListeners[event].indexOf(callback);
-      if (index > -1) {
-        this._eventListeners[event].splice(index, 1);
-      }
+      const idx = this._eventListeners[event].indexOf(callback);
+      if (idx > -1) this._eventListeners[event].splice(idx, 1);
     }
 
     _emit(event, data) {
-      if (this._eventListeners[event]) {
-        this._eventListeners[event].forEach(callback => {
-          try {
-            callback(data);
-          } catch (e) {
-            // Ignore
-          }
-        });
-      }
+      (this._eventListeners[event] || []).forEach(cb => {
+        try { cb(data); } catch (_) { /* never let listener errors bubble */ }
+      });
     }
 
+    // ── Public API ───────────────────────────────────────────────────────────
+
+    /** Connect to wallet. Returns session info. */
     async connect(request) {
-      return new Promise((resolve, reject) => {
-        if (!request || !request.circle) {
-          reject(new Error('Circle ID is required'));
-          return;
-        }
+      if (!request?.circle) throw new Error('Circle ID is required');
 
-        const requestId = this._generateRequestId();
-        this._pendingRequests.set(requestId, { resolve, reject });
-
-        window.postMessage({
-          source: 'octra-provider',
-          type: 'CONNECTION_REQUEST',
-          requestId,
-          data: {
-            circle: request.circle,
-            appOrigin: request.appOrigin || window.location.origin,
-            appName: request.appName || document.title || window.location.hostname,
-            appIcon: request.appIcon || this._getAppIcon(),
-            requestedCapabilities: request.requestedCapabilities || []
-          }
-        }, this._getTargetOrigin());
-
-        setTimeout(() => {
-          if (this._pendingRequests.has(requestId)) {
-            this._pendingRequests.delete(requestId);
-            reject(new Error('Connection request timeout'));
-          }
-        }, 60000);
-      });
+      return this._sendRequest('CONNECTION_REQUEST', {
+        circle:                 request.circle,
+        appOrigin:              request.appOrigin || window.location.origin,
+        appName:                request.appName   || document.title || window.location.hostname,
+        appIcon:                request.appIcon   || this._getAppIcon(),
+        requestedCapabilities:  request.requestedCapabilities || [],
+      }, TIMEOUT.CONNECTION);
     }
 
+    /** Disconnect from wallet. Confirmed by background. */
     async disconnect() {
+      this._state = { state: 'DISCONNECTED' };
       this._emit('disconnect');
-      window.postMessage({
-        source: 'octra-provider',
-        type: 'DISCONNECT_REQUEST',
-        data: { appOrigin: window.location.origin }
-      }, this._getTargetOrigin());
+      return this._sendRequest('DISCONNECT_REQUEST', {
+        appOrigin: window.location.origin,
+      }, TIMEOUT.QUICK);
     }
 
+    /** Request a capability (permission token) from the wallet. */
     async requestCapability(request) {
-      return new Promise((resolve, reject) => {
-        if (!request || !request.circle) {
-          reject(new Error('Circle ID is required'));
-          return;
-        }
-        if (!request.methods || request.methods.length === 0) {
-          reject(new Error('At least one method is required'));
-          return;
-        }
-        if (!['read', 'write', 'compute'].includes(request.scope)) {
-          reject(new Error("Scope must be 'read', 'write', or 'compute'"));
-          return;
-        }
+      if (!request?.circle)                          throw new Error('Circle ID is required');
+      if (!request.methods || !request.methods.length) throw new Error('At least one method is required');
+      if (!['read', 'write', 'compute'].includes(request.scope))
+        throw new Error("Scope must be 'read', 'write', or 'compute'");
 
-        const requestId = this._generateRequestId();
-        this._pendingRequests.set(requestId, { resolve, reject });
-
-        window.postMessage({
-          source: 'octra-provider',
-          type: 'CAPABILITY_REQUEST',
-          requestId,
-          data: {
-            circle: request.circle,
-            methods: request.methods,
-            scope: request.scope,
-            encrypted: request.encrypted || false,
-            ttlSeconds: request.ttlSeconds,
-            branchId: request.branchId,
-            appOrigin: window.location.origin,
-            appName: document.title || window.location.hostname,
-            appIcon: this._getAppIcon()
-          }
-        }, this._getTargetOrigin());
-
-        setTimeout(() => {
-          if (this._pendingRequests.has(requestId)) {
-            this._pendingRequests.delete(requestId);
-            reject(new Error('Capability request timeout'));
-          }
-        }, 300000);
-      });
+      return this._sendRequest('CAPABILITY_REQUEST', {
+        circle:    request.circle,
+        methods:   request.methods,
+        scope:     request.scope,
+        encrypted: request.encrypted || false,
+        ttlSeconds: request.ttlSeconds,
+        branchId:  request.branchId,
+        appOrigin: window.location.origin,
+        appName:   document.title || window.location.hostname,
+        appIcon:   this._getAppIcon(),
+      }, TIMEOUT.CAPABILITY);
     }
 
-    async renewCapability(capabilityId) {
-      return this._sendRequest('RENEW_CAPABILITY_REQUEST', { capabilityId });
-    }
-
-    async revokeCapability(capabilityId) {
-      return this._sendRequest('REVOKE_CAPABILITY_REQUEST', { capabilityId });
-    }
-
-    async listCapabilities() {
-      return this._sendRequest('LIST_CAPABILITIES_REQUEST', {});
-    }
-
+    /** Invoke a method using a previously granted capability. */
     async invoke(call) {
-      return new Promise((resolve, reject) => {
-        if (!call || !call.header || !call.body) {
-          reject(new Error('Invalid invocation structure'));
-          return;
-        }
+      if (!call?.header || !call?.body) throw new Error('Invalid invocation structure');
 
-        const requestId = this._generateRequestId();
-        this._pendingRequests.set(requestId, { resolve, reject });
+      // Serialize Uint8Array for postMessage transport
+      let payload = call.payload;
+      if (payload instanceof Uint8Array) {
+        payload = { _type: 'Uint8Array', data: Array.from(payload) };
+      } else if (payload?.data instanceof Uint8Array) {
+        payload = {
+          ...payload,
+          data:     { _type: 'Uint8Array', data: Array.from(payload.data) },
+          metadata: payload.metadata instanceof Uint8Array
+            ? { _type: 'Uint8Array', data: Array.from(payload.metadata) }
+            : payload.metadata,
+        };
+      }
 
-        let payload = call.payload;
-        if (payload instanceof Uint8Array) {
-          payload = { _type: 'Uint8Array', data: Array.from(payload) };
-        } else if (payload && payload.data instanceof Uint8Array) {
-          payload = {
-            ...payload,
-            data: { _type: 'Uint8Array', data: Array.from(payload.data) },
-            metadata: payload.metadata instanceof Uint8Array 
-              ? { _type: 'Uint8Array', data: Array.from(payload.metadata) }
-              : payload.metadata
-          };
-        }
-
-        window.postMessage({
-          source: 'octra-provider',
-          type: 'INVOKE_REQUEST',
-          requestId,
-          data: {
-            capabilityId: call.body.capabilityId,
-            method: call.body.method,
-            payload,
-            nonce: call.header.nonce,
-            timestamp: call.header.timestamp,
-            appOrigin: window.location.origin,
-            appName: document.title || window.location.hostname
-          }
-        }, this._getTargetOrigin());
-
-        setTimeout(() => {
-          if (this._pendingRequests.has(requestId)) {
-            this._pendingRequests.delete(requestId);
-            reject(new Error('Invocation request timeout'));
-          }
-        }, 300000);
-      });
+      return this._sendRequest('INVOKE_REQUEST', {
+        capabilityId: call.body.capabilityId,
+        method:       call.body.method,
+        payload,
+        nonce:        call.header.nonce,
+        timestamp:    call.header.timestamp,
+        appOrigin:    window.location.origin,
+        appName:      document.title || window.location.hostname,
+      }, TIMEOUT.INVOKE);
     }
 
-    async invokeCompute(request) {
-      return this._sendRequest('COMPUTE_REQUEST', request);
-    }
-
-    async estimatePlainTx(payload) {
-      return this._sendRequest('ESTIMATE_PLAIN_TX', { payload });
-    }
-
-    async estimateEncryptedTx(payload) {
-      return this._sendRequest('ESTIMATE_ENCRYPTED_TX', { payload });
-    }
-
-    async estimateComputeCost(profile) {
-      return this._sendRequest('ESTIMATE_COMPUTE_COST', { profile });
-    }
-
+    /** Sign an arbitrary UTF-8 message with the wallet key. */
     async signMessage(message) {
-      return new Promise((resolve, reject) => {
-        if (!message || typeof message !== 'string') {
-          reject(new Error('Message must be a non-empty string'));
-          return;
-        }
+      if (!message || typeof message !== 'string')
+        throw new Error('Message must be a non-empty string');
 
-        const requestId = this._generateRequestId();
-        this._pendingRequests.set(requestId, { resolve, reject });
-
-        window.postMessage({
-          source: 'octra-provider',
-          type: 'SIGN_MESSAGE_REQUEST',
-          requestId,
-          data: {
-            message,
-            appOrigin: window.location.origin,
-            appName: document.title || window.location.hostname,
-            appIcon: this._getAppIcon()
-          }
-        }, this._getTargetOrigin());
-
-        setTimeout(() => {
-          if (this._pendingRequests.has(requestId)) {
-            this._pendingRequests.delete(requestId);
-            reject(new Error('Sign message request timeout'));
-          }
-        }, 60000);
-      });
+      return this._sendRequest('SIGN_MESSAGE_REQUEST', {
+        message,
+        appOrigin: window.location.origin,
+        appName:   document.title || window.location.hostname,
+        appIcon:   this._getAppIcon(),
+      }, TIMEOUT.SIGN);
     }
+
+    /** Estimate fee for a plain (unencrypted) transaction. */
+    async estimatePlainTx(payload) {
+      return this._sendRequest('ESTIMATE_PLAIN_TX', { payload }, TIMEOUT.QUICK);
+    }
+
+    /** Estimate fee for an encrypted transaction. */
+    async estimateEncryptedTx(payload) {
+      return this._sendRequest('ESTIMATE_ENCRYPTED_TX', { payload }, TIMEOUT.QUICK);
+    }
+
+    /** List all active capabilities for this origin. */
+    async listCapabilities() {
+      return this._sendRequest('LIST_CAPABILITIES_REQUEST', {}, TIMEOUT.QUICK);
+    }
+
+    /** Renew an existing capability before it expires. */
+    async renewCapability(capabilityId) {
+      return this._sendRequest('RENEW_CAPABILITY_REQUEST', { capabilityId }, TIMEOUT.QUICK);
+    }
+
+    /** Revoke a capability immediately. */
+    async revokeCapability(capabilityId) {
+      return this._sendRequest('REVOKE_CAPABILITY_REQUEST', { capabilityId }, TIMEOUT.QUICK);
+    }
+
+    // ── Response handler ─────────────────────────────────────────────────────
 
     _handleResponse(data) {
-      const { requestId, type, success, result, error, appOrigin } = data;
+      const { requestId, type, success, result, error } = data;
 
+      // Push-events (no requestId)
       if (type === 'WALLET_DISCONNECTED') {
-        this._emit('disconnect', { appOrigin });
+        this._state = { state: 'DISCONNECTED' };
+        this._emit('disconnect', { appOrigin: data.appOrigin });
         return;
       }
-
       if (type === 'BRANCH_CHANGED') {
         this._emit('branchChanged', { branchId: data.branchId, epoch: data.epoch });
         return;
       }
-
       if (type === 'EPOCH_CHANGED') {
         this._emit('epochChanged', { epoch: data.epoch });
         return;
       }
 
-      if (!this._pendingRequests || !this._pendingRequests.has(requestId)) {
-        return;
-      }
+      if (!this._pendingRequests.has(requestId)) return;
 
       const { resolve, reject } = this._pendingRequests.get(requestId);
       this._pendingRequests.delete(requestId);
 
-      if (success) {
-        switch (type) {
-          case 'CONNECTION_RESPONSE':
-            this._emit('connect', { connection: result });
-            resolve(result);
-            break;
-
-          case 'CAPABILITY_RESPONSE':
-            if (result && result.id) {
-              this._nonceControllers.set(result.id, result.nonceBase || 0);
-            }
-            this._emit('capabilityGranted', { capability: result });
-            resolve(result);
-            break;
-
-          case 'INVOKE_RESPONSE':
-            if (result && result.data) {
-              if (result.data._type === 'Uint8Array') {
-                result.data = new Uint8Array(result.data.data);
-              } else if (result.data.data && result.data.data._type === 'Uint8Array') {
-                result.data.data = new Uint8Array(result.data.data.data);
-                if (result.data.metadata && result.data.metadata._type === 'Uint8Array') {
-                  result.data.metadata = new Uint8Array(result.data.metadata.data);
-                }
-              }
-            }
-            resolve(result);
-            break;
-
-          case 'SIGN_MESSAGE_RESPONSE':
-            resolve(result);
-            break;
-
-          default:
-            resolve(result);
-        }
-      } else {
+      if (!success) {
         if (error === 'User rejected request') {
           this._emit('userRejectedRequest', { requestId });
         }
         reject(new Error(error || 'Unknown error'));
+        return;
       }
+
+      // Deserialize Uint8Array from transport format
+      if (type === 'INVOKE_RESPONSE' && result?.data) {
+        if (result.data._type === 'Uint8Array') {
+          result.data = new Uint8Array(result.data.data);
+        } else if (result.data.data?._type === 'Uint8Array') {
+          result.data.data = new Uint8Array(result.data.data.data);
+          if (result.data.metadata?._type === 'Uint8Array') {
+            result.data.metadata = new Uint8Array(result.data.metadata.data);
+          }
+        }
+      }
+
+      // Emit side-effects
+      if (type === 'CONNECTION_RESPONSE') {
+        this._state = { state: 'CONNECTED', ...result };
+        this._emit('connect', { connection: result });
+      }
+      if (type === 'CAPABILITY_RESPONSE' && result?.id) {
+        this._nonceControllers.set(result.id, result.nonceBase || 0);
+        this._emit('capabilityGranted', { capability: result });
+      }
+
+      resolve(result);
     }
 
-    _sendRequest(type, data) {
+    // ── Internal helpers ─────────────────────────────────────────────────────
+
+    /**
+     * Send a request via postMessage and return a Promise that resolves
+     * when the matching response arrives, or rejects on timeout.
+     *
+     * @param {string}  type     - message type
+     * @param {object}  data     - payload
+     * @param {number}  timeout  - ms before auto-reject
+     */
+    _sendRequest(type, data, timeout = TIMEOUT.QUICK) {
       return new Promise((resolve, reject) => {
         const requestId = this._generateRequestId();
         this._pendingRequests.set(requestId, { resolve, reject });
@@ -316,20 +237,24 @@
           source: 'octra-provider',
           type,
           requestId,
-          data
+          data,
         }, this._getTargetOrigin());
 
         setTimeout(() => {
           if (this._pendingRequests.has(requestId)) {
             this._pendingRequests.delete(requestId);
-            reject(new Error('Request timeout'));
+            reject(new Error(`Request timeout: ${type}`));
           }
-        }, 300000);
+        }, timeout);
       });
     }
 
+    /**
+     * Generate a cryptographically random request ID.
+     * crypto.randomUUID() is CSPRNG-backed — Math.random() is not.
+     */
     _generateRequestId() {
-      return 'req_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+      return 'req_' + crypto.randomUUID();
     }
 
     _getTargetOrigin() {
@@ -342,26 +267,24 @@
     }
 
     _getAppIcon() {
-      const iconSelectors = [
+      const selectors = [
         'link[rel="icon"]',
         'link[rel="shortcut icon"]',
         'link[rel="apple-touch-icon"]',
-        'meta[property="og:image"]'
+        'meta[property="og:image"]',
       ];
-
-      for (const selector of iconSelectors) {
-        const element = document.querySelector(selector);
-        if (element) {
-          const href = element.getAttribute('href') || element.getAttribute('content');
-          if (href) {
-            return new URL(href, window.location.origin).href;
-          }
+      for (const sel of selectors) {
+        const el = document.querySelector(sel);
+        if (el) {
+          const href = el.getAttribute('href') || el.getAttribute('content');
+          if (href) return new URL(href, window.location.origin).href;
         }
       }
-
       return null;
     }
   }
+
+  // ── Inject ─────────────────────────────────────────────────────────────────
 
   if (typeof window !== 'undefined') {
     window.octra = new OctraProvider();
@@ -370,9 +293,7 @@
     // Allows DApps to detect OctWa without polling window.octra.
     // Multiple Octra-compatible wallets can coexist via this event bus.
     const _providerInfo = Object.freeze({
-      uuid:    typeof crypto !== 'undefined' && crypto.randomUUID
-               ? crypto.randomUUID()
-               : 'octwa-' + Date.now().toString(36),
+      uuid:    crypto.randomUUID(),
       name:    'OctWa',
       rdns:    'network.octra.octwa',
       version: PROVIDER_VERSION,
@@ -380,31 +301,23 @@
 
     const _announceProvider = () => {
       window.dispatchEvent(new CustomEvent('octra:announceProvider', {
-        detail: Object.freeze({
-          info:     _providerInfo,
-          provider: window.octra,
-        }),
+        detail: Object.freeze({ info: _providerInfo, provider: window.octra }),
       }));
     };
 
-    // Re-announce when a DApp explicitly requests it
     window.addEventListener('octra:requestProvider', _announceProvider);
-
-    // Announce immediately on inject
     _announceProvider();
 
     // ── Legacy compat ────────────────────────────────────────────────────────
     window.dispatchEvent(new Event('octraLoaded'));
 
     Object.defineProperty(window, 'isOctra', {
-      value: true,
-      writable: false,
-      configurable: false
+      value: true, writable: false, configurable: false,
     });
 
-    window.postMessage({
-      type: 'OCTRA_EXTENSION_AVAILABLE',
-      version: PROVIDER_VERSION
-    }, window.location.origin === 'null' ? '*' : window.location.origin);
+    window.postMessage(
+      { type: 'OCTRA_EXTENSION_AVAILABLE', version: PROVIDER_VERSION },
+      window.location.origin === 'null' ? '*' : window.location.origin
+    );
   }
 })();

@@ -502,9 +502,6 @@ async function handleInvokeRequest(data, sender) {
   // Get capability
   const capability = await getCapability(appOrigin, capabilityId);
   if (!capability) {
-    console.error('[Background] Capability not found for:', appOrigin, capabilityId);
-    const allCaps = await getStorageData('capabilities') || {};
-    console.log('[Background] All stored capabilities:', Object.keys(allCaps));
     throw new Error(`Capability '${capabilityId}' not found`);
   }
 
