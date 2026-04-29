@@ -1653,7 +1653,9 @@ export function createTransaction(
   privateKeyBase64: string,
   publicKeyHex: string,
   message?: string,
-  customOu?: number
+  customOu?: number,
+  opType?: string,
+  encryptedData?: string
 ): Transaction {
   // Convert amount to micro units (multiply by 1,000,000) - WEBCLI LOGIC
   const amountMu = Math.floor(amount * MU_FACTOR);
@@ -1674,8 +1676,13 @@ export function createTransaction(
     nonce,
     ou,
     timestamp,
-    op_type: 'standard', // WEBCLI: uses 'standard' for normal transfers (see main.cpp:1056)
+    op_type: opType || 'standard',
   };
+
+  // Add encrypted_data if provided (e.g. contract call method name)
+  if (encryptedData) {
+    transaction.encrypted_data = encryptedData;
+  }
 
   // Add message if provided - WEBCLI LOGIC
   if (message && message.trim()) {

@@ -69,6 +69,8 @@ interface TransactionPayload {
   to: string;
   amount: number;
   message?: string;
+  op_type?: string;        // e.g. 'call' for contract calls, defaults to 'standard'
+  encrypted_data?: string; // e.g. 'lock_to_eth' for bridge contract method
 }
 
 interface EVMTransactionPayload {
@@ -795,15 +797,19 @@ export function DAppRequestHandler({ wallets }: DAppRequestHandlerProps) {
         logger.debug('DAppRequestHandler:   currentNonce:', currentNonce);
         logger.debug('DAppRequestHandler:   txNonce (current+1):', txNonce);
         
-        // Create and sign transaction using existing wallet functions
+        // Create and sign transaction — pass op_type and encrypted_data
+        // from payload so contract calls (e.g. bridge lock_to_eth) work correctly.
         const transaction = createTransaction(
           selectedWallet.address,
           txParams.to,
           txParams.amount,
-          txNonce, // Use current nonce + 1
+          txNonce,
           selectedWallet.privateKey,
           publicKeyHex,
-          txParams.message // Include intent payload as message
+          txParams.message,
+          undefined,              // customOu — use default
+          txParams.op_type,       // e.g. 'call' for contract calls
+          txParams.encrypted_data // e.g. 'lock_to_eth'
         );
         
         logger.debug('DAppRequestHandler: Sending transaction to Octra chain...');
