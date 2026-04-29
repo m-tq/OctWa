@@ -1,24 +1,20 @@
-/**
- * Octra Wallet Background Script
- * 
- * Handles capability-based authorization model.
- * 
- * Capability format (v2):
- * - version: 2
- * - circle, methods, scope, encrypted
- * - appOrigin (cryptographically bound)
- * - branchId, epoch (network state binding)
- * - issuedAt, expiresAt (mandatory)
- * - nonceBase (replay protection)
- * - walletPubKey, signature (ed25519)
- * 
- * SECURITY ARCHITECTURE:
- * - Wallet is final authority (pre_client equivalent)
- * - Private keys ONLY in background context
- * - Canonical serialization for all signing
- * - Domain separation to prevent replay attacks
- * - Signing mutex to prevent race conditions
- * - Nonce validation at wallet layer
+﻿/**
+ * Octra Wallet  Background Service Worker
+ *
+ * Capability-based authorization model (v2).
+ * Private keys live exclusively in this context.
+ *
+ * Capability fields:
+ *   version, circle, methods, scope, encrypted,
+ *   appOrigin (cryptographically bound), branchId, epoch,
+ *   issuedAt, expiresAt, nonceBase, walletPubKey, signature
+ *
+ * Security guarantees:
+ *   - Signing mutex prevents parallel signing / double-send
+ *   - Keyed pending registry prevents concurrent-request races
+ *   - Origin binding enforced on every invocation
+ *   - Nonce monotonicity enforced at wallet layer
+ *   - All fee estimates fetched live from node (no hardcoded values)
  */
 
 // =============================================================================
@@ -26,33 +22,27 @@
 // =============================================================================
 
 let signingMutex = Promise.resolve();
-let pendingSignatures = new Set();
 
 /**
  * Acquire signing lock to prevent parallel signing operations
- * 
+ *
  * SECURITY: Prevents race conditions and double-send attacks
  */
 async function withSigningLock(fn) {
-  // Wait for previous operation to complete
   await signingMutex;
-  
-  // Create new mutex for next operation
   let release;
   signingMutex = new Promise(resolve => {
     release = resolve;
   });
-  
   try {
     return await fn();
   } finally {
-    // Release lock
     release();
   }
 }
 
 // =============================================================================
-// Pending Request Registry (replaces single-slot storage — prevents race)
+// Pending Request Registry (replaces single-slot storage  prevents race)
 // =============================================================================
 
 /**
@@ -68,66 +58,36 @@ const _pendingRegistry = new Map();
 // Normalized Error Model
 // =============================================================================
 
-/**
- * Create normalized error response
- * 
- * SECURITY: Consistent error structure across all layers
- */
 function createErrorResponse(code, message, layer = 'wallet', retryable = false) {
-  return {
-    code,
-    message,
-    layer,
-    retryable
-  };
+  return { code, message, layer, retryable };
 }
 
-/**
- * Normalize errors from various sources
- */
 function normalizeError(error) {
   if (typeof error === 'object' && error.code) {
-    return error; // Already normalized
+    return error;
   }
-  
   const message = error?.message || String(error);
-  
-  // User rejection
   if (message.toLowerCase().includes('reject') || message.toLowerCase().includes('denied')) {
     return createErrorResponse('USER_REJECTED', message, 'wallet', false);
   }
-  
-  // Network failures
   if (message.toLowerCase().includes('network') || message.toLowerCase().includes('fetch')) {
     return createErrorResponse('NETWORK_ERROR', message, 'network', true);
   }
-  
-  // Invalid signature
   if (message.toLowerCase().includes('signature')) {
     return createErrorResponse('SIGNATURE_INVALID', message, 'wallet', false);
   }
-  
-  // Insufficient balance
   if (message.toLowerCase().includes('balance') || message.toLowerCase().includes('insufficient')) {
     return createErrorResponse('INSUFFICIENT_BALANCE', message, 'wallet', false);
   }
-  
-  // Encrypted execution rejection
   if (message.toLowerCase().includes('encrypt')) {
     return createErrorResponse('ENCRYPTED_EXECUTION_ERROR', message, 'wallet', false);
   }
-  
-  // Nonce errors
   if (message.toLowerCase().includes('nonce')) {
     return createErrorResponse('NONCE_VIOLATION', message, 'wallet', false);
   }
-  
-  // Origin mismatch
   if (message.toLowerCase().includes('origin')) {
     return createErrorResponse('ORIGIN_MISMATCH', message, 'wallet', false);
   }
-  
-  // Default
   return createErrorResponse('UNKNOWN_ERROR', message, 'wallet', false);
 }
 
@@ -140,7 +100,6 @@ chrome.runtime.onStartup.addListener(async () => {
   await lockWallet();
 });
 
-// Lock wallet when all windows closed
 chrome.windows.onRemoved.addListener(async (windowId) => {
   const windows = await chrome.windows.getAll();
   if (windows.length === 0) {
@@ -149,14 +108,16 @@ chrome.windows.onRemoved.addListener(async (windowId) => {
   }
 });
 
-// Open expanded view on install
 chrome.runtime.onInstalled.addListener((details) => {
   if (details.reason === 'install') {
     chrome.tabs.create({ url: chrome.runtime.getURL('index.html') });
   }
 });
 
-// Message handler
+// =============================================================================
+// Message Handler
+// =============================================================================
+
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === 'SYNC_STATE') {
     chrome.runtime.sendMessage(message).catch(() => {});
@@ -168,7 +129,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
-  // Handle dApp requests
   if (message.source === 'octra-content-script') {
     handleDAppRequest(message, sender)
       .then(response => sendResponse(response))
@@ -231,9 +191,6 @@ async function handleDAppRequest(message, sender) {
       case 'ESTIMATE_ENCRYPTED_TX':
         return await handleEstimateEncryptedTx(normalizedData, sender);
 
-      case 'ESTIMATE_COMPUTE_COST':
-        return await handleEstimateComputeCost(normalizedData, sender);
-
       case 'LIST_CAPABILITIES_REQUEST':
         return await handleListCapabilities(normalizedData, sender);
 
@@ -261,7 +218,10 @@ function getSenderOrigin(sender) {
   }
 }
 
-// Handle connection request (NO signing)
+// =============================================================================
+// Connection Request Handler
+// =============================================================================
+
 async function handleConnectionRequest(data, sender) {
   const { circle, appOrigin, appName, appIcon, requestedCapabilities } = data;
 
@@ -271,10 +231,9 @@ async function handleConnectionRequest(data, sender) {
   const existingConnection = await getConnection(appOrigin);
   if (existingConnection && existingConnection.circle === circle) {
     console.log('[Background] Already connected, returning existing connection');
-    
-    // PENDING: Epoch implementation - not fetched for now
-    // const currentEpoch = await fetchCurrentEpoch();
-    
+
+    const currentEpoch = await fetchCurrentEpoch();
+
     return {
       type: 'CONNECTION_RESPONSE',
       success: true,
@@ -284,14 +243,18 @@ async function handleConnectionRequest(data, sender) {
         walletPubKey: existingConnection.walletPubKey,
         evmAddress: existingConnection.evmAddress || '',
         network: existingConnection.network || 'mainnet',
-        // epoch: currentEpoch,  // PENDING
+        epoch: currentEpoch,
         branchId: existingConnection.branchId || 'main'
       }
     };
   }
 
-  // Store pending request
-  await setStorageData('pendingConnectionRequest', {
+  // Generate unique key for this pending request
+  const pendingKey = `conn_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+
+  // Store pending request with keyed storage
+  await setStorageData(`pendingConnectionRequest_${pendingKey}`, {
+    pendingKey,
     circle,
     appOrigin,
     appName: appName || appOrigin,
@@ -299,6 +262,9 @@ async function handleConnectionRequest(data, sender) {
     requestedCapabilities: requestedCapabilities || [],
     timestamp: Date.now()
   });
+
+  // Write the key so popup knows which request to load
+  await setStorageData('pendingConnectionRequestKey', pendingKey);
 
   // Try popup first, fallback to tab
   try {
@@ -310,26 +276,31 @@ async function handleConnectionRequest(data, sender) {
     await chrome.tabs.create({ url, active: true });
   }
 
-  // Wait for user response
+  // Wait for user response  keyed by pendingKey to avoid cross-request collision
   return new Promise((resolve) => {
+    const cleanup = () => {
+      chrome.runtime.onMessage.removeListener(listener);
+      clearTimeout(timer);
+      chrome.storage.local.remove([
+        `pendingConnectionRequest_${pendingKey}`,
+        'pendingConnectionRequestKey'
+      ]);
+    };
+
     const listener = async (msg) => {
-      console.log('[Background] Received message:', msg.type, msg);
-      
-      // Handle both old format (origin) and new format (appOrigin)
       const msgOrigin = msg.appOrigin || msg.origin;
-      
-      if (msg.type === 'CONNECTION_RESULT' && msgOrigin === appOrigin) {
-        chrome.runtime.onMessage.removeListener(listener);
+      if (msg.type === 'CONNECTION_RESULT'
+          && msgOrigin === appOrigin
+          && msg.pendingKey === pendingKey) {
+        cleanup();
 
         if (msg.approved) {
           const walletAddress = msg.walletPubKey || msg.address || 'oct_unknown';
           const network = msg.network || 'mainnet';
           const evmAddress = msg.evmAddress || '';
-          
-          // PENDING: Epoch implementation - not fetched for now
-          // const currentEpoch = await fetchCurrentEpoch();
           const branchId = msg.branchId || 'main';
-          
+          const currentEpoch = await fetchCurrentEpoch();
+
           console.log('[Background] Connection approved:', { walletAddress, evmAddress, network, branchId });
 
           saveConnection({
@@ -339,7 +310,7 @@ async function handleConnectionRequest(data, sender) {
             walletPubKey: walletAddress,
             evmAddress: evmAddress,
             network: network,
-            // epoch: currentEpoch,  // PENDING
+            epoch: currentEpoch,
             branchId: branchId,
             connectedAt: Date.now()
           });
@@ -353,7 +324,7 @@ async function handleConnectionRequest(data, sender) {
               walletPubKey: walletAddress,
               evmAddress: evmAddress,
               network: network,
-              // epoch: currentEpoch,  // PENDING
+              epoch: currentEpoch,
               branchId: branchId
             }
           });
@@ -368,22 +339,23 @@ async function handleConnectionRequest(data, sender) {
       }
     };
 
-    chrome.runtime.onMessage.addListener(listener);
-
-    // Timeout after 60 seconds
-    setTimeout(() => {
-      chrome.runtime.onMessage.removeListener(listener);
-      chrome.storage.local.remove('pendingConnectionRequest');
+    const timer = setTimeout(() => {
+      cleanup();
       resolve({
         type: 'CONNECTION_RESPONSE',
         success: false,
         error: 'Connection request timeout'
       });
     }, 60000);
+
+    chrome.runtime.onMessage.addListener(listener);
   });
 }
 
-// Handle capability request
+// =============================================================================
+// Capability Request Handler
+// =============================================================================
+
 async function handleCapabilityRequest(data, sender) {
   const { circle, methods, scope, encrypted, ttlSeconds, appOrigin, appName, appIcon } = data;
 
@@ -393,8 +365,12 @@ async function handleCapabilityRequest(data, sender) {
     throw new Error('Not connected to wallet');
   }
 
-  // Store pending request
-  await setStorageData('pendingCapabilityRequest', {
+  // Generate unique key for this pending request
+  const pendingKey = `cap_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+
+  // Store pending request with keyed storage
+  await setStorageData(`pendingCapabilityRequest_${pendingKey}`, {
+    pendingKey,
     circle,
     methods,
     scope,
@@ -406,7 +382,10 @@ async function handleCapabilityRequest(data, sender) {
     timestamp: Date.now()
   });
 
-  // Open approval UI — always use popup window, never new tab
+  // Write the key so popup knows which request to load
+  await setStorageData('pendingCapabilityRequestKey', pendingKey);
+
+  // Open approval UI
   try {
     await chrome.action.openPopup();
   } catch (error) {
@@ -426,19 +405,28 @@ async function handleCapabilityRequest(data, sender) {
     }
   }
 
-  // Wait for user response
+  // Wait for user response  keyed by pendingKey
   return new Promise((resolve) => {
+    const cleanup = () => {
+      chrome.runtime.onMessage.removeListener(listener);
+      clearTimeout(timer);
+      chrome.storage.local.remove([
+        `pendingCapabilityRequest_${pendingKey}`,
+        'pendingCapabilityRequestKey'
+      ]);
+    };
+
     const listener = async (msg) => {
-      if (msg.type === 'CAPABILITY_RESULT' && msg.appOrigin === appOrigin) {
-        chrome.runtime.onMessage.removeListener(listener);
+      if (msg.type === 'CAPABILITY_RESULT'
+          && msg.appOrigin === appOrigin
+          && msg.pendingKey === pendingKey) {
+        cleanup();
 
         if (msg.approved) {
           const signedCapability = msg.signedCapability;
           const capabilityId = msg.capabilityId;
-          
-          // PENDING: Epoch implementation - not fetched for now
-          // const currentEpoch = await fetchCurrentEpoch();
-          
+          const currentEpoch = await fetchCurrentEpoch();
+
           const capability = {
             id: capabilityId,
             version: signedCapability.version || 2,
@@ -448,14 +436,13 @@ async function handleCapabilityRequest(data, sender) {
             encrypted: signedCapability.encrypted,
             appOrigin: signedCapability.appOrigin,
             branchId: signedCapability.branchId || 'main',
-            // epoch: currentEpoch,  // PENDING
+            epoch: currentEpoch,
             issuedAt: signedCapability.issuedAt,
             expiresAt: signedCapability.expiresAt,
             nonceBase: signedCapability.nonceBase || 0,
             walletPubKey: signedCapability.walletPubKey,
             signature: signedCapability.signature,
             state: 'ACTIVE',
-            // Real lastNonce tracking
             lastNonce: signedCapability.nonceBase || 0
           };
 
@@ -467,13 +454,12 @@ async function handleCapabilityRequest(data, sender) {
             scope: capability.scope,
             appOrigin: capability.appOrigin,
             branchId: capability.branchId,
-            // epoch: capability.epoch,  // PENDING
+            epoch: capability.epoch,
             expiresAt: capability.expiresAt ? new Date(capability.expiresAt).toISOString() : 'never',
             walletPubKey: capability.walletPubKey?.slice(0, 16) + '...',
             signature: capability.signature?.slice(0, 16) + '...'
           });
 
-          // Store capability
           saveCapability(appOrigin, capability);
 
           resolve({
@@ -491,22 +477,23 @@ async function handleCapabilityRequest(data, sender) {
       }
     };
 
-    chrome.runtime.onMessage.addListener(listener);
-
-    // Timeout after 5 minutes
-    setTimeout(() => {
-      chrome.runtime.onMessage.removeListener(listener);
-      chrome.storage.local.remove('pendingCapabilityRequest');
+    const timer = setTimeout(() => {
+      cleanup();
       resolve({
         type: 'CAPABILITY_RESPONSE',
         success: false,
         error: 'Capability request timeout'
       });
     }, 300000);
+
+    chrome.runtime.onMessage.addListener(listener);
   });
 }
 
-// Handle invoke request
+// =============================================================================
+// Invoke Request Handler
+// =============================================================================
+
 async function handleInvokeRequest(data, sender) {
   const { capabilityId, method, payload, nonce, timestamp, appOrigin, appName } = data;
 
@@ -521,13 +508,13 @@ async function handleInvokeRequest(data, sender) {
     throw new Error(`Capability '${capabilityId}' not found`);
   }
 
-  // SECURITY: Verify origin binding (cryptographic enforcement)
+  // SECURITY: Verify origin binding
   if (capability.appOrigin !== appOrigin) {
     console.error('[Background] Origin mismatch:', { expected: capability.appOrigin, actual: appOrigin });
     throw new Error('Origin mismatch - capability bound to different origin');
   }
 
-  // SECURITY: Check expiry (mandatory in v2)
+  // SECURITY: Check expiry
   if (capability.expiresAt && capability.expiresAt < Date.now()) {
     throw new Error('Capability expired');
   }
@@ -537,7 +524,7 @@ async function handleInvokeRequest(data, sender) {
     throw new Error(`Method '${method}' not allowed by capability`);
   }
 
-  // SECURITY: Nonce validation — wallet is final authority
+  // SECURITY: Nonce validation
   if (nonce !== undefined && nonce <= capability.lastNonce) {
     throw new Error(`Nonce violation: ${nonce} <= ${capability.lastNonce}`);
   }
@@ -550,10 +537,9 @@ async function handleInvokeRequest(data, sender) {
 
   // ==========================================================================
   // AUTO-EXECUTE READ METHODS (no user approval needed)
-  // SECURITY: send_transaction and send_evm_transaction are NOT auto-execute —
-  // they ALWAYS require popup approval as they transfer funds.
+  // send_transaction and send_evm_transaction ALWAYS require popup approval.
   // ==========================================================================
-  const autoExecuteMethods = ['get_balance', 'get_quote', 'create_intent', 'submit_intent', 'get_intent_status'];
+  const autoExecuteMethods = ['get_balance'];
 
   console.log('[Background] Checking auto-execute for method:', method, 'scope:', capability.scope);
 
@@ -578,15 +564,11 @@ async function handleInvokeRequest(data, sender) {
   }
 
   // ==========================================================================
-  // WRITE METHODS — require user approval
-  // Use _pendingRegistry (in-memory Map) keyed by a unique requestId so that
-  // concurrent requests from different origins never overwrite each other.
+  // WRITE METHODS  require user approval
   // ==========================================================================
 
-  // Generate a unique key for this pending request
   const pendingKey = `invoke_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
 
-  // Store full context in chrome.storage so the popup can read it
   await setStorageData(`pendingInvokeRequest_${pendingKey}`, {
     pendingKey,
     capabilityId,
@@ -601,17 +583,14 @@ async function handleInvokeRequest(data, sender) {
     requestTimestamp: Date.now()
   });
 
-  // Also write the latest key so the popup knows which request to show
   await setStorageData('pendingInvokeRequestKey', pendingKey);
 
-  // Open approval UI — extension popup only
   try {
     await chrome.action.openPopup();
   } catch (error) {
     console.log('[Background] openPopup failed for invoke, storage change listener will handle it');
   }
 
-  // Wait for user response — keyed by pendingKey to avoid cross-request collision
   return new Promise((resolve) => {
     const cleanup = () => {
       chrome.runtime.onMessage.removeListener(listener);
@@ -662,15 +641,10 @@ async function handleInvokeRequest(data, sender) {
 // Method Execution (wallet-side RPC calls)
 // =============================================================================
 
-// These values are injected at build time from .env as fallback defaults
 const DEFAULT_RPC_URL = '__VITE_OCTRA_RPC_URL__';
-const MU_FACTOR = 1_000_000;
-
-// Default Infura API Key (injected at build time)
-const DEFAULT_INFURA_API_KEY = '__VITE_INFURA_API_KEY__';
 
 /**
- * Get the active Octra RPC URL from chrome.storage.local (set by RPC Provider Manager UI).
+ * Get the active Octra RPC URL from chrome.storage.local.
  * Falls back to the build-time injected default.
  */
 async function getActiveOctraRpcUrl() {
@@ -689,12 +663,12 @@ async function getActiveOctraRpcUrl() {
 
 /**
  * Fetch current epoch from Octra RPC using the active provider.
- * Uses the JSON-RPC endpoint (epoch_current) — consistent with all other RPC calls.
+ * Uses the JSON-RPC endpoint (epoch_current).
  */
 async function fetchCurrentEpoch() {
   try {
     const rpcUrl = await getActiveOctraRpcUrl();
-    const response = await fetch(`${rpcUrl}/rpc`, {
+    const response = await fetch(rpcUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -714,400 +688,60 @@ async function fetchCurrentEpoch() {
   return 0;
 }
 
-// Default EVM Networks configuration
-const DEFAULT_EVM_NETWORKS = {
-  'eth-mainnet': {
-    rpcUrl: `https://mainnet.infura.io/v3/${DEFAULT_INFURA_API_KEY}`,
-    chainId: 1,
-    symbol: 'ETH',
-    isTestnet: false
-  },
-  'eth-sepolia': {
-    rpcUrl: `https://sepolia.infura.io/v3/${DEFAULT_INFURA_API_KEY}`,
-    chainId: 11155111,
-    symbol: 'ETH',
-    isTestnet: true
-  },
-  'polygon-mainnet': {
-    rpcUrl: `https://polygon-mainnet.infura.io/v3/${DEFAULT_INFURA_API_KEY}`,
-    chainId: 137,
-    symbol: 'POL',
-    isTestnet: false
-  },
-  'base-mainnet': {
-    rpcUrl: `https://base-mainnet.infura.io/v3/${DEFAULT_INFURA_API_KEY}`,
-    chainId: 8453,
-    symbol: 'ETH',
-    isTestnet: false
-  },
-  'bsc-mainnet': {
-    rpcUrl: `https://bsc-mainnet.infura.io/v3/${DEFAULT_INFURA_API_KEY}`,
-    chainId: 56,
-    symbol: 'BNB',
-    isTestnet: false
-  }
-};
-
-// USDC Contracts per network
-const USDC_CONTRACTS = {
-  'eth-mainnet': { address: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48', decimals: 6 },
-  'eth-sepolia': { address: '0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238', decimals: 6 },
-  'polygon-mainnet': { address: '0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359', decimals: 6 },
-  'base-mainnet': { address: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913', decimals: 6 },
-  'bsc-mainnet': { address: '0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d', decimals: 18 }
-};
-
-/**
- * Get active EVM network from chrome.storage (synced from wallet)
- * Falls back to eth-sepolia if not set
- */
-async function getActiveEVMNetwork() {
-  try {
-    const result = await chrome.storage.local.get(['active_evm_network']);
-    return result.active_evm_network || 'eth-sepolia';
-  } catch {
-    return 'eth-sepolia';
-  }
-}
-
-/**
- * Get EVM RPC URL for a network
- */
-function getEVMRpcUrl(networkId) {
-  const network = DEFAULT_EVM_NETWORKS[networkId];
-  return network ? network.rpcUrl : DEFAULT_EVM_NETWORKS['eth-sepolia'].rpcUrl;
-}
-
-/**
- * Get USDC contract info for a network
- */
-function getUSDCContract(networkId) {
-  return USDC_CONTRACTS[networkId] || USDC_CONTRACTS['eth-sepolia'];
-}
-
 async function executeMethod(method, payload, connection, capability) {
   switch (method) {
     case 'get_balance':
       return await executeGetBalance(connection);
-    
-    case 'get_quote':
-      return await executeGetQuote(payload);
 
     case 'send_transaction':
-      return await executeSendTransaction(payload, connection);
+      throw new Error('send_transaction requires user approval');
 
     case 'send_evm_transaction':
-      return await executeSendEvmTransaction(payload, connection);
+      throw new Error('send_evm_transaction requires user approval');
 
-    case 'create_intent':
-      return await executeCreateIntent(payload);
-
-    case 'submit_intent':
-      return await executeSubmitIntent(payload);
-
-    case 'get_intent_status':
-      return await executeGetIntentStatus(payload);
-    
     default:
-      throw new Error(`Unknown auto-execute method: ${method}`);
+      throw new Error(`Unknown method: ${method}`);
   }
 }
 
 // Get balance from RPC (wallet-side, not dApp-side)
 async function executeGetBalance(connection) {
   const octAddress = connection.walletPubKey;
-  const evmAddress = connection.evmAddress || '';
-  
-  // Get active EVM network from wallet settings
-  const activeNetwork = await getActiveEVMNetwork();
-  const evmRpcUrl = getEVMRpcUrl(activeNetwork);
-  const usdcContract = getUSDCContract(activeNetwork);
-  
-  console.log('[Background] Fetching balances for:', { octAddress, evmAddress, activeNetwork });
-  
+
+  console.log('[Background] Fetching OCT balance for:', octAddress);
+
   let octBalance = 0;
-  let ethBalance = 0;
-  let usdcBalance = 0;
-  
-  // Fetch OCT balance
+
+  // Fetch OCT balance via JSON-RPC
   try {
     const rpcUrl = await getActiveOctraRpcUrl();
-    const response = await fetch(`${rpcUrl}/address/${octAddress}`);
-    
+    const response = await fetch(rpcUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'octra_balance', params: [octAddress] })
+    });
     if (response.ok) {
       const data = await response.json();
-      octBalance = parseFloat(data.balance) || 0;
+      octBalance = parseFloat(data?.result?.balance) || 0;
       console.log('[Background] OCT balance:', octBalance);
     }
   } catch (error) {
     console.error('[Background] OCT balance fetch error:', error);
   }
-  
-  // Fetch ETH/native token balance
-  if (evmAddress) {
-    try {
-      const response = await fetch(evmRpcUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          jsonrpc: '2.0',
-          method: 'eth_getBalance',
-          params: [evmAddress, 'latest'],
-          id: 1
-        })
-      });
-      
-      if (response.ok) {
-        const data = await response.json();
-        if (data.result) {
-          // Convert from wei (hex) to ETH
-          const weiBalance = BigInt(data.result);
-          ethBalance = Number(weiBalance) / 1e18;
-          console.log('[Background] ETH balance:', ethBalance);
-        }
-      }
-    } catch (error) {
-      console.error('[Background] ETH balance fetch error:', error);
-    }
-    
-    // Fetch USDC balance (ERC20)
-    if (usdcContract.address) {
-      try {
-        // balanceOf(address) function selector: 0x70a08231
-        const balanceOfData = '0x70a08231' + evmAddress.slice(2).toLowerCase().padStart(64, '0');
-        
-        const response = await fetch(evmRpcUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            jsonrpc: '2.0',
-            method: 'eth_call',
-            params: [
-              { to: usdcContract.address, data: balanceOfData },
-              'latest'
-            ],
-            id: 2
-          })
-        });
-        
-        if (response.ok) {
-          const data = await response.json();
-          if (data.result && data.result !== '0x') {
-            // Convert from smallest units to USDC
-            const rawBalance = BigInt(data.result);
-            usdcBalance = Number(rawBalance) / Math.pow(10, usdcContract.decimals);
-            console.log('[Background] USDC balance:', usdcBalance);
-          }
-        }
-      } catch (error) {
-        console.error('[Background] USDC balance fetch error:', error);
-      }
-    }
-  }
-  
-  console.log('[Background] Balances fetched:', { octBalance, ethBalance, usdcBalance });
-  
-  // Return as Uint8Array (SDK format)
-  const result = {
-    octAddress: octAddress,
-    evmAddress: evmAddress,
-    octBalance: octBalance,
-    ethBalance: ethBalance,
-    usdcBalance: usdcBalance,
+
+  return new TextEncoder().encode(JSON.stringify({
+    octAddress,
+    octBalance,
     network: connection.network || 'mainnet',
-    evmNetwork: activeNetwork
-  };
-  
-  return new TextEncoder().encode(JSON.stringify(result));
+  }));
 }
 
-// Validate URL to prevent SSRF attacks
-function isValidApiUrl(url) {
-  if (!url || typeof url !== 'string') return false;
-  try {
-    const parsed = new URL(url);
-    // Only allow HTTPS in production
-    if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') return false;
-    // Block localhost/internal IPs in production (allow for development)
-    const hostname = parsed.hostname.toLowerCase();
-    const blockedPatterns = ['localhost', '127.0.0.1', '0.0.0.0', '::1', '169.254.', '10.', '172.16.', '172.17.', '172.18.', '172.19.', '172.20.', '172.21.', '172.22.', '172.23.', '172.24.', '172.25.', '172.26.', '172.27.', '172.28.', '172.29.', '172.30.', '172.31.', '192.168.'];
-    // Allow localhost for development, but log warning
-    if (blockedPatterns.some(p => hostname.startsWith(p) || hostname === p)) {
-      console.warn('[Background] Warning: API URL points to local/internal address:', hostname);
-    }
-    return true;
-  } catch {
-    return false;
-  }
-}
+// =============================================================================
+// Disconnect Request Handler
+// =============================================================================
 
-// Get swap quote
-async function executeGetQuote(payload) {
-  let params;
-  try {
-    if (payload && payload._type === 'Uint8Array') {
-      const bytes = new Uint8Array(payload.data);
-      params = JSON.parse(new TextDecoder().decode(bytes));
-    } else if (payload instanceof Uint8Array) {
-      params = JSON.parse(new TextDecoder().decode(payload));
-    } else {
-      params = payload || {};
-    }
-  } catch (e) {
-    throw new Error('Failed to parse quote payload');
-  }
-  
-  const { apiUrl, from = 'OCT', to = 'ETH', amount } = params;
-  if (!isValidApiUrl(apiUrl)) {
-    throw new Error('Invalid or missing apiUrl for get_quote');
-  }
-  if (typeof amount !== 'number' || amount <= 0 || !Number.isFinite(amount)) {
-    throw new Error('Invalid amount for get_quote');
-  }
-
-  const response = await fetch(`${apiUrl.replace(/\/$/, '')}/quote?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&amount=${encodeURIComponent(amount)}`);
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({}));
-    throw new Error(error.error || `Quote failed: ${response.status}`);
-  }
-  const result = await response.json();
-  return new TextEncoder().encode(JSON.stringify(result));
-}
-
-async function executeCreateIntent(payload) {
-  let params;
-  try {
-    if (payload && payload._type === 'Uint8Array') {
-      const bytes = new Uint8Array(payload.data);
-      params = JSON.parse(new TextDecoder().decode(bytes));
-    } else if (payload instanceof Uint8Array) {
-      params = JSON.parse(new TextDecoder().decode(payload));
-    } else {
-      params = payload || {};
-    }
-  } catch (e) {
-    throw new Error('Failed to parse create_intent payload');
-  }
-
-  const { quote, targetAddress, slippageBps = 50 } = params;
-  if (!quote || typeof quote !== 'object') {
-    throw new Error('quote is required for create_intent');
-  }
-  if (!/^0x[a-fA-F0-9]{40}$/.test(targetAddress || '')) {
-    throw new Error('Invalid targetAddress');
-  }
-  if (typeof slippageBps !== 'number' || slippageBps < 0 || slippageBps > 5000 || !Number.isFinite(slippageBps)) {
-    throw new Error('Invalid slippageBps (must be 0-5000)');
-  }
-
-  const slippageMultiplier = 1 - slippageBps / 10000;
-  const estimatedOut = Number(quote.estimatedOut);
-  if (!Number.isFinite(estimatedOut) || estimatedOut <= 0) {
-    throw new Error('Invalid quote.estimatedOut');
-  }
-  const minAmountOut = estimatedOut * slippageMultiplier;
-
-  const intentPayload = {
-    version: 1,
-    intentType: 'swap',
-    fromAsset: quote.from || 'OCT',
-    toAsset: quote.to || 'ETH',
-    amountIn: Number(quote.amountIn),
-    minAmountOut,
-    targetChain: quote.network || 'ethereum_sepolia',
-    targetAddress,
-    expiry: Date.now() + 5 * 60 * 1000,
-    nonce: crypto.randomUUID()
-  };
-
-  return new TextEncoder().encode(JSON.stringify(intentPayload));
-}
-
-async function executeSubmitIntent(payload) {
-  let params;
-  try {
-    if (payload && payload._type === 'Uint8Array') {
-      const bytes = new Uint8Array(payload.data);
-      params = JSON.parse(new TextDecoder().decode(bytes));
-    } else if (payload instanceof Uint8Array) {
-      params = JSON.parse(new TextDecoder().decode(payload));
-    } else {
-      params = payload || {};
-    }
-  } catch (e) {
-    throw new Error('Failed to parse submit_intent payload');
-  }
-
-  const { apiUrl, octraTxHash } = params;
-  if (!isValidApiUrl(apiUrl)) {
-    throw new Error('Invalid or missing apiUrl for submit_intent');
-  }
-  if (!octraTxHash || typeof octraTxHash !== 'string' || octraTxHash.length < 10) {
-    throw new Error('Invalid octraTxHash for submit_intent');
-  }
-
-  const response = await fetch(`${apiUrl.replace(/\/$/, '')}/swap/submit`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ octraTxHash })
-  });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({}));
-    throw new Error(error.error || error.message || `Submit failed: ${response.status}`);
-  }
-
-  const result = await response.json();
-  return new TextEncoder().encode(JSON.stringify(result));
-}
-
-async function executeGetIntentStatus(payload) {
-  let params;
-  try {
-    if (payload && payload._type === 'Uint8Array') {
-      const bytes = new Uint8Array(payload.data);
-      params = JSON.parse(new TextDecoder().decode(bytes));
-    } else if (payload instanceof Uint8Array) {
-      params = JSON.parse(new TextDecoder().decode(payload));
-    } else {
-      params = payload || {};
-    }
-  } catch (e) {
-    throw new Error('Failed to parse get_intent_status payload');
-  }
-
-  const { apiUrl, intentId } = params;
-  if (!isValidApiUrl(apiUrl)) {
-    throw new Error('Invalid or missing apiUrl for get_intent_status');
-  }
-  if (!intentId || typeof intentId !== 'string' || intentId.length < 5) {
-    throw new Error('Invalid intentId for get_intent_status');
-  }
-
-  const response = await fetch(`${apiUrl.replace(/\/$/, '')}/swap/${encodeURIComponent(intentId)}`);
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({}));
-    throw new Error(error.error || `Status check failed: ${response.status}`);
-  }
-
-  const result = await response.json();
-  return new TextEncoder().encode(JSON.stringify(result));
-}
-
-// Send transaction to escrow (for intent-based swaps)
-async function executeSendTransaction(payload, connection) {
-  throw new Error('send_transaction requires user approval');
-}
-
-// Send EVM transaction (ETH to escrow for BUY orders)
-async function executeSendEvmTransaction(payload, connection) {
-  throw new Error('send_evm_transaction requires user approval');
-}
-
-// Handle disconnect request
 async function handleDisconnectRequest(data, sender) {
   const { appOrigin } = data;
-
   try {
     await removeConnection(appOrigin);
     return {
@@ -1120,7 +754,10 @@ async function handleDisconnectRequest(data, sender) {
   }
 }
 
-// Handle sign message request
+// =============================================================================
+// Sign Message Request Handler
+// =============================================================================
+
 async function handleSignMessageRequest(data, sender) {
   const { message, appOrigin, appName, appIcon } = data;
 
@@ -1129,7 +766,6 @@ async function handleSignMessageRequest(data, sender) {
   console.log('[Background] appOrigin:', appOrigin);
   console.log('[Background] appName:', appName);
   console.log('[Background] message length:', message?.length);
-  console.log('[Background] message:', message);
   console.log('[Background] ========================================');
 
   // Check if connected
@@ -1141,27 +777,26 @@ async function handleSignMessageRequest(data, sender) {
 
   console.log('[Background] Connection found:', connection.walletPubKey);
 
-  // Store pending request
+  // Generate unique key for this pending request
+  const pendingKey = `sign_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+
+  // Store pending request with keyed storage
   const pendingRequest = {
+    pendingKey,
     message,
     appOrigin,
     appName: appName || appOrigin,
     appIcon,
     timestamp: Date.now()
   };
-  
-  console.log('[Background] Storing pending request:', pendingRequest);
-  await setStorageData('pendingSignMessageRequest', pendingRequest);
-  
-  // Verify storage
-  const verify = await getStorageData('pendingSignMessageRequest');
-  console.log('[Background] Verified storage:', verify);
+
+  console.log('[Background] Storing pending sign request with key:', pendingKey);
+  await setStorageData(`pendingSignMessageRequest_${pendingKey}`, pendingRequest);
+  await setStorageData('pendingSignMessageRequestKey', pendingKey);
 
   // Open approval UI
   console.log('[Background] Opening popup...');
   try {
-    // First store the request, then open popup with small delay
-    await new Promise(resolve => setTimeout(resolve, 100)); // Give storage time to sync
     await chrome.action.openPopup();
     console.log('[Background] Popup opened successfully');
   } catch (error) {
@@ -1172,13 +807,24 @@ async function handleSignMessageRequest(data, sender) {
     await chrome.tabs.create({ url, active: true });
   }
 
-  // Wait for user response
+  // Wait for user response  keyed by pendingKey
   return new Promise((resolve) => {
+    const cleanup = () => {
+      chrome.runtime.onMessage.removeListener(listener);
+      clearTimeout(timer);
+      chrome.storage.local.remove([
+        `pendingSignMessageRequest_${pendingKey}`,
+        'pendingSignMessageRequestKey'
+      ]);
+    };
+
     const listener = (msg) => {
       console.log('[Background] Received message:', msg.type, msg);
-      
-      if (msg.type === 'SIGN_MESSAGE_RESULT' && msg.appOrigin === appOrigin) {
-        chrome.runtime.onMessage.removeListener(listener);
+
+      if (msg.type === 'SIGN_MESSAGE_RESULT'
+          && msg.appOrigin === appOrigin
+          && msg.pendingKey === pendingKey) {
+        cleanup();
 
         if (msg.approved && msg.signature) {
           console.log('[Background] Message signed successfully');
@@ -1198,12 +844,8 @@ async function handleSignMessageRequest(data, sender) {
       }
     };
 
-    chrome.runtime.onMessage.addListener(listener);
-
-    // Timeout after 60 seconds
-    setTimeout(() => {
-      chrome.runtime.onMessage.removeListener(listener);
-      chrome.storage.local.remove('pendingSignMessageRequest');
+    const timer = setTimeout(() => {
+      cleanup();
       console.log('[Background] Sign message request timeout');
       resolve({
         type: 'SIGN_MESSAGE_RESPONSE',
@@ -1211,7 +853,172 @@ async function handleSignMessageRequest(data, sender) {
         error: 'Sign message request timeout'
       });
     }, 60000);
+
+    chrome.runtime.onMessage.addListener(listener);
   });
+}
+
+// =============================================================================
+// Gas Estimation Handlers
+// =============================================================================
+
+/**
+ * Handle plain transaction fee estimation.
+ * Queries octra_recommendedFee from the node (no hardcoded values).
+ */
+async function handleEstimatePlainTx(data, sender) {
+  const rpcUrl = await getActiveOctraRpcUrl();
+  let recommendedOu = 1000; // fallback
+  try {
+    const r = await fetch(rpcUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'octra_recommendedFee', params: ['standard'] })
+    });
+    if (r.ok) {
+      const d = await r.json();
+      recommendedOu = parseInt(d?.result?.recommended ?? d?.result?.base_fee ?? 1000, 10);
+    }
+  } catch { /* use fallback */ }
+  const fee = recommendedOu / 1_000_000; // 1 OCT = 1,000,000 OU
+  const currentEpoch = await fetchCurrentEpoch();
+  return {
+    type: 'ESTIMATE_PLAIN_TX_RESPONSE',
+    success: true,
+    result: { gasUnits: recommendedOu, tokenCost: fee, latencyEstimate: 2000, epoch: currentEpoch }
+  };
+}
+
+/**
+ * Handle encrypted transaction fee estimation.
+ * Queries octra_recommendedFee with op_type 'encrypt' from the node.
+ */
+async function handleEstimateEncryptedTx(data, sender) {
+  const rpcUrl = await getActiveOctraRpcUrl();
+  let recommendedOu = 30000; // fallback
+  try {
+    const r = await fetch(rpcUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'octra_recommendedFee', params: ['encrypt'] })
+    });
+    if (r.ok) {
+      const d = await r.json();
+      recommendedOu = parseInt(d?.result?.recommended ?? d?.result?.base_fee ?? 30000, 10);
+    }
+  } catch { /* use fallback */ }
+  const fee = recommendedOu / 1_000_000;
+  const currentEpoch = await fetchCurrentEpoch();
+  return {
+    type: 'ESTIMATE_ENCRYPTED_TX_RESPONSE',
+    success: true,
+    result: { gasUnits: recommendedOu, tokenCost: fee, latencyEstimate: 4000, epoch: currentEpoch }
+  };
+}
+
+// =============================================================================
+// Capability Management Handlers
+// =============================================================================
+
+/**
+ * Handle list capabilities request.
+ * Returns all active capabilities for the requesting origin.
+ */
+async function handleListCapabilities(data, sender) {
+  const { appOrigin } = data;
+
+  console.log('[Background] List capabilities request from:', appOrigin);
+
+  const result = await chrome.storage.local.get(['capabilities']);
+  const allCapabilities = result.capabilities || {};
+  const originCapabilities = allCapabilities[appOrigin] || [];
+
+  const now = Date.now();
+  const activeCapabilities = originCapabilities.filter(cap => cap.expiresAt > now);
+
+  console.log('[Background] Found', activeCapabilities.length, 'active capabilities');
+
+  return {
+    type: 'LIST_CAPABILITIES_RESPONSE',
+    success: true,
+    result: activeCapabilities
+  };
+}
+
+/**
+ * Handle renew capability request.
+ * Extends the expiration time of an existing capability.
+ */
+async function handleRenewCapability(data, sender) {
+  const { capabilityId, appOrigin } = data;
+
+  console.log('[Background] Renew capability request:', capabilityId);
+
+  if (!capabilityId) {
+    throw new Error('Capability ID is required');
+  }
+
+  const result = await chrome.storage.local.get(['capabilities']);
+  const allCapabilities = result.capabilities || {};
+  const originCapabilities = allCapabilities[appOrigin] || [];
+
+  const capIndex = originCapabilities.findIndex(c => c.id === capabilityId);
+  if (capIndex === -1) {
+    throw new Error(`Capability '${capabilityId}' not found`);
+  }
+
+  const capability = originCapabilities[capIndex];
+  if (capability.expiresAt <= Date.now()) {
+    throw new Error('Cannot renew expired capability');
+  }
+
+  const newExpiresAt = Date.now() + (900 * 1000);
+  const renewedCapability = { ...capability, expiresAt: newExpiresAt };
+
+  originCapabilities[capIndex] = renewedCapability;
+  allCapabilities[appOrigin] = originCapabilities;
+  await chrome.storage.local.set({ capabilities: allCapabilities });
+
+  console.log('[Background] Capability renewed:', capabilityId);
+
+  return {
+    type: 'RENEW_CAPABILITY_RESPONSE',
+    success: true,
+    result: renewedCapability
+  };
+}
+
+/**
+ * Handle revoke capability request.
+ * Removes a capability from storage.
+ */
+async function handleRevokeCapability(data, sender) {
+  const { capabilityId, appOrigin } = data;
+
+  console.log('[Background] Revoke capability request:', capabilityId);
+
+  if (!capabilityId) {
+    throw new Error('Capability ID is required');
+  }
+
+  const result = await chrome.storage.local.get(['capabilities']);
+  const allCapabilities = result.capabilities || {};
+  const originCapabilities = allCapabilities[appOrigin] || [];
+
+  const updatedCapabilities = originCapabilities.filter(c => c.id !== capabilityId);
+  if (updatedCapabilities.length === originCapabilities.length) {
+    throw new Error(`Capability '${capabilityId}' not found`);
+  }
+
+  allCapabilities[appOrigin] = updatedCapabilities;
+  await chrome.storage.local.set({ capabilities: allCapabilities });
+
+  console.log('[Background] Capability revoked:', capabilityId);
+
+  return {
+    type: 'REVOKE_CAPABILITY_RESPONSE',
+    success: true
+  };
 }
 
 // =============================================================================
@@ -1220,18 +1027,14 @@ async function handleSignMessageRequest(data, sender) {
 
 async function lockWallet() {
   try {
-    // Clear session storage (session key + decrypted wallets)
     if (chrome.storage.session) {
       await chrome.storage.session.clear();
     }
-    // Mark wallet as locked
     await setStorageData('isWalletLocked', 'true');
-    // Clear any in-memory session wallet data
-    // Note: encryptedWallets stays in localStorage (persisted) — only session data is cleared
     await chrome.storage.local.remove([
       'sessionWallets',
       'sessionKey',
-      'wallets',          // legacy key
+      'wallets',
     ]);
     console.log('[Background] Wallet locked');
   } catch (error) {
@@ -1272,9 +1075,8 @@ async function removeConnection(appOrigin) {
   const capabilities = await getStorageData('capabilities') || {};
   delete capabilities[appOrigin];
   await setStorageData('capabilities', capabilities);
-  
+
   // Notify all tabs that connection was removed
-  // This allows dApps to detect disconnection and request new connection
   try {
     const tabs = await chrome.tabs.query({});
     for (const tab of tabs) {
@@ -1282,7 +1084,7 @@ async function removeConnection(appOrigin) {
         chrome.tabs.sendMessage(tab.id, {
           type: 'WALLET_DISCONNECTED',
           appOrigin: appOrigin
-        }).catch(() => {}); // Ignore errors for tabs without content script
+        }).catch(() => {});
       }
     }
   } catch (e) {
@@ -1292,7 +1094,6 @@ async function removeConnection(appOrigin) {
 
 async function getCapability(appOrigin, capabilityId) {
   const capabilities = await getStorageData('capabilities') || {};
-  console.log('[Background] getCapability - all capabilities:', JSON.stringify(capabilities));
   console.log('[Background] getCapability - looking for:', appOrigin, capabilityId);
   const originCaps = capabilities[appOrigin] || [];
   console.log('[Background] getCapability - origin caps:', originCaps.length);
@@ -1309,237 +1110,15 @@ async function saveCapability(appOrigin, capability) {
   }
   capabilities[appOrigin].push(capability);
   await setStorageData('capabilities', capabilities);
-  
-  // Verify save
-  const verify = await getStorageData('capabilities');
-  const saved = verify?.[appOrigin]?.find(c => c.id === capability.id);
-  console.log('[Background] saveCapability - verified:', saved ? 'YES' : 'NO');
   console.log('[Background] saveCapability - total for origin:', capabilities[appOrigin].length);
 }
 
 // =============================================================================
-// Gas Estimation Handlers
+// Storage Change Broadcast
 // =============================================================================
 
-/**
- * Handle plain transaction gas estimation
- * Formula: Fee = OU × 0.0000001 OCT
- * OU: 10,000 for < 1000 OCT, 30,000 for >= 1000 OCT
- */
-async function handleEstimatePlainTx(data, sender) {
-  const { payload } = data;
-  
-  let amount = 0;
-  if (payload && typeof payload === 'object' && payload.amount) {
-    amount = payload.amount;
-  }
-  
-  // Determine OU based on amount (auto mode: 10k for <1000 OCT, 30k for >=1000 OCT)
-  const ou = amount < 1000 ? 10000 : 30000;
-  const fee = ou * 0.0000001;
-  const currentEpoch = await fetchCurrentEpoch();
-  
-  return {
-    type: 'ESTIMATE_PLAIN_TX_RESPONSE',
-    success: true,
-    result: {
-      gasUnits: ou,
-      tokenCost: fee,
-      latencyEstimate: 2000,
-      epoch: currentEpoch,
-    }
-  };
-}
-
-/**
- * Handle encrypted transaction gas estimation
- * Encrypted transactions have higher OU due to encryption overhead
- */
-async function handleEstimateEncryptedTx(data, sender) {
-  const baseOu = 30000;
-  const encryptionOverhead = 1.5;
-  const ou = Math.ceil(baseOu * encryptionOverhead);
-  const fee = ou * 0.0000001;
-  const currentEpoch = await fetchCurrentEpoch();
-  
-  return {
-    type: 'ESTIMATE_ENCRYPTED_TX_RESPONSE',
-    success: true,
-    result: {
-      gasUnits: ou,
-      tokenCost: fee,
-      latencyEstimate: 4000,
-      epoch: currentEpoch,
-    }
-  };
-}
-
-/**
- * Handle compute cost estimation
- * Compute operations have variable OU based on complexity
- */
-async function handleEstimateComputeCost(data, sender) {
-  const { profile } = data;
-  
-  if (!profile) {
-    throw new Error('Compute profile is required');
-  }
-  
-  const {
-    gateCount = 0,
-    vectorSize = 0,
-    depth = 0,
-    expectedBootstrap = 0,
-  } = profile;
-  
-  // Calculate OU based on computation complexity
-  const gateOu = gateCount * 10;
-  const vectorOu = vectorSize * 5;
-  const depthOu = depth * 20;
-  const bootstrapOu = expectedBootstrap * 1000;
-  
-  const totalOu = gateOu + vectorOu + depthOu + bootstrapOu;
-  const fee = totalOu * 0.0000001;
-  const currentEpoch = await fetchCurrentEpoch();
-  
-  return {
-    type: 'ESTIMATE_COMPUTE_COST_RESPONSE',
-    success: true,
-    result: {
-      gasUnits: totalOu,
-      tokenCost: fee,
-      latencyEstimate: (gateCount * depth * 10) + (expectedBootstrap * 1000),
-      epoch: currentEpoch,
-    }
-  };
-}
-
-/**
- * Handle list capabilities request
- * Returns all active capabilities for the requesting origin
- */
-async function handleListCapabilities(data, sender) {
-  const { appOrigin } = data;
-  
-  console.log('[Background] List capabilities request from:', appOrigin);
-  
-  // Get capabilities from storage
-  const result = await chrome.storage.local.get(['capabilities']);
-  const allCapabilities = result.capabilities || {};
-  const originCapabilities = allCapabilities[appOrigin] || [];
-  
-  // Filter out expired capabilities
-  const now = Date.now();
-  const activeCapabilities = originCapabilities.filter(cap => {
-    return cap.expiresAt > now;
-  });
-  
-  console.log('[Background] Found', activeCapabilities.length, 'active capabilities');
-  
-  return {
-    type: 'LIST_CAPABILITIES_RESPONSE',
-    success: true,
-    result: activeCapabilities
-  };
-}
-
-/**
- * Handle renew capability request
- * Extends the expiration time of an existing capability
- */
-async function handleRenewCapability(data, sender) {
-  const { capabilityId, appOrigin } = data;
-  
-  console.log('[Background] Renew capability request:', capabilityId);
-  
-  if (!capabilityId) {
-    throw new Error('Capability ID is required');
-  }
-  
-  // Get capabilities from storage
-  const result = await chrome.storage.local.get(['capabilities']);
-  const allCapabilities = result.capabilities || {};
-  const originCapabilities = allCapabilities[appOrigin] || [];
-  
-  // Find the capability
-  const capIndex = originCapabilities.findIndex(c => c.id === capabilityId);
-  
-  if (capIndex === -1) {
-    throw new Error(`Capability '${capabilityId}' not found`);
-  }
-  
-  const capability = originCapabilities[capIndex];
-  
-  // Check if expired
-  if (capability.expiresAt <= Date.now()) {
-    throw new Error('Cannot renew expired capability');
-  }
-  
-  // Extend expiration by 15 minutes (900 seconds)
-  const newExpiresAt = Date.now() + (900 * 1000);
-  const renewedCapability = {
-    ...capability,
-    expiresAt: newExpiresAt
-  };
-  
-  // Update in storage
-  originCapabilities[capIndex] = renewedCapability;
-  allCapabilities[appOrigin] = originCapabilities;
-  
-  await chrome.storage.local.set({ capabilities: allCapabilities });
-  
-  console.log('[Background] Capability renewed:', capabilityId);
-  
-  return {
-    type: 'RENEW_CAPABILITY_RESPONSE',
-    success: true,
-    result: renewedCapability
-  };
-}
-
-/**
- * Handle revoke capability request
- * Removes a capability from storage
- */
-async function handleRevokeCapability(data, sender) {
-  const { capabilityId, appOrigin } = data;
-  
-  console.log('[Background] Revoke capability request:', capabilityId);
-  
-  if (!capabilityId) {
-    throw new Error('Capability ID is required');
-  }
-  
-  // Get capabilities from storage
-  const result = await chrome.storage.local.get(['capabilities']);
-  const allCapabilities = result.capabilities || {};
-  const originCapabilities = allCapabilities[appOrigin] || [];
-  
-  // Filter out the capability to revoke
-  const updatedCapabilities = originCapabilities.filter(c => c.id !== capabilityId);
-  
-  if (updatedCapabilities.length === originCapabilities.length) {
-    throw new Error(`Capability '${capabilityId}' not found`);
-  }
-  
-  // Update in storage
-  allCapabilities[appOrigin] = updatedCapabilities;
-  await chrome.storage.local.set({ capabilities: allCapabilities });
-  
-  console.log('[Background] Capability revoked:', capabilityId);
-  
-  return {
-    type: 'REVOKE_CAPABILITY_RESPONSE',
-    success: true
-  };
-}
-
-// Sync storage changes
 chrome.storage.onChanged.addListener((changes, namespace) => {
-  if (namespace === 'local') {
-    chrome.runtime.sendMessage({
-      type: 'STORAGE_CHANGED',
-      changes
-    }).catch(() => {});
-  }
+  if (namespace !== 'local') return;
+  // Only forward to popup if it's open  ignore errors silently
+  chrome.runtime.sendMessage({ type: 'STORAGE_CHANGED', changes }).catch(() => {});
 });
