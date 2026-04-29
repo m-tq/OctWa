@@ -302,11 +302,11 @@ public:
         int64_t amount = body["amount"].get<int64_t>();
         std::string address = body["address"].get<std::string>();
         int nonce = body["nonce"].get<int>();
-        std::string ou = body.value("ou", "10000");
+        std::string ou = body.value("ou", "3000");  // encrypt: 3000 OU recommended
         std::string pub_b64 = body["public_key"].get<std::string>();
         std::string rpc_url = body.value("rpc_url", "");
 
-        Logger::log_step(jid, "amount=" + std::to_string(amount / 1e6) + " OCT  nonce=" + std::to_string(nonce));
+        Logger::log_step(jid, "amount=" + std::to_string(amount / 1e6) + " OCT  nonce=" + std::to_string(nonce) + "  ou=" + ou);
 
         PvacOps pvac;
         std::vector<uint8_t> sk64;
@@ -341,12 +341,12 @@ public:
         int64_t amount         = body["amount"].get<int64_t>();
         std::string address    = body["address"].get<std::string>();
         int nonce              = body["nonce"].get<int>();
-        std::string ou         = body.value("ou", "10000");
+        std::string ou         = body.value("ou", "3000");  // decrypt: 3000 OU recommended
         std::string pub_b64    = body["public_key"].get<std::string>();
         std::string cur_cipher = body["current_cipher"].get<std::string>();
         std::string rpc_url    = body.value("rpc_url", "");
 
-        Logger::log_step(jid, "amount=" + std::to_string(amount / 1e6) + " OCT  nonce=" + std::to_string(nonce));
+        Logger::log_step(jid, "amount=" + std::to_string(amount / 1e6) + " OCT  nonce=" + std::to_string(nonce) + "  ou=" + ou);
 
         PvacOps pvac;
         std::vector<uint8_t> sk64;
@@ -386,11 +386,11 @@ public:
         std::string rcpt_vpub = body["recipient_view_pubkey"].get<std::string>();
         std::string from_addr = body["from_address"].get<std::string>();
         int nonce             = body["nonce"].get<int>();
-        std::string ou        = body.value("ou", "5000");
+        std::string ou        = body.value("ou", "5000");  // stealth: 5000 OU recommended
         std::string rpc_url   = body.value("rpc_url", "");
 
         Logger::log_step(jid, "from=" + from_addr + "  to=" + to_addr +
-                              "  amount=" + std::to_string(amount / 1e6) + " OCT");
+                              "  amount=" + std::to_string(amount / 1e6) + " OCT  ou=" + ou);
 
         PvacOps pvac;
         std::vector<uint8_t> sk64;
@@ -425,10 +425,11 @@ public:
         json stealth_output = body["stealth_output"];
         std::string address = body["address"].get<std::string>();
         int nonce           = body["nonce"].get<int>();
-        std::string ou      = body.value("ou", "3000");
+        std::string ou      = body.value("ou", "5000");  // stealth claim: 5000 OU recommended
         std::string pub_b64 = body["public_key"].get<std::string>();
+        std::string rpc_url = body.value("rpc_url", "");
 
-        Logger::log_step(jid, "address=" + address + "  nonce=" + std::to_string(nonce));
+        Logger::log_step(jid, "address=" + address + "  nonce=" + std::to_string(nonce) + "  ou=" + ou);
 
         PvacOps pvac;
         std::vector<uint8_t> sk64;

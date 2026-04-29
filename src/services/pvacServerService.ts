@@ -399,7 +399,7 @@ class PvacServerService {
     return this.request<PvacServerResponse>('/api/encrypt_balance', {
       ...request,
       public_key: publicKeyBase64,
-      ou: request.ou || '10000',
+      ou: request.ou || '3000',
       rpc_url: rpcUrl,
     }, 'encrypt');
   }
@@ -413,7 +413,7 @@ class PvacServerService {
     return this.request<PvacServerResponse>('/api/decrypt_to_public', {
       ...request,
       public_key: publicKeyBase64,
-      ou: request.ou || '10000',
+      ou: request.ou || '3000',
       rpc_url: rpcUrl,
     }, 'decrypt');
   }
@@ -437,10 +437,12 @@ class PvacServerService {
     if (request.public_key && /^[0-9a-fA-F]+$/.test(request.public_key.replace(/^0x/i, ''))) {
       publicKeyBase64 = hexToBase64(request.public_key);
     }
-    
+    const rpcUrl = getActiveRPCProvider()?.url || '';
     return this.request<PvacServerResponse>('/api/claim_stealth', {
       ...request,
-      public_key: publicKeyBase64
+      public_key: publicKeyBase64,
+      ou: request.ou || '5000',
+      rpc_url: rpcUrl,
     }, 'claim');
   }
 
