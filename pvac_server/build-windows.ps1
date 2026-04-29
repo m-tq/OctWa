@@ -1,12 +1,7 @@
 # ========================================
 # PVAC Server - Windows Build Script
 # ========================================
-# Right-click -> Run with PowerShell
-# Or: powershell -ExecutionPolicy Bypass -File build-windows.ps1
-#
-# IMPORTANT: PVAC requires GCC/MinGW (uses __int128 and AES-NI intrinsics).
-#            MSVC is NOT supported.
-# ========================================
+# Run: powershell -ExecutionPolicy Bypass -File build-windows.ps1
 
 $Host.UI.RawUI.WindowTitle = "PVAC Server Build"
 Write-Host ""
@@ -20,18 +15,15 @@ Write-Host "[1/5] Checking CMake..." -ForegroundColor Yellow
 $cmake = Get-Command cmake -ErrorAction SilentlyContinue
 if (-not $cmake) {
     Write-Host "[ERROR] CMake not found!" -ForegroundColor Red
-    Write-Host ""
     Write-Host "Install from: https://cmake.org/download/"
-    Write-Host ""
     Read-Host "Press Enter to exit"
     exit 1
 }
 Write-Host "[OK] CMake found: $($cmake.Source)" -ForegroundColor Green
 Write-Host ""
 
-# Step 2: Check Compiler — MinGW/GCC REQUIRED (MSVC does not support __int128)
+# Step 2: Check Compiler (MinGW/GCC required)
 Write-Host "[2/5] Checking C++ Compiler (MinGW/GCC required)..." -ForegroundColor Yellow
-
 $gpp = Get-Command g++ -ErrorAction SilentlyContinue
 
 if ($gpp) {
@@ -41,7 +33,7 @@ if ($gpp) {
 } else {
     Write-Host "[ERROR] MinGW/GCC (g++) not found!" -ForegroundColor Red
     Write-Host ""
-    Write-Host "PVAC requires GCC — MSVC is NOT supported (needs __int128 and AES-NI)." -ForegroundColor Yellow
+    Write-Host "PVAC requires GCC -- MSVC is NOT supported (needs __int128 and AES-NI)." -ForegroundColor Yellow
     Write-Host ""
     Write-Host "Install MinGW via Strawberry Perl (recommended, includes OpenSSL):" -ForegroundColor Cyan
     Write-Host "  https://strawberryperl.com/"
@@ -79,10 +71,10 @@ foreach ($path in $opensslPaths) {
 }
 
 if (-not $opensslRoot) {
-    Write-Host "[ERROR] OpenSSL development files not found!" -ForegroundColor Red
+    Write-Host "[WARNING] OpenSSL development files not found in standard paths." -ForegroundColor Yellow
     Write-Host ""
     Write-Host "Install options:" -ForegroundColor Yellow
-    Write-Host "  1. Strawberry Perl (recommended — includes OpenSSL + MinGW):" -ForegroundColor Cyan
+    Write-Host "  1. Strawberry Perl (recommended -- includes OpenSSL + MinGW):" -ForegroundColor Cyan
     Write-Host "     https://strawberryperl.com/"
     Write-Host ""
     Write-Host "  2. MSYS2 MinGW64:" -ForegroundColor Cyan
@@ -90,7 +82,6 @@ if (-not $opensslRoot) {
     Write-Host ""
     Write-Host "  3. Official OpenSSL for Windows:" -ForegroundColor Cyan
     Write-Host "     https://slproweb.com/products/Win32OpenSSL.html"
-    Write-Host "     (Download Win64 FULL, not Light)"
     Write-Host ""
     Write-Host "Searched in:" -ForegroundColor Gray
     foreach ($path in $opensslPaths) { Write-Host "  - $path" -ForegroundColor Gray }
@@ -103,11 +94,11 @@ Write-Host ""
 # Step 4: Configure and Build
 Write-Host "[4/5] Configuring and building..." -ForegroundColor Yellow
 
-# Clean build dir if it contains MSVC artifacts (incompatible with MinGW)
+# Clean build dir if it contains MSVC artifacts
 if (Test-Path "build\CMakeCache.txt") {
     $cacheContent = Get-Content "build\CMakeCache.txt" -Raw -ErrorAction SilentlyContinue
     if ($cacheContent -match "MSVC|Visual Studio") {
-        Write-Host "  Detected stale MSVC build cache — cleaning..." -ForegroundColor Yellow
+        Write-Host "  Detected stale MSVC build cache -- cleaning..." -ForegroundColor Yellow
         Remove-Item -Recurse -Force "build" -ErrorAction SilentlyContinue
         Write-Host "  Cleaned." -ForegroundColor Gray
     }
@@ -118,7 +109,6 @@ if (-not (Test-Path "build")) {
 }
 
 try {
-    # Configure with MinGW Makefiles generator
     Write-Host "  Running CMake configuration (MinGW Makefiles)..." -ForegroundColor Gray
 
     $cmakeArgs = @("-G", "MinGW Makefiles", "-DCMAKE_BUILD_TYPE=Release")
@@ -129,23 +119,21 @@ try {
 
     & cmake @cmakeArgs
     if ($LASTEXITCODE -ne 0) {
-        throw "CMake configuration failed — check error messages above"
+        throw "CMake configuration failed -- check error messages above"
     }
 
     Write-Host "  Configuration complete." -ForegroundColor Gray
     Write-Host ""
 
-    # Build with parallel jobs
     $cores = (Get-CimInstance Win32_ComputerSystem).NumberOfLogicalProcessors
     if (-not $cores -or $cores -lt 1) { $cores = 4 }
     Write-Host "  Compiling with $cores parallel jobs (may take 30-90 seconds)..." -ForegroundColor Gray
 
     cmake --build build --config Release -j $cores 2>&1 | ForEach-Object { Write-Host $_ }
 
-    # Check for executable (MinGW exit code may be non-zero due to warnings)
     $builtExe = (Test-Path "build\pvac_server.exe") -or (Test-Path "build\Release\pvac_server.exe")
     if (-not $builtExe) {
-        throw "Build failed — pvac_server.exe not found"
+        throw "Build failed -- pvac_server.exe not found"
     }
 
     Write-Host ""
@@ -173,8 +161,8 @@ if (-not $exePath) {
     exit 1
 }
 
-$exeSize = [math]::Round((Get-Item $exePath).Length / 1KB)
-Write-Host "[OK] Executable: $exePath ($exeSize KB)" -ForegroundColor Green
+$exeSizeKB = [math]::Round((Get-Item $exePath).Length / 1KB)
+Write-Host "[OK] Executable: $exePath ($exeSizeKB KB)" -ForegroundColor Green
 Write-Host ""
 Write-Host "========================================" -ForegroundColor Green
 Write-Host "  BUILD SUCCESS!" -ForegroundColor Green
@@ -189,7 +177,6 @@ Write-Host "  POST /api/claim_stealth" -ForegroundColor Gray
 Write-Host "  POST /api/scan_stealth" -ForegroundColor Gray
 Write-Host ""
 
-# Ask to run
 $run = Read-Host "Run server now? (Y/N, default=Y)"
 if ($run -eq "" -or $run -eq "Y" -or $run -eq "y") {
     Write-Host ""
