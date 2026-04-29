@@ -564,7 +564,7 @@ export function SendTransaction({
           <div className="flex items-center justify-between">
             <Label className="text-xs">Network Fee (OU)</Label>
             <span className="text-[10px] text-muted-foreground">
-              {isFetchingFee ? 'Fetching...' : `Recommended: ${recommendedFee.toLocaleString()}`}
+              {isFetchingFee ? 'Fetching...' : `Recommended: ${recommendedFee.toLocaleString()} ≈ ${(recommendedFee / 1_000_000).toFixed(6)} OCT`}
             </span>
           </div>
           <Select value={ouOption} onValueChange={setOuOption}>
@@ -572,8 +572,8 @@ export function SendTransaction({
               <SelectValue placeholder="Recommended" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="recommended" className="text-xs">Recommended ({recommendedFee.toLocaleString()} OU)</SelectItem>
-              <SelectItem value="fast" className="text-xs">Fast ({(recommendedFee * 2).toLocaleString()} OU)</SelectItem>
+              <SelectItem value="recommended" className="text-xs">Recommended ({recommendedFee.toLocaleString()} OU ≈ {(recommendedFee / 1_000_000).toFixed(6)} OCT)</SelectItem>
+              <SelectItem value="fast" className="text-xs">Fast ({(recommendedFee * 2).toLocaleString()} OU ≈ {(recommendedFee * 2 / 1_000_000).toFixed(6)} OCT)</SelectItem>
               <SelectItem value="custom" className="text-xs">Custom</SelectItem>
             </SelectContent>
           </Select>
@@ -814,7 +814,7 @@ export function SendTransaction({
         <div className="flex items-center justify-between">
           <Label>Network Fee (OU)</Label>
           <span className="text-xs text-muted-foreground">
-            {isFetchingFee ? 'Fetching...' : `Recommended: ${recommendedFee.toLocaleString()}`}
+            {isFetchingFee ? 'Fetching...' : `Recommended: ${recommendedFee.toLocaleString()} ≈ ${(recommendedFee / 1_000_000).toFixed(6)} OCT`}
           </span>
         </div>
         <Select value={ouOption} onValueChange={setOuOption}>
@@ -822,8 +822,8 @@ export function SendTransaction({
             <SelectValue placeholder="Recommended" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="recommended">Recommended ({recommendedFee.toLocaleString()} OU)</SelectItem>
-            <SelectItem value="fast">Fast ({(recommendedFee * 2).toLocaleString()} OU)</SelectItem>
+            <SelectItem value="recommended">Recommended ({recommendedFee.toLocaleString()} OU ≈ {(recommendedFee / 1_000_000).toFixed(6)} OCT)</SelectItem>
+            <SelectItem value="fast">Fast ({(recommendedFee * 2).toLocaleString()} OU ≈ {(recommendedFee * 2 / 1_000_000).toFixed(6)} OCT)</SelectItem>
             <SelectItem value="custom">Custom</SelectItem>
           </SelectContent>
         </Select>

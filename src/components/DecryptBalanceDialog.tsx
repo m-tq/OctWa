@@ -325,6 +325,7 @@ export function DecryptBalanceDialog({
           </Label>
           <span className={`text-muted-foreground ${isPopupMode ? 'text-[10px]' : 'text-xs'}`}>
             Recommended: <span className="font-mono text-[#00E5C0]">{recommendedFee.toLocaleString()}</span>
+            <span className="ml-1">≈ {(recommendedFee / 1_000_000).toFixed(6)} OCT</span>
           </span>
         </div>
         <Input

@@ -678,6 +678,7 @@ export function PrivateTransfer({
                 <Label className="text-xs text-muted-foreground">Network Fee (OU)</Label>
                 <span className="text-[10px] text-muted-foreground">
                   Recommended: <span className="font-mono text-[#00E5C0]">{recommendedFee.toLocaleString()}</span>
+                  <span className="ml-1">≈ {(recommendedFee / 1_000_000).toFixed(6)} OCT</span>
                 </span>
               </div>
               <Input
@@ -851,6 +852,7 @@ export function PrivateTransfer({
               <Label className="text-sm text-muted-foreground">Network Fee (OU)</Label>
               <span className="text-xs text-muted-foreground">
                 Recommended: <span className="font-mono text-[#00E5C0]">{recommendedFee.toLocaleString()}</span>
+                <span className="ml-1">≈ {(recommendedFee / 1_000_000).toFixed(6)} OCT</span>
               </span>
             </div>
             <Input
