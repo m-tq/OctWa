@@ -647,7 +647,14 @@ export function WalletDashboard({
         }
 
         if (result.success && result.balance !== undefined) {
+          // Guard: PVAC can return stale/corrupted results from previous wallet's cipher.
+          // Encrypted balance must be a non-negative finite number.
           const amount = result.balance / 1_000_000;
+          if (amount < 0 || !isFinite(amount)) {
+            logger.warn('Auto-decrypt returned invalid balance, ignoring', { raw: result.balance });
+            autoDecryptedCipherRef.current = null; // allow retry with fresh data
+            return;
+          }
           setEncryptedBalance((prev: any) => ({ ...prev, encrypted: amount }));
           logger.info('Auto-decrypt successful', { balance: amount });
         }
@@ -698,6 +705,9 @@ export function WalletDashboard({
   // Reset display data immediately when wallet changes — clears pie chart and
   // balance display so stale data from previous wallet doesn't show during transition.
   useEffect(() => {
+    // Bump fetchId immediately — this marks ALL in-flight fetches for the old wallet as stale
+    activeFetchIdRef.current += 1;
+
     // Don't clear transactions here — fetchInitialData will load from cache instantly
     // Clearing here causes a flash of empty list before cache loads
     setBalance(null);
@@ -938,7 +948,13 @@ export function WalletDashboard({
       }
     };
 
-    fetchInitialData();
+    // Debounce: if wallet switches rapidly, wait 80ms before fetching.
+    // This prevents piling up concurrent fetches when user clicks through wallets quickly.
+    const debounceTimer = setTimeout(() => {
+      fetchInitialData();
+    }, 80);
+
+    return () => clearTimeout(debounceTimer);
   }, [wallet, toast]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ============================================

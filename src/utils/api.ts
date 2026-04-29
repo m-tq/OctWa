@@ -1512,8 +1512,12 @@ export async function fetchEncryptedBalance(address: string, privateKey?: string
               const decryptResult = await pvacServerService.decryptBalance(cipher, privateKey);
               
               if (decryptResult.success && decryptResult.balance) {
-                encryptedRaw = decryptResult.balance;
-                
+                // Guard: reject negative or non-finite values (stale/corrupted PVAC result)
+                if (decryptResult.balance >= 0 && isFinite(decryptResult.balance)) {
+                  encryptedRaw = decryptResult.balance;
+                } else {
+                  console.warn('[EncryptedBalance] PVAC returned invalid balance, ignoring', decryptResult.balance);
+                }
               }
             } else {
               
@@ -1817,11 +1821,18 @@ export async function getTransactionHistory(
 }
 
 // ============================================
-// TX COUNT POLLER — Smart sync trigger
+// ACCOUNT POLLER — Smart sync trigger
 // ============================================
-// Every 3s: call octra_account to get tx_count.
-// If tx_count changed → fire onChanged callback so WalletDashboard re-fetches.
-// This avoids blind polling — only syncs when there's actually new data.
+// Every 5s: call octra_balance (lightweight) to get nonce + balance_raw.
+// If either changed → fire onChanged callback so WalletDashboard re-fetches.
+//
+// Why octra_balance instead of octra_account:
+//   - octra_account with limit=1 returns tx_count=1 always (count of fetched txs, not total)
+//   - octra_account without limit fetches full history — too heavy for polling
+//   - octra_balance is a single lightweight call returning nonce + balance_raw
+//   - nonce increments on every outgoing tx
+//   - balance_raw changes on both incoming and outgoing txs
+//   Together they detect all balance/tx changes reliably.
 
 const TX_COUNT_POLL_INTERVAL = 5000; // 5 seconds
 const TX_COUNT_STORAGE_KEY = 'octwa_tx_counts'; // persisted per address+network
@@ -1830,27 +1841,37 @@ function getTxCountKey(address: string): string {
   return `${getNetworkCacheKey()}:${address}`;
 }
 
-async function fetchTxCount(address: string): Promise<number | null> {
+interface AccountSnapshot {
+  nonce:      number;
+  balanceRaw: number;
+}
+
+async function fetchAccountSnapshot(address: string): Promise<AccountSnapshot | null> {
   try {
     const response = await makeAPIRequest('/rpc', {
       method: 'POST',
       body: JSON.stringify({
         jsonrpc: '2.0', id: 1,
-        method: 'octra_account',
-        params: [address, 1], // limit=1, we only need tx_count
+        method: 'octra_balance',
+        params: [address],
       }),
     });
     if (!response.ok) return null;
     const data = await response.json();
-    const txCount = data?.result?.tx_count;
-    if (typeof txCount === 'number') return txCount;
-    return null;
+    const result = data?.result;
+    if (!result) return null;
+    const nonce      = typeof result.nonce === 'number' ? result.nonce : parseInt(result.nonce ?? '0', 10);
+    const balanceRaw = typeof result.balance_raw === 'number'
+      ? result.balance_raw
+      : parseInt(result.balance_raw ?? '0', 10);
+    if (isNaN(nonce) || isNaN(balanceRaw)) return null;
+    return { nonce, balanceRaw };
   } catch {
     return null;
   }
 }
 
-function loadStoredTxCounts(): Record<string, number> {
+function loadStoredTxCounts(): Record<string, AccountSnapshot> {
   try {
     const raw = localStorage.getItem(TX_COUNT_STORAGE_KEY);
     return raw ? JSON.parse(raw) : {};
@@ -1859,10 +1880,10 @@ function loadStoredTxCounts(): Record<string, number> {
   }
 }
 
-function saveStoredTxCount(key: string, count: number): void {
+function saveStoredSnapshot(key: string, snapshot: AccountSnapshot): void {
   try {
     const counts = loadStoredTxCounts();
-    counts[key] = count;
+    counts[key] = snapshot;
     localStorage.setItem(TX_COUNT_STORAGE_KEY, JSON.stringify(counts));
   } catch { /* ignore */ }
 }
@@ -1891,21 +1912,22 @@ export class TxCountPoller {
 
   private async poll(): Promise<void> {
     if (!this.isRunning || !this.address) return;
-    const count = await fetchTxCount(this.address);
-    if (count === null) return; // RPC error — skip
+    const snapshot = await fetchAccountSnapshot(this.address);
+    if (snapshot === null) return; // RPC error — skip
 
-    const key = getTxCountKey(this.address);
+    const key    = getTxCountKey(this.address);
     const stored = loadStoredTxCounts();
-    const prev = stored[key];
+    const prev   = stored[key] as AccountSnapshot | undefined;
 
     if (prev === undefined) {
-      // First poll — just store, don't trigger sync
-      saveStoredTxCount(key, count);
+      // First poll — store baseline, don't trigger sync
+      saveStoredSnapshot(key, snapshot);
       return;
     }
 
-    if (count !== prev) {
-      saveStoredTxCount(key, count);
+    // Trigger if nonce changed (outgoing tx) OR balance changed (incoming tx)
+    if (snapshot.nonce !== prev.nonce || snapshot.balanceRaw !== prev.balanceRaw) {
+      saveStoredSnapshot(key, snapshot);
       this.onChanged();
     }
   }
