@@ -384,6 +384,7 @@ export interface ERC20Token {
   balance: string;
   isLoading: boolean;
   chainId: number;
+  logo?: string; // data URI or URL for token icon
 }
 
 export interface NFTToken {
@@ -396,10 +397,13 @@ export interface NFTToken {
   chainId: number;
 }
 
+// wOCT logo — inline SVG data URI
+const WOCT_LOGO = `data:image/svg+xml,%3Csvg width='50' height='50' viewBox='0 0 50 50' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Ccircle cx='25' cy='25' r='21' stroke='%230000DB' stroke-width='8'/%3E%3C/svg%3E`;
+
 // Common ERC20 tokens per chain
-export const COMMON_TOKENS: Record<number, Array<{ address: string; name: string; symbol: string; decimals: number }>> = {
+export const COMMON_TOKENS: Record<number, Array<{ address: string; name: string; symbol: string; decimals: number; logo?: string }>> = {
   1: [ // Ethereum
-    { address: '0x4647e1fe715c9e23959022c2416c71867f5a6e80', name: 'Wrapped OCT', symbol: 'wOCT', decimals: 6 },
+    { address: '0x4647e1fe715c9e23959022c2416c71867f5a6e80', name: 'Wrapped OCT', symbol: 'wOCT', decimals: 6, logo: WOCT_LOGO },
     { address: '0xdac17f958d2ee523a2206206994597c13d831ec7', name: 'Tether USD', symbol: 'USDT', decimals: 6 },
     { address: '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48', name: 'USD Coin', symbol: 'USDC', decimals: 6 },
     { address: '0x6b175474e89094c44da98b954eedeac495271d0f', name: 'Dai Stablecoin', symbol: 'DAI', decimals: 18 },

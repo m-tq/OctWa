@@ -3666,7 +3666,12 @@ export function WalletDashboard({
                           evmTokens.map((token) => (
                             <div key={`${token.address}-${token.chainId}`} className="p-2.5 bg-muted/50 rounded-lg border border-border hover:border-orange-500/30 transition-colors flex items-center justify-between">
                               <div className="flex items-center gap-2">
-                                <div className="w-8 h-8 rounded-full bg-orange-500/10 flex items-center justify-center text-xs font-bold text-orange-600">{token.symbol.slice(0, 2)}</div>
+                                <div className="w-8 h-8 rounded-full bg-orange-500/10 flex items-center justify-center text-xs font-bold text-orange-600 overflow-hidden flex-shrink-0">
+                                  {(token as any).logo
+                                    ? <img src={(token as any).logo} alt={token.symbol} className="w-full h-full object-contain" />
+                                    : token.symbol.slice(0, 2)
+                                  }
+                                </div>
                                 <div><p className="text-sm font-medium">{token.name}</p><p className="text-xs text-muted-foreground">{token.symbol}</p></div>
                               </div>
                               <div className="flex items-center gap-2">
