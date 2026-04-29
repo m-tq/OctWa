@@ -68,17 +68,6 @@ export function loadOperationMode(
 }
 
 /**
- * Clears the stored operation mode from localStorage.
- */
-function clearOperationMode(): void {
-  try {
-    localStorage.removeItem(STORAGE_KEY);
-  } catch (error) {
-    console.error('Failed to clear operation mode from localStorage:', error);
-  }
-}
-
-/**
  * Checks if Private mode should be enabled based on encrypted balance or pending transfers.
  * @param encryptedBalance - The current encrypted balance
  * @param pendingTransfersCount - The number of pending unclaimed transfers (optional)

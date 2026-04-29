@@ -23,7 +23,6 @@ import nacl from 'tweetnacl';
 // Constants
 // ============================================================================
 
-const HFHE_PREFIX = 'hfhe_v1|';
 const BALANCE_REQUEST_PREFIX = 'octra_encryptedBalance|';
 
 // ============================================================================

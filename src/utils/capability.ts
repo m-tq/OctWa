@@ -225,55 +225,6 @@ export async function signCapability(
 
 /**
  * Verify a signed capability
- * 
- * @param capability - Signed capability to verify
- * @returns true if signature is valid
- */
-async function verifyCapability(capability: SignedCapability): Promise<boolean> {
-  try {
-    const payload: CapabilityPayload = {
-      version: capability.version,
-      circle: capability.circle,
-      methods: capability.methods,
-      scope: capability.scope,
-      encrypted: capability.encrypted,
-      appOrigin: capability.appOrigin,
-      branchId: capability.branchId,
-      epoch: capability.epoch,
-      issuedAt: capability.issuedAt,
-      expiresAt: capability.expiresAt,
-      nonceBase: capability.nonceBase
-    };
-    
-    const canonical = canonicalizeCapability(payload);
-    const canonicalBytes = new TextEncoder().encode(canonical);
-    const digest = await sha256(canonicalBytes);
-    
-    const signatureBytes = hexToBytes(capability.signature);
-    const publicKeyBytes = hexToBytes(capability.walletPubKey);
-    
-    return nacl.sign.detached.verify(digest, signatureBytes, publicKeyBytes);
-  } catch (error) {
-    console.error('[Capability] Verification error:', error);
-    return false;
-  }
-}
-
-/**
- * Check if capability is expired
- */
-function isCapabilityExpired(capability: SignedCapability): boolean {
-  if (!capability.expiresAt) return false;
-  return Date.now() > capability.expiresAt;
-}
-
-/**
- * Check if method is allowed by capability
- */
-function isMethodAllowed(capability: SignedCapability, method: string): boolean {
-  return capability.methods.includes(method);
-}
-
 /**
  * Create a capability ID from the capability data
  */
