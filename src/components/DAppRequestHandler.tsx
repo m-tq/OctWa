@@ -69,6 +69,9 @@ interface TransactionPayload {
   to: string;
   amount: number;
   message?: string;
+  // Optional contract call fields — set by bridge/dApps for lock_to_eth etc.
+  op_type?: string;
+  encrypted_data?: string;
 }
 
 interface EVMTransactionPayload {
@@ -678,8 +681,11 @@ export function DAppRequestHandler({ wallets }: DAppRequestHandlerProps) {
       // Storage change listener will auto-switch to invoke screen
       setTimeout(async () => {
         if (typeof chrome !== 'undefined' && chrome.storage) {
-          const pending = await chrome.storage.local.get(['pendingInvokeRequest']);
-          if (pending.pendingInvokeRequest) {
+          // Check keyed format first (new), then legacy single-slot (old)
+          const keys = await chrome.storage.local.get(['pendingInvokeRequestKey', 'pendingInvokeRequest']);
+          const hasKeyedInvoke  = !!keys.pendingInvokeRequestKey;
+          const hasLegacyInvoke = !!keys.pendingInvokeRequest;
+          if (hasKeyedInvoke || hasLegacyInvoke) {
             setRequestType(null);
             setTimeout(() => loadPendingRequest(), 50);
           } else {
@@ -802,6 +808,40 @@ export function DAppRequestHandler({ wallets }: DAppRequestHandlerProps) {
           publicKeyHex,
           txParams.message // Include intent payload as message
         );
+
+        // If payload specifies op_type='call' (e.g. bridge lock_to_eth),
+        // override the default 'standard' op_type and set encrypted_data.
+        // createTransaction always sets op_type='standard', so we patch here.
+        if (txParams.op_type && txParams.op_type !== 'standard') {
+          (transaction as any).op_type = txParams.op_type;
+        }
+        if (txParams.encrypted_data) {
+          (transaction as any).encrypted_data = txParams.encrypted_data;
+          // Re-sign with the updated fields — canonical JSON must include encrypted_data
+          // We need to rebuild the signature with the correct canonical fields.
+          // Import nacl and re-sign manually.
+          const privateKeyBuffer2 = Buffer.from(selectedWallet.privateKey, 'base64');
+          const publicKeyBuffer2 = Buffer.from(publicKeyHex, 'hex');
+          const secretKey2 = new Uint8Array(64);
+          secretKey2.set(privateKeyBuffer2, 0);
+          secretKey2.set(publicKeyBuffer2, 32);
+
+          const canonicalFields2: Record<string, unknown> = {
+            from:           transaction.from,
+            to_:            transaction.to_,
+            amount:         transaction.amount,
+            nonce:          transaction.nonce,
+            ou:             transaction.ou,
+            timestamp:      transaction.timestamp,
+            op_type:        txParams.op_type,
+            encrypted_data: txParams.encrypted_data,
+          };
+          if (txParams.message) canonicalFields2.message = txParams.message;
+
+          const signingData2 = JSON.stringify(canonicalFields2);
+          const sig2 = nacl.sign.detached(new TextEncoder().encode(signingData2), secretKey2);
+          (transaction as any).signature = Buffer.from(sig2).toString('base64');
+        }
         
         logger.debug('DAppRequestHandler: Sending transaction to Octra chain...');
         const txResult = await sendTransaction(transaction);
