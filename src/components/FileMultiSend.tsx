@@ -892,7 +892,6 @@ export function FileMultiSend({ wallet, balance, onBalanceUpdate, onNonceUpdate,
                 <Settings2 className="h-4 w-4" />
                 Network Fee (OU)
               </span>
-              <span className="text-xs text-muted-foreground mr-2">{recommendedFee.toLocaleString()} OU ≈ {ouToOct(recommendedFee)} OCT</span>
               <ChevronDown className={`h-4 w-4 transition-transform ${showOuSettings ? 'rotate-180' : ''}`} />
             </Button>
           </CollapsibleTrigger>
