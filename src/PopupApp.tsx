@@ -73,77 +73,63 @@ function PopupApp() {
           if (localIsLocked) await ExtensionStorageManager.set('isWalletLocked', localIsLocked);
         }
         
-        // Check for pending connection request first
-        const pendingRequest = await ExtensionStorageManager.get('pendingConnectionRequest');
-        if (pendingRequest) {
-          try {
-            const connectionReq = typeof pendingRequest === 'string' 
-              ? JSON.parse(pendingRequest) 
-              : pendingRequest;
-            setConnectionRequest(connectionReq);
-          } catch (error) {
-            console.error('Failed to parse connection request:', error);
-            await ExtensionStorageManager.remove('pendingConnectionRequest');
+        // ── Resolve pending dApp requests (keyed format + legacy fallback) ──────
+        // Background stores requests as pendingXxxRequest_${pendingKey} (keyed).
+        // Read the key pointer first, then load the actual request object.
+        const resolveKeyed = async (keyName: string, legacyKey: string) => {
+          const key = await ExtensionStorageManager.get(keyName);
+          if (key) {
+            const val = await ExtensionStorageManager.get(`${legacyKey}_${key}`);
+            if (val) return typeof val === 'string' ? JSON.parse(val) : val;
           }
+          // Legacy fallback (single-slot, pre-keyed format)
+          const legacy = await ExtensionStorageManager.get(legacyKey);
+          if (legacy) return typeof legacy === 'string' ? JSON.parse(legacy) : legacy;
+          return null;
+        };
+
+        // Check for pending connection request
+        try {
+          const connectionReq = await resolveKeyed('pendingConnectionRequestKey', 'pendingConnectionRequest');
+          if (connectionReq) setConnectionRequest(connectionReq);
+        } catch (error) {
+          console.error('Failed to parse connection request:', error);
         }
-        
-        // Check for pending contract request
-        const pendingContractRequest = await ExtensionStorageManager.get('pendingContractRequest');
-        if (pendingContractRequest) {
-          try {
-            const contractReq = typeof pendingContractRequest === 'string' 
-              ? JSON.parse(pendingContractRequest) 
-              : pendingContractRequest;
-            setContractRequest(contractReq);
-          } catch (error) {
-            console.error('Failed to parse contract request:', error);
-            await ExtensionStorageManager.remove('pendingContractRequest');
+
+        // Check for pending contract request (legacy only — no keyed version)
+        try {
+          const pendingContractRequest = await ExtensionStorageManager.get('pendingContractRequest');
+          if (pendingContractRequest) {
+            setContractRequest(typeof pendingContractRequest === 'string'
+              ? JSON.parse(pendingContractRequest) : pendingContractRequest);
           }
+        } catch (error) {
+          console.error('Failed to parse contract request:', error);
+          await ExtensionStorageManager.remove('pendingContractRequest');
         }
-        
+
         // Check for pending capability request
-        const pendingCapabilityRequest = await ExtensionStorageManager.get('pendingCapabilityRequest');
-        if (pendingCapabilityRequest) {
-          try {
-            const capabilityReq = typeof pendingCapabilityRequest === 'string' 
-              ? JSON.parse(pendingCapabilityRequest) 
-              : pendingCapabilityRequest;
-            setCapabilityRequest(capabilityReq);
-            
-          } catch (error) {
-            console.error('Failed to parse capability request:', error);
-            await ExtensionStorageManager.remove('pendingCapabilityRequest');
-          }
+        try {
+          const capabilityReq = await resolveKeyed('pendingCapabilityRequestKey', 'pendingCapabilityRequest');
+          if (capabilityReq) setCapabilityRequest(capabilityReq);
+        } catch (error) {
+          console.error('Failed to parse capability request:', error);
         }
-        
+
         // Check for pending invoke request
-        const pendingInvokeRequest = await ExtensionStorageManager.get('pendingInvokeRequest');
-        if (pendingInvokeRequest) {
-          try {
-            const invokeReq = typeof pendingInvokeRequest === 'string' 
-              ? JSON.parse(pendingInvokeRequest) 
-              : pendingInvokeRequest;
-            setInvokeRequest(invokeReq);
-            
-          } catch (error) {
-            console.error('Failed to parse invoke request:', error);
-            await ExtensionStorageManager.remove('pendingInvokeRequest');
-          }
+        try {
+          const invokeReq = await resolveKeyed('pendingInvokeRequestKey', 'pendingInvokeRequest');
+          if (invokeReq) setInvokeRequest(invokeReq);
+        } catch (error) {
+          console.error('Failed to parse invoke request:', error);
         }
-        
+
         // Check for pending sign message request
-        const pendingSignMessageRequest = await ExtensionStorageManager.get('pendingSignMessageRequest');
-        if (pendingSignMessageRequest) {
-          try {
-            const signMessageReq = typeof pendingSignMessageRequest === 'string' 
-              ? JSON.parse(pendingSignMessageRequest) 
-              : pendingSignMessageRequest;
-            setSignMessageRequest(signMessageReq);
-            
-          } catch (error) {
-            console.error('Failed to parse sign message request:', error);
-            await ExtensionStorageManager.remove('pendingSignMessageRequest');
-          }
+        try {
+          const signMessageReq = await resolveKeyed('pendingSignMessageRequestKey', 'pendingSignMessageRequest');
+          if (signMessageReq) setSignMessageRequest(signMessageReq);
+        } catch (error) {
+          console.error('Failed to parse sign message request:', error);
         }
         
         // Check if wallet exists (has password and encrypted wallets)
