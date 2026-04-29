@@ -534,7 +534,8 @@ async function handleInvokeRequest(data, sender) {
 
   // ==========================================================================
   // AUTO-EXECUTE READ METHODS (no user approval needed)
-  // send_transaction and send_evm_transaction ALWAYS require popup approval.
+  // send_transaction, send_evm_transaction, send_erc20_transaction ALWAYS
+  // require popup approval as they transfer funds.
   // ==========================================================================
   const autoExecuteMethods = ['get_balance'];
 
@@ -695,6 +696,9 @@ async function executeMethod(method, payload, connection, capability) {
 
     case 'send_evm_transaction':
       throw new Error('send_evm_transaction requires user approval');
+
+    case 'send_erc20_transaction':
+      throw new Error('send_erc20_transaction requires user approval');
 
     default:
       throw new Error(`Unknown method: ${method}`);

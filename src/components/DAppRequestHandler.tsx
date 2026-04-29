@@ -204,7 +204,7 @@ export function DAppRequestHandler({ wallets }: DAppRequestHandlerProps) {
     // Listen for new pending requests while popup is open
     if (typeof chrome !== 'undefined' && chrome.storage?.onChanged) {
       const listener = (changes: Record<string, chrome.storage.StorageChange>, area: string) => {
-        if (area === 'local' && changes.pendingInvokeRequest?.newValue) {
+        if (area === 'local' && (changes.pendingInvokeRequestKey?.newValue || changes.pendingInvokeRequest?.newValue)) {
           logger.debug('DAppRequestHandler: New invoke request detected via storage change');
           // Reset state then load — ensures invoke screen shows fresh
           setRequestType(null);
@@ -275,37 +275,62 @@ export function DAppRequestHandler({ wallets }: DAppRequestHandlerProps) {
     // Check chrome storage for pending requests
     if (typeof chrome !== 'undefined' && chrome.storage) {
       logger.debug('DAppRequestHandler: Checking chrome.storage for pending requests...');
-      
-      const pending = await chrome.storage.local.get([
+
+      // Read the keyed pending request keys first (new format from background.js)
+      const keys = await chrome.storage.local.get([
+        'pendingConnectionRequestKey',
+        'pendingCapabilityRequestKey',
+        'pendingInvokeRequestKey',
+        'pendingSignMessageRequestKey',
+        // Legacy fallback keys (old single-slot format)
         'pendingConnectionRequest',
         'pendingCapabilityRequest',
         'pendingInvokeRequest',
-        'pendingSignMessageRequest'
+        'pendingSignMessageRequest',
       ]);
 
+      // Resolve keyed requests (new format) — preferred
+      const connKey  = keys.pendingConnectionRequestKey;
+      const capKey   = keys.pendingCapabilityRequestKey;
+      const invKey   = keys.pendingInvokeRequestKey;
+      const signKey  = keys.pendingSignMessageRequestKey;
+
+      // Load the actual request objects by their keyed storage entries
+      const keyedEntries = await chrome.storage.local.get([
+        connKey  ? `pendingConnectionRequest_${connKey}`  : '__none__',
+        capKey   ? `pendingCapabilityRequest_${capKey}`   : '__none__',
+        invKey   ? `pendingInvokeRequest_${invKey}`       : '__none__',
+        signKey  ? `pendingSignMessageRequest_${signKey}` : '__none__',
+      ]);
+
+      const pendingConnection  = (connKey  && keyedEntries[`pendingConnectionRequest_${connKey}`])  || keys.pendingConnectionRequest;
+      const pendingCapability  = (capKey   && keyedEntries[`pendingCapabilityRequest_${capKey}`])   || keys.pendingCapabilityRequest;
+      const pendingSignMessage = (signKey  && keyedEntries[`pendingSignMessageRequest_${signKey}`]) || keys.pendingSignMessageRequest;
+      const pendingInvoke      = (invKey   && keyedEntries[`pendingInvokeRequest_${invKey}`])       || keys.pendingInvokeRequest;
+
       logger.debug('DAppRequestHandler: Pending requests:', {
-        connection: !!pending.pendingConnectionRequest,
-        capability: !!pending.pendingCapabilityRequest,
-        invoke: !!pending.pendingInvokeRequest,
-        signMessage: !!pending.pendingSignMessageRequest
+        connection:  !!pendingConnection,
+        capability:  !!pendingCapability,
+        invoke:      !!pendingInvoke,
+        signMessage: !!pendingSignMessage,
       });
 
-      if (pending.pendingConnectionRequest) {
+      if (pendingConnection) {
         logger.debug('DAppRequestHandler: Loading connection request');
         setRequestType('connection');
-        setConnectionRequest(pending.pendingConnectionRequest);
-      } else if (pending.pendingCapabilityRequest) {
+        setConnectionRequest(pendingConnection);
+      } else if (pendingCapability) {
         logger.debug('DAppRequestHandler: Loading capability request');
         setRequestType('capability');
-        setCapabilityRequest(pending.pendingCapabilityRequest);
-      } else if (pending.pendingSignMessageRequest) {
-        logger.debug('DAppRequestHandler: Loading sign message request:', pending.pendingSignMessageRequest);
+        setCapabilityRequest(pendingCapability);
+      } else if (pendingSignMessage) {
+        logger.debug('DAppRequestHandler: Loading sign message request:', pendingSignMessage);
         setRequestType('signMessage');
-        setSignMessageRequest(pending.pendingSignMessageRequest);
-      } else if (pending.pendingInvokeRequest) {
+        setSignMessageRequest(pendingSignMessage);
+      } else if (pendingInvoke) {
         logger.debug('DAppRequestHandler: Loading invoke request');
         setRequestType('invoke');
-        setInvokeRequest(pending.pendingInvokeRequest);
+        setInvokeRequest(pendingInvoke);
         
         // Parse transaction payload for send_transaction method
         if (pending.pendingInvokeRequest.method === 'send_transaction') {
@@ -529,9 +554,15 @@ export function DAppRequestHandler({ wallets }: DAppRequestHandlerProps) {
           evmAddress,
           network: currentNetwork,
           epoch: currentEpoch,
-          branchId: currentBranchId
+          branchId: currentBranchId,
+          pendingKey: (connectionRequest as any).pendingKey,
         });
-        chrome.storage.local.remove('pendingConnectionRequest');
+        chrome.storage.local.remove([
+          'pendingConnectionRequest',
+          ...(connectionRequest as any).pendingKey
+            ? [`pendingConnectionRequest_${(connectionRequest as any).pendingKey}`, 'pendingConnectionRequestKey']
+            : [],
+        ]);
       }
 
       // Success - close popup immediately (no toast needed)
@@ -618,7 +649,8 @@ export function DAppRequestHandler({ wallets }: DAppRequestHandlerProps) {
           appOrigin: capabilityRequest.appOrigin,
           approved: true,
           capabilityId,
-          signedCapability
+          signedCapability,
+          pendingKey: (capabilityRequest as any).pendingKey,
         };
         
         logger.debug('DAppRequestHandler: Message to send:', message);
@@ -630,8 +662,11 @@ export function DAppRequestHandler({ wallets }: DAppRequestHandlerProps) {
           }
         });
         
-        await chrome.storage.local.remove('pendingCapabilityRequest');
-        logger.debug('DAppRequestHandler: Removed pendingCapabilityRequest from storage');
+        const capPendingKey = (capabilityRequest as any).pendingKey;
+        await chrome.storage.local.remove([
+          'pendingCapabilityRequest',
+          ...(capPendingKey ? [`pendingCapabilityRequest_${capPendingKey}`, 'pendingCapabilityRequestKey'] : []),
+        ]);
       }
 
       // Success — don't close popup. Wait for invoke request to arrive in storage,
@@ -661,6 +696,26 @@ export function DAppRequestHandler({ wallets }: DAppRequestHandlerProps) {
       toast({ title: 'Error', description: `Failed to sign capability: ${error instanceof Error ? error.message : 'Unknown error'}`, variant: 'destructive' });
       setIsProcessing(false);
     }
+  };
+
+  // Helper: send INVOKE_RESULT back to background and clean up storage
+  const sendInvokeResult = (approved: boolean, data?: Uint8Array, error?: string) => {
+    if (typeof chrome === 'undefined' || !chrome.runtime) return;
+    const invPendingKey = (invokeRequest as any)?.pendingKey;
+    chrome.runtime.sendMessage({
+      type: 'INVOKE_RESULT',
+      appOrigin: invokeRequest!.appOrigin,
+      approved,
+      data,
+      error,
+      pendingKey: invPendingKey,
+    });
+    chrome.storage.local.remove([
+      'pendingInvokeRequest',
+      ...(invPendingKey
+        ? [`pendingInvokeRequest_${invPendingKey}`, 'pendingInvokeRequestKey']
+        : []),
+    ]);
   };
 
   const handleInvokeApprove = async () => {
@@ -769,15 +824,7 @@ export function DAppRequestHandler({ wallets }: DAppRequestHandlerProps) {
         
         logger.debug('DAppRequestHandler: ✅ Transaction sent! txHash:', txResult.hash);
         
-        if (typeof chrome !== 'undefined' && chrome.runtime) {
-          chrome.runtime.sendMessage({
-            type: 'INVOKE_RESULT',
-            appOrigin: invokeRequest.appOrigin,
-            approved: true,
-            data: new TextEncoder().encode(JSON.stringify(resultData))
-          });
-          chrome.storage.local.remove('pendingInvokeRequest');
-        }
+        sendInvokeResult(true, new TextEncoder().encode(JSON.stringify(resultData)));
         
         // Success - close popup immediately (no toast needed)
       } else if (invokeRequest.method === 'send_evm_transaction') {
@@ -897,15 +944,7 @@ export function DAppRequestHandler({ wallets }: DAppRequestHandlerProps) {
           timestamp: Date.now(),
         };
         
-        if (typeof chrome !== 'undefined' && chrome.runtime) {
-          chrome.runtime.sendMessage({
-            type: 'INVOKE_RESULT',
-            appOrigin: invokeRequest.appOrigin,
-            approved: true,
-            data: new TextEncoder().encode(JSON.stringify(resultData))
-          });
-          chrome.storage.local.remove('pendingInvokeRequest');
-        }
+        sendInvokeResult(true, new TextEncoder().encode(JSON.stringify(resultData)));
         
         // Success - close popup immediately (no toast needed)
       } else if (invokeRequest.method === 'send_erc20_transaction') {
@@ -1005,30 +1044,14 @@ export function DAppRequestHandler({ wallets }: DAppRequestHandlerProps) {
           timestamp: Date.now(),
         };
         
-        if (typeof chrome !== 'undefined' && chrome.runtime) {
-          chrome.runtime.sendMessage({
-            type: 'INVOKE_RESULT',
-            appOrigin: invokeRequest.appOrigin,
-            approved: true,
-            data: new TextEncoder().encode(JSON.stringify(resultData))
-          });
-          chrome.storage.local.remove('pendingInvokeRequest');
-        }
+        sendInvokeResult(true, new TextEncoder().encode(JSON.stringify(resultData)));
         
         // Success - close popup immediately (no toast needed)
       } else {
         // For other methods, return mock success (to be implemented)
         logger.debug('DAppRequestHandler: Executing other method:', invokeRequest.method);
         
-        if (typeof chrome !== 'undefined' && chrome.runtime) {
-          chrome.runtime.sendMessage({
-            type: 'INVOKE_RESULT',
-            appOrigin: invokeRequest.appOrigin,
-            approved: true,
-            data: new Uint8Array([1, 2, 3])
-          });
-          chrome.storage.local.remove('pendingInvokeRequest');
-        }
+        sendInvokeResult(true, new Uint8Array([1, 2, 3]));
         
         // Success - close popup immediately (no toast needed)
       }
@@ -1050,37 +1073,46 @@ export function DAppRequestHandler({ wallets }: DAppRequestHandlerProps) {
 
     if (typeof chrome !== 'undefined' && chrome.runtime) {
       if (requestType === 'connection' && connectionRequest) {
+        const pk = (connectionRequest as any).pendingKey;
         chrome.runtime.sendMessage({
           type: 'CONNECTION_RESULT',
           appOrigin: connectionRequest.appOrigin,
-          origin: connectionRequest.appOrigin, // For compatibility
-          approved: false
+          origin: connectionRequest.appOrigin,
+          approved: false,
+          pendingKey: pk,
         });
-        chrome.storage.local.remove('pendingConnectionRequest');
+        chrome.storage.local.remove([
+          'pendingConnectionRequest',
+          ...(pk ? [`pendingConnectionRequest_${pk}`, 'pendingConnectionRequestKey'] : []),
+        ]);
       } else if (requestType === 'capability' && capabilityRequest) {
+        const pk = (capabilityRequest as any).pendingKey;
         chrome.runtime.sendMessage({
           type: 'CAPABILITY_RESULT',
           appOrigin: capabilityRequest.appOrigin,
-          origin: capabilityRequest.appOrigin, // For compatibility
-          approved: false
+          origin: capabilityRequest.appOrigin,
+          approved: false,
+          pendingKey: pk,
         });
-        chrome.storage.local.remove('pendingCapabilityRequest');
+        chrome.storage.local.remove([
+          'pendingCapabilityRequest',
+          ...(pk ? [`pendingCapabilityRequest_${pk}`, 'pendingCapabilityRequestKey'] : []),
+        ]);
       } else if (requestType === 'signMessage' && signMessageRequest) {
+        const pk = (signMessageRequest as any).pendingKey;
         chrome.runtime.sendMessage({
           type: 'SIGN_MESSAGE_RESULT',
           appOrigin: signMessageRequest.appOrigin,
           approved: false,
-          error: 'User rejected request'
+          error: 'User rejected request',
+          pendingKey: pk,
         });
-        chrome.storage.local.remove('pendingSignMessageRequest');
+        chrome.storage.local.remove([
+          'pendingSignMessageRequest',
+          ...(pk ? [`pendingSignMessageRequest_${pk}`, 'pendingSignMessageRequestKey'] : []),
+        ]);
       } else if (requestType === 'invoke' && invokeRequest) {
-        chrome.runtime.sendMessage({
-          type: 'INVOKE_RESULT',
-          appOrigin: invokeRequest.appOrigin,
-          origin: invokeRequest.appOrigin, // For compatibility
-          approved: false
-        });
-        chrome.storage.local.remove('pendingInvokeRequest');
+        sendInvokeResult(false, undefined, 'User rejected request');
       }
     }
 
@@ -1119,13 +1151,18 @@ export function DAppRequestHandler({ wallets }: DAppRequestHandlerProps) {
 
       // Send response
       if (typeof chrome !== 'undefined' && chrome.runtime) {
+        const pk = (signMessageRequest as any).pendingKey;
         chrome.runtime.sendMessage({
           type: 'SIGN_MESSAGE_RESULT',
           appOrigin: signMessageRequest.appOrigin,
           approved: true,
-          signature: signatureBase64
+          signature: signatureBase64,
+          pendingKey: pk,
         });
-        chrome.storage.local.remove('pendingSignMessageRequest');
+        chrome.storage.local.remove([
+          'pendingSignMessageRequest',
+          ...(pk ? [`pendingSignMessageRequest_${pk}`, 'pendingSignMessageRequestKey'] : []),
+        ]);
       }
 
       // Success - close popup
