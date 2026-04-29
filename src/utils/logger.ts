@@ -9,7 +9,7 @@
  * - Performance-friendly
  */
 
-export enum LogLevel {
+enum LogLevel {
   ERROR = 0,   // Always shown - critical errors
   WARN = 1,    // Production + dev - warnings
   INFO = 2,    // Dev only - informational
@@ -156,9 +156,3 @@ class Logger {
 
 // Export singleton
 export const logger = new Logger();
-
-// Export convenience functions
-export const logError = (message: string, error?: any) => logger.error(message, error);
-export const logWarn = (message: string, data?: any) => logger.warn(message, data);
-export const logInfo = (message: string, data?: any) => logger.info(message, data);
-export const logDebug = (message: string, data?: any) => logger.debug(message, data);

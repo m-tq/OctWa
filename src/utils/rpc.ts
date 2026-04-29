@@ -52,26 +52,3 @@ export function getActiveRPCProvider(): RPCProvider | null {
   
   return defaultProvider;
 }
-
-export async function makeRPCRequest(endpoint: string, options: RequestInit = {}): Promise<Response> {
-  const provider = getActiveRPCProvider();
-  
-  if (!provider) {
-    throw new Error('No RPC provider available');
-  }
-  
-  // Construct full URL
-  const url = `${provider.url}${endpoint}`;
-  
-  // Merge headers
-  const headers = {
-    'Content-Type': 'application/json',
-    ...provider.headers,
-    ...options.headers
-  };
-  
-  return fetch(url, {
-    ...options,
-    headers
-  });
-}

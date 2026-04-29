@@ -70,7 +70,7 @@ export function loadOperationMode(
 /**
  * Clears the stored operation mode from localStorage.
  */
-export function clearOperationMode(): void {
+function clearOperationMode(): void {
   try {
     localStorage.removeItem(STORAGE_KEY);
   } catch (error) {

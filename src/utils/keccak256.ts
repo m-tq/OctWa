@@ -127,9 +127,4 @@ export function keccak256(data: Uint8Array): Uint8Array {
   return output;
 }
 
-/**
- * Keccak-256 hash as hex string
- */
-export function keccak256Hex(data: Uint8Array): string {
-  return Array.from(keccak256(data)).map(b => b.toString(16).padStart(2, '0')).join('');
-}
+

@@ -80,9 +80,3 @@ export async function importWalletFromMnemonic(mnemonic: string): Promise<Wallet
     type: 'imported-mnemonic'
   };
 }
-
-export function getWalletBalance(): Promise<number> {
-  // This would connect to the actual blockchain
-  // For now, return a mock balance
-  return Promise.resolve(Math.random() * 100);
-}

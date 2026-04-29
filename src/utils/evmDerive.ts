@@ -92,7 +92,7 @@ function bigIntToBytes(num: bigint, length: number): Uint8Array {
 /**
  * Convert Base64 private key to hex format
  */
-export function b64ToHex(privateKeyB64: string): string {
+function b64ToHex(privateKeyB64: string): string {
   const binaryString = atob(privateKeyB64);
   const bytes = new Uint8Array(binaryString.length);
   for (let i = 0; i < binaryString.length; i++) {

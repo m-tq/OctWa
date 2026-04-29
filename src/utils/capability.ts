@@ -41,7 +41,7 @@ export interface SignedCapability extends CapabilityPayload {
  * - No undefined/null fields
  * - methods[] MUST be sorted lexicographically
  */
-export function canonicalizeCapability(payload: CapabilityPayload): string {
+function canonicalizeCapability(payload: CapabilityPayload): string {
   const sortedMethods = [...payload.methods].sort();
   
   const canonical: Record<string, unknown> = {};
@@ -76,7 +76,7 @@ async function sha256(data: Uint8Array): Promise<Uint8Array> {
 /**
  * Convert hex string to Uint8Array
  */
-export function hexToBytes(hex: string): Uint8Array {
+function hexToBytes(hex: string): Uint8Array {
   const cleanHex = hex.replace(/\s/g, '');
   const bytes = new Uint8Array(cleanHex.length / 2);
   for (let i = 0; i < bytes.length; i++) {
@@ -88,7 +88,7 @@ export function hexToBytes(hex: string): Uint8Array {
 /**
  * Convert base64 string to Uint8Array
  */
-export function base64ToBytes(base64: string): Uint8Array {
+function base64ToBytes(base64: string): Uint8Array {
   // Handle URL-safe base64 and padding
   let cleanBase64 = base64.replace(/-/g, '+').replace(/_/g, '/');
   // Add padding if needed
@@ -126,7 +126,7 @@ function isBase64(str: string): boolean {
 /**
  * Convert Uint8Array to hex string
  */
-export function bytesToHex(bytes: Uint8Array): string {
+function bytesToHex(bytes: Uint8Array): string {
   return Array.from(bytes)
     .map(b => b.toString(16).padStart(2, '0'))
     .join('');
@@ -229,7 +229,7 @@ export async function signCapability(
  * @param capability - Signed capability to verify
  * @returns true if signature is valid
  */
-export async function verifyCapability(capability: SignedCapability): Promise<boolean> {
+async function verifyCapability(capability: SignedCapability): Promise<boolean> {
   try {
     const payload: CapabilityPayload = {
       version: capability.version,
@@ -262,7 +262,7 @@ export async function verifyCapability(capability: SignedCapability): Promise<bo
 /**
  * Check if capability is expired
  */
-export function isCapabilityExpired(capability: SignedCapability): boolean {
+function isCapabilityExpired(capability: SignedCapability): boolean {
   if (!capability.expiresAt) return false;
   return Date.now() > capability.expiresAt;
 }
@@ -270,7 +270,7 @@ export function isCapabilityExpired(capability: SignedCapability): boolean {
 /**
  * Check if method is allowed by capability
  */
-export function isMethodAllowed(capability: SignedCapability, method: string): boolean {
+function isMethodAllowed(capability: SignedCapability, method: string): boolean {
   return capability.methods.includes(method);
 }
 

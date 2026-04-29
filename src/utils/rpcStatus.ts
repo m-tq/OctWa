@@ -1,7 +1,7 @@
 // Shared RPC Status Manager
 // Prevents duplicate fetching between popup and expanded modes
 
-export interface RPCStatusData {
+interface RPCStatusData {
   status: 'connected' | 'disconnected' | 'checking' | 'connecting';
   network: string;
   lastChecked: number;
@@ -34,7 +34,7 @@ export async function getActiveRPCProvider(): Promise<{ url: string; network: st
 }
 
 // Get cached RPC status
-export async function getCachedRPCStatus(): Promise<RPCStatusData | null> {
+async function getCachedRPCStatus(): Promise<RPCStatusData | null> {
   try {
     // Try chrome.storage first (shared between popup and expanded)
     if (typeof chrome !== 'undefined' && chrome.storage?.local) {
@@ -70,7 +70,7 @@ export async function getCachedRPCStatus(): Promise<RPCStatusData | null> {
 }
 
 // Save RPC status to cache
-export async function saveRPCStatus(data: RPCStatusData): Promise<void> {
+async function saveRPCStatus(data: RPCStatusData): Promise<void> {
   try {
     const json = JSON.stringify(data);
     localStorage.setItem(STATUS_CACHE_KEY, json);

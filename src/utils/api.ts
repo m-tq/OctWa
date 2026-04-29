@@ -644,7 +644,7 @@ export async function fetchCurrentEpoch(): Promise<number> {
   }
 }
 
-export async function getPublicKey(address: string): Promise<string | null> {
+async function getPublicKey(address: string): Promise<string | null> {
   try {
     const response = await makeAPIRequest('/rpc', {
       method: 'POST',
@@ -659,73 +659,6 @@ export async function getPublicKey(address: string): Promise<string | null> {
   } catch (error) {
     console.error('Error fetching public key:', error);
     return null;
-  }
-}
-
-/**
- * Register PVAC pubkey on the node via octra_registerPvacPubkey RPC.
- * Called before first encrypt/decrypt/stealth on a fresh wallet.
- * Returns true if already registered or successfully registered.
- */
-export async function ensurePvacPubkeyRegistered(
-  address: string,
-  pvacPubkeyB64: string,
-  regSig: string,
-  walletPubKeyB64: string,
-  aesKatHex: string
-): Promise<{ success: boolean; alreadyRegistered?: boolean; error?: string }> {
-  try {
-    // Check if already registered
-    const checkReq = {
-      jsonrpc: '2.0',
-      id: Date.now(),
-      method: 'octra_pvacPubkey',
-      params: [address],
-    };
-    const checkResp = await makeAPIRequest('/rpc', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(checkReq),
-    });
-    if (checkResp.ok) {
-      const checkData = await safeJsonParse(checkResp);
-      if (!checkData.error && checkData.result?.pvac_pubkey) {
-        // Already registered — check if it matches
-        if (checkData.result.pvac_pubkey === pvacPubkeyB64) {
-          return { success: true, alreadyRegistered: true };
-        }
-        // Different key registered — conflict, cannot proceed
-        return { success: false, error: 'A different PVAC key is already registered for this address. Use key switch to reset.' };
-      }
-    }
-
-    // Not registered — register now
-    const regReq = {
-      jsonrpc: '2.0',
-      id: Date.now(),
-      method: 'octra_registerPvacPubkey',
-      params: [address, pvacPubkeyB64, regSig, walletPubKeyB64, aesKatHex],
-    };
-    const regResp = await makeAPIRequest('/rpc', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(regReq),
-    });
-    if (!regResp.ok) {
-      return { success: false, error: `Registration request failed: ${regResp.status}` };
-    }
-    const regData = await safeJsonParse(regResp);
-    if (regData.error) {
-      const msg = typeof regData.error === 'object' ? regData.error.message : String(regData.error);
-      if (msg.includes('already registered')) {
-        return { success: true, alreadyRegistered: true };
-      }
-      return { success: false, error: msg };
-    }
-    return { success: true, alreadyRegistered: false };
-  } catch (error) {
-    console.error('Error registering PVAC pubkey:', error);
-    return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
   }
 }
 
@@ -1012,7 +945,7 @@ export async function sendTransactionBatch(transactions: Transaction[]): Promise
 }
 
 // Check transaction status using octra_transaction RPC method
-export async function checkTransactionStatus(hash: string): Promise<{
+async function checkTransactionStatus(hash: string): Promise<{
   status: 'pending' | 'confirmed' | 'rejected' | 'dropped' | 'not_found';
   finality?: 'pending' | 'confirmed' | 'rejected';
   reason?: string;
@@ -1323,7 +1256,7 @@ export async function fetchTransactionDetails(hash: string, _forceRefresh = fals
   }
 }
 
-export async function fetchPendingTransactions(address: string): Promise<PendingTransaction[]> {
+async function fetchPendingTransactions(address: string): Promise<PendingTransaction[]> {
   try {
     const response = await makeAPIRequest('/rpc', {
       method: 'POST',
@@ -1745,7 +1678,7 @@ export function createTransaction(
 }
 
 // Pagination options for transaction history
-export interface HistoryPaginationOptions {
+interface HistoryPaginationOptions {
   limit?: number;
   offset?: number;
 }
@@ -1758,34 +1691,6 @@ export async function getBalance(address: string): Promise<number> {
   } catch (error) {
     console.error('Error fetching balance:', error);
     return 0;
-  }
-}
-
-export async function sendMultipleTransactions(transactions: any[]): Promise<string[]> {
-  try {
-    const promises = transactions.map(async (txData) => {
-      // Convert the transaction data to the proper format
-      const transaction = createTransaction(
-        txData.from,
-        txData.to,
-        txData.amount,
-        0, // nonce will be handled properly in real implementation
-        txData.privateKey,
-        '' // publicKey will be derived from privateKey
-      );
-      
-      const result = await sendTransaction(transaction);
-      if (result.success && result.hash) {
-        return result.hash;
-      }
-      throw new Error(result.error || 'Transaction failed');
-    });
-    
-    const results = await Promise.all(promises);
-    return results;
-  } catch (error) {
-    console.error('Error sending multiple transactions:', error);
-    throw error;
   }
 }
 

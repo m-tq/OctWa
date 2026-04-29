@@ -16,7 +16,7 @@ import { openDB, DBSchema, IDBPDatabase } from 'idb';
 // Types
 // ============================================================================
 
-export interface ActivitySummary {
+interface ActivitySummary {
   hash: string;
   type: 'standard' | 'encrypt' | 'decrypt' | 'stealth' | 'claim' | 'contract';
   direction: 'in' | 'out' | 'state-change';
@@ -28,7 +28,7 @@ export interface ActivitySummary {
   finality?: 'pending' | 'confirmed' | 'rejected';
 }
 
-export interface WalletCache {
+interface WalletCache {
   address: string;
   publicBalance: number;
   encryptedBalance: {

@@ -162,15 +162,3 @@ export async function fetchEncryptedBalanceFromNode(
 // ============================================================================
 // Utilities
 // ============================================================================
-
-export function isValidCipher(cipher: string): boolean {
-  return !!cipher && cipher !== '0' && cipher.startsWith(HFHE_PREFIX);
-}
-
-export function rawToOCT(raw: bigint): string {
-  return (Number(raw) / 1_000_000).toFixed(6);
-}
-
-export function octToRaw(oct: number): bigint {
-  return BigInt(Math.floor(oct * 1_000_000));
-}

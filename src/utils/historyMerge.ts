@@ -32,9 +32,9 @@ export interface ContractInteraction {
 }
 
 // Unified history item type
-export type HistoryItemType = 'transfer' | 'contract';
+type HistoryItemType = 'transfer' | 'contract';
 
-export interface UnifiedHistoryItem {
+interface UnifiedHistoryItem {
   id: string;
   type: HistoryItemType;
   timestamp: number;
@@ -54,7 +54,7 @@ export type HistoryFilter = 'all' | 'public' | 'private' | 'sent' | 'received' |
  * @param contracts - Array of contract interactions
  * @returns Merged array of unified history items (unsorted)
  */
-export function mergeHistory(
+function mergeHistory(
   transactions: Transaction[],
   contracts: ContractInteraction[]
 ): UnifiedHistoryItem[] {
@@ -89,7 +89,7 @@ export function mergeHistory(
  * @param items - Array of unified history items
  * @returns Sorted array (newest first)
  */
-export function sortHistoryByTimestamp(items: UnifiedHistoryItem[]): UnifiedHistoryItem[] {
+function sortHistoryByTimestamp(items: UnifiedHistoryItem[]): UnifiedHistoryItem[] {
   return [...items].sort((a, b) => b.timestamp - a.timestamp);
 }
 
@@ -100,7 +100,7 @@ export function sortHistoryByTimestamp(items: UnifiedHistoryItem[]): UnifiedHist
  * @param filter - Filter to apply ('all', 'public', 'private', 'sent', 'received', or 'contract')
  * @returns Filtered array
  */
-export function filterHistory(
+function filterHistory(
   items: UnifiedHistoryItem[],
   filter: HistoryFilter
 ): UnifiedHistoryItem[] {

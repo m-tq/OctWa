@@ -74,7 +74,7 @@ const CUSTOM_NFTS_KEY = 'evm_custom_nfts';
 /**
  * Get stored RPC providers
  */
-export function getStoredEVMProviders(): Record<string, string> {
+function getStoredEVMProviders(): Record<string, string> {
   try {
     const stored = localStorage.getItem(EVM_RPC_STORAGE_KEY);
     return stored ? JSON.parse(stored) : {};
@@ -185,19 +185,6 @@ export function setActiveEVMNetwork(networkId: string): void {
 }
 
 /**
- * Get network by ID
- */
-export function getNetworkById(networkId: string): EVMNetwork | undefined {
-  return getAllNetworks().find(n => n.id === networkId);
-}
-
-/**
- * Get network by chain ID
- */
-export function getNetworkByChainId(chainId: number): EVMNetwork | undefined {
-  return getAllNetworks().find(n => n.chainId === chainId);
-}
-
 /**
  * Make JSON-RPC call
  */
@@ -357,25 +344,6 @@ export async function checkEVMRpcStatus(networkId?: string): Promise<boolean> {
 }
 
 /**
- * Get transaction count (nonce)
- */
-export async function getEVMTransactionCount(address: string, networkId?: string): Promise<number> {
-  const network = networkId 
-    ? getAllNetworks().find(n => n.id === networkId) || getActiveEVMNetwork()
-    : getActiveEVMNetwork();
-  
-  const rpcUrl = getEVMRpcUrl(network.id);
-  
-  try {
-    const countHex = await rpcCall(rpcUrl, 'eth_getTransactionCount', [address, 'latest']);
-    return parseInt(countHex, 16);
-  } catch (error) {
-    console.error('Failed to fetch transaction count:', error);
-    throw error;
-  }
-}
-
-/**
  * Get gas price
  */
 export async function getEVMGasPrice(networkId?: string): Promise<string> {
@@ -427,15 +395,6 @@ export interface NFTToken {
   imageUrl?: string;
   chainId: number;
 }
-
-// USDT contract addresses
-export const USDT_CONTRACTS: Record<number, string> = {
-  1: '0xdac17f958d2ee523a2206206994597c13d831ec7', // Ethereum Mainnet
-  137: '0xc2132d05d31c914a87c6611c10748aeb04b58e8f', // Polygon
-  56: '0x55d398326f99059ff775485246999027b3197955', // BSC
-  8453: '0xfde4C96c8593536E31F229EA8f37b2ADa2699bb2', // Base
-  11155111: '0x7169D38820dfd117C3FA1f22a697dBA58d90BA06', // Sepolia (example)
-};
 
 // Common ERC20 tokens per chain
 export const COMMON_TOKENS: Record<number, Array<{ address: string; name: string; symbol: string; decimals: number }>> = {
@@ -496,22 +455,6 @@ export function saveCustomToken(token: ERC20Token): void {
 }
 
 /**
- * Remove custom token
- */
-export function removeCustomToken(address: string, chainId: number): void {
-  try {
-    const stored = localStorage.getItem(CUSTOM_TOKENS_KEY);
-    const allTokens: ERC20Token[] = stored ? JSON.parse(stored) : [];
-    const filtered = allTokens.filter(
-      t => !(t.address.toLowerCase() === address.toLowerCase() && t.chainId === chainId)
-    );
-    localStorage.setItem(CUSTOM_TOKENS_KEY, JSON.stringify(filtered));
-  } catch (error) {
-    console.error('Failed to remove custom token:', error);
-  }
-}
-
-/**
  * Get custom NFTs for a chain
  */
 export function getCustomNFTs(chainId: number): NFTToken[] {
@@ -544,24 +487,6 @@ export function saveCustomNFT(nft: NFTToken): void {
     localStorage.setItem(CUSTOM_NFTS_KEY, JSON.stringify(allNFTs));
   } catch (error) {
     console.error('Failed to save custom NFT:', error);
-  }
-}
-
-/**
- * Remove custom NFT
- */
-export function removeCustomNFT(contractAddress: string, tokenId: string, chainId: number): void {
-  try {
-    const stored = localStorage.getItem(CUSTOM_NFTS_KEY);
-    const allNFTs: NFTToken[] = stored ? JSON.parse(stored) : [];
-    const filtered = allNFTs.filter(
-      n => !(n.contractAddress.toLowerCase() === contractAddress.toLowerCase() && 
-             n.tokenId === tokenId && 
-             n.chainId === chainId)
-    );
-    localStorage.setItem(CUSTOM_NFTS_KEY, JSON.stringify(filtered));
-  } catch (error) {
-    console.error('Failed to remove custom NFT:', error);
   }
 }
 
@@ -672,88 +597,9 @@ export async function checkNFTOwnership(
 }
 
 /**
- * Get USDT balance using Etherscan API V2
- */
-export async function getUSDTBalance(
-  address: string,
-  networkId?: string
-): Promise<string> {
-  const network = networkId 
-    ? getAllNetworks().find(n => n.id === networkId) || getActiveEVMNetwork()
-    : getActiveEVMNetwork();
-  
-  const usdtContract = USDT_CONTRACTS[network.chainId];
-  if (!usdtContract) {
-    return '0.000000';
-  }
-  
-  // Use RPC call instead of Etherscan API for better multi-chain support
-  try {
-    const decimals = network.chainId === 56 ? 18 : 6; // BSC USDT has 18 decimals
-    return await getERC20Balance(usdtContract, address, decimals, networkId);
-  } catch (error) {
-    console.error('Failed to fetch USDT balance:', error);
-    return '0.000000';
-  }
-}
-
-
-/**
- * Get USDT token transactions using Etherscan API V2
- */
-export async function getUSDTTransactions(
-  address: string,
-  networkId?: string
-): Promise<EVMTransaction[]> {
-  const network = networkId 
-    ? getAllNetworks().find(n => n.id === networkId) || getActiveEVMNetwork()
-    : getActiveEVMNetwork();
-  
-  const usdtContract = USDT_CONTRACTS[network.chainId];
-  if (!usdtContract) {
-    return [];
-  }
-  
-  const apiKey = import.meta.env.VITE_ETHERSCAN_API_KEY || '';
-  
-  try {
-    const url = `https://api.etherscan.io/v2/api?chainid=${network.chainId}&module=account&action=tokentx&contractaddress=${usdtContract}&address=${address}&startblock=0&endblock=99999999&page=1&offset=50&sort=desc${apiKey ? `&apikey=${apiKey}` : ''}`;
-    
-    const response = await fetch(url);
-    
-    if (!response.ok) {
-      throw new Error('Failed to fetch USDT transactions');
-    }
-    
-    const data = await response.json();
-    
-    if (data.status !== '1' || !Array.isArray(data.result)) {
-      return [];
-    }
-    
-    const decimals = network.chainId === 56 ? 18 : 6;
-    
-    return data.result.map((tx: any) => ({
-      hash: tx.hash,
-      from: tx.from,
-      to: tx.to,
-      value: (Number(tx.value) / Math.pow(10, decimals)).toFixed(6),
-      timestamp: Number(tx.timeStamp) * 1000,
-      status: 'confirmed',
-      type: tx.from.toLowerCase() === address.toLowerCase() ? 'sent' : 'received',
-      tokenSymbol: 'USDT',
-      tokenAddress: usdtContract,
-    }));
-  } catch (error) {
-    console.error('Failed to fetch USDT transactions:', error);
-    return [];
-  }
-}
-
-/**
  * Get recent transactions (using Etherscan API V2)
  */
-export async function getEVMTransactions(
+async function getEVMTransactions(
   address: string, 
   networkId?: string
 ): Promise<EVMTransaction[]> {
@@ -807,7 +653,7 @@ export async function getEVMTransactions(
  * @param tokenAddresses - Array of ERC20 token contract addresses to filter
  * @param networkId - Network ID (optional)
  */
-export async function getERC20Transactions(
+async function getERC20Transactions(
   address: string,
   tokenAddresses: string[] = [],
   networkId?: string
@@ -975,13 +821,6 @@ export async function getNativeTokenPrice(symbol: string): Promise<number | null
     console.error(`Failed to fetch ${symbol} price:`, error);
     return priceCache[coinId]?.price ?? null;
   }
-}
-
-/**
- * Get ETH price in USD (backward compatible)
- */
-export async function getETHPrice(): Promise<number | null> {
-  return getNativeTokenPrice('ETH');
 }
 
 /**
