@@ -9,7 +9,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Gift, RefreshCw, Wallet as WalletIcon, Package, Server, Zap, AlertTriangle } from 'lucide-react';
 import { Wallet } from '../types/wallet';
-import { invalidateCacheAfterClaim, fetchBalance, sendTransaction } from '../utils/api';
+import { invalidateCacheAfterClaim, fetchBalance, sendTransaction, fetchRecommendedFee } from '../utils/api';
 import { useToast } from '@/hooks/use-toast';
 import { TransactionModal, TransactionStatus, TransactionResult } from './TransactionModal';
 import { pvacServerService } from '@/services/pvacServerService';
@@ -34,6 +34,7 @@ export function ClaimTransfers({ wallet, onTransactionSuccess, isPopupMode = fal
   const [txModalResult, setTxModalResult] = useState<TransactionResult>({});
   const [usePvacServer, setUsePvacServer] = useState(false);
   const [isPvacAvailable, setIsPvacAvailable] = useState(false);
+  const [recommendedClaimFee, setRecommendedClaimFee] = useState(5000); // stealth claim
   const isClaimingRef = useRef(false);
   const { toast } = useToast();
 
@@ -41,6 +42,7 @@ export function ClaimTransfers({ wallet, onTransactionSuccess, isPopupMode = fal
     const available = pvacServerService.isEnabled();
     setIsPvacAvailable(available);
     setUsePvacServer(available);
+    fetchRecommendedFee('stealth').then(fee => setRecommendedClaimFee(fee)).catch(() => {});
   }, []);
 
   const fetchTransfers = async (showRefreshAnimation = false) => {
@@ -170,7 +172,7 @@ export function ClaimTransfers({ wallet, onTransactionSuccess, isPopupMode = fal
         nonce,
         private_key: wallet.privateKey,
         public_key: wallet.publicKey || '',
-        ou: '3000',
+        ou: String(recommendedClaimFee),
       });
       if (!result.success) throw new Error(result.error || 'PVAC claim failed');
 

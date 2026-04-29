@@ -12,7 +12,7 @@ import { useToast } from '@/hooks/use-toast';
 import { AnimatedIcon } from './AnimatedIcon';
 import { TransactionModal, TransactionStatus, TransactionResult } from './TransactionModal';
 import { pvacServerService } from '@/services/pvacServerService';
-import { sendTransaction, fetchBalance, fetchEncryptedBalance, invalidateCacheAfterEncrypt } from '@/utils/api';
+import { sendTransaction, fetchBalance, fetchEncryptedBalance, invalidateCacheAfterEncrypt, fetchRecommendedFee } from '@/utils/api';
 import { ensurePvacRegistered } from '@/utils/ensurePvacRegistered';
 
 interface EncryptBalanceDialogProps {
@@ -45,14 +45,16 @@ export function EncryptBalanceDialog({
   const [txModalResult, setTxModalResult] = useState<TransactionResult>({});
   const [usePvacServer, setUsePvacServer] = useState(false);
   const [isPvacAvailable, setIsPvacAvailable] = useState(false);
+  const [recommendedFee, setRecommendedFee] = useState(3000); // decrypt/encrypt default
   const { toast } = useToast();
   
-  // Check PVAC availability when dialog opens
+  // Check PVAC availability when dialog opens + fetch dynamic fee
   useEffect(() => {
     if (open) {
       const available = pvacServerService.isEnabled();
       setIsPvacAvailable(available);
-      setUsePvacServer(available); // Auto-enable if available
+      setUsePvacServer(available);
+      fetchRecommendedFee('decrypt').then(fee => setRecommendedFee(fee)).catch(() => {});
     }
   }, [open]);
   
@@ -138,7 +140,7 @@ export function EncryptBalanceDialog({
         public_key: wallet.publicKey || '',
         address: wallet.address,
         nonce: currentNonce + 1,
-        ou: '10000'
+        ou: String(recommendedFee)
       });
 
       if (!result.success) {

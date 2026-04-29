@@ -12,7 +12,7 @@ import { AnimatedIcon } from './AnimatedIcon';
 import { TransactionModal, TransactionStatus, TransactionResult } from './TransactionModal';
 import { InfoTooltip } from './InfoTooltip';
 import { pvacServerService } from '@/services/pvacServerService';
-import { sendTransaction, fetchBalance, fetchEncryptedBalance, invalidateCacheAfterDecrypt } from '@/utils/api';
+import { sendTransaction, fetchBalance, fetchEncryptedBalance, invalidateCacheAfterDecrypt, fetchRecommendedFee } from '@/utils/api';
 import { ensurePvacRegistered } from '@/utils/ensurePvacRegistered';
 
 interface DecryptBalanceDialogProps {
@@ -47,14 +47,16 @@ export function DecryptBalanceDialog({
   const [txModalResult, setTxModalResult] = useState<TransactionResult>({});
   const [usePvacServer, setUsePvacServer] = useState(false);
   const [isPvacAvailable, setIsPvacAvailable] = useState(false);
+  const [recommendedFee, setRecommendedFee] = useState(3000); // decrypt default
   const { toast } = useToast();
   
-  // Check PVAC availability when dialog opens
+  // Check PVAC availability when dialog opens + fetch dynamic fee
   useEffect(() => {
     if (open) {
       const available = pvacServerService.isEnabled();
       setIsPvacAvailable(available);
-      setUsePvacServer(available); // Auto-enable if available
+      setUsePvacServer(available);
+      fetchRecommendedFee('decrypt').then(fee => setRecommendedFee(fee)).catch(() => {});
     }
   }, [open]);
   
@@ -146,7 +148,7 @@ export function DecryptBalanceDialog({
         current_cipher: currentCipher,
         address: wallet.address,
         nonce: currentNonce + 1,
-        ou: '10000'
+        ou: String(recommendedFee)
       });
 
       if (!result.success) {

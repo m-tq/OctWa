@@ -1317,6 +1317,46 @@ export async function fetchPendingTransactionByHash(hash: string, maxRetries = 3
   return null;
 }
 
+export type FeeOpType = 'standard' | 'stealth' | 'decrypt' | 'call' | 'deploy' | 'upgrade';
+
+// Fallback fees (OU) per op_type — used when RPC call fails
+const FEE_FALLBACKS: Record<FeeOpType, number> = {
+  standard: 1000,
+  stealth:  5000,
+  decrypt:  3000,
+  call:     1000,
+  deploy:   200000,
+  upgrade:  200000,
+};
+
+/**
+ * Fetch recommended fee from node for a given operation type.
+ * Returns the `recommended` value in OU units.
+ * Falls back to hardcoded defaults if RPC fails.
+ */
+export async function fetchRecommendedFee(opType: FeeOpType = 'standard'): Promise<number> {
+  try {
+    const response = await makeAPIRequest('/rpc', {
+      method: 'POST',
+      body: JSON.stringify({
+        jsonrpc: '2.0', id: 1,
+        method: 'octra_recommendedFee',
+        params: [opType],
+      }),
+    });
+    if (!response.ok) return FEE_FALLBACKS[opType];
+    const data = await response.json();
+    const recommended = data?.result?.recommended;
+    if (recommended !== undefined) {
+      const n = typeof recommended === 'string' ? parseInt(recommended, 10) : recommended;
+      if (!isNaN(n) && n > 0) return n;
+    }
+    return FEE_FALLBACKS[opType];
+  } catch {
+    return FEE_FALLBACKS[opType];
+  }
+}
+
 export async function fetchBalance(address: string, forceRefresh = false): Promise<BalanceResponse> {
   // Check cache first (unless force refresh)
   if (!forceRefresh) {

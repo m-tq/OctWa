@@ -8,7 +8,7 @@ import { Switch } from '@/components/ui/switch';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Shield, AlertTriangle, Wallet as WalletIcon, Loader2, Plus, BookUser, Search, Globe, Server, Zap } from 'lucide-react';
 import { Wallet } from '../types/wallet';
-import { fetchEncryptedBalance, createPrivateTransfer, getAddressInfo, getViewPubkey, invalidateCacheAfterPrivateSend, fetchBalance, sendTransaction } from '../utils/api';
+import { fetchEncryptedBalance, createPrivateTransfer, getAddressInfo, getViewPubkey, invalidateCacheAfterPrivateSend, fetchBalance, sendTransaction, fetchRecommendedFee } from '../utils/api';
 import { useToast } from '@/hooks/use-toast';
 import { useAddressBook } from '@/hooks/useAddressBook';
 import { TransactionModal, TransactionStatus, TransactionResult } from './TransactionModal';
@@ -84,16 +84,20 @@ export function PrivateTransfer({
   const [addressBookSearch, setAddressBookSearch] = useState('');
   const [usePvacServer, setUsePvacServer] = useState(false);
   const [isPvacAvailable, setIsPvacAvailable] = useState(false);
+  const [customFee, setCustomFee] = useState('');
+  const [recommendedFee, setRecommendedFee] = useState(5000); // stealth default
   const dropdownRef = useRef<HTMLDivElement>(null);
   const isSendingRef = useRef(false); // hard guard against concurrent sends
   const { toast } = useToast();
   const { contacts, walletLabels } = useAddressBook();
   
-  // Check PVAC availability on mount
+  // Check PVAC availability on mount + fetch dynamic stealth fee
   useEffect(() => {
     const available = pvacServerService.isEnabled();
     setIsPvacAvailable(available);
     setUsePvacServer(available); // Auto-enable if available
+    // Fetch recommended fee for stealth op_type
+    fetchRecommendedFee('stealth').then(fee => setRecommendedFee(fee)).catch(() => {});
   }, []);
   
   const handleTxModalOpenChange = (open: boolean) => {
@@ -330,7 +334,7 @@ export function PrivateTransfer({
         nonce: nonce + 1,
         private_key: wallet!.privateKey,
         public_key: wallet!.publicKey || '',
-        ou: '5000'
+        ou: String(customFee ? parseInt(customFee) || recommendedFee : recommendedFee)
       });
 
       if (!result.success) {
@@ -666,6 +670,24 @@ export function PrivateTransfer({
               </div>
             )}
 
+            {/* Custom Fee - Compact Mode */}
+            <div className="space-y-1">
+              <div className="flex items-center justify-between">
+                <Label className="text-xs text-muted-foreground">Network Fee (OU)</Label>
+                <span className="text-[10px] text-muted-foreground">
+                  Recommended: <span className="font-mono text-[#00E5C0]">{recommendedFee.toLocaleString()}</span>
+                </span>
+              </div>
+              <Input
+                type="number"
+                placeholder={String(recommendedFee)}
+                value={customFee}
+                onChange={(e) => setCustomFee(e.target.value)}
+                min="1"
+                className="text-xs h-8 font-mono"
+              />
+            </div>
+
             {/* Performance Info - Compact Mode */}
             {usePvacServer && isPvacAvailable && (
               <Alert className="py-1.5">
@@ -820,6 +842,24 @@ export function PrivateTransfer({
               />
             </div>
           )}
+
+          {/* Custom Fee - Full Mode */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <Label className="text-sm text-muted-foreground">Network Fee (OU)</Label>
+              <span className="text-xs text-muted-foreground">
+                Recommended: <span className="font-mono text-[#00E5C0]">{recommendedFee.toLocaleString()}</span>
+              </span>
+            </div>
+            <Input
+              type="number"
+              placeholder={String(recommendedFee)}
+              value={customFee}
+              onChange={(e) => setCustomFee(e.target.value)}
+              min="1"
+              className="font-mono"
+            />
+          </div>
 
           {/* Performance Info - Full Mode */}
           {usePvacServer && isPvacAvailable && (
