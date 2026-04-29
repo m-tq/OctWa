@@ -333,9 +333,9 @@ export function DAppRequestHandler({ wallets }: DAppRequestHandlerProps) {
         setInvokeRequest(pendingInvoke);
         
         // Parse transaction payload for send_transaction method
-        if (pending.pendingInvokeRequest.method === 'send_transaction') {
+        if (pendingInvoke.method === 'send_transaction') {
           try {
-            const payload = pending.pendingInvokeRequest.payload;
+            const payload = pendingInvoke.payload;
             let txParams: TransactionPayload | null = null;
             
             if (payload && typeof payload === 'object' && '_type' in payload && (payload as { _type: string })._type === 'Uint8Array') {
@@ -367,9 +367,9 @@ export function DAppRequestHandler({ wallets }: DAppRequestHandlerProps) {
         }
         
         // Parse EVM transaction payload for send_evm_transaction method
-        if (pending.pendingInvokeRequest.method === 'send_evm_transaction') {
+        if (pendingInvoke.method === 'send_evm_transaction') {
           try {
-            const payload = pending.pendingInvokeRequest.payload;
+            const payload = pendingInvoke.payload;
             let evmTxParams: EVMTransactionPayload | null = null;
             
             if (payload && typeof payload === 'object' && '_type' in payload && (payload as { _type: string })._type === 'Uint8Array') {
@@ -401,9 +401,9 @@ export function DAppRequestHandler({ wallets }: DAppRequestHandlerProps) {
         }
         
         // Parse ERC20 transaction payload for send_erc20_transaction method
-        if (pending.pendingInvokeRequest.method === 'send_erc20_transaction') {
+        if (pendingInvoke.method === 'send_erc20_transaction') {
           try {
-            const payload = pending.pendingInvokeRequest.payload;
+            const payload = pendingInvoke.payload;
             let erc20TxParams: ERC20TransactionPayload | null = null;
             
             if (payload && typeof payload === 'object' && '_type' in payload && (payload as { _type: string })._type === 'Uint8Array') {
