@@ -23,7 +23,7 @@ import {
   Clock
 } from 'lucide-react';
 import { Wallet } from '../types/wallet';
-import { fetchBalance, createTransaction, fetchCurrentEpoch, invalidateCacheAfterTransaction, sendTransaction } from '../utils/api';
+import { fetchBalance, createTransaction, fetchCurrentEpoch, invalidateCacheAfterTransaction, sendTransaction, fetchRecommendedFee } from '../utils/api';
 import { useToast } from '@/hooks/use-toast';
 
 interface FileRecipient {
@@ -101,8 +101,9 @@ export function FileMultiSend({ wallet, balance, onBalanceUpdate, onNonceUpdate,
   const [recipients, setRecipients] = useState<FileRecipient[]>([]);
   const [amountMode, setAmountMode] = useState<'same' | 'different'>('same');
   const [sameAmount, setSameAmount] = useState('');
-  const [ouOption, setOuOption] = useState<string>('auto');
+  const [ouOption, setOuOption] = useState<string>('recommended');
   const [customOu, setCustomOu] = useState('');
+  const [recommendedFee, setRecommendedFee] = useState(1000);
   const [showOuSettings, setShowOuSettings] = useState(false);
   const [isDragOver, setIsDragOver] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -127,7 +128,7 @@ export function FileMultiSend({ wallet, balance, onBalanceUpdate, onNonceUpdate,
       setTxLogs([]);
       setSameAmount('');
       setAmountMode('same');
-      setOuOption('auto');
+      setOuOption('recommended');
       setCustomOu('');
       setShowOuSettings(false);
       const fileInput = document.getElementById('bulkFileInput') as HTMLInputElement;
@@ -135,13 +136,17 @@ export function FileMultiSend({ wallet, balance, onBalanceUpdate, onNonceUpdate,
     }
   }, [resetTrigger]);
 
+  // Fetch recommended fee on mount
+  useEffect(() => {
+    fetchRecommendedFee('standard').then(fee => setRecommendedFee(fee)).catch(() => {});
+  }, []);
+
   // Get OU value for a specific amount
-  const getOuValue = (amount: number): number => {
-    if (ouOption === 'auto') {
-      return amount < 1000 ? 10000 : 30000;
-    }
-    if (ouOption === 'custom') return parseInt(customOu) || 10000;
-    return parseInt(ouOption) || 10000;
+  const getOuValue = (_amount: number): number => {
+    if (ouOption === 'recommended') return recommendedFee;
+    if (ouOption === 'fast') return recommendedFee * 2;
+    if (ouOption === 'custom') return parseInt(customOu) || recommendedFee;
+    return parseInt(ouOption) || recommendedFee;
   };
 
   // Calculate fee based on OU: OU * 0.0000001
@@ -885,33 +890,31 @@ export function FileMultiSend({ wallet, balance, onBalanceUpdate, onNonceUpdate,
             <Button variant="outline" className="w-full flex items-center justify-between h-10">
               <span className="flex items-center gap-2 text-sm">
                 <Settings2 className="h-4 w-4" />
-                OU (Gas) Settings
+                Network Fee (OU)
               </span>
+              <span className="text-xs text-muted-foreground mr-2">{recommendedFee.toLocaleString()} OU</span>
               <ChevronDown className={`h-4 w-4 transition-transform ${showOuSettings ? 'rotate-180' : ''}`} />
             </Button>
           </CollapsibleTrigger>
           <CollapsibleContent className="pt-2 px-0.5 space-y-2">
             <Select value={ouOption} onValueChange={setOuOption}>
               <SelectTrigger className="text-sm h-9">
-                <SelectValue placeholder="Auto" />
+                <SelectValue placeholder="Recommended" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="auto">Auto</SelectItem>
-                <SelectItem value="10000">10,000 OU</SelectItem>
-                <SelectItem value="30000">30,000 OU</SelectItem>
-                <SelectItem value="50000">50,000 OU</SelectItem>
-                <SelectItem value="100000">100,000 OU</SelectItem>
+                <SelectItem value="recommended">Recommended ({recommendedFee.toLocaleString()} OU)</SelectItem>
+                <SelectItem value="fast">Fast ({(recommendedFee * 2).toLocaleString()} OU)</SelectItem>
                 <SelectItem value="custom">Custom</SelectItem>
               </SelectContent>
             </Select>
             {ouOption === 'custom' && (
               <Input
                 type="number"
-                placeholder="Custom OU value"
+                placeholder={`Enter OU (recommended: ${recommendedFee})`}
                 value={customOu}
                 onChange={(e) => setCustomOu(e.target.value)}
-                min="1000"
-                step="1000"
+                min="1"
+                step="100"
                 className="text-sm h-9"
               />
             )}

@@ -10,7 +10,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { AlertTriangle, Wallet as WalletIcon, Plus, BookUser, Search, Shield, Globe } from 'lucide-react';
 import { Wallet } from '../types/wallet';
-import { fetchBalance, sendTransaction, createTransaction, invalidateCacheAfterTransaction } from '../utils/api';
+import { fetchBalance, sendTransaction, createTransaction, invalidateCacheAfterTransaction, fetchRecommendedFee } from '../utils/api';
 import { useToast } from '@/hooks/use-toast';
 import { useAddressBook } from '@/hooks/useAddressBook';
 import { TransactionModal, TransactionStatus, TransactionResult } from './TransactionModal';
@@ -78,8 +78,10 @@ export function SendTransaction({
   const [addressValidation, setAddressValidation] = useState<{ isValid: boolean; error?: string } | null>(null);
   const [amount, setAmount] = useState('');
   const [message, setMessage] = useState('');
-  const [ouOption, setOuOption] = useState<string>('auto');
+  const [ouOption, setOuOption] = useState<string>('recommended');
   const [customOu, setCustomOu] = useState('');
+  const [recommendedFee, setRecommendedFee] = useState(1000); // standard default
+  const [isFetchingFee, setIsFetchingFee] = useState(false);
   const [isSending, setIsSending] = useState(false);
   const [showMessage, setShowMessage] = useState(false);
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
@@ -109,6 +111,14 @@ export function SendTransaction({
     };
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  // Fetch recommended fee from node on mount
+  useEffect(() => {
+    setIsFetchingFee(true);
+    fetchRecommendedFee('standard')
+      .then(fee => { setRecommendedFee(fee); setIsFetchingFee(false); })
+      .catch(() => setIsFetchingFee(false));
   }, []);
 
   // Filter contacts and wallets
@@ -146,13 +156,10 @@ export function SendTransaction({
 
   // Get OU value based on selection
   const getOuValue = (): number => {
-    if (ouOption === 'auto') {
-      // Auto: 10000 for < 1000 OCT, 30000 for >= 1000 OCT
-      const amountNum = parseFloat(amount) || 0;
-      return amountNum < 1000 ? 10000 : 30000;
-    }
-    if (ouOption === 'custom') return parseInt(customOu) || 10000;
-    return parseInt(ouOption) || 10000;
+    if (ouOption === 'recommended') return recommendedFee;
+    if (ouOption === 'fast') return recommendedFee * 2;
+    if (ouOption === 'custom') return parseInt(customOu) || recommendedFee;
+    return parseInt(ouOption) || recommendedFee;
   };
 
   // Validate recipient address when input changes
@@ -292,8 +299,8 @@ export function SendTransaction({
           }
         });
         
-        // Reset OU to auto on success
-        setOuOption('auto');
+        // Reset OU to recommended on success
+        setOuOption('recommended');
         setCustomOu('');
 
         // Reset form
@@ -507,26 +514,7 @@ export function SendTransaction({
                 onClick={() => {
                   // Calculate fee based on OU selection
                   // Fee formula: OU * 0.0000001
-                  let feeForMax: number;
-                  
-                  if (ouOption === 'auto') {
-                    // Auto mode: determine OU based on potential max amount
-                    // If balance >= 1000 + fee(30000), use 30000 OU
-                    // Otherwise use 10000 OU
-                    const feeFor30k = 30000 * 0.0000001; // 0.003
-                    const feeFor10k = 10000 * 0.0000001; // 0.001
-                    
-                    if (currentBalance >= 1000 + feeFor30k) {
-                      feeForMax = feeFor30k;
-                    } else {
-                      feeForMax = feeFor10k;
-                    }
-                  } else if (ouOption === 'custom') {
-                    const customOuValue = parseInt(customOu) || 10000;
-                    feeForMax = customOuValue * 0.0000001;
-                  } else {
-                    feeForMax = parseInt(ouOption) * 0.0000001;
-                  }
+                  const feeForMax = getOuValue() * 0.0000001;
                   
                   if (currentBalance > feeForMax) {
                     const maxAmount = currentBalance - feeForMax;
@@ -559,27 +547,29 @@ export function SendTransaction({
 
         {/* OU (Gas) */}
         <div className="space-y-1">
-          <Label className="text-xs">OU (Gas)</Label>
+          <div className="flex items-center justify-between">
+            <Label className="text-xs">Network Fee (OU)</Label>
+            <span className="text-[10px] text-muted-foreground">
+              {isFetchingFee ? 'Fetching...' : `Recommended: ${recommendedFee.toLocaleString()}`}
+            </span>
+          </div>
           <Select value={ouOption} onValueChange={setOuOption}>
             <SelectTrigger className="h-8 text-xs">
-              <SelectValue placeholder="Auto" />
+              <SelectValue placeholder="Recommended" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="auto" className="text-xs">Auto</SelectItem>
-              <SelectItem value="10000" className="text-xs">10,000 OU</SelectItem>
-              <SelectItem value="30000" className="text-xs">30,000 OU</SelectItem>
-              <SelectItem value="50000" className="text-xs">50,000 OU</SelectItem>
-              <SelectItem value="100000" className="text-xs">100,000 OU</SelectItem>
+              <SelectItem value="recommended" className="text-xs">Recommended ({recommendedFee.toLocaleString()} OU)</SelectItem>
+              <SelectItem value="fast" className="text-xs">Fast ({(recommendedFee * 2).toLocaleString()} OU)</SelectItem>
               <SelectItem value="custom" className="text-xs">Custom</SelectItem>
             </SelectContent>
           </Select>
           {ouOption === 'custom' && (
             <Input
               type="number"
-              placeholder="Enter custom OU value"
+              placeholder={`Enter OU (recommended: ${recommendedFee})`}
               value={customOu}
               onChange={(e) => setCustomOu(e.target.value)}
-              min="1000"
+              min="1"
               step="1000"
               className="h-8 text-xs"
             />
@@ -731,26 +721,7 @@ export function SendTransaction({
               onClick={() => {
                 // Calculate fee based on OU selection
                 // Fee formula: OU * 0.0000001
-                let feeForMax: number;
-                
-                if (ouOption === 'auto') {
-                  // Auto mode: determine OU based on potential max amount
-                  // If balance >= 1000 + fee(30000), use 30000 OU
-                  // Otherwise use 10000 OU
-                  const feeFor30k = 30000 * 0.0000001; // 0.003
-                  const feeFor10k = 10000 * 0.0000001; // 0.001
-                  
-                  if (currentBalance >= 1000 + feeFor30k) {
-                    feeForMax = feeFor30k;
-                  } else {
-                    feeForMax = feeFor10k;
-                  }
-                } else if (ouOption === 'custom') {
-                  const customOuValue = parseInt(customOu) || 10000;
-                  feeForMax = customOuValue * 0.0000001;
-                } else {
-                  feeForMax = parseInt(ouOption) * 0.0000001;
-                }
+                const feeForMax = getOuValue() * 0.0000001;
                 
                 if (currentBalance > feeForMax) {
                   const maxAmount = currentBalance - feeForMax;
@@ -828,28 +799,30 @@ export function SendTransaction({
 
       {/* OU (Gas) Settings */}
       <div className="space-y-2">
-        <Label>OU (Gas)</Label>
+        <div className="flex items-center justify-between">
+          <Label>Network Fee (OU)</Label>
+          <span className="text-xs text-muted-foreground">
+            {isFetchingFee ? 'Fetching...' : `Recommended: ${recommendedFee.toLocaleString()}`}
+          </span>
+        </div>
         <Select value={ouOption} onValueChange={setOuOption}>
           <SelectTrigger>
-            <SelectValue placeholder="Select OU option" />
+            <SelectValue placeholder="Recommended" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="auto">Auto</SelectItem>
-            <SelectItem value="10000">10,000 OU</SelectItem>
-            <SelectItem value="30000">30,000 OU</SelectItem>
-            <SelectItem value="50000">50,000 OU</SelectItem>
-            <SelectItem value="100000">100,000 OU</SelectItem>
+            <SelectItem value="recommended">Recommended ({recommendedFee.toLocaleString()} OU)</SelectItem>
+            <SelectItem value="fast">Fast ({(recommendedFee * 2).toLocaleString()} OU)</SelectItem>
             <SelectItem value="custom">Custom</SelectItem>
           </SelectContent>
         </Select>
         {ouOption === 'custom' && (
           <Input
             type="number"
-            placeholder="Enter custom OU value"
+            placeholder={`Enter OU (recommended: ${recommendedFee})`}
             value={customOu}
             onChange={(e) => setCustomOu(e.target.value)}
-            min="1000"
-            step="1000"
+            min="1"
+            step="100"
           />
         )}
       </div>
