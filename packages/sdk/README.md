@@ -1,10 +1,8 @@
-# Octra Web Wallet SDK
+# @octwa/sdk
 
-**Version:** 2.0.0  
-**License:** MIT  
-**Status:** Production Ready ✅
+**Version:** 1.2.0 · **License:** MIT · **Status:** Production Ready ✅
 
-The official TypeScript SDK for integrating with the Octra blockchain through the OctWa wallet extension. Implements a capability-based authorization model with full support for HFHE (Homomorphic Fully Encrypted) transactions.
+The official TypeScript SDK for integrating dApps with the [OctWa](https://github.com/m-tq/OctWa) wallet extension. Implements a capability-based authorization model with cryptographic origin binding, nonce replay protection, and real SHA-256 signing via the Web Crypto API.
 
 ---
 
@@ -16,613 +14,517 @@ The official TypeScript SDK for integrating with the Octra blockchain through th
 - [Quick Start](#quick-start)
 - [Core Concepts](#core-concepts)
 - [API Reference](#api-reference)
-- [Security](#security)
-- [Advanced Usage](#advanced-usage)
+- [Supported Methods](#supported-methods)
+- [Security Model](#security-model)
 - [Error Handling](#error-handling)
+- [Cryptographic Utilities](#cryptographic-utilities)
+- [Response Decoding](#response-decoding)
 - [Testing](#testing)
-- [Migration Guide](#migration-guide)
+- [Changelog](#changelog)
 
 ---
 
 ## Overview
 
-The Octra SDK provides a stateless, deterministic transaction builder for dApps to interact with the Octra blockchain. It follows a strict security model where:
+The SDK is a **stateless transaction builder** — it never holds private keys. All signing happens inside the OctWa wallet extension.
 
-- **SDK**: Builds transactions deterministically (NO signing, NO private keys)
-- **Wallet**: Final authority for signing and transaction submission
-- **Network**: Executes transactions with HFHE encryption support
+```
+DApp  ──invoke──▶  SDK  ──SignedInvocation──▶  OctWa Extension  ──▶  Octra Network
+                                                  (private key)
+```
 
-### Key Features
+**What the SDK does:**
+- Detects the OctWa extension (`window.octra`)
+- Manages the connection and capability lifecycle
+- Builds and serializes invocations deterministically
+- Tracks nonces to prevent replay attacks
+- Serializes payloads for Chrome extension transport
 
-✅ **Capability-Based Authorization** - Fine-grained permission model  
-✅ **HFHE Support** - Fully encrypted transaction execution  
-✅ **Deterministic Serialization** - Canonical transaction building  
-✅ **Domain Separation** - Prevents signature replay attacks  
-✅ **Signing Mutex** - Prevents race conditions and double-send  
-✅ **Type-Safe** - Full TypeScript support with comprehensive types  
-✅ **Event System** - Real-time connection and capability events  
-✅ **Gas Estimation** - Built-in gas and compute cost estimation  
-🚫 **Intent-Based Swaps** - Cross-chain swap support (currently disabled, under development)  
+**What the wallet does:**
+- Holds private keys (never exposed to SDK)
+- Validates capability signatures
+- Enforces nonce monotonicity
+- Signs and submits transactions to the node
 
 ---
 
 ## Architecture
 
 ```
-┌─────────┐      ┌─────────┐      ┌────────────┐      ┌──────────────┐
-│  DApp   │─────▶│   SDK   │─────▶│   Wallet   │─────▶│ Octra Network│
-│         │      │         │      │ (Extension)│      │              │
-└─────────┘      └─────────┘      └────────────┘      └──────────────┘
-                                         │
-                                         │ Private Keys
-                                         │ Signing
-                                         │ Nonce Validation
-                                         ▼
-                                  Final Authority
+┌──────────────────────────────────────────────────────────────┐
+│  DApp                                                        │
+│  sdk.connect() → sdk.requestCapability() → sdk.invoke()      │
+└──────────────────────────┬───────────────────────────────────┘
+                           │ window.postMessage
+                           ▼
+┌──────────────────────────────────────────────────────────────┐
+│  OctWa Extension (content.js → background.js)                │
+│  • Validates capability signature                            │
+│  • Enforces nonce monotonicity                               │
+│  • Signs transaction with Ed25519                            │
+│  • Submits to Octra RPC                                      │
+└──────────────────────────────────────────────────────────────┘
 ```
 
 ### Trust Boundaries
 
-1. **DApp Layer**: User interface and business logic
-2. **SDK Layer**: Stateless transaction builder (this package)
-3. **Wallet Layer**: Private key custody and signing
-4. **Network Layer**: Transaction execution and state management
+| Layer | Trusted? | Responsibility |
+|-------|----------|----------------|
+| DApp | ❌ Untrusted | Business logic, UI |
+| SDK | ✅ Trusted | Serialization, nonce tracking |
+| Extension | ✅ Trusted | Key custody, signing, validation |
+| Node | ✅ Trusted | Execution, consensus |
 
 ---
 
 ## Installation
 
 ```bash
-npm install @octra/sdk
+npm install @octwa/sdk
 ```
-
-Or with yarn:
 
 ```bash
-yarn add @octra/sdk
+yarn add @octwa/sdk
 ```
-
-Or with pnpm:
 
 ```bash
-pnpm add @octra/sdk
+pnpm add @octwa/sdk
 ```
 
-### Requirements
-
-- Node.js >= 16
-- TypeScript >= 4.5 (optional, but recommended)
-- OctWa Wallet Extension installed in browser
+**Requirements:**
+- Node.js ≥ 16 (for build tooling)
+- Browser with Web Crypto API support
+- [OctWa Wallet Extension](https://github.com/m-tq/OctWa) installed
 
 ---
 
 ## Quick Start
 
-### 1. Initialize SDK
+### 1. Initialize
 
 ```typescript
-import { OctraSDK } from '@octra/sdk';
+import { OctraSDK } from '@octwa/sdk';
 
-// Initialize SDK (detects wallet extension)
-const sdk = await OctraSDK.init({
-  timeout: 3000, // Wait up to 3s for extension
-});
+const sdk = await OctraSDK.init({ timeout: 3000 });
 
-// Check if wallet is installed
 if (!sdk.isInstalled()) {
-  console.error('Please install OctWa wallet extension');
+  // Prompt user to install OctWa extension
+  window.open('https://github.com/m-tq/OctWa');
   return;
 }
 ```
 
-### 2. Connect to Wallet
+### 2. Connect
 
 ```typescript
-// Request connection to a Circle
 const connection = await sdk.connect({
-  circle: 'my-circle-id',
-  appName: 'My DApp',
-  appIcon: 'https://mydapp.com/icon.png',
+  circle:    'my-dapp',
+  appName:   'My DApp',
+  appOrigin: window.location.origin,
 });
 
-console.log('Connected:', connection.walletPubKey);
-console.log('EVM Address:', connection.evmAddress);
-console.log('Network:', connection.network);
+console.log('Octra address:', connection.walletPubKey);
+console.log('EVM address:',   connection.evmAddress);
+console.log('Network:',       connection.network);   // 'mainnet' | 'testnet'
+console.log('Epoch:',         connection.epoch);
 ```
 
 ### 3. Request Capability
 
 ```typescript
-// Request permission to call specific methods
-const capability = await sdk.requestCapability({
-  circle: 'my-circle-id',
-  methods: ['get_balance', 'send_transaction'],
-  scope: 'write',
-  encrypted: false,
+const cap = await sdk.requestCapability({
+  circle:     'my-dapp',
+  methods:    ['get_balance', 'send_transaction'],
+  scope:      'write',
+  encrypted:  false,
   ttlSeconds: 3600, // 1 hour
 });
 
-console.log('Capability granted:', capability.id);
+console.log('Capability ID:', cap.id);
+console.log('Expires:',       new Date(cap.expiresAt).toISOString());
 ```
 
 ### 4. Invoke Methods
 
 ```typescript
-// Get balance
+// Read balance (auto-executed, no popup)
 const result = await sdk.invoke({
-  capabilityId: capability.id,
-  method: 'get_balance',
+  capabilityId: cap.id,
+  method:       'get_balance',
 });
 
-// Decode response
-import { decodeBalanceResponse } from '@octra/sdk';
+import { decodeBalanceResponse } from '@octwa/sdk';
 const balance = decodeBalanceResponse(result);
-console.log('OCT Balance:', balance.octBalance);
-console.log('ETH Balance:', balance.ethBalance);
+console.log('OCT balance:', balance.octBalance);
+```
+
+### 5. Send Transaction
+
+```typescript
+// Requires user approval in popup
+const txResult = await sdk.invoke({
+  capabilityId: cap.id,
+  method:       'send_transaction',
+  payload:      new TextEncoder().encode(JSON.stringify({
+    to:     'octXXX...',
+    amount: 1.5,
+    message: 'optional memo',
+  })),
+});
+
+import { decodeResponseData } from '@octwa/sdk';
+const tx = decodeResponseData<{ txHash: string }>(txResult);
+console.log('TX hash:', tx?.txHash);
 ```
 
 ---
 
 ## Core Concepts
 
+### Circles
+
+A Circle is a named authorization scope — similar to an OAuth client ID. Your dApp uses a consistent circle ID across all sessions.
+
+```typescript
+const CIRCLE = 'my-dapp-v1'; // Use a stable, unique identifier
+```
+
 ### Capabilities
 
-Capabilities are cryptographically signed permissions that grant your dApp access to specific methods. They are:
+A capability is a **cryptographically signed permission token** issued by the wallet. It grants your dApp access to specific methods for a limited time.
 
-- **Scoped**: Limited to specific methods
-- **Time-bound**: Have expiration times
-- **Origin-bound**: Tied to your dApp's origin
-- **Revocable**: Can be revoked by user at any time
+```typescript
+interface Capability {
+  id:           string;
+  version:      2;
+  circle:       string;
+  methods:      readonly string[];   // e.g. ['get_balance', 'send_transaction']
+  scope:        'read' | 'write' | 'compute';
+  encrypted:    boolean;
+  appOrigin:    string;              // cryptographically bound to your origin
+  branchId:     string;
+  epoch:        number;
+  issuedAt:     number;
+  expiresAt:    number;
+  nonceBase:    number;
+  walletPubKey: string;
+  signature:    string;              // Ed25519 signature
+  state:        'ACTIVE' | 'EXPIRED' | 'REVOKED';
+  lastNonce:    number;
+}
+```
 
-**Capability Scopes:**
+**Capability scopes:**
 
-- `read`: Read-only operations (e.g., `get_balance`)
-- `write`: State-changing operations (e.g., `send_transaction`)
-- `compute`: HFHE computation operations
+| Scope | Description | Requires popup? |
+|-------|-------------|-----------------|
+| `read` | Read-only (e.g. `get_balance`) | No — auto-executed |
+| `write` | State-changing (e.g. `send_transaction`) | Yes |
+| `compute` | HFHE encrypted operations | Yes |
 
 ### Invocations
 
-Invocations are signed method calls using a capability. Each invocation:
+Each `sdk.invoke()` call builds a `SignedInvocation` with:
+- A monotonically increasing nonce (replay protection)
+- A domain-separated origin hash (cross-origin protection)
+- A payload hash (integrity)
 
-- Uses a monotonically increasing nonce (replay protection)
-- Includes domain separation (prevents signature replay)
-- Is validated by the wallet before execution
-- Can include encrypted payloads (HFHE)
+The wallet validates all of these before signing.
 
-### Sessions
+### Nonce Management
 
-Sessions represent the connection state between your dApp and the wallet:
+The SDK tracks nonces locally. The wallet is the **final authority** — it rejects any invocation with a nonce ≤ the last accepted nonce.
 
 ```typescript
-const session = sdk.getSessionState();
-console.log('Connected:', session.connected);
-console.log('Circle:', session.circle);
-console.log('Active Capabilities:', session.activeCapabilities.length);
+// SDK increments nonce automatically
+const result1 = await sdk.invoke({ capabilityId, method: 'method_a' }); // nonce=1
+const result2 = await sdk.invoke({ capabilityId, method: 'method_b' }); // nonce=2
+
+// Concurrent invocations are serialized via signing mutex
+const [r1, r2] = await Promise.all([
+  sdk.invoke({ capabilityId, method: 'method_a' }),
+  sdk.invoke({ capabilityId, method: 'method_b' }),
+]);
+// Guaranteed: r1.nonce < r2.nonce
 ```
 
 ---
 
 ## API Reference
 
-### OctraSDK Class
-
-#### Static Methods
-
-##### `init(options?: InitOptions): Promise<OctraSDK>`
-
-Initialize the SDK and detect wallet extension.
+### `OctraSDK.init(options?)`
 
 ```typescript
 const sdk = await OctraSDK.init({
-  timeout: 3000, // Detection timeout in ms
-  autoCleanupExpired: true, // Auto-remove expired capabilities
-  skipSignatureVerification: false, // For testing only
+  timeout:                  3000,  // ms to wait for extension (default: 3000)
+  autoCleanupExpired:       true,  // remove expired capabilities automatically
+  skipSignatureVerification: false, // testing only — never use in production
 });
 ```
 
-#### Instance Methods
+### `sdk.isInstalled()`
 
-##### `isInstalled(): boolean`
+Returns `true` if the OctWa extension is detected in `window.octra`.
 
-Check if wallet extension is installed.
+### `sdk.connect(request)`
+
+Opens the wallet connection popup. Returns a `Connection` object.
 
 ```typescript
-if (!sdk.isInstalled()) {
-  alert('Please install OctWa wallet');
+interface ConnectRequest {
+  circle:                  string;
+  appOrigin?:              string;  // defaults to window.location.origin
+  appName?:                string;
+  appIcon?:                string;
+  requestedCapabilities?:  CapabilityTemplate[];
 }
-```
 
-##### `connect(request: ConnectRequest): Promise<Connection>`
-
-Request connection to a Circle.
-
-```typescript
-const connection = await sdk.connect({
-  circle: 'circle-id',
-  appName: 'My DApp',
-  appIcon: 'https://example.com/icon.png',
-  appOrigin: window.location.origin, // Auto-detected
-  requestedCapabilities: [ // Optional: request capabilities immediately
-    {
-      methods: ['get_balance'],
-      scope: 'read',
-      encrypted: false,
-    }
-  ],
-});
-```
-
-**Returns:**
-```typescript
 interface Connection {
-  circle: string;
-  sessionId: string;
-  walletPubKey: string;
-  evmAddress?: string;
-  network: 'testnet' | 'mainnet';
-  epoch: number;
-  branchId: string;
+  circle:       string;
+  sessionId:    string;
+  walletPubKey: string;   // Octra address
+  evmAddress:   string;   // Ethereum address (derived from same key)
+  network:      'mainnet' | 'testnet';
+  epoch:        number;
+  branchId:     string;
 }
 ```
 
-##### `disconnect(): Promise<void>`
+### `sdk.disconnect()`
 
-Disconnect from wallet and clear all capabilities.
+Clears connection and all capabilities.
 
-```typescript
-await sdk.disconnect();
-```
+### `sdk.requestCapability(request)`
 
-##### `requestCapability(request: CapabilityRequest): Promise<Capability>`
-
-Request a new capability from the user.
+Opens the capability approval popup. Returns a `Capability`.
 
 ```typescript
-const capability = await sdk.requestCapability({
-  circle: 'circle-id',
-  methods: ['get_balance', 'send_transaction'],
-  scope: 'write',
-  encrypted: false,
-  ttlSeconds: 3600, // Optional: default 1 hour
-  branchId: 'main', // Optional: specific branch
-});
-```
-
-**Returns:**
-```typescript
-interface Capability {
-  id: string;
-  version: 2;
-  circle: string;
-  methods: readonly string[];
-  scope: 'read' | 'write' | 'compute';
-  encrypted: boolean;
-  appOrigin: string;
-  branchId: string;
-  epoch: number;
-  issuedAt: number;
-  expiresAt: number;
-  nonceBase: number;
-  walletPubKey: string;
-  signature: string;
-  state: 'ACTIVE' | 'EXPIRED' | 'REVOKED';
-  lastNonce: number;
+interface CapabilityRequest {
+  circle:      string;
+  methods:     string[];
+  scope:       'read' | 'write' | 'compute';
+  encrypted:   boolean;
+  ttlSeconds?: number;   // default: 86400 (24h)
+  branchId?:   string;
 }
 ```
 
-##### `renewCapability(capabilityId: string): Promise<Capability>`
+### `sdk.renewCapability(capabilityId)`
 
-Renew an existing capability (extends expiration).
+Extends an existing capability's expiration by 15 minutes.
 
-```typescript
-const renewed = await sdk.renewCapability(capability.id);
-```
+### `sdk.revokeCapability(capabilityId)`
 
-##### `revokeCapability(capabilityId: string): Promise<void>`
+Immediately revokes a capability.
 
-Revoke a capability (user can also revoke from wallet UI).
+### `sdk.listCapabilities()`
 
-```typescript
-await sdk.revokeCapability(capability.id);
-```
+Returns all active capabilities for the current origin.
 
-##### `listCapabilities(): Promise<Capability[]>`
+### `sdk.invoke(request)`
 
-List all active capabilities for current origin.
+Invokes a method using a capability. Builds and sends a `SignedInvocation`.
 
 ```typescript
-const capabilities = await sdk.listCapabilities();
-```
+interface InvocationRequest {
+  capabilityId: string;
+  method:       string;
+  payload?:     Uint8Array | EncryptedPayload;
+  branchId?:    string;
+}
 
-##### `invoke(request: InvocationRequest): Promise<InvocationResult>`
-
-Invoke a method using a capability.
-
-```typescript
-const result = await sdk.invoke({
-  capabilityId: capability.id,
-  method: 'get_balance',
-  payload: new TextEncoder().encode(JSON.stringify({ /* params */ })),
-  branchId: 'main', // Optional: override branch
-});
-```
-
-**Returns:**
-```typescript
 interface InvocationResult {
-  success: boolean;
-  data?: Uint8Array | EncryptedPayload;
-  error?: string;
+  success:         boolean;
+  data?:           Uint8Array | EncryptedPayload;
+  error?:          string;
   branchProofHash?: string;
-  merkleRoot?: string;
-  epochTag?: number;
+  epochTag?:       number;
 }
 ```
 
-##### `invokeCompute(request: ComputeRequest): Promise<ComputeResult>`
+### `sdk.estimatePlainTx(payload)`
 
-Execute HFHE computation.
+Returns a fee estimate for a standard transaction. The wallet fetches live fees from `octra_recommendedFee` — this is a client-side fallback for pre-flight display.
+
+### `sdk.estimateEncryptedTx(payload)`
+
+Returns a fee estimate for an encrypted transaction.
+
+### `sdk.getSessionState()`
 
 ```typescript
-const result = await sdk.invokeCompute({
-  circleId: 'circle-id',
-  capabilityId: capability.id,
-  branchId: 'main',
-  circuitId: 'my-circuit',
-  encryptedInput: {
-    scheme: 'HFHE',
-    data: encryptedData,
-    associatedData: 'metadata',
-  },
-  computeProfile: {
-    gateCount: 1000,
-    vectorSize: 256,
-    depth: 10,
-    expectedBootstrap: 2,
-  },
-  gasLimit: 1000000,
-});
+interface SessionState {
+  connected:          boolean;
+  circle?:            string;
+  branchId?:          string;
+  epoch?:             number;
+  activeCapabilities: Capability[];
+}
 ```
 
-##### `estimatePlainTx(payload: unknown): Promise<GasEstimate>`
+### `sdk.on(event, callback)`
 
-Estimate gas for plain transaction.
-
-```typescript
-const estimate = await sdk.estimatePlainTx({ amount: 100 });
-console.log('Gas units:', estimate.gasUnits);
-console.log('Token cost:', estimate.tokenCost);
-```
-
-##### `estimateEncryptedTx(payload: EncryptedPayload): Promise<GasEstimate>`
-
-Estimate gas for encrypted transaction.
+Subscribe to events. Returns an unsubscribe function.
 
 ```typescript
-const estimate = await sdk.estimateEncryptedTx(encryptedPayload);
-```
-
-##### `estimateComputeCost(profile: ComputeProfile): Promise<GasEstimate>`
-
-Estimate cost for HFHE computation.
-
-```typescript
-const estimate = await sdk.estimateComputeCost({
-  gateCount: 1000,
-  vectorSize: 256,
-  depth: 10,
-  expectedBootstrap: 2,
-});
-```
-
-##### `signMessage(message: string): Promise<string>`
-
-Request user to sign an arbitrary message.
-
-```typescript
-const signature = await sdk.signMessage('Hello, Octra!');
-```
-
-##### `getSessionState(): SessionState`
-
-Get current session state.
-
-```typescript
-const state = sdk.getSessionState();
-console.log('Connected:', state.connected);
-console.log('Active capabilities:', state.activeCapabilities);
-```
-
-##### `on<E>(event: EventName, callback: EventCallback<E>): () => void`
-
-Subscribe to events. Returns unsubscribe function.
-
-```typescript
-const unsubscribe = sdk.on('connect', ({ connection }) => {
-  console.log('Connected to:', connection.circle);
+const off = sdk.on('connect', ({ connection }) => {
+  console.log('Connected:', connection.walletPubKey);
 });
 
-// Later: unsubscribe()
+// Unsubscribe
+off();
 ```
 
-**Events:**
-- `extensionReady`: Wallet extension detected
-- `connect`: Connected to wallet
-- `disconnect`: Disconnected from wallet
-- `capabilityGranted`: New capability granted
-- `capabilityExpired`: Capability expired
-- `capabilityRevoked`: Capability revoked
-- `branchChanged`: Branch changed
-- `epochChanged`: Epoch changed
+**Available events:**
+
+| Event | Payload |
+|-------|---------|
+| `extensionReady` | — |
+| `connect` | `{ connection: Connection }` |
+| `disconnect` | — |
+| `capabilityGranted` | `{ capability: Capability }` |
+| `capabilityExpired` | `{ capabilityId: string }` |
+| `capabilityRevoked` | `{ capabilityId: string }` |
+| `branchChanged` | `{ branchId: string; epoch: number }` |
+| `epochChanged` | `{ epoch: number }` |
 
 ---
 
-## Security
+## Supported Methods
+
+These are the methods the OctWa extension handles via `invoke()`:
+
+| Method | Scope | Auto-execute | Description |
+|--------|-------|-------------|-------------|
+| `get_balance` | `read` | ✅ Yes | Fetch OCT balance |
+| `send_transaction` | `write` | ❌ Popup | Send OCT (standard or contract call) |
+| `send_evm_transaction` | `write` | ❌ Popup | Send ETH/EVM transaction |
+| `send_erc20_transaction` | `write` | ❌ Popup | Send ERC-20 token |
+
+### `get_balance` payload
+
+No payload needed. Response:
+
+```typescript
+interface BalanceResponse {
+  octAddress: string;
+  octBalance: number;
+  network:    'mainnet' | 'testnet';
+}
+```
+
+### `send_transaction` payload
+
+```typescript
+{
+  to:             string;  // Octra address
+  amount:         number;  // OCT (float)
+  message?:       string;  // optional memo or contract params
+  op_type?:       string;  // 'standard' (default) or 'call' for contract calls
+  encrypted_data?: string; // contract method name, e.g. 'lock_to_eth'
+}
+```
+
+### `send_evm_transaction` payload
+
+```typescript
+{
+  to:       string;  // EVM address (0x...)
+  amount?:  string;  // ETH amount (human-readable)
+  value?:   string;  // wei (hex or decimal string)
+  data?:    string;  // hex-encoded calldata for contract calls
+  network?: string;  // 'eth-mainnet' | 'eth-sepolia' | etc.
+}
+```
+
+### `send_erc20_transaction` payload
+
+```typescript
+{
+  tokenContract: string;  // ERC-20 contract address
+  to:            string;  // recipient EVM address
+  amount:        string;  // raw units (e.g. '1000000' for 1 USDC)
+  decimals:      number;  // token decimals
+  symbol:        string;  // token symbol (e.g. 'USDC')
+}
+```
+
+---
+
+## Security Model
 
 ### Canonical Serialization
 
-All transactions use deterministic canonical serialization:
+All capability payloads and invocations are serialized deterministically before hashing:
 
 ```typescript
-import { canonicalize, canonicalizeCapability } from '@octra/sdk';
+import { canonicalize, canonicalizeCapability } from '@octwa/sdk';
 
-// Canonicalize any object
-const canonical = canonicalize({ b: 2, a: 1 });
-// Result: '{"a":1,"b":2}' (keys sorted)
+// Keys sorted lexicographically, no whitespace
+canonicalize({ b: 2, a: 1 });
+// → '{"a":1,"b":2}'
 
-// Canonicalize capability
-const capCanonical = canonicalizeCapability(capabilityPayload);
+// Methods sorted, all fields in canonical order
+canonicalizeCapability(payload);
+// → '{"appOrigin":"...","branchId":"main","circle":"...",...}'
 ```
-
-**Rules:**
-- Keys sorted lexicographically
-- No whitespace
-- Deterministic number formatting
-- Uint8Array → hex with '0x' prefix
 
 ### Domain Separation
 
-Prevents signature replay attacks:
+Prevents signature replay across different contexts:
 
 ```typescript
-import { 
-  OCTRA_CAPABILITY_PREFIX,
-  OCTRA_INVOCATION_PREFIX,
-  hashCapabilityWithDomain 
-} from '@octra/sdk';
+import { OCTRA_CAPABILITY_PREFIX, OCTRA_INVOCATION_PREFIX } from '@octwa/sdk';
 
-// Capability signing includes domain prefix
-const hash = hashCapabilityWithDomain(payload);
-// Internally: hash(OCTRA_CAPABILITY_PREFIX + canonical)
+// Capability hash: OCTRA_CAPABILITY_PREFIX + canonical
+// Invocation hash: OCTRA_INVOCATION_PREFIX + canonical
+```
+
+### Real SHA-256
+
+All cryptographic hashing uses `crypto.subtle.digest('SHA-256', ...)` — the Web Crypto API. No custom hash functions for security-critical operations.
+
+```typescript
+import { sha256Bytes, sha256String } from '@octwa/sdk';
+
+const hash = await sha256Bytes(data);   // Uint8Array → hex string
+const hash2 = await sha256String(str);  // string → hex string
 ```
 
 ### Signing Mutex
 
-Automatic protection against race conditions:
+Concurrent invocations are serialized to prevent nonce races:
 
 ```typescript
-// These will execute sequentially, not in parallel
-const [result1, result2] = await Promise.all([
-  sdk.invoke({ capabilityId, method: 'method1' }),
-  sdk.invoke({ capabilityId, method: 'method2' }),
+// These run sequentially, not in parallel
+await Promise.all([
+  sdk.invoke({ capabilityId, method: 'a' }), // nonce=1
+  sdk.invoke({ capabilityId, method: 'b' }), // nonce=2
 ]);
-// result1.nonce = 1, result2.nonce = 2 (guaranteed order)
 ```
 
 ### HFHE Encrypted Payloads
 
-Encrypted payloads are treated as opaque blobs:
+Encrypted payloads are treated as opaque blobs — never inspected:
 
 ```typescript
-import { hashPayload } from '@octra/sdk';
-
-// ✅ CORRECT: Hash without inspecting
-const hash = hashPayload(encryptedPayload);
-
-// ❌ WRONG: Don't inspect ciphertext
-const data = JSON.parse(encryptedPayload.data); // Never do this!
-```
-
-### Nonce Management
-
-SDK provides nonces for ordering, wallet validates:
-
-```typescript
-// SDK manages nonce locally
-const nonce = nonceManager.getNextNonce(capabilityId);
-
-// On error, rollback
-catch (error) {
-  nonceManager.resetNonce(capabilityId, nonce - 1);
-}
-
-// Wallet is final authority and validates nonce
-```
-
----
-
-## Advanced Usage
-
-### Intent-Based Swaps
-
-```typescript
-import { IntentsClient } from '@octra/sdk';
-
-// Create intents client
-const intents = new IntentsClient(sdk, 'https://api.octra.network');
-intents.setCapability(capability);
-
-// Get quote
-const quote = await intents.getQuote(100); // 100 OCT
-
-// Create intent
-const intent = await intents.createIntent(
-  quote,
-  '0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb', // Target ETH address
-  50 // 0.5% slippage
-);
-
-// Sign and submit
-const signResult = await intents.signIntent(intent);
-const submitResult = await intents.submitIntent(signResult.txHash);
-
-// Poll for fulfillment
-const status = await intents.waitForFulfillment(submitResult.intentId, {
-  timeoutMs: 5 * 60 * 1000, // 5 minutes
-  pollIntervalMs: 3000, // Check every 3s
+// ✅ Correct: pass as-is
+await sdk.invoke({
+  capabilityId,
+  method: 'process',
+  payload: {
+    scheme: 'HFHE',
+    data: ciphertext,
+    associatedData: 'metadata',
+  },
 });
-
-console.log('Swap completed:', status.ethTxHash);
-```
-
-### Response Decoding
-
-```typescript
-import { decodeResponseData, decodeBalanceResponse } from '@octra/sdk';
-
-// Generic decoding
-const result = await sdk.invoke({ capabilityId, method: 'custom_method' });
-const data = decodeResponseData<MyType>(result);
-
-// Balance-specific decoding
-const balanceResult = await sdk.invoke({ capabilityId, method: 'get_balance' });
-const balance = decodeBalanceResponse(balanceResult);
-```
-
-### Cryptographic Utilities
-
-```typescript
-import {
-  sha256,
-  hexToBytes,
-  bytesToHex,
-  verifyEd25519Signature,
-  verifyCapabilitySignature,
-} from '@octra/sdk';
-
-// SHA-256 hashing
-const hash = await sha256(data);
-
-// Hex conversion
-const bytes = hexToBytes('0x1234abcd');
-const hex = bytesToHex(bytes);
-
-// Signature verification
-const isValid = await verifyEd25519Signature(
-  signature,
-  message,
-  publicKey
-);
-
-// Capability verification
-const isValidCap = await verifyCapabilitySignature(capability);
 ```
 
 ---
 
 ## Error Handling
 
-All errors extend `OctraError` with structured information:
+All errors extend `OctraError`:
 
 ```typescript
 import {
@@ -630,183 +532,151 @@ import {
   NotInstalledError,
   NotConnectedError,
   UserRejectedError,
-  ValidationError,
   CapabilityError,
-} from '@octra/sdk';
+  ScopeViolationError,
+  CapabilityExpiredError,
+} from '@octwa/sdk';
 
 try {
   await sdk.invoke(request);
 } catch (error) {
   if (error instanceof UserRejectedError) {
-    // User cancelled - don't show error
-    console.log('User cancelled');
-  } else if (error instanceof NotConnectedError) {
-    // Need to connect first
-    await sdk.connect({ circle: 'my-circle' });
-  } else if (error instanceof CapabilityError) {
-    // Capability issue - might need to renew
-    console.error('Capability error:', error.message);
-  } else if (error instanceof OctraError) {
-    // Generic Octra error
-    console.error('Error code:', error.code);
-    console.error('Details:', error.details);
+    return; // User cancelled — no error UI needed
+  }
+  if (error instanceof CapabilityExpiredError) {
+    const renewed = await sdk.renewCapability(capabilityId);
+    // retry...
+  }
+  if (error instanceof OctraError) {
+    console.error(`[${error.code}] ${error.message}`);
   }
 }
 ```
 
-**Error Codes:**
-- `NOT_INSTALLED`: Wallet extension not installed
-- `NOT_CONNECTED`: Not connected to wallet
-- `USER_REJECTED`: User rejected the request
-- `TIMEOUT`: Operation timed out
-- `VALIDATION_ERROR`: Input validation failed
-- `CAPABILITY_ERROR`: Capability issue
-- `SCOPE_VIOLATION`: Method not allowed by capability
-- `SIGNATURE_INVALID`: Invalid signature
-- `CAPABILITY_EXPIRED`: Capability expired
-- `CAPABILITY_REVOKED`: Capability revoked
-- `ORIGIN_MISMATCH`: Origin mismatch
-- `BRANCH_MISMATCH`: Branch mismatch
-- `EPOCH_MISMATCH`: Epoch mismatch
-- `NONCE_VIOLATION`: Nonce violation
-- `DOMAIN_SEPARATION_ERROR`: Domain separation error
+**Error codes:**
+
+| Code | Class | Description |
+|------|-------|-------------|
+| `NOT_INSTALLED` | `NotInstalledError` | Extension not found |
+| `NOT_CONNECTED` | `NotConnectedError` | No active connection |
+| `USER_REJECTED` | `UserRejectedError` | User cancelled popup |
+| `TIMEOUT` | `TimeoutError` | Operation timed out |
+| `VALIDATION_ERROR` | `ValidationError` | Invalid input |
+| `CAPABILITY_ERROR` | `CapabilityError` | Capability not found |
+| `SCOPE_VIOLATION` | `ScopeViolationError` | Method not in capability |
+| `CAPABILITY_EXPIRED` | `CapabilityExpiredError` | Capability expired |
+| `CAPABILITY_REVOKED` | `CapabilityRevokedError` | Capability revoked |
+| `ORIGIN_MISMATCH` | `OriginMismatchError` | Origin binding failed |
+| `NONCE_VIOLATION` | `NonceViolationError` | Nonce out of order |
+
+---
+
+## Cryptographic Utilities
+
+```typescript
+import {
+  // Hashing (async, Web Crypto API)
+  sha256Bytes,          // Uint8Array → hex string
+  sha256String,         // string → hex string
+  sha256,               // Uint8Array → Uint8Array
+
+  // Encoding
+  hexToBytes,           // hex string → Uint8Array
+  bytesToHex,           // Uint8Array → hex string
+
+  // Canonicalization
+  canonicalize,         // any → deterministic JSON string
+  canonicalizeCapability,
+  canonicalizeInvocation,
+
+  // Domain-separated hashing (async)
+  hashCapabilityWithDomain,
+  hashInvocationWithDomain,
+
+  // Signature verification
+  verifyEd25519Signature,
+  verifyCapabilitySignature,
+
+  // Nonce
+  generateNonce,        // → UUID-format string
+
+  // Constants
+  OCTRA_CAPABILITY_PREFIX,
+  OCTRA_INVOCATION_PREFIX,
+  OCTRA_DOMAIN_PREFIX,
+} from '@octwa/sdk';
+```
+
+---
+
+## Response Decoding
+
+Chrome extension messaging serializes `Uint8Array` as numeric-keyed objects. The SDK handles this automatically:
+
+```typescript
+import { decodeResponseData, decodeBalanceResponse } from '@octwa/sdk';
+
+// Generic — works for any JSON-encoded response
+const result = await sdk.invoke({ capabilityId, method: 'custom' });
+const data = decodeResponseData<{ txHash: string }>(result);
+
+// Balance-specific
+const balResult = await sdk.invoke({ capabilityId, method: 'get_balance' });
+const balance = decodeBalanceResponse(balResult);
+// → { octAddress, octBalance, network }
+```
 
 ---
 
 ## Testing
 
-### Unit Tests
-
 ```bash
-npm test
+cd packages/sdk
+npm install
+npm test        # run all tests (vitest)
+npm run build   # build CJS + ESM + types
 ```
 
-### Integration Tests
-
-```bash
-npm run test:integration
-```
-
-### Test with Mock Wallet
+### Mock Provider
 
 ```typescript
-import { OctraSDK } from '@octra/sdk';
+import { OctraSDK } from '@octwa/sdk';
+import { createMockProvider, injectMockProvider } from './tests/mocks/provider';
 
-const sdk = await OctraSDK.init({
-  skipSignatureVerification: true, // For testing only!
-});
+const mock = createMockProvider({ shouldRejectCapability: false });
+injectMockProvider(mock);
+
+const sdk = await OctraSDK.init({ timeout: 100 });
+await sdk.connect({ circle: 'test', appOrigin: 'https://example.com' });
 ```
 
 ---
 
-## Migration Guide
+## Changelog
 
-### From v1 to v2
+### v1.2.0
 
-**Breaking Changes:**
+- **`types.ts`**: `Connection.epoch` and `branchId` are now required (not optional). `evmAddress` always present. `BalanceResponse` is OCT-only (removed `ethBalance`, `usdcBalance`, `evmAddress`, `evmNetwork`). Removed `ComputeRequest/Profile/Result`, `EVMNetworkId`. `OctraProvider.disconnect()` returns `Promise<{disconnected: boolean}>`.
+- **`canonical.ts`**: `sha256Bytes` / `sha256String` now use real SHA-256 via `crypto.subtle` (previously djb2). `hashCapabilityWithDomain` / `hashInvocationWithDomain` are now async.
+- **`sdk.ts`**: Removed `invokeCompute`, `estimateComputeCost`, `signMessage` (not exposed on SDK). Payload serialized as `{_type, data}` for Chrome extension transport.
+- **`utils.ts`**: `detectProvider` now listens for `octra:announceProvider` CustomEvent (EIP-6963 analog) in addition to legacy `octraLoaded`.
+- **`capability-service.ts`**: `validate()` throws `CapabilityError` (not plain `Error`) for not-found capabilities.
+- **`compute-service.ts`**: Removed (HFHE compute removed from extension background).
+- **`gas-service.ts`**: Simplified fallback values; wallet fetches live fees from `octra_recommendedFee`.
+- **Tests**: All 47 tests pass. Test vectors updated to v2 capability format.
 
-1. **Error Structure**: Errors now include `code`, `layer`, `retryable`
-2. **Domain Separation**: Signatures include domain prefixes
-3. **Canonical Serialization**: All hashing uses canonical format
+### v1.1.1
 
-**Migration Steps:**
-
-```typescript
-// v1
-try {
-  await sdk.invoke(request);
-} catch (error) {
-  alert(error.message);
-}
-
-// v2
-try {
-  await sdk.invoke(request);
-} catch (error) {
-  if (error.code === 'USER_REJECTED') {
-    return; // Don't show error
-  }
-  
-  if (error.retryable) {
-    // Show retry button
-  } else {
-    alert(error.message);
-  }
-}
-```
-
-**Compatibility:**
-- ✅ v1 capabilities still work
-- ✅ v1 API unchanged
-- ✅ New features are additive
-
----
-
-## File Structure
-
-```
-packages/sdk/
-├── src/
-│   ├── canonical.ts           # Canonical serialization
-│   ├── capability-manager.ts  # Capability management
-│   ├── capability-service.ts  # Capability validation
-│   ├── compute-service.ts     # HFHE compute operations
-│   ├── crypto.ts              # Cryptographic utilities
-│   ├── errors.ts              # Error classes
-│   ├── gas-service.ts         # Gas estimation
-│   ├── index.ts               # Public API exports
-│   ├── intents.ts             # Intent-based swaps
-│   ├── nonce-manager.ts       # Nonce management
-│   ├── response-utils.ts      # Response decoding
-│   ├── sdk.ts                 # Main SDK class
-│   ├── session-manager.ts     # Session management
-│   ├── types.ts               # TypeScript types
-│   └── utils.ts               # Utility functions
-├── tests/
-│   ├── crypto.test.ts         # Crypto tests
-│   └── sdk.test.ts            # SDK tests
-├── dist/                      # Compiled output
-├── package.json
-├── tsconfig.json
-├── vitest.config.ts
-└── README.md                  # This file
-```
-
----
-
-## Contributing
-
-Contributions are welcome! Please:
-
-1. Fork the repository
-2. Create a feature branch
-3. Add tests for new features
-4. Ensure all tests pass
-5. Submit a pull request
+- Initial public release with capability-based authorization model.
 
 ---
 
 ## License
 
-MIT License - see LICENSE file for details
-
----
+MIT — see [LICENSE](./LICENSE)
 
 ## Support
 
-- **Documentation**: https://docs.octra.network
-- **GitHub**: https://github.com/octra/octwa
-- **Discord**: https://discord.gg/octra
-- **Email**: support@octra.network
-
----
-
-## Security
-
-For security issues, please email: security@octra.network
-
-**Do NOT open public issues for security vulnerabilities.**
-
----
-
-**Built with ❤️ by the Octra Team**
+- **GitHub**: https://github.com/m-tq/OctWa
+- **Issues**: https://github.com/m-tq/OctWa/issues
+- **Security**: security@octra.network (do not open public issues for vulnerabilities)
