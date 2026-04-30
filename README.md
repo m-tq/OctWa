@@ -1,139 +1,280 @@
-# OCTWA - Octra Wallet
+# OctWa — Octra Wallet
 
-A secure browser-based wallet for the Octra blockchain network. Available as both a web application and Chrome/Edge browser extension.
+A secure, private-first browser wallet for the Octra blockchain. Available as a Chrome/Edge extension and web application.
 
-**Encrypted by Default** — Powered by Octra HFHE
+**Version:** 1.3.2 · **License:** MIT · **Status:** Production Ready
+
+---
 
 ## Project Structure
 
 ```
-octwa/
-├── src/                    # Main wallet application
-├── extensionFiles/         # Browser extension files
-├── packages/sdk/           # @octwa/sdk - dApp integration SDK
-└── scripts/                # Build scripts
+main/
+├── src/                     # Wallet UI (React + TypeScript + Vite)
+│   ├── components/          # UI components (Dashboard, Send, MultiSend, etc.)
+│   ├── utils/               # api.ts, evmRpc.ts, walletManager.ts, rpc.ts
+│   ├── types/               # TypeScript type definitions
+│   ├── stores/              # Job store, event bus
+│   ├── services/            # PVAC server, stealth scan
+│   └── permissions/         # Capability permission manager
+├── extensionFiles/          # Browser extension files
+│   ├── background.js        # Service worker — key custody, signing, RPC
+│   ├── content.js           # Content script — message bridge + whitelist
+│   ├── provider.js          # window.octra provider injection
+│   ├── core.js              # Canonical serialization + real SHA-256
+│   └── manifest.json        # MV3 manifest
+├── packages/sdk/            # @octwa/sdk v1.2.0 — dApp integration SDK
+└── scripts/                 # Build scripts (copy-extension-files.mjs)
 ```
 
-## SDK
-
-The `@octwa/sdk` package is available on npm for dApp integration:
-
-```bash
-npm install @octwa/sdk
-```
-
-See [packages/sdk/README.md](packages/sdk/README.md) for documentation.
-
-## Security Features
-
-### Encryption & Key Management
-- **PBKDF2 Key Derivation** - 310,000 iterations with 32-byte salt
-- **AES-256-GCM Encryption** - All wallet data encrypted with master password
-- **Encrypted-Only Storage** - Private keys NEVER stored unencrypted
-- **Session Key Isolation** - Unique encryption key per session
-
-### Session Security
-- **Auto-Lock Protection** - Automatic locking after 15 minutes of inactivity
-- **Cross-Tab Sync** - Lock state synchronized across all views (popup, expanded, web)
-- **Browser Close Lock** - Auto-locks when browser closes
-
-### Access Control
-- **Rate Limiting** - 5 failed attempts triggers 5-minute lockout
-- **Password Strength Validation** - Real-time strength indicator
-- **Password Re-verification** - Required for sensitive operations (export keys, etc.)
-
-## Features
-
-### Wallet Management
-- Create new wallet with BIP39 mnemonic (12/24 words)
-- Import existing wallet via mnemonic phrase
-- Multiple wallet support with instant switching
-- Cached wallet data for seamless switching experience
-- Drag & drop wallet reordering
-- Custom wallet labels/names
-- Secure private key export with password verification
-
-### Transactions
-- Standard OCT send with address book integration
-- Multi-send (multiple recipients in single transaction)
-- Bulk send via TXT/CSV file import
-- Transaction history with filtering (All/Sent/Received/Contract)
-- Real-time transaction status tracking
-- Pending transaction monitoring
-
-### Privacy Mode (Confidential Transactions)
-- Public/Private mode toggle
-- Encrypt balance (convert public OCT to private)
-- Decrypt balance (convert private OCT to public)
-- Private transfers using Fully Homomorphic Encryption (FHE)
-- Claim incoming private transfers
-- Separate activity history for private transactions
-
-### EVM Compatibility
-- Dual address support (Octra native + EVM address)
-- Multi-network support (Ethereum, Polygon, BSC, Arbitrum, etc.)
-- Custom network configuration
-- ERC-20 token management
-- NFT viewing and transfers
-- Gas price estimation
-- EVM transaction history
-
-### Address Book
-- Save frequently used addresses with labels
-- Quick address selection during transfers
-- Import/Export address book
-
-### dApp Integration
-- Web3 provider (`window.octra`)
-- Circle-based connection model
-- Capability-based permissions with TTL
-- Connection approval flow with site info
-- Transaction signing requests
-- Intent-based swaps (OCT ⇄ ETH)
-- Smart contract interaction support
-- Connected dApps manager
-
-### User Interface
-- Responsive design (Popup mode & Expanded mode)
-- Dark/Light theme toggle
-- Onboarding flow for new users
-- Real-time balance updates
-- RPC provider manager with status indicator
-- Animated 3D background
+---
 
 ## Quick Start
 
 ```bash
-# Install dependencies
-npm install
-
-# Development
-npm run dev
-
-# Build for production
-npm run build:prod
-
-# Build browser extension
-npm run build:extension
+npm ci                    # install (uses package-lock.json, verifies hashes)
+npm run dev               # development server
+npm run build:prod        # production build
+npm run build:extension   # build + copy extension files to dist/
 ```
 
-## Browser Extension
+### Load Extension
 
-1. Build: `npm run build:extension`
-2. Open `chrome://extensions` or `edge://extensions`
-3. Enable Developer mode
-4. Load unpacked → select `dist` folder
+1. `npm run build:extension`
+2. Open `chrome://extensions` → Enable Developer mode
+3. Load unpacked → select `dist/` folder
+
+---
+
+## Extension Architecture
+
+```
+DApp (window.octra)
+    │  postMessage
+    ▼
+content.js          ← isolated world, message bridge
+    │  chrome.runtime.sendMessage
+    ▼
+background.js       ← service worker, trusted zone
+    │  fetch
+    ▼
+Octra Node RPC      ← http://46.101.86.250:8080/rpc (default)
+```
+
+### Extension Files
+
+| File | Role |
+|------|------|
+| `manifest.json` | MV3, `host_permissions: ["https://*/*","http://*/*"]` |
+| `provider.js` | Injects `window.octra`, announces via `octra:announceProvider` (EIP-6963 analog) |
+| `content.js` | Bridges page ↔ background, validates `VALID_MESSAGE_TYPES` whitelist + requestId length |
+| `background.js` | Service worker — key custody, capability validation, RPC calls, signing mutex |
+| `core.js` | Canonical serialization + real SHA-256 via `crypto.subtle` (shared with SDK) |
+
+### Security Architecture
+
+| Mechanism | Description |
+|-----------|-------------|
+| **Private key isolation** | Keys live only in `background.js` service worker — never in SDK or dApp |
+| **Real SHA-256** | `crypto.subtle.digest` in both `core.js` and SDK — no djb2 for security ops |
+| **Domain separation** | `OctraCapability:v2:` / `OctraInvocation:v2:` prefixes prevent cross-context replay |
+| **Signing mutex** | Serializes concurrent signing operations — prevents nonce races and double-send |
+| **Keyed pending registry** | Each popup request keyed by unique `pendingKey` — no single-slot race conditions |
+| **Origin binding** | Capabilities cryptographically bound to `appOrigin` |
+| **Nonce monotonicity** | Background enforces nonce > lastNonce on every invocation |
+| **Content script whitelist** | `VALID_MESSAGE_TYPES` Set + requestId ≤ 128 chars — drops unknown messages |
+| **EIP-6963 analog** | `octra:announceProvider` CustomEvent — multiple wallets can coexist |
+
+---
+
+## dApp Integration (window.octra)
+
+The extension injects `window.octra` into every page. DApps communicate via the `@octwa/sdk`:
+
+```bash
+npm install @octwa/sdk@1.2.0
+```
+
+### Communication Flow
+
+```
+DApp → @octwa/sdk → window.octra → content.js → background.js → Octra Node RPC
+DApp ← @octwa/sdk ← window.octra ← content.js ← background.js ← Octra Node RPC
+```
+
+### Supported invoke() Methods
+
+| Method | Scope | Execution | Description |
+|--------|-------|-----------|-------------|
+| `get_balance` | `read` | Auto (no popup) | Fetch OCT balance → `{ octAddress, octBalance, network }` |
+| `send_transaction` | `write` | Popup approval | Send OCT transfer or contract call (`op_type: standard \| call`) |
+| `send_evm_transaction` | `write` | Popup approval | Send ETH/EVM transaction, wallet signs with derived secp256k1 key |
+| `send_erc20_transaction` | `write` | Popup approval | Send ERC-20 token transfer |
+
+### Contract Calls via send_transaction
+
+For bridge/contract interactions, pass `op_type` and `encrypted_data` in the payload:
+
+```typescript
+await sdk.invoke({
+  capabilityId: cap.id,
+  method: 'send_transaction',
+  payload: new TextEncoder().encode(JSON.stringify({
+    to:             'oct5MrNfji...',  // contract address
+    amount:         1.5,
+    message:        '["0xETH_ADDRESS"]',  // contract params
+    op_type:        'call',
+    encrypted_data: 'lock_to_eth',        // contract method name
+  })),
+});
+```
+
+`DAppRequestHandler` reads `op_type` and `encrypted_data` from the payload and passes them to `createTransaction()` — the canonical JSON is built correctly for contract calls.
+
+### Gas Estimation
+
+Fee estimates are fetched live from the node via `octra_recommendedFee`:
+
+```typescript
+const standard  = await sdk.estimatePlainTx({});    // op_type: 'standard'
+const encrypted = await sdk.estimateEncryptedTx({}); // op_type: 'encrypt'
+// Formula: OU ÷ 1,000,000 = fee in OCT
+```
+
+---
+
+## Wallet Features
+
+### Key Management
+- BIP39 mnemonic (12/24 words), HD wallet v1/v2
+- Import via mnemonic or private key
+- Multiple wallets with instant switching
+- Drag & drop reordering, custom labels
+- Secure private key export (password re-verification)
+- Auto-lock on browser close / inactivity
+
+### Transactions
+- Standard OCT send with address book
+- Multi-send (multiple recipients, batch submission via `octra_submitBatch`)
+- Bulk send via TXT/CSV file import
+- Transaction history (All / Sent / Received / Contract)
+- Real-time status tracking, pending monitoring
+
+### Privacy Mode (PVAC / HFHE)
+- Public ↔ Private mode toggle
+- Encrypt balance (public OCT → private)
+- Decrypt balance (private OCT → public)
+- Private transfers using Fully Homomorphic Encryption
+- Claim incoming private transfers
+- Stealth address scanning
+
+### EVM Compatibility
+- EVM address derived from same Ed25519 key (secp256k1 derivation)
+- Multi-network: Ethereum, Polygon, BSC, Base, Sepolia
+- ERC-20 token management with custom token import
+- NFT viewing and transfers
+- Gas price estimation
+- EVM transaction history
+
+### dApp Integration
+- `window.octra` provider with `octra:announceProvider` discovery
+- Capability-based authorization (v2) with TTL
+- Connection approval flow with site info display
+- Keyed pending request registry (no race conditions)
+- Connected dApps manager with revocation
+
+### User Interface
+- Popup mode (400×600) and Expanded mode
+- Dark/Light theme
+- Onboarding flow for new users
+- RPC provider manager with live status indicator
+- Animated 3D background (Three.js)
+
+---
+
+## @octwa/sdk
+
+The SDK package lives in `packages/sdk/` and is published to npm.
+
+```
+packages/sdk/
+├── src/
+│   ├── sdk.ts              # OctraSDK class — main entry point
+│   ├── types.ts            # All TypeScript types
+│   ├── canonical.ts        # Deterministic serialization + real SHA-256
+│   ├── crypto.ts           # Ed25519 verify, capability validation
+│   ├── capability-service.ts
+│   ├── nonce-manager.ts
+│   ├── gas-service.ts      # Fallback fee estimates
+│   ├── response-utils.ts   # decodeResponseData, decodeBalanceResponse
+│   ├── errors.ts           # 15 typed error classes
+│   └── index.ts            # Public exports
+└── tests/
+    ├── sdk.test.ts         # 25 tests
+    └── crypto.test.ts      # 22 tests
+```
+
+### Build & Test
+
+```bash
+cd packages/sdk
+npm ci
+npm run build   # CJS + ESM + TypeScript declarations
+npm test        # 47 tests via vitest
+```
+
+### Key Changes in v1.2.0
+
+- `sha256Bytes` / `sha256String` — real SHA-256 via `crypto.subtle` (was djb2)
+- `hashCapabilityWithDomain` / `hashInvocationWithDomain` — now async
+- `Connection.epoch` and `branchId` — now required (not optional)
+- `BalanceResponse` — OCT-only: `{ octAddress, octBalance, network }`
+- `OctraProvider.disconnect()` — returns `Promise<{disconnected: boolean}>`
+- `detectProvider` — listens for `octra:announceProvider` (EIP-6963 analog)
+- Removed: `invokeCompute`, `estimateComputeCost`, `signMessage` from SDK
+- Removed: `ComputeRequest/Profile/Result`, `EVMNetworkId` types
+
+---
+
+## Security
+
+See [SECURITY.md](SECURITY.md) for supply chain attack mitigation, dependency audit, and responsible disclosure.
+
+### Supply Chain
+
+- `package-lock.json` committed — `npm ci` verifies SHA-512 hashes
+- `.npmrc`: `save-exact=true` — no version range drift
+- Critical crypto deps pinned: `tweetnacl@1.0.3`, `bip39@3.1.0`, `buffer@6.0.3`
+- Run `npm audit` to check for known vulnerabilities
+
+---
 
 ## Configuration
 
-Default RPC: `http://46.101.86.250:8080` (Octra Mainnet)
+### RPC Provider
 
-Manage providers via UI (RPC Provider Manager) or seed `localStorage` key `rpcProviders`.
+Default: `http://46.101.86.250:8080` (Octra Mainnet)
 
-## Network Determination
+Manage via UI (RPC Provider Manager). The active URL is synced to `chrome.storage.local` key `rpcProviders` so `background.js` can access it. The background appends `/rpc` automatically — store the base URL only.
 
-The active network is determined by the wallet/extension and returned in `connection.network`. dApps must follow this value for API selection, explorer links, and transaction behavior. If a dApp requires a specific network, it should prompt the user to switch networks in the wallet and then reconnect.
+### Environment Variables
+
+```env
+VITE_OCTRA_RPC_URL=http://46.101.86.250:8080
+VITE_INFURA_API_KEY=your_infura_key
+```
+
+Injected at build time into `background.js` via `scripts/copy-extension-files.mjs`.
+
+---
 
 ## License
 
-MIT
+MIT — see LICENSE file.
+
+## Links
+
+- **GitHub**: https://github.com/m-tq/OctWa
+- **SDK npm**: https://www.npmjs.com/package/@octwa/sdk
+- **dApp Starter**: https://starter.octwa.pw
+- **Security**: security@octra.network
