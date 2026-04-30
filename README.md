@@ -277,4 +277,4 @@ MIT — see LICENSE file.
 - **GitHub**: https://github.com/m-tq/OctWa
 - **SDK npm**: https://www.npmjs.com/package/@octwa/sdk
 - **dApp Starter**: https://starter.octwa.pw
-- **Security**: security@octra.network
+- **Security**: security@octwa.pw
