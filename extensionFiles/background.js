@@ -642,21 +642,26 @@ async function handleInvokeRequest(data, sender) {
 const DEFAULT_RPC_URL = '__VITE_OCTRA_RPC_URL__';
 
 /**
- * Get the active Octra RPC URL from chrome.storage.local.
+ * Get the active Octra RPC endpoint URL from chrome.storage.local.
+ * The stored URL is the base URL (e.g. http://46.101.86.250:8080).
+ * All JSON-RPC calls go to <base>/rpc.
  * Falls back to the build-time injected default.
  */
 async function getActiveOctraRpcUrl() {
+  let baseUrl = DEFAULT_RPC_URL;
   try {
     const result = await chrome.storage.local.get(['rpcProviders']);
     if (result.rpcProviders) {
       const providers = JSON.parse(result.rpcProviders);
       const active = providers.find(p => p.isActive);
-      if (active && active.url) return active.url;
+      if (active && active.url) baseUrl = active.url;
     }
   } catch (e) {
     console.warn('[Background] Failed to read rpcProviders:', e);
   }
-  return DEFAULT_RPC_URL;
+  // Normalize: strip trailing slash, then append /rpc
+  const normalized = baseUrl.replace(/\/$/, '');
+  return normalized.endsWith('/rpc') ? normalized : `${normalized}/rpc`;
 }
 
 /**
