@@ -716,6 +716,7 @@ async function executeGetBalance(connection) {
   // Fetch OCT balance via JSON-RPC
   try {
     const rpcUrl = await getActiveOctraRpcUrl();
+    console.log('[Background] Using RPC URL:', rpcUrl);
     const response = await fetch(rpcUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -723,8 +724,19 @@ async function executeGetBalance(connection) {
     });
     if (response.ok) {
       const data = await response.json();
-      octBalance = parseFloat(data?.result?.balance) || 0;
+      console.log('[Background] octra_balance result:', JSON.stringify(data?.result));
+      const balanceStr = data?.result?.balance;
+      // parseFloat without || 0 — balance can legitimately be 0
+      octBalance = balanceStr !== undefined && balanceStr !== null
+        ? parseFloat(balanceStr)
+        : 0;
+      // Fallback: derive from balance_raw if balance field is missing or NaN
+      if ((isNaN(octBalance) || balanceStr === undefined) && data?.result?.balance_raw) {
+        octBalance = parseInt(data.result.balance_raw, 10) / 1_000_000;
+      }
       console.log('[Background] OCT balance:', octBalance);
+    } else {
+      console.error('[Background] RPC HTTP error:', response.status);
     }
   } catch (error) {
     console.error('[Background] OCT balance fetch error:', error);
