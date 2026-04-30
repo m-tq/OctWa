@@ -6,6 +6,8 @@ import type {
   Capability,
   SignedInvocation,
   InvocationResult,
+  GasEstimate,
+  EncryptedPayload,
 } from '../../src/types';
 
 type EventCallback = (...args: unknown[]) => void;
@@ -14,101 +16,126 @@ export interface MockProviderOptions {
   shouldRejectConnect?: boolean;
   shouldRejectCapability?: boolean;
   shouldRejectInvoke?: boolean;
-  circleExists?: boolean;
   rejectMessage?: string;
 }
 
 let capabilityCounter = 0;
 
-// Get current origin for test environment
 function getCurrentOrigin(): string {
   if (typeof window !== 'undefined' && window.location) {
-    try {
-      return window.location.origin || '';
-    } catch {
-      return '';
-    }
+    try { return window.location.origin || ''; } catch { return ''; }
   }
   return '';
 }
 
-export function createMockProvider(options: MockProviderOptions = {}): OctraProvider & { emit: (event: string, data?: unknown) => void } {
-  const eventListeners: Map<string, Set<EventCallback>> = new Map();
+export function createMockProvider(
+  options: MockProviderOptions = {}
+): OctraProvider & { emit: (event: string, data?: unknown) => void } {
+  const eventListeners = new Map<string, Set<EventCallback>>();
 
-  const shouldRejectConnect = options.shouldRejectConnect ?? false;
-  const shouldRejectCapability = options.shouldRejectCapability ?? false;
-  const shouldRejectInvoke = options.shouldRejectInvoke ?? false;
-  const circleExists = options.circleExists ?? true;
-  const rejectMessage = options.rejectMessage ?? 'User rejected request';
+  const {
+    shouldRejectConnect    = false,
+    shouldRejectCapability = false,
+    shouldRejectInvoke     = false,
+    rejectMessage          = 'User rejected request',
+  } = options;
 
   const provider: OctraProvider & { emit: (event: string, data?: unknown) => void } = {
-    isOctra: true,
-    version: '1.0.0-mock',
+    isOctra:  true,
+    version:  '2.0.0-mock',
 
     async connect(request: ConnectRequest): Promise<Connection> {
-      if (shouldRejectConnect) {
-        throw new Error(rejectMessage);
-      }
-
-      if (!circleExists) {
-        throw new Error('Circle does not exist');
-      }
-
+      if (shouldRejectConnect) throw new Error(rejectMessage);
       return {
-        circle: request.circle,
-        sessionId: `session-${Date.now()}`,
+        circle:       request.circle,
+        sessionId:    `session-${Date.now()}`,
         walletPubKey: 'mock-pub-key-' + Math.random().toString(36).slice(2),
-        network: 'testnet',
+        evmAddress:   '0x' + '0'.repeat(40),
+        network:      'testnet',
+        epoch:        0,
+        branchId:     'main',
       };
     },
 
-    async disconnect(): Promise<void> {
+    async disconnect() {
       provider.emit('disconnect');
+      return { disconnected: true };
     },
 
     async requestCapability(req: CapabilityRequest): Promise<Capability> {
-      if (shouldRejectCapability) {
-        throw new Error(rejectMessage);
-      }
-
+      if (shouldRejectCapability) throw new Error(rejectMessage);
       capabilityCounter++;
-      const now = Date.now();
-      const expiresAt = req.ttlSeconds ? now + req.ttlSeconds * 1000 : now + 3600000; // Default 1 hour
-
-      // Use current origin for proper origin binding in tests
-      const appOrigin = getCurrentOrigin();
-
+      const now       = Date.now();
+      const expiresAt = req.ttlSeconds ? now + req.ttlSeconds * 1000 : now + 3_600_000;
       return {
-        id: `cap-${capabilityCounter}-${Date.now()}`,
-        version: 1,
-        circle: req.circle,
-        methods: [...req.methods].sort(), // Sort methods as per spec
-        scope: req.scope,
-        encrypted: req.encrypted,
-        appOrigin: appOrigin,
-        issuedAt: now,
-        expiresAt: expiresAt,
-        nonce: `test-nonce-${capabilityCounter}-${Date.now()}`,
-        issuerPubKey: 'mock-issuer-pub-key-32bytes-hex00',
-        signature: 'mock-signature-64bytes-hex-for-testing-purposes-only-not-real-sig00000000',
+        id:           `cap-${capabilityCounter}-${Date.now()}`,
+        version:      2,
+        circle:       req.circle,
+        methods:      [...req.methods].sort(),
+        scope:        req.scope,
+        encrypted:    req.encrypted,
+        appOrigin:    getCurrentOrigin(),
+        branchId:     'main',
+        epoch:        0,
+        issuedAt:     now,
+        expiresAt,
+        nonceBase:    0,
+        walletPubKey: 'mock-wallet-pub-key-hex-32bytes00',
+        signature:    'mock-signature-64bytes-hex-for-testing-purposes-only-not-real-sig00000000',
+        state:        'ACTIVE',
+        lastNonce:    0,
       };
     },
 
-    async invoke(call: SignedInvocation): Promise<InvocationResult> {
-      if (shouldRejectInvoke) {
-        throw new Error('Invocation failed');
-      }
-
+    async renewCapability(capabilityId: string): Promise<Capability> {
+      const now = Date.now();
       return {
-        success: true,
-        data: new Uint8Array([1, 2, 3]),
+        id:           capabilityId,
+        version:      2,
+        circle:       'mock-circle',
+        methods:      ['getData'],
+        scope:        'read',
+        encrypted:    false,
+        appOrigin:    getCurrentOrigin(),
+        branchId:     'main',
+        epoch:        0,
+        issuedAt:     now,
+        expiresAt:    now + 900_000,
+        nonceBase:    0,
+        walletPubKey: 'mock-wallet-pub-key-hex-32bytes00',
+        signature:    'mock-signature-renewed-00000000000000000000000000000000000000000000000000000000',
+        state:        'ACTIVE',
+        lastNonce:    0,
       };
+    },
+
+    async revokeCapability(_capabilityId: string): Promise<void> {
+      // no-op in mock
+    },
+
+    async listCapabilities(): Promise<Capability[]> {
+      return [];
+    },
+
+    async invoke(_call: SignedInvocation): Promise<InvocationResult> {
+      if (shouldRejectInvoke) throw new Error('Invocation failed');
+      return { success: true, data: new Uint8Array([1, 2, 3]) };
+    },
+
+    async estimatePlainTx(_payload: unknown): Promise<GasEstimate> {
+      return { gasUnits: 1000, tokenCost: 0.001, latencyEstimate: 2000, epoch: 0 };
+    },
+
+    async estimateEncryptedTx(_payload: EncryptedPayload): Promise<GasEstimate> {
+      return { gasUnits: 30000, tokenCost: 0.03, latencyEstimate: 4000, epoch: 0 };
+    },
+
+    async signMessage(message: string): Promise<string> {
+      return `mock-sig-${message.slice(0, 8)}`;
     },
 
     on(event: string, callback: EventCallback): void {
-      if (!eventListeners.has(event)) {
-        eventListeners.set(event, new Set());
-      }
+      if (!eventListeners.has(event)) eventListeners.set(event, new Set());
       eventListeners.get(event)!.add(callback);
     },
 
@@ -117,7 +144,7 @@ export function createMockProvider(options: MockProviderOptions = {}): OctraProv
     },
 
     emit(event: string, data?: unknown): void {
-      eventListeners.get(event)?.forEach((cb) => cb(data));
+      eventListeners.get(event)?.forEach(cb => cb(data));
     },
   };
 
@@ -125,13 +152,13 @@ export function createMockProvider(options: MockProviderOptions = {}): OctraProv
 }
 
 export function injectMockProvider(provider: OctraProvider): void {
-  (globalThis as Record<string, unknown>).window = (globalThis as Record<string, unknown>).window || {};
-  ((globalThis as Record<string, unknown>).window as Record<string, unknown>).octra = provider;
+  const g = globalThis as Record<string, unknown>;
+  g.window = g.window || {};
+  (g.window as Record<string, unknown>).octra = provider;
 }
 
 export function clearMockProvider(): void {
   capabilityCounter = 0;
-  if ((globalThis as Record<string, unknown>).window) {
-    delete ((globalThis as Record<string, unknown>).window as Record<string, unknown>).octra;
-  }
+  const g = globalThis as Record<string, unknown>;
+  if (g.window) delete (g.window as Record<string, unknown>).octra;
 }

@@ -16,21 +16,23 @@ import {
 } from '../src/crypto';
 import type { CapabilityPayload, Capability } from '../src/types';
 
-// Test vector from spec
+// Test vector — v2 capability payload (matches current CapabilityPayload type)
 const TEST_PAYLOAD: CapabilityPayload = {
-  version: 1,
-  circle: 'analytics_v1',
-  methods: ['submit_input', 'read_stats'], // Note: unsorted input
-  scope: 'compute',
-  encrypted: true,
-  appOrigin: 'https://sample.app',
-  issuedAt: 1735686000000,
-  expiresAt: 1735689600000,
-  nonce: '00000000-0000-0000-0000-000000000001',
+  version:    2,
+  circle:     'analytics_v1',
+  methods:    ['submit_input', 'read_stats'], // unsorted input — canonical must sort
+  scope:      'compute',
+  encrypted:  true,
+  appOrigin:  'https://sample.app',
+  branchId:   'main',
+  epoch:      0,
+  issuedAt:   1735686000000,
+  expiresAt:  1735689600000,
+  nonceBase:  0,
 };
 
-// Expected canonical form from spec
-const EXPECTED_CANONICAL = '{"appOrigin":"https://sample.app","circle":"analytics_v1","encrypted":true,"expiresAt":1735689600000,"issuedAt":1735686000000,"methods":["read_stats","submit_input"],"nonce":"00000000-0000-0000-0000-000000000001","scope":"compute","version":1}';
+// Expected canonical form — keys sorted, methods sorted
+const EXPECTED_CANONICAL = '{"appOrigin":"https://sample.app","branchId":"main","circle":"analytics_v1","encrypted":true,"epoch":0,"expiresAt":1735689600000,"issuedAt":1735686000000,"methods":["read_stats","submit_input"],"nonceBase":0,"scope":"compute","version":2}';
 
 describe('Canonicalization', () => {
   it('should produce deterministic canonical JSON', () => {
@@ -187,8 +189,6 @@ describe('Origin Validation', () => {
 
 describe('Negative Test Vectors', () => {
   it('should produce different canonical form when method order matters for signature', () => {
-    // The canonical form should always sort methods, so this tests that
-    // if someone tries to verify with wrong order, it would fail
     const payload1: CapabilityPayload = {
       ...TEST_PAYLOAD,
       methods: ['submit_input', 'read_stats'],
@@ -196,15 +196,17 @@ describe('Negative Test Vectors', () => {
     
     // Manually create "wrong" canonical (unsorted methods)
     const wrongCanonical = JSON.stringify({
-      appOrigin: payload1.appOrigin,
-      circle: payload1.circle,
-      encrypted: payload1.encrypted,
-      expiresAt: payload1.expiresAt,
-      issuedAt: payload1.issuedAt,
-      methods: ['submit_input', 'read_stats'], // Wrong order
-      nonce: payload1.nonce,
-      scope: payload1.scope,
-      version: payload1.version,
+      appOrigin:  payload1.appOrigin,
+      branchId:   payload1.branchId,
+      circle:     payload1.circle,
+      encrypted:  payload1.encrypted,
+      epoch:      payload1.epoch,
+      expiresAt:  payload1.expiresAt,
+      issuedAt:   payload1.issuedAt,
+      methods:    ['submit_input', 'read_stats'], // Wrong order
+      nonceBase:  payload1.nonceBase,
+      scope:      payload1.scope,
+      version:    payload1.version,
     });
     
     const correctCanonical = canonicalizeCapabilityPayload(payload1);

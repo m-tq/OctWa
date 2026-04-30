@@ -1,9 +1,9 @@
 /**
- * Octra Web Wallet SDK Types
+ * Octra Web Wallet SDK — Type Definitions
  */
 
 // ============================================================================
-// Connect Flow Types
+// Connect Flow
 // ============================================================================
 
 export interface ConnectRequest {
@@ -18,19 +18,19 @@ export interface Connection {
   circle: string;
   sessionId: string;
   walletPubKey: string;
-  evmAddress?: string;
+  evmAddress: string;          // always present — derived from same key
   network: 'testnet' | 'mainnet';
-  epoch?: number; // PENDING: Optional until implementation is ready
-  branchId?: string; // PENDING: Optional until implementation is ready
+  epoch: number;               // current epoch at connect time
+  branchId: string;
 }
 
 // ============================================================================
-// Capability Types
+// Capability
 // ============================================================================
 
 export type CapabilityScope = 'read' | 'write' | 'compute';
 
-export type CapabilityState = 
+export type CapabilityState =
   | 'REQUESTED'
   | 'ACTIVE'
   | 'EXPIRED'
@@ -75,7 +75,7 @@ export interface Capability extends CapabilityPayload {
 }
 
 // ============================================================================
-// Invocation Types
+// Invocation
 // ============================================================================
 
 export interface InvocationRequest {
@@ -88,6 +88,7 @@ export interface InvocationRequest {
 export interface SignedInvocation {
   header: InvocationHeader;
   body: InvocationBody;
+  payload?: Uint8Array | { _type: 'Uint8Array'; data: number[] };
   signature?: string;
 }
 
@@ -117,7 +118,7 @@ export interface InvocationResult {
 }
 
 // ============================================================================
-// Encryption Types
+// Encryption
 // ============================================================================
 
 export interface EncryptedPayload {
@@ -130,58 +131,7 @@ export interface EncryptedPayload {
 export interface EncryptedBlob extends EncryptedPayload {}
 
 // ============================================================================
-// Compute Types
-// ============================================================================
-
-export interface ComputeRequest {
-  circleId: string;
-  capabilityId: string;
-  branchId: string;
-  circuitId: string;
-  encryptedInput: EncryptedPayload;
-  computeProfile: ComputeProfile;
-  gasLimit: number;
-}
-
-export interface ComputeProfile {
-  gateCount: number;
-  vectorSize: number;
-  depth: number;
-  expectedBootstrap: number;
-  branchAffinity?: string;
-}
-
-export interface ComputeResult {
-  success: boolean;
-  encryptedOutput?: EncryptedPayload;
-  gasUsed: number;
-  executionTime: number;
-  branchProofHash: string;
-  error?: string;
-}
-
-// ============================================================================
-// Branch Types
-// ============================================================================
-
-export interface BranchInfo {
-  branchId: string;
-  parentBranch?: string;
-  epoch: number;
-  height: number;
-  stateRoot: string;
-}
-
-export interface BranchProof {
-  branchId: string;
-  proofHash: string;
-  merkleRoot: string;
-  epoch: number;
-  signature: string;
-}
-
-// ============================================================================
-// Gas Types
+// Gas
 // ============================================================================
 
 export interface GasEstimate {
@@ -192,28 +142,17 @@ export interface GasEstimate {
 }
 
 // ============================================================================
-// Balance Response Types
+// Balance
 // ============================================================================
-
-export type EVMNetworkId = 
-  | 'eth-mainnet' 
-  | 'eth-sepolia' 
-  | 'polygon-mainnet' 
-  | 'base-mainnet' 
-  | 'bsc-mainnet';
 
 export interface BalanceResponse {
   octAddress: string;
-  evmAddress: string;
   octBalance: number;
-  ethBalance: number;
-  usdcBalance: number;
   network: 'mainnet' | 'testnet';
-  evmNetwork: EVMNetworkId;
 }
 
 // ============================================================================
-// Session Types
+// Session
 // ============================================================================
 
 export interface SessionState {
@@ -222,7 +161,6 @@ export interface SessionState {
   branchId?: string;
   epoch?: number;
   activeCapabilities: Capability[];
-  sessionKey?: Uint8Array;
 }
 
 // ============================================================================
@@ -240,32 +178,30 @@ export interface InitOptions {
 // ============================================================================
 
 export interface OctraProvider {
-  isOctra: boolean;
+  isOctra: true;
   version: string;
-  
+
   connect(request: ConnectRequest): Promise<Connection>;
-  disconnect(): Promise<void>;
-  
+  disconnect(): Promise<{ disconnected: boolean }>;
+
   requestCapability(req: CapabilityRequest): Promise<Capability>;
   renewCapability(capabilityId: string): Promise<Capability>;
   revokeCapability(capabilityId: string): Promise<void>;
   listCapabilities(): Promise<Capability[]>;
-  
+
   invoke(call: SignedInvocation): Promise<InvocationResult>;
-  invokeCompute(req: ComputeRequest): Promise<ComputeResult>;
-  
+
   estimatePlainTx(payload: unknown): Promise<GasEstimate>;
   estimateEncryptedTx(payload: EncryptedPayload): Promise<GasEstimate>;
-  estimateComputeCost(profile: ComputeProfile): Promise<GasEstimate>;
-  
+
   signMessage(message: string): Promise<string>;
-  
+
   on(event: string, callback: (...args: unknown[]) => void): void;
   off(event: string, callback: (...args: unknown[]) => void): void;
 }
 
 // ============================================================================
-// Error Types
+// Error Codes
 // ============================================================================
 
 export type ErrorCode =
@@ -286,7 +222,7 @@ export type ErrorCode =
   | 'DOMAIN_SEPARATION_ERROR';
 
 // ============================================================================
-// Event Types
+// Events
 // ============================================================================
 
 export type EventName =
@@ -300,14 +236,14 @@ export type EventName =
   | 'extensionReady';
 
 export type EventCallback<E extends EventName> =
-  E extends 'connect' ? (data: { connection: Connection }) => void :
-  E extends 'disconnect' ? () => void :
-  E extends 'capabilityGranted' ? (data: { capability: Capability }) => void :
-  E extends 'capabilityExpired' ? (data: { capabilityId: string }) => void :
-  E extends 'capabilityRevoked' ? (data: { capabilityId: string }) => void :
-  E extends 'branchChanged' ? (data: { branchId: string; epoch: number }) => void :
-  E extends 'epochChanged' ? (data: { epoch: number }) => void :
-  E extends 'extensionReady' ? () => void :
+  E extends 'connect'             ? (data: { connection: Connection }) => void :
+  E extends 'disconnect'          ? () => void :
+  E extends 'capabilityGranted'   ? (data: { capability: Capability }) => void :
+  E extends 'capabilityExpired'   ? (data: { capabilityId: string }) => void :
+  E extends 'capabilityRevoked'   ? (data: { capabilityId: string }) => void :
+  E extends 'branchChanged'       ? (data: { branchId: string; epoch: number }) => void :
+  E extends 'epochChanged'        ? (data: { epoch: number }) => void :
+  E extends 'extensionReady'      ? () => void :
   never;
 
 // ============================================================================

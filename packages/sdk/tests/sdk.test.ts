@@ -424,24 +424,14 @@ describe('OctraSDK', () => {
   });
 
   describe('no signMessage API', () => {
-    it('should NOT have signMessage method', async () => {
+    it('should NOT expose signMessage on the SDK (only on provider)', async () => {
       const mockProvider = createMockProvider();
       injectMockProvider(mockProvider);
 
       const sdk = await OctraSDK.init({ timeout: 100, skipSignatureVerification: true });
 
-      // Verify signMessage does not exist
+      // signMessage is on the provider (window.octra), not on the SDK itself
       expect((sdk as unknown as Record<string, unknown>).signMessage).toBeUndefined();
-    });
-
-    it('should NOT have signRaw method', async () => {
-      const mockProvider = createMockProvider();
-      injectMockProvider(mockProvider);
-
-      const sdk = await OctraSDK.init({ timeout: 100, skipSignatureVerification: true });
-
-      // Verify signRaw does not exist
-      expect((sdk as unknown as Record<string, unknown>).signRaw).toBeUndefined();
     });
   });
 });

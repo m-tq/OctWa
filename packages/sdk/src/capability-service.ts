@@ -1,5 +1,5 @@
 import type { Capability, CapabilityState } from './types';
-import { CapabilityExpiredError, CapabilityRevokedError } from './errors';
+import { CapabilityExpiredError, CapabilityRevokedError, CapabilityError } from './errors';
 
 export class CapabilityService {
   private capabilities: Map<string, Capability> = new Map();
@@ -22,7 +22,7 @@ export class CapabilityService {
     const capability = this.capabilities.get(capabilityId);
     
     if (!capability) {
-      throw new Error(`Capability '${capabilityId}' not found`);
+      throw new CapabilityError(`Capability '${capabilityId}' not found`);
     }
     
     if (capability.state === 'REVOKED') {

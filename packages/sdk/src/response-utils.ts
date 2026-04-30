@@ -59,15 +59,11 @@ export function decodeResponseData<T = unknown>(result: InvocationResult): T | n
 }
 
 /**
- * Decode balance response from get_balance invoke result
- * 
- * @param result - InvocationResult from sdk.invoke() with method 'get_balance'
- * @returns BalanceResponse object
+ * Decode balance response from get_balance invoke result.
+ * Background now returns only OCT balance (EVM fields removed).
  */
 export function decodeBalanceResponse(result: InvocationResult): BalanceResponse {
   const data = decodeResponseData<BalanceResponse>(result);
-  if (!data) {
-    throw new Error('Empty balance response');
-  }
+  if (!data) throw new Error('Empty balance response');
   return data;
 }

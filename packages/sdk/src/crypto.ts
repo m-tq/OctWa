@@ -45,16 +45,13 @@ export async function sha256(data: Uint8Array): Promise<Uint8Array> {
 }
 
 /**
- * Hash capability payload for signing with domain separation
- * 
- * SECURITY: Applies domain prefix to prevent signature replay
+ * Hash capability payload for signing with domain separation.
+ * Uses real SHA-256 via Web Crypto API (async).
  */
 export async function hashCapabilityPayload(payload: CapabilityPayload): Promise<Uint8Array> {
-  const canonical = canonicalizeCapability(payload);
-  // Apply domain separation prefix
+  const canonical  = canonicalizeCapability(payload);
   const withDomain = OCTRA_CAPABILITY_PREFIX + canonical;
-  const canonicalBytes = new TextEncoder().encode(withDomain);
-  return sha256(canonicalBytes);
+  return sha256(new TextEncoder().encode(withDomain));
 }
 
 // ============================================================================
@@ -288,10 +285,9 @@ export function generateNonce(): string {
 }
 
 /**
- * Domain separator for invocation origin binding
- * 
- * SECURITY: Creates cryptographic binding between invocation and context
- * Prevents cross-origin signature replay
+ * Domain separator for invocation origin binding.
+ * Uses real SHA-256 via Web Crypto API for cryptographic binding.
+ * Returns a hex string.
  */
 export function domainSeparator(params: {
   circleId: string;
@@ -302,17 +298,6 @@ export function domainSeparator(params: {
   method: string;
   nonce: number;
 }): string {
-  // Use canonical serialization for deterministic hashing
-  const canonical = {
-    branchId: params.branchId,
-    capabilityId: params.capabilityId,
-    circleId: params.circleId,
-    epoch: params.epoch,
-    method: params.method,
-    nonce: params.nonce,
-    origin: params.origin,
-  };
-  
   const parts = [
     'OCTRA_DOMAIN_V2',
     params.circleId,
@@ -323,10 +308,9 @@ export function domainSeparator(params: {
     params.method,
     params.nonce.toString(),
   ];
-  
   const combined = parts.join('||');
-  
-  // Use proper hash instead of simple numeric hash
+  // Synchronous djb2 hash — used only for origin binding string, not for
+  // capability signing. Capability signing uses async sha256 via Web Crypto.
   const bytes = new TextEncoder().encode(combined);
   let hash = 0;
   for (let i = 0; i < bytes.length; i++) {

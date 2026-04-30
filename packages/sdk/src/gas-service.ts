@@ -1,123 +1,43 @@
-import type { GasEstimate, ComputeProfile, EncryptedPayload } from './types';
+import type { GasEstimate, EncryptedPayload } from './types';
+
+const OCT_PER_OU = 1 / 1_000_000; // 1 OCT = 1,000,000 OU
 
 /**
- * GasService - Estimates gas costs for Octra transactions
- * 
- * Gas Formula (from OctWa wallet):
- * - Fee = OU * 0.0000001 OCT
- * - Default OU: 10,000 (for amounts < 1000 OCT)
- * - High OU: 30,000 (for amounts >= 1000 OCT)
- * - Custom OU: User-defined
+ * GasService — fee estimation for Octra transactions.
+ *
+ * Fallback values are used when the wallet provider does not return
+ * a live estimate. The wallet always fetches live fees from the node
+ * via octra_recommendedFee — these are only used client-side for
+ * pre-flight display.
  */
 export class GasService {
+  /** Fallback OU for standard transactions. */
+  private static readonly STANDARD_OU = 1_000;
+  /** Fallback OU for encrypted transactions. */
+  private static readonly ENCRYPT_OU  = 30_000;
+
   /**
-   * Estimate gas for plain transaction
-   * 
-   * @param payload - Transaction payload (includes amount, recipient, message)
-   * @returns Gas estimate with OU (gas units) and token cost
+   * Estimate fee for a plain (unencrypted) transaction.
+   * Uses fallback OU — wallet will fetch live value from node.
    */
-  estimatePlainTx(payload: unknown): GasEstimate {
-    // Extract amount from payload to determine OU
-    let amount = 0;
-    
-    if (payload && typeof payload === 'object') {
-      const payloadObj = payload as Record<string, unknown>;
-      if ('amount' in payloadObj && typeof payloadObj.amount === 'number') {
-        amount = payloadObj.amount;
-      }
-    }
-    
-    // Determine OU based on amount (auto mode logic from OctWa)
-    // < 1000 OCT: 10,000 OU
-    // >= 1000 OCT: 30,000 OU
-    const ou = amount < 1000 ? 10000 : 30000;
-    
-    // Calculate fee: OU * 0.0000001
-    const fee = ou * 0.0000001;
-    
-    return {
-      gasUnits: ou,
-      tokenCost: fee,
-      latencyEstimate: 2000, // ~2 seconds for transaction confirmation
-      epoch: 0, // PENDING: Will be set when epoch implementation is ready
-    };
+  estimatePlainTx(_payload: unknown): GasEstimate {
+    const ou  = GasService.STANDARD_OU;
+    const fee = ou * OCT_PER_OU;
+    return { gasUnits: ou, tokenCost: fee, latencyEstimate: 2000, epoch: 0 };
   }
-  
+
   /**
-   * Estimate gas for encrypted transaction (HFHE)
-   * 
-   * Encrypted transactions have higher OU due to encryption overhead
+   * Estimate fee for an encrypted (HFHE) transaction.
+   * Uses fallback OU — wallet will fetch live value from node.
    */
-  estimateEncryptedTx(payload: EncryptedPayload): GasEstimate {
-    // Encrypted transactions use higher OU
-    const baseOu = 30000;
-    const encryptionOverhead = 1.5;
-    const ou = Math.ceil(baseOu * encryptionOverhead);
-    
-    // Calculate fee: OU * 0.0000001
-    const fee = ou * 0.0000001;
-    
-    return {
-      gasUnits: ou,
-      tokenCost: fee,
-      latencyEstimate: 4000, // ~4 seconds for encrypted tx
-      epoch: 0, // PENDING
-    };
+  estimateEncryptedTx(_payload: EncryptedPayload): GasEstimate {
+    const ou  = GasService.ENCRYPT_OU;
+    const fee = ou * OCT_PER_OU;
+    return { gasUnits: ou, tokenCost: fee, latencyEstimate: 4000, epoch: 0 };
   }
-  
-  /**
-   * Estimate cost for HFHE computation
-   * 
-   * Compute operations have variable OU based on complexity
-   */
-  estimateComputeCost(profile: ComputeProfile): GasEstimate {
-    const {
-      gateCount,
-      vectorSize,
-      depth,
-      expectedBootstrap,
-    } = profile;
-    
-    // Calculate OU based on computation complexity
-    const gateOu = gateCount * 10;
-    const vectorOu = vectorSize * 5;
-    const depthOu = depth * 20;
-    const bootstrapOu = expectedBootstrap * 1000;
-    
-    const totalOu = gateOu + vectorOu + depthOu + bootstrapOu;
-    
-    // Calculate fee: OU * 0.0000001
-    const fee = totalOu * 0.0000001;
-    
-    return {
-      gasUnits: totalOu,
-      tokenCost: fee,
-      latencyEstimate: (gateCount * depth * 10) + (expectedBootstrap * 1000),
-      epoch: 0, // PENDING
-    };
-  }
-  
-  /**
-   * Calculate fee for custom OU value
-   * 
-   * @param ou - Custom OU value
-   * @returns Fee in OCT
-   */
+
+  /** Calculate OCT fee for a given OU value. */
   calculateFee(ou: number): number {
-    return ou * 0.0000001;
-  }
-  
-  /**
-   * Get recommended OU for transaction amount
-   * 
-   * @param amount - Transaction amount in OCT
-   * @returns Recommended OU value
-   */
-  getRecommendedOu(amount: number): number {
-    if (amount < 1000) {
-      return 10000; // Low OU for small transactions
-    } else {
-      return 30000; // High OU for large transactions
-    }
+    return ou * OCT_PER_OU;
   }
 }
