@@ -110,10 +110,3 @@ npm audit --json
 ```
 
 ---
-
-## Recommended Further Hardening
-
-- **Enable GitHub Dependabot** — automatically opens pull requests when a dependency has a known vulnerability. Add `.github/dependabot.yml` to the repository to activate it.
-- **Enable GitHub secret scanning** — detects accidentally committed private keys or tokens.
-- **Review dependency diffs in pull requests** — any change to `package-lock.json` in a PR should be inspected, not just the `package.json` changes.
-- **Use `npm ci` in CI/CD pipelines** — never use `npm install` in automated build or deployment workflows.
