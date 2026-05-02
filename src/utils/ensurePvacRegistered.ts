@@ -1,18 +1,10 @@
 /**
- * ensurePvacRegistered
- *
- * Before any encrypt / decrypt / stealth operation the node requires the
- * wallet's PVAC public key to be registered via octra_registerPvacPubkey.
- * Without it the node rejects the tx with:
+ * Ensures the wallet's PVAC public key is registered on the node before any
+ * encrypt/decrypt/stealth operation. The node rejects unregistered wallets with:
  *   "bad_zero_proof : encrypt [reason - no pvac pubkey registered]"
  *
- * Flow:
- *   1. Call PVAC server POST /api/ensure_pvac_registered
- *      → server derives PVAC pubkey, checks node, registers if needed
- *   2. Return success/error to caller
- *
- * This is idempotent — safe to call before every PVAC operation.
- * Requires PVAC server to be rebuilt with the new endpoint.
+ * Delegates to the PVAC server's /api/ensure_pvac_registered endpoint.
+ * Safe to call before every PVAC operation — the server is idempotent.
  */
 
 import { pvacServerService } from '@/services/pvacServerService';

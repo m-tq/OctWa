@@ -1,5 +1,4 @@
-// src/polyfills.ts
+// Polyfill: expose Buffer globally for libraries that expect it in the browser.
 import { Buffer } from 'buffer';
 
-// Expose Buffer globally
-(window as any).Buffer = Buffer;
+(window as unknown as { Buffer: typeof Buffer }).Buffer = Buffer;

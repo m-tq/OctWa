@@ -1,4 +1,4 @@
-﻿import { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { WelcomeScreen } from './components/WelcomeScreen';
 import { WalletDashboard } from './components/WalletDashboard';
 import { UnlockWallet } from './components/UnlockWallet';
@@ -16,12 +16,10 @@ function App() {
   const [wallets, setWallets] = useState<Wallet[]>([]);
   const [isLocked, setIsLocked] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
-  const [showSplash, setShowSplash] = useState(true);
-  const [showSetupSplash, setShowSetupSplash] = useState(false);
-  const [pendingSetupWallet, setPendingSetupWallet] = useState<Wallet | null>(null);
+  const [showSplash, setShowSplash] = useState(false);
   const [connectionRequest, setConnectionRequest] = useState<any>(null);
-  const [capabilityRequest, setCapabilityRequest] = useState<any>(null);
-  const [invokeRequest, setInvokeRequest] = useState<any>(null);
+  const [capabilityRequest, setCapabilityRequest] = useState<unknown>(null);
+  const [invokeRequest, setInvokeRequest] = useState<unknown>(null);
 
   // Check for connection request in URL parameters
   useEffect(() => {
@@ -160,8 +158,13 @@ function App() {
         }
 
         // If no wallet setup, show welcome screen
+        // Only show splash on true fresh install (no password, no wallets, no pending dApp request)
         if (!hasPassword || !hasEncryptedWallets) {
-
+          const urlParams = new URLSearchParams(window.location.search);
+          const hasPendingRequest = !!urlParams.get('action');
+          if (!hasPendingRequest) {
+            setShowSplash(true);
+          }
           setIsLocked(false);
           setIsLoading(false);
           return;
@@ -212,7 +215,7 @@ function App() {
         setIsLoading(false);
         
       } catch (error) {
-        console.error('❌ App.tsx: Failed to load wallet data:', error);
+        console.error('? App.tsx: Failed to load wallet data:', error);
         setIsLoading(false);
       }
     };
@@ -259,9 +262,9 @@ function App() {
     window.addEventListener('storage', handleStorageChange);
     
     // Listen for chrome.storage changes if available
-    let chromeStorageListener: ((changes: any, areaName: string) => void) | null = null;
+    let chromeStorageListener: ((changes: Record<string, chrome.storage.StorageChange>, areaName: string) => void) | null = null;
     if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.onChanged) {
-      chromeStorageListener = (changes: any, areaName: string) => {
+      chromeStorageListener = (changes: Record<string, chrome.storage.StorageChange>, areaName: string) => {
 
         // Handle lock state change
         if (changes.isWalletLocked) {
@@ -452,7 +455,7 @@ function App() {
       }
 
     } catch (error) {
-      console.error('❌ App.tsx: Failed to add wallet:', error);
+      console.error('? App.tsx: Failed to add wallet:', error);
     }
   };
 
@@ -514,29 +517,11 @@ function App() {
     setIsLocked(true);
   };
 
-  // Show splash screen first
+  // Show splash screen � hanya saat fresh install (belum ada wallet)
   if (showSplash) {
     return (
       <ThemeProvider defaultTheme="dark" storageKey="octra-wallet-theme">
         <SplashScreen onComplete={() => setShowSplash(false)} isPopupMode={false} />
-      </ThemeProvider>
-    );
-  }
-
-  // Show splash screen after wallet setup
-  if (showSetupSplash && pendingSetupWallet) {
-    return (
-      <ThemeProvider defaultTheme="dark" storageKey="octra-wallet-theme">
-        <SplashScreen 
-          onComplete={() => {
-            
-            setShowSetupSplash(false);
-            addWallet(pendingSetupWallet);
-            setPendingSetupWallet(null);
-          }} 
-          duration={3500}
-          isPopupMode={false}
-        />
       </ThemeProvider>
     );
   }
@@ -549,7 +534,7 @@ function App() {
           <div className="flex flex-col items-center space-y-4">
             <div
               className="w-10 h-10 rounded-full border-4 border-transparent animate-spin"
-              style={{ borderTopColor: '#3A4DFF', borderRightColor: '#3A4DFF' }}
+              style={{ borderTopColor: '#3B567F', borderRightColor: '#3B567F' }}
             />
             <p className="text-muted-foreground">Loading...</p>
           </div>
@@ -625,7 +610,7 @@ function App() {
           <div className="flex flex-col items-center space-y-4">
             <div
               className="w-10 h-10 rounded-full border-4 border-transparent animate-spin"
-              style={{ borderTopColor: '#3A4DFF', borderRightColor: '#3A4DFF' }}
+              style={{ borderTopColor: '#3B567F', borderRightColor: '#3B567F' }}
             />
             <p className="text-muted-foreground">Loading wallet...</p>
           </div>
@@ -640,9 +625,7 @@ function App() {
         {!wallet ? (
           <WelcomeScreen 
             onWalletCreated={(w) => {
-              
-              setPendingSetupWallet(w);
-              setShowSetupSplash(true);
+              addWallet(w);
             }} 
           />
         ) : (

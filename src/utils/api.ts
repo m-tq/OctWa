@@ -58,8 +58,10 @@ function isExtensionContext(): boolean {
 // Used to namespace cache keys so mainnet/devnet have separate buckets
 function getNetworkCacheKey(): string {
   try {
-    const providers = JSON.parse(localStorage.getItem('rpcProviders') || '[]');
-    const active = providers.find((p: any) => p.isActive);
+    const providers: Array<{ url: string; isActive: boolean }> = JSON.parse(
+      localStorage.getItem('rpcProviders') ?? '[]',
+    );
+    const active = providers.find((p) => p.isActive);
     if (active?.url) {
       const url = (active.url as string).replace(/\/$/, '').toLowerCase();
       if (url.includes('devnet')) return 'devnet';
@@ -248,7 +250,7 @@ class APICache {
     return null;
   }
 
-  async setHistory(address: string, data: any): Promise<void> {
+  async setHistory(address: string, data: unknown): Promise<void> {
     const currentEpoch = await this.getCurrentEpoch();
     this.memoryCache.history[netKey(address)] = { data, epoch: currentEpoch, timestamp: Date.now() };
     await this.saveToStorage();
@@ -453,10 +455,9 @@ export async function invalidateCacheAfterPrivateSend(address: string): Promise<
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 // Helper function to check if error is retryable
-const isRetryableError = (error: any, response?: Response): boolean => {
-  // Network errors are retryable
+const isRetryableError = (error: unknown, response?: Response): boolean => {
   if (error instanceof TypeError && error.message.includes('fetch')) return true;
-  if (error?.name === 'AbortError') return false; // Timeout - don't retry
+  if (error instanceof Error && error.name === 'AbortError') return false;
   
   // Server errors (5xx) are retryable
   if (response && response.status >= 500) return true;
@@ -1069,9 +1070,9 @@ export async function fetchTransactionHistory(
       return { transactions: [], balance: 0, totalCount: 0 };
     }
 
-    let rpcData: any;
+    let rpcData: Record<string, unknown>;
     try {
-      rpcData = await safeJsonParse(confirmedResponse);
+      rpcData = await safeJsonParse(confirmedResponse) as Record<string, unknown>;
     } catch {
       return { transactions: [], balance: 0, totalCount: 0 };
     }
@@ -1081,20 +1082,17 @@ export async function fetchTransactionHistory(
       return { transactions: [], balance: 0, totalCount: 0 };
     }
 
-    const apiData = rpcData.result;
+    const apiData = rpcData.result as Record<string, unknown> | null;
     if (!apiData) return { transactions: [], balance: 0, totalCount: 0 };
 
-    // octra_account returns: { address, balance, nonce, tx_count, recent_txs[{epoch,hash}], rejected_txs[] }
-    // recent_txs only has {epoch, hash} — need to fetch full details per tx
-    const recentTxList: Array<any> = apiData.recent_txs || [];
+    const recentTxList: Array<Record<string, unknown>> = (apiData.recent_txs as Array<Record<string, unknown>>) || [];
 
     // Fetch details for each confirmed tx — fire onProgress as each one resolves
     const confirmedTransactions: TransactionHistoryItem[] = [];
     const progressBuffer: TransactionHistoryItem[] = [];
 
-    const parseTx = async (recentTx: any): Promise<TransactionHistoryItem> => {
-      // octra_account recent_txs only has {epoch, hash} — always fetch details
-      const hash = recentTx.hash || recentTx.tx_hash;
+    const parseTx = async (recentTx: Record<string, unknown>): Promise<TransactionHistoryItem> => {
+      const hash = (recentTx.hash || recentTx.tx_hash) as string;
       if (!hash) throw new Error('No hash');
       const txDetails = await fetchTransactionDetails(hash);
       const amount = parseAmount(txDetails.amount_raw, txDetails.amount);
@@ -1131,7 +1129,7 @@ export async function fetchTransactionHistory(
           }
         } catch {
           const fallback: TransactionHistoryItem = {
-            hash: recentTx.hash || recentTx.tx_hash || '',
+            hash: (recentTx.hash || recentTx.tx_hash || '') as string,
             from: 'unknown', to: 'unknown', amount: 0,
             timestamp: Date.now() / 1000,
             status: 'confirmed' as const, type: 'received' as const,
@@ -1187,8 +1185,8 @@ export async function fetchTransactionHistory(
 
     return {
       transactions: uniqueTransactions,
-      balance: parseFloat(apiData.balance || '0'),
-      totalCount: apiData.tx_count || apiData.total || uniqueTransactions.length,
+      balance: parseFloat((apiData.balance as string) || '0'),
+      totalCount: (apiData.tx_count as number) || (apiData.total as number) || uniqueTransactions.length,
     };
   } catch (error) {
     console.error('Error fetching transaction history:', error);
@@ -1273,12 +1271,12 @@ async function fetchPendingTransactions(address: string): Promise<PendingTransac
 
     const result = json.result || json;
     // staging_view returns { count, transactions[] }
-    const staged: any[] = result.transactions || result.staged_transactions || [];
+    const staged: Record<string, unknown>[] = result.transactions || result.staged_transactions || [];
 
-    return staged.filter((tx: any) =>
-      tx.from?.toLowerCase() === address.toLowerCase() ||
-      tx.to?.toLowerCase() === address.toLowerCase()
-    );
+    return staged.filter((tx) =>
+      (tx.from as string)?.toLowerCase() === address.toLowerCase() ||
+      (tx.to as string)?.toLowerCase() === address.toLowerCase()
+    ) as unknown as PendingTransaction[];
   } catch (error) {
     console.error('Error fetching pending transactions:', error);
     return [];
@@ -1302,9 +1300,9 @@ export async function fetchPendingTransactionByHash(hash: string, maxRetries = 3
       if (json.error) return null;
 
       const result = json.result || json;
-      const staged: any[] = result.transactions || result.staged_transactions || [];
-      const tx = staged.find((t: any) => t.hash === hash);
-      if (tx) return tx;
+      const staged: Record<string, unknown>[] = result.transactions || result.staged_transactions || [];
+      const tx = staged.find((t) => t.hash === hash);
+      if (tx) return tx as unknown as PendingTransaction;
 
       if (attempt < maxRetries) { await new Promise(r => setTimeout(r, 500 * attempt)); continue; }
       return null;
@@ -1390,9 +1388,9 @@ export async function fetchBalance(address: string, forceRefresh = false): Promi
       return { balance: 0, nonce: 0 };
     }
 
-    let rpcData: any;
+    let rpcData: Record<string, unknown>;
     try {
-      rpcData = await balanceResponse.json();
+      rpcData = await balanceResponse.json() as Record<string, unknown>;
     } catch {
       console.error('Failed to parse balance RPC response');
       return { balance: 0, nonce: 0 };
@@ -1403,34 +1401,34 @@ export async function fetchBalance(address: string, forceRefresh = false): Promi
       return { balance: 0, nonce: 0 };
     }
 
-    const data = rpcData.result;
+    const data = rpcData.result as Record<string, unknown> | null;
     if (!data) return { balance: 0, nonce: 0 };
 
-    // Parse balance — prefer balance_raw (micro units), fallback to balance string
     let balance = 0;
     if (data.balance_raw !== undefined) {
-      const raw = typeof data.balance_raw === 'string' ? parseInt(data.balance_raw, 10) : data.balance_raw;
+      const raw = typeof data.balance_raw === 'string' ? parseInt(data.balance_raw, 10) : Number(data.balance_raw);
       balance = raw / MU_FACTOR;
     } else if (data.balance !== undefined) {
-      balance = typeof data.balance === 'string' ? parseFloat(data.balance) : data.balance;
+      balance = typeof data.balance === 'string' ? parseFloat(data.balance) : Number(data.balance);
     }
 
-    // Nonce: prefer pending_nonce
-    let nonce = data.pending_nonce !== undefined ? data.pending_nonce : (data.nonce || 0);
+    let nonce = data.pending_nonce !== undefined ? Number(data.pending_nonce) : (Number(data.nonce) || 0);
 
     // Check staging for pending nonces from this address
     if ('ok' in stagingResponse && stagingResponse.ok) {
       try {
         const stagingRpc = await (stagingResponse as Response).json();
         const stagingData = stagingRpc.result || stagingRpc;
-        // staging_view returns { count, transactions[] }
-        const transactions = stagingData.transactions || stagingData.staged_transactions || [];
-        const ourPendingTxs = transactions.filter((tx: any) => tx.from === address);
+        const transactions: Array<{ from: string; nonce: string | number }> =
+          stagingData.transactions || stagingData.staged_transactions || [];
+        const ourPendingTxs = transactions.filter((tx) => tx.from === address);
         if (ourPendingTxs.length > 0) {
-          const maxPendingNonce = Math.max(...ourPendingTxs.map((tx: any) => {
-            const n = parseInt(tx.nonce, 10);
-            return isNaN(n) ? 0 : n;
-          }));
+          const maxPendingNonce = Math.max(
+            ...ourPendingTxs.map((tx) => {
+              const n = parseInt(String(tx.nonce), 10);
+              return isNaN(n) ? 0 : n;
+            }),
+          );
           nonce = Math.max(nonce, maxPendingNonce);
         }
       } catch {
@@ -1597,7 +1595,7 @@ export async function getPendingPrivateTransfers(address: string, privateKey?: s
     const { scanStealthOutputs } = await import('../services/stealthScanService');
     const claimable = await scanStealthOutputs(privateKey);
     // Map to PendingPrivateTransfer shape expected by existing callers
-    return claimable.map(t => ({
+    return claimable.map((t) => ({
       id: t.id,
       from: t.sender,
       to: address,
@@ -1605,9 +1603,8 @@ export async function getPendingPrivateTransfers(address: string, privateKey?: s
       encrypted_data: '',
       ephemeral_key: '',
       timestamp: t.epoch,
-      // Extra fields for ClaimTransfers
       _claimable: t,
-    } as any));
+    } as unknown as PendingPrivateTransfer));
   } catch (err) {
     console.warn('[getPendingPrivateTransfers] scan failed:', err);
     return [];
@@ -1692,7 +1689,7 @@ export function createTransaction(
   // WEBCLI CANONICAL JSON FORMAT
   // Build canonical JSON exactly like webcli does (tx_builder.hpp:88-98):
   // Order: from, to_, amount, nonce, ou, timestamp, op_type, [encrypted_data], [message]
-  const canonicalFields: any = {
+  const canonicalFields: Record<string, unknown> = {
     from: transaction.from,
     to_: transaction.to_,
     amount: transaction.amount,
@@ -1753,8 +1750,8 @@ export async function getTransactionHistory(
   address: string,
   options: HistoryPaginationOptions = {},
   forceRefresh = false,
-  onProgress?: (txs: any[]) => void
-): Promise<{ transactions: any[]; totalCount: number }> {
+  onProgress?: (txs: TransactionHistoryItem[]) => void,
+): Promise<{ transactions: TransactionHistoryItem[]; totalCount: number }> {
   // Check cache first (unless force refresh or pagination)
   if (!forceRefresh && (options.offset === 0 || options.offset === undefined)) {
     const cached = await apiCache.getHistory(address);
@@ -1783,19 +1780,9 @@ export async function getTransactionHistory(
 // ============================================
 // ACCOUNT POLLER — Smart sync trigger
 // ============================================
-// Every 5s: call octra_balance (lightweight) to get nonce + balance_raw.
-// If either changed → fire onChanged callback so WalletDashboard re-fetches.
-//
-// Why octra_balance instead of octra_account:
-//   - octra_account with limit=1 returns tx_count=1 always (count of fetched txs, not total)
-//   - octra_account without limit fetches full history — too heavy for polling
-//   - octra_balance is a single lightweight call returning nonce + balance_raw
-//   - nonce increments on every outgoing tx
-//   - balance_raw changes on both incoming and outgoing txs
-//   Together they detect all balance/tx changes reliably.
 
-const TX_COUNT_POLL_INTERVAL = 5000; // 5 seconds
-const TX_COUNT_STORAGE_KEY = 'octwa_tx_counts'; // persisted per address+network
+const TX_COUNT_POLL_INTERVAL = 5000;
+const TX_COUNT_STORAGE_KEY = 'octwa_tx_counts';
 
 function getTxCountKey(address: string): string {
   return `${getNetworkCacheKey()}:${address}`;

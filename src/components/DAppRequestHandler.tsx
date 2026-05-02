@@ -1,11 +1,4 @@
-/**
- * DAppRequestHandler - Unified handler for all dApp requests
- * 
- * Handles:
- * - Connection requests (connect to Circle)
- * - Capability requests (request scoped authorization)
- * - Invoke requests (execute method with capability)
- */
+// Unified handler for dApp requests: connection, capability, invoke, and sign message.
 
 import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
@@ -46,6 +39,7 @@ interface ConnectionRequest {
   appName?: string;
   appIcon?: string;
   requestedCapabilities?: CapabilityTemplate[];
+  pendingKey?: string;
 }
 
 interface CapabilityTemplate {
@@ -63,6 +57,7 @@ interface CapabilityRequest {
   appOrigin: string;
   appName?: string;
   appIcon?: string;
+  pendingKey?: string;
 }
 
 interface TransactionPayload {
@@ -108,6 +103,7 @@ interface InvokeRequest {
     walletPubKey: string;
     network: string;
   };
+  pendingKey?: string;
 }
 
 interface SignMessageRequest {
@@ -116,6 +112,7 @@ interface SignMessageRequest {
   appName?: string;
   appIcon?: string;
   timestamp: number;
+  pendingKey?: string;
 }
 
 interface DAppRequestHandlerProps {
@@ -557,12 +554,12 @@ export function DAppRequestHandler({ wallets }: DAppRequestHandlerProps) {
           network: currentNetwork,
           epoch: currentEpoch,
           branchId: currentBranchId,
-          pendingKey: (connectionRequest as any).pendingKey,
+          pendingKey: connectionRequest?.pendingKey,
         });
         chrome.storage.local.remove([
           'pendingConnectionRequest',
-          ...(connectionRequest as any).pendingKey
-            ? [`pendingConnectionRequest_${(connectionRequest as any).pendingKey}`, 'pendingConnectionRequestKey']
+          ...connectionRequest?.pendingKey
+            ? [`pendingConnectionRequest_${connectionRequest?.pendingKey}`, 'pendingConnectionRequestKey']
             : [],
         ]);
       }
@@ -652,7 +649,7 @@ export function DAppRequestHandler({ wallets }: DAppRequestHandlerProps) {
           approved: true,
           capabilityId,
           signedCapability,
-          pendingKey: (capabilityRequest as any).pendingKey,
+          pendingKey: capabilityRequest?.pendingKey,
         };
         
         logger.debug('DAppRequestHandler: Message to send:', message);
@@ -664,7 +661,7 @@ export function DAppRequestHandler({ wallets }: DAppRequestHandlerProps) {
           }
         });
         
-        const capPendingKey = (capabilityRequest as any).pendingKey;
+        const capPendingKey = capabilityRequest?.pendingKey;
         await chrome.storage.local.remove([
           'pendingCapabilityRequest',
           ...(capPendingKey ? [`pendingCapabilityRequest_${capPendingKey}`, 'pendingCapabilityRequestKey'] : []),
@@ -706,7 +703,7 @@ export function DAppRequestHandler({ wallets }: DAppRequestHandlerProps) {
   // Helper: send INVOKE_RESULT back to background and clean up storage
   const sendInvokeResult = (approved: boolean, data?: Uint8Array, error?: string) => {
     if (typeof chrome === 'undefined' || !chrome.runtime) return;
-    const invPendingKey = (invokeRequest as any)?.pendingKey;
+    const invPendingKey = invokeRequest?.pendingKey;
     chrome.runtime.sendMessage({
       type: 'INVOKE_RESULT',
       appOrigin: invokeRequest!.appOrigin,
@@ -1082,7 +1079,7 @@ export function DAppRequestHandler({ wallets }: DAppRequestHandlerProps) {
 
     if (typeof chrome !== 'undefined' && chrome.runtime) {
       if (requestType === 'connection' && connectionRequest) {
-        const pk = (connectionRequest as any).pendingKey;
+        const pk = connectionRequest?.pendingKey;
         chrome.runtime.sendMessage({
           type: 'CONNECTION_RESULT',
           appOrigin: connectionRequest.appOrigin,
@@ -1095,7 +1092,7 @@ export function DAppRequestHandler({ wallets }: DAppRequestHandlerProps) {
           ...(pk ? [`pendingConnectionRequest_${pk}`, 'pendingConnectionRequestKey'] : []),
         ]);
       } else if (requestType === 'capability' && capabilityRequest) {
-        const pk = (capabilityRequest as any).pendingKey;
+        const pk = capabilityRequest?.pendingKey;
         chrome.runtime.sendMessage({
           type: 'CAPABILITY_RESULT',
           appOrigin: capabilityRequest.appOrigin,
@@ -1108,7 +1105,7 @@ export function DAppRequestHandler({ wallets }: DAppRequestHandlerProps) {
           ...(pk ? [`pendingCapabilityRequest_${pk}`, 'pendingCapabilityRequestKey'] : []),
         ]);
       } else if (requestType === 'signMessage' && signMessageRequest) {
-        const pk = (signMessageRequest as any).pendingKey;
+        const pk = signMessageRequest?.pendingKey;
         chrome.runtime.sendMessage({
           type: 'SIGN_MESSAGE_RESULT',
           appOrigin: signMessageRequest.appOrigin,
@@ -1160,7 +1157,7 @@ export function DAppRequestHandler({ wallets }: DAppRequestHandlerProps) {
 
       // Send response
       if (typeof chrome !== 'undefined' && chrome.runtime) {
-        const pk = (signMessageRequest as any).pendingKey;
+        const pk = signMessageRequest?.pendingKey;
         chrome.runtime.sendMessage({
           type: 'SIGN_MESSAGE_RESULT',
           appOrigin: signMessageRequest.appOrigin,

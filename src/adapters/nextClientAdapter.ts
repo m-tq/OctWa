@@ -1,9 +1,5 @@
-/**
- * NextClientAdapter - Placeholder adapter for the upcoming Octra new client
- * All methods throw NotImplementedError until the new client is available
- * 
- * Requirements: 1.4
- */
+// Placeholder adapter for the upcoming Octra new client.
+// All methods throw NotImplementedError until the new client is available.
 
 import {
   OctraClientAdapter,
@@ -12,10 +8,6 @@ import {
   NotImplementedError,
 } from './types';
 
-/**
- * NextClientAdapter is a placeholder for the upcoming new Octra client
- * All methods throw NotImplementedError until implementation is ready
- */
 export class NextClientAdapter implements OctraClientAdapter {
   async connect(): Promise<void> {
     throw new NotImplementedError('connect');

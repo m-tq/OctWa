@@ -76,9 +76,9 @@ export function OnboardingOverlay({ onComplete }: OnboardingOverlayProps) {
                 key={index}
                 className={`h-2 w-2 rounded-full transition-all duration-300 ${
                   index === step 
-                    ? 'bg-[#3A4DFF] w-6' 
+                    ? 'bg-[#3B567F] w-6' 
                     : index < step 
-                      ? 'bg-[#3A4DFF]/50' 
+                      ? 'bg-[#3B567F]/50' 
                       : 'bg-muted'
                 }`}
               />
@@ -94,8 +94,8 @@ export function OnboardingOverlay({ onComplete }: OnboardingOverlayProps) {
             <p className="text-sm text-muted-foreground leading-relaxed">
               {steps[step].description}
             </p>
-            <div className="bg-[#3A4DFF]/5 border border-[#3A4DFF]/20 p-3">
-              <p className="text-xs text-[#3A4DFF] font-medium">
+            <div className="bg-[#3B567F]/5 border border-[#3B567F]/20 p-3">
+              <p className="text-xs text-[#3B567F] font-medium">
                 💡 {steps[step].highlight}
               </p>
             </div>
@@ -120,7 +120,7 @@ export function OnboardingOverlay({ onComplete }: OnboardingOverlayProps) {
                   handleComplete();
                 }
               }}
-              className="flex-1 bg-[#3A4DFF] hover:bg-[#6C63FF]/90"
+              className="flex-1 bg-[#3B567F] hover:bg-[#6C63FF]/90"
             >
               {step < steps.length - 1 ? (
                 <>

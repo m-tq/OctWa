@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { WalletManager } from '../utils/walletManager';
 import { Wallet } from '../types/wallet';
 import { AlertTriangle, Clock, Eye, EyeOff } from 'lucide-react';
@@ -101,20 +101,15 @@ export function UnlockWallet({
 
       // Simple callback - NO state management here
       onUnlock(wallets);
-    } catch (error: any) {
+    } catch (error) {
       console.error('UnlockWallet: Unlock failed:', error);
-
-      // Check if it's a rate limit error
-      if (error.message?.includes('Too many attempts')) {
-        setError(error.message);
+      const message = error instanceof Error ? error.message : '';
+      if (message.includes('Too many attempts')) {
+        setError(message);
         checkRateLimit();
       } else {
-        setError(
-          error.message === 'Invalid password'
-            ? 'Invalid password'
-            : 'Failed to unlock wallet'
-        );
-        checkRateLimit(); // Update remaining attempts
+        setError(message === 'Invalid password' ? 'Invalid password' : 'Failed to unlock wallet');
+        checkRateLimit();
       }
     } finally {
       setIsLoading(false);
@@ -257,11 +252,11 @@ export function UnlockWallet({
                 cx="25"
                 cy="25"
                 r="21"
-                stroke="#3A4DFF"
+                stroke="#3B567F"
                 strokeWidth="8"
                 fill="none"
               />
-              <circle cx="25" cy="25" r="9" fill="#3A4DFF" />
+              <circle cx="25" cy="25" r="9" fill="#3B567F" />
             </svg>
           )}
         </div>

@@ -1,158 +1,70 @@
-/**
- * Centralized Logger Utility
- * 
- * Provides structured logging with:
- * - Log levels (ERROR, WARN, INFO, DEBUG)
- * - Environment-based filtering
- * - Minimal output for production
- * - Job ID tracking for PVAC requests
- * - Performance-friendly
- */
+// Structured logger with environment-based level filtering and PVAC job tracking.
 
 enum LogLevel {
-  ERROR = 0,   // Always shown - critical errors
-  WARN = 1,    // Production + dev - warnings
-  INFO = 2,    // Dev only - informational
-  DEBUG = 3    // Dev only - verbose debugging
+  ERROR = 0,
+  WARN = 1,
+  INFO = 2,
+  DEBUG = 3,
 }
 
 class Logger {
   private currentLevel: LogLevel;
-  private isDevelopment: boolean;
+  private readonly isDevelopment: boolean;
 
   constructor() {
-    // Detect environment
     this.isDevelopment = import.meta.env.DEV || process.env.NODE_ENV === 'development';
-    
-    // Set log level based on environment
     this.currentLevel = this.isDevelopment ? LogLevel.DEBUG : LogLevel.WARN;
   }
 
-  /**
-   * Set log level manually
-   */
   setLevel(level: LogLevel): void {
     this.currentLevel = level;
   }
 
-  /**
-   * Check if level should be logged
-   */
   private shouldLog(level: LogLevel): boolean {
     return level <= this.currentLevel;
   }
 
-  /**
-   * Remove emoji from log message
-   */
-  private removeEmoji(message: string): string {
-    // Remove emoji characters (Unicode ranges for emoji)
+  private stripEmoji(message: string): string {
     return message.replace(/[\u{1F300}-\u{1F9FF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]/gu, '').trim();
   }
 
-  /**
-   * Format timestamp
-   */
   private timestamp(): string {
     const now = new Date();
-    return now.toTimeString().split(' ')[0] + '.' + now.getMilliseconds().toString().padStart(3, '0');
+    return `${now.toTimeString().split(' ')[0]}.${now.getMilliseconds().toString().padStart(3, '0')}`;
   }
 
-  /**
-   * Log error (always shown)
-   */
-  error(message: string, error?: any): void {
+  error(message: string, error?: unknown): void {
     if (!this.shouldLog(LogLevel.ERROR)) return;
-    
-    console.error(`[${this.timestamp()}] [ERROR] ${this.removeEmoji(message)}`, error || '');
+    console.error(`[${this.timestamp()}] [ERROR] ${this.stripEmoji(message)}`, error ?? '');
   }
 
-  /**
-   * Log warning
-   */
-  warn(message: string, data?: any): void {
+  warn(message: string, data?: unknown): void {
     if (!this.shouldLog(LogLevel.WARN)) return;
-    
-    if (data) {
-      console.warn(`[${this.timestamp()}] [WARN] ${this.removeEmoji(message)}`, data);
-    } else {
-      console.warn(`[${this.timestamp()}] [WARN] ${this.removeEmoji(message)}`);
-    }
+    const prefix = `[${this.timestamp()}] [WARN] ${this.stripEmoji(message)}`;
+    data !== undefined ? console.warn(prefix, data) : console.warn(prefix);
   }
 
-  /**
-   * Log info (dev only)
-   */
-  info(_message: string, _data?: any): void {
-    if (!this.shouldLog(LogLevel.INFO)) return;
-    // Logs removed for production
-  }
+  info(_message: string, _data?: unknown): void { /* dev-only, stripped in production */ }
 
-  /**
-   * Log debug (dev only, verbose)
-   */
-  debug(_message: string, _data?: any): void {
-    if (!this.shouldLog(LogLevel.DEBUG)) return;
-    // Logs removed for production
-  }
+  debug(_message: string, _data?: unknown): void { /* dev-only, stripped in production */ }
 
-  /**
-   * PVAC operation started
-   */
-  pvacStart(_operation: string, _requestId: string, _jobId?: string): void {
-    if (!this.shouldLog(LogLevel.INFO)) return;
-    // Logs removed for production
-  }
+  pvacStart(_operation: string, _requestId: string, _jobId?: string): void { /* dev-only */ }
 
-  /**
-   * PVAC operation step
-   */
-  pvacStep(_jobId: string, _step: string): void {
-    if (!this.shouldLog(LogLevel.DEBUG)) return;
-    // Logs removed for production
-  }
+  pvacStep(_jobId: string, _step: string): void { /* dev-only */ }
 
-  /**
-   * PVAC operation success
-   */
-  pvacSuccess(_operation: string, _jobId: string, _message: string, _duration?: number): void {
-    if (!this.shouldLog(LogLevel.INFO)) return;
-    // Logs removed for production
-  }
+  pvacSuccess(_operation: string, _jobId: string, _message: string, _duration?: number): void { /* dev-only */ }
 
-  /**
-   * PVAC operation error
-   */
-  pvacError(operation: string, jobId: string, error: any): void {
+  pvacError(operation: string, jobId: string, error: unknown): void {
     if (!this.shouldLog(LogLevel.ERROR)) return;
-    
-    const errorMsg = error?.message || error || 'Unknown error';
-    console.error(`[${this.timestamp()}] [PVAC] ${this.removeEmoji(operation)} [JOB:${jobId}] ERROR ${errorMsg}`);
+    const errorMsg = error instanceof Error ? error.message : String(error) || 'Unknown error';
+    console.error(`[${this.timestamp()}] [PVAC] ${this.stripEmoji(operation)} [JOB:${jobId}] ERROR ${errorMsg}`);
   }
 
-  /**
-   * Optimistic update log
-   */
-  optimistic(_action: string, _updateId: string, _message: string): void {
-    if (!this.shouldLog(LogLevel.DEBUG)) return;
-    // Logs removed for production
-  }
+  optimistic(_action: string, _updateId: string, _message: string): void { /* dev-only */ }
 
-  /**
-   * Performance metric
-   */
-  perf(_operation: string, _duration: number, _threshold: number = 1000): void {
-    if (!this.shouldLog(LogLevel.INFO)) return;
-    // Logs removed for production
-  }
+  perf(_operation: string, _duration: number, _threshold = 1000): void { /* dev-only */ }
 
-  /**
-   * Minimal production log (always shown, very brief)
-   */
-  prod(_message: string): void {
-    // Logs removed for production
-  }
+  prod(_message: string): void { /* stripped in production */ }
 }
 
-// Export singleton
 export const logger = new Logger();

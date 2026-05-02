@@ -113,7 +113,7 @@ function SortableWalletItem({
       onMouseEnter={handleMouseEnter}
     >
       {/* Active indicator bar - left side */}
-      <div className={`absolute left-0 top-1/2 -translate-y-1/2 w-1 rounded-r-full ${isPrivateMode ? 'bg-[#00E5C0]' : 'bg-[#3A4DFF]'} transition-all duration-200 ${
+      <div className={`absolute left-0 top-1/2 -translate-y-1/2 w-1 rounded-r-full ${isPrivateMode ? 'bg-[#00E5C0]' : 'bg-[#3B567F]'} transition-all duration-200 ${
         isActive ? (isPopupMode ? 'h-8' : 'h-10') + ' opacity-100' : 'h-0 opacity-0'
       }`} />
       
@@ -136,11 +136,11 @@ function SortableWalletItem({
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-1.5 min-w-0">
               <span className={`${isPopupMode ? 'text-[10px]' : 'text-xs'} font-medium px-1.5 py-0.5 rounded ${
-                isActive ? `${isPrivateMode ? 'bg-[#00E5C0]' : 'bg-[#3A4DFF]'} text-white` : 'bg-muted text-muted-foreground'
+                isActive ? `${isPrivateMode ? 'bg-[#00E5C0]' : 'bg-[#3B567F]'} text-white` : 'bg-muted text-muted-foreground'
               }`}>
                 {index + 1}
               </span>
-              <span className={`font-mono ${isPopupMode ? 'text-xs' : 'text-sm'} truncate ${isActive ? `${isPrivateMode ? 'text-[#00E5C0]' : 'text-[#3A4DFF]'} font-semibold` : ''}`}>
+              <span className={`font-mono ${isPopupMode ? 'text-xs' : 'text-sm'} truncate ${isActive ? `${isPrivateMode ? 'text-[#00E5C0]' : 'text-[#3B567F]'} font-semibold` : ''}`}>
                 {shortAddress}
               </span>
             </div>
@@ -153,7 +153,7 @@ function SortableWalletItem({
                   e.stopPropagation();
                   onCopyAddress(wallet.address, fieldId);
                 }}
-                className={`h-6 w-6 p-0 ${isActive ? `${isPrivateMode ? 'text-[#00E5C0] hover:text-[#00E5C0]/80' : 'text-[#3A4DFF] hover:text-[#6C63FF]/80'}` : ''}`}
+                className={`h-6 w-6 p-0 ${isActive ? `${isPrivateMode ? 'text-[#00E5C0] hover:text-[#00E5C0]/80' : 'text-[#3B567F] hover:text-[#6C63FF]/80'}` : ''}`}
                 title="Copy address"
               >
                 {copiedField === fieldId ? <Check className="h-3 w-3 text-green-500" /> : <Copy className="h-3 w-3" />}
@@ -180,13 +180,13 @@ function SortableWalletItem({
           </div>
           
           {/* Row 2: Wallet Name */}
-          <div className={`mt-1 ${isPopupMode ? 'text-xs' : 'text-sm'} font-medium truncate ${isActive ? (isPrivateMode ? 'text-[#00E5C0]' : 'text-[#3A4DFF]') : ''}`}>
+          <div className={`mt-1 ${isPopupMode ? 'text-xs' : 'text-sm'} font-medium truncate ${isActive ? (isPrivateMode ? 'text-[#00E5C0]' : 'text-[#3B567F]') : ''}`}>
             <WalletDisplayName address={wallet.address} isPopupMode={isPopupMode} />
           </div>
           
           {/* Row 3: Type + Nonce */}
           <div className={`flex items-center justify-between ${isPopupMode ? 'mt-0.5 text-[10px]' : 'mt-1 text-xs'} ${
-            isActive ? (isPrivateMode ? 'text-[#00E5C0]/70' : 'text-[#3A4DFF]/70') : 'text-muted-foreground'
+            isActive ? (isPrivateMode ? 'text-[#00E5C0]/70' : 'text-[#3B567F]/70') : 'text-muted-foreground'
           }`}>
             <span>{walletType}</span>
             {isActive ? (
@@ -229,17 +229,17 @@ function WalletDragOverlay({
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-1.5 min-w-0">
-            <span className={`${isPopupMode ? 'text-[10px]' : 'text-xs'} font-medium px-1.5 py-0.5 rounded ${isPrivateMode ? 'bg-[#00E5C0]' : 'bg-[#3A4DFF]'} text-white`}>
+            <span className={`${isPopupMode ? 'text-[10px]' : 'text-xs'} font-medium px-1.5 py-0.5 rounded ${isPrivateMode ? 'bg-[#00E5C0]' : 'bg-[#3B567F]'} text-white`}>
               {index + 1}
             </span>
-            <span className={`font-mono ${isPopupMode ? 'text-xs' : 'text-sm'} truncate ${isPrivateMode ? 'text-[#00E5C0]' : 'text-[#3A4DFF]'} font-semibold`}>
+            <span className={`font-mono ${isPopupMode ? 'text-xs' : 'text-sm'} truncate ${isPrivateMode ? 'text-[#00E5C0]' : 'text-[#3B567F]'} font-semibold`}>
               {shortAddress}
             </span>
           </div>
-          <div className={`mt-1 ${isPopupMode ? 'text-xs' : 'text-sm'} font-medium truncate ${isPrivateMode ? 'text-[#00E5C0]' : 'text-[#3A4DFF]'}`}>
+          <div className={`mt-1 ${isPopupMode ? 'text-xs' : 'text-sm'} font-medium truncate ${isPrivateMode ? 'text-[#00E5C0]' : 'text-[#3B567F]'}`}>
             <WalletDisplayName address={wallet.address} isPopupMode={isPopupMode} />
           </div>
-          <div className={`${isPopupMode ? 'mt-0.5 text-[10px]' : 'mt-1 text-xs'} ${isPrivateMode ? 'text-[#00E5C0]/70' : 'text-[#3A4DFF]/70'}`}>
+          <div className={`${isPopupMode ? 'mt-0.5 text-[10px]' : 'mt-1 text-xs'} ${isPrivateMode ? 'text-[#00E5C0]/70' : 'text-[#3B567F]/70'}`}>
             <span>{walletType}</span>
           </div>
         </div>

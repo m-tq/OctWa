@@ -78,17 +78,6 @@ export function TransactionModal({
 
   const truncateAddress = (address: string) => `${address.slice(0, 8)}...${address.slice(-5)}`;
 
-  const getTitle = () => {
-    switch (type) {
-      case 'send': return 'Send Transaction';
-      case 'transfer': return 'Private Transfer';
-      case 'claim': return 'Claim Transfer';
-      case 'encrypt': return 'Encrypt Balance';
-      case 'decrypt': return 'Decrypt Balance';
-      default: return 'Transaction';
-    }
-  };
-
   const getAccent = () => {
     switch (type) {
       case 'transfer':
@@ -125,11 +114,11 @@ export function TransactionModal({
         };
       default:
         return {
-          text: 'text-[#3A4DFF]',
-          border: 'border-[#3A4DFF]/20',
-          bg: 'bg-[#3A4DFF]/10',
-          ring: 'border-[#3A4DFF]',
-          button: 'bg-[#3A4DFF] hover:bg-[#6C63FF]/90'
+          text: 'text-[#3B567F]',
+          border: 'border-[#3B567F]/20',
+          bg: 'bg-[#3B567F]/10',
+          ring: 'border-[#3B567F]',
+          button: 'bg-[#3B567F] hover:bg-[#6C63FF]/90'
         };
     }
   };
@@ -183,9 +172,8 @@ export function TransactionModal({
   const sizeText = isPopupMode ? 'text-xs' : 'text-sm';
 
   return (
-    <div className={`border rounded-lg ${accent.border} ${isPopupMode ? 'p-3' : 'p-4'} space-y-4`}>
-      <div className="flex items-center justify-between">
-        <div className={`font-semibold ${sizeTitle}`}>{getTitle()}</div>
+    <div className={`${isPopupMode ? 'p-3' : 'p-4'} space-y-4`}>
+      <div className="flex items-center justify-end">
         <Button variant="ghost" size="icon" onClick={handleClose} className={isPopupMode ? 'h-7 w-7' : 'h-8 w-8'}>
           <X className={isPopupMode ? 'h-3 w-3' : 'h-4 w-4'} />
         </Button>
@@ -270,7 +258,7 @@ export function TransactionModal({
                     {currentFinality === 'confirmed' ? (
                       <>
                         <CheckCircle className="h-3 w-3" />
-                        <span>Confirmed</span>
+                        <span>Accepted</span>
                       </>
                     ) : (
                       <>

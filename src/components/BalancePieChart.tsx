@@ -38,7 +38,7 @@ export function BalancePieChart({
     if (total === 0 && !isDecrypting) return 'conic-gradient(#e5e7eb 0deg 360deg)';
     const publicDeg = (publicPercent / 100) * 360;
     return `conic-gradient(
-      #3A4DFF 0deg ${publicDeg}deg,
+      #3B567F 0deg ${publicDeg}deg,
       #00E5C0 ${publicDeg}deg 360deg
     )`;
   }, [publicPercent, total, isDecrypting]);
@@ -56,7 +56,7 @@ export function BalancePieChart({
         <div className="flex-1 space-y-1.5">
           <div className="flex items-center justify-between text-xs">
             <div className="flex items-center gap-1.5">
-              <div className="w-2.5 h-2.5 rounded-full bg-[#3A4DFF]" />
+              <div className="w-2.5 h-2.5 rounded-full bg-[#3B567F]" />
               <span className="text-muted-foreground">Public</span>
             </div>
             <span className="font-mono font-medium">{publicPercent.toFixed(1)}%</span>
@@ -103,8 +103,8 @@ export function BalancePieChart({
             {/* Public Balance */}
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <div className="w-3 h-3 rounded-full bg-[#3A4DFF] shadow-sm" />
-                <Globe className="h-3.5 w-3.5 text-[#3A4DFF]" />
+                <div className="w-3 h-3 rounded-full bg-[#3B567F] shadow-sm" />
+                <Globe className="h-3.5 w-3.5 text-[#3B567F]" />
                 <span className="text-sm text-muted-foreground">Public</span>
               </div>
               <div className="flex items-center gap-2">

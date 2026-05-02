@@ -168,7 +168,7 @@ export function UnifiedHistory({ wallet, transactions, onTransactionsUpdate, isL
   const getStatusIcon = (status: string, small: boolean = false) => {
     const sizeClass = small ? "h-3 w-3" : "h-4 w-4";
     switch (status) {
-      case 'confirmed': return <CircleCheckBig className={`${sizeClass} text-[#3A4DFF] fill-[#3A4DFF]/20`} />;
+      case 'confirmed': return <CircleCheckBig className={`${sizeClass} text-[#3B567F] fill-[#3B567F]/20`} />;
       case 'pending': return <Clock className={`${sizeClass} text-yellow-500`} />;
       case 'failed': return <XCircle className={`${sizeClass} text-red-500`} />;
       default: return <Clock className={`${sizeClass} text-gray-500`} />;
@@ -218,8 +218,8 @@ export function UnifiedHistory({ wallet, transactions, onTransactionsUpdate, isL
   const pendingCount = filteredTransactions.filter(tx => tx.status === 'pending').length;
 
   return (
-    <Card className={`${hideBorder || isPopupMode ? 'border-0 shadow-none' : ''} ${isPopupMode ? 'h-full flex flex-col' : ''} ${isCompact ? 'h-full flex flex-col' : ''}`}>
-      <CardHeader className={`flex flex-row items-center justify-between space-y-0 ${isPopupMode ? 'pb-2 px-3 pt-3' : isCompact ? 'pb-2 px-0 pt-0 flex-shrink-0' : 'pb-4'}`}>
+    <Card className={`bg-transparent ${hideBorder || isPopupMode ? 'border-0 shadow-none' : 'border-0'} ${isPopupMode ? 'h-full flex flex-col' : ''} ${isCompact ? 'h-full flex flex-col' : ''}`}>
+      <CardHeader className={`flex flex-row items-center justify-between space-y-0 bg-transparent border-0 ${isPopupMode ? 'pb-2 px-3 pt-3' : isCompact ? 'pb-2 px-0 pt-0 flex-shrink-0' : 'pb-4'}`}>
         <div className="flex flex-col gap-0.5">
           <CardTitle className={`flex items-center gap-2 ${isPopupMode ? 'text-sm' : isCompact ? 'text-sm' : ''}`}>
             {!isCompact && !isPopupMode && <History className={isPopupMode ? 'h-4 w-4' : 'h-5 w-5'} />}
@@ -232,7 +232,7 @@ export function UnifiedHistory({ wallet, transactions, onTransactionsUpdate, isL
             )}
           </CardTitle>
           {!isPopupMode && (
-            <span className="text-muted-foreground text-xs">
+            <span className="text-muted-foreground/60 text-xs font-normal">
               {`Recent ${filteredTransactions.length} data`}
             </span>
           )}
@@ -261,7 +261,7 @@ export function UnifiedHistory({ wallet, transactions, onTransactionsUpdate, isL
                 activeFilter === 'all'
                   ? operationMode === 'private'
                     ? 'text-[#00E5C0]'
-                    : 'text-[#3A4DFF]'
+                    : 'text-[#3B567F]'
                   : 'text-muted-foreground'
               }`}
             >
@@ -269,10 +269,10 @@ export function UnifiedHistory({ wallet, transactions, onTransactionsUpdate, isL
                 activeFilter === 'all'
                   ? operationMode === 'private'
                     ? '[text-shadow:0_0_8px_#00E5C0,0_0_16px_#00E5C0,0_0_32px_#00E5C0,0_0_48px_rgba(0,229,192,0.5)]'
-                    : '[text-shadow:0_0_8px_#3A4DFF,0_0_16px_#3A4DFF,0_0_32px_#3A4DFF,0_0_48px_rgba(58,77,255,0.5)]'
+                    : '[text-shadow:0_0_8px_#3B567F,0_0_16px_#3B567F,0_0_32px_#3B567F,0_0_48px_rgba(58,77,255,0.5)]'
                   : operationMode === 'private'
                     ? 'group-hover:text-[#00E5C0] group-hover:[text-shadow:0_0_8px_rgba(0,229,192,0.8)]'
-                    : 'group-hover:text-[#3A4DFF] group-hover:[text-shadow:0_0_8px_rgba(58,77,255,0.8)]'
+                    : 'group-hover:text-[#3B567F] group-hover:[text-shadow:0_0_8px_rgba(58,77,255,0.8)]'
               }`}>All</span>
             </Button>
 
@@ -474,7 +474,7 @@ export function UnifiedHistory({ wallet, transactions, onTransactionsUpdate, isL
             <div className="flex-1 overflow-y-auto pr-1">
               {loadingDetails ? (
                 <div className="flex items-center justify-center py-8">
-                  <div className="w-5 h-5 rounded-full border-2 border-transparent animate-spin" style={{ borderTopColor: '#3A4DFF' }} />
+                  <div className="w-5 h-5 rounded-full border-2 border-transparent animate-spin" style={{ borderTopColor: '#3B567F' }} />
                 </div>
               ) : selectedTx ? (
                 <div className="space-y-1.5">
@@ -486,7 +486,7 @@ export function UnifiedHistory({ wallet, transactions, onTransactionsUpdate, isL
                         {selectedTx.stage_status || 'pending'}
                       </Badge>
                     ) : (
-                      <Badge variant="secondary" className="text-[10px] bg-[#3A4DFF]/20 text-[#3A4DFF]">
+                      <Badge variant="secondary" className="text-[10px] bg-[#3B567F]/20 text-[#3B567F]">
                         confirmed
                       </Badge>
                     )}
@@ -552,7 +552,7 @@ export function UnifiedHistory({ wallet, transactions, onTransactionsUpdate, isL
                       <div className="bg-muted/50 p-2">
                         <span className="text-muted-foreground block">Amount</span>
                         <p className="font-mono mt-0.5">
-                          {(parseInt(String((selectedTx as any).amount_raw || '0'), 10) / 1_000_000).toFixed(6)} OCT
+                          {(parseInt(String((selectedTx as { amount_raw?: string }).amount_raw || '0'), 10) / 1_000_000).toFixed(6)} OCT
                         </p>
                       </div>
                     )}
@@ -573,10 +573,10 @@ export function UnifiedHistory({ wallet, transactions, onTransactionsUpdate, isL
                       </div>
                     )}
                   </div>
-                  {'op_type' in selectedTx && (selectedTx as any).op_type && (
+                  {'op_type' in selectedTx && (selectedTx as { op_type?: string }).op_type && (
                     <div className="bg-muted/50 p-2 flex items-center justify-between">
                       <span className="text-muted-foreground">Type</span>
-                      <span className="font-mono">{(selectedTx as any).op_type}</span>
+                      <span className="font-mono">{(selectedTx as { op_type?: string }).op_type}</span>
                     </div>
                   )}
                   <Button variant="outline" className="w-full h-9" asChild>
@@ -687,7 +687,7 @@ function TransferItem({
       case 'deploy':
         return { label: 'deploy', className: 'bg-indigo-500/15 text-indigo-600 dark:text-indigo-400 border-indigo-500/30' };
       default:
-        return { label: 'standard', className: 'bg-[#3A4DFF]/10 text-[#3A4DFF] border-[#3A4DFF]/30' };
+        return { label: 'standard', className: 'bg-[#3B567F]/10 text-[#3B567F] border-[#3B567F]/30' };
     }
   };
 
@@ -749,7 +749,7 @@ function TransferItem({
                   {opBadge.label}
                 </span>
                 {tx.status === 'confirmed' ? (
-                  <div className="h-1.5 w-1.5 bg-[#3A4DFF]" />
+                  <div className="h-1.5 w-1.5 bg-[#3B567F]" />
                 ) : tx.status === 'pending' ? (
                   <div className="h-1.5 w-1.5 bg-yellow-500 animate-pulse" />
                 ) : (
@@ -824,7 +824,7 @@ function TransferItem({
                   {opBadge.label}
                 </span>
                 {tx.status === 'confirmed' ? (
-                  <div className="h-1.5 w-1.5 bg-[#3A4DFF]" />
+                  <div className="h-1.5 w-1.5 bg-[#3B567F]" />
                 ) : tx.status === 'pending' ? (
                   <div className="h-1.5 w-1.5 bg-yellow-500 animate-pulse" />
                 ) : (

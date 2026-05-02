@@ -131,11 +131,11 @@ export function WelcomeScreen({ onWalletCreated }: WelcomeScreenProps) {
                     cx="25"
                     cy="25"
                     r="21"
-                    stroke="#3A4DFF"
+                    stroke="#3B567F"
                     strokeWidth="8"
                     fill="none"
                   />
-                  <circle cx="25" cy="25" r="9" fill="#3A4DFF" />
+                  <circle cx="25" cy="25" r="9" fill="#3B567F" />
                 </svg>
               </div>
             </div>

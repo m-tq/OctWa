@@ -277,7 +277,7 @@ export function AddressBook({
               resetForm();
               setShowAddDialog(true);
             }}
-            className={`text-[#3A4DFF] hover:text-[#6C63FF] hover:bg-[#6C63FF]/10 ${isPopupMode ? 'h-6 text-[10px] px-2' : ''}`}
+            className={`text-[#3B567F] hover:text-[#6C63FF] hover:bg-[#6C63FF]/10 ${isPopupMode ? 'h-6 text-[10px] px-2' : ''}`}
           >
             <Plus className={isPopupMode ? 'h-3 w-3 mr-0.5' : 'h-4 w-4 mr-1.5'} />
             {isPopupMode ? 'Add' : 'Add'}
@@ -495,7 +495,7 @@ export function AddressBook({
             </Button>
             <Button
               onClick={handleSave}
-              className={`flex-1 bg-[#3A4DFF] hover:bg-[#6C63FF]/90 ${isPopupMode ? 'h-7 text-[10px]' : ''}`}
+              className={`flex-1 bg-[#3B567F] hover:bg-[#6C63FF]/90 ${isPopupMode ? 'h-7 text-[10px]' : ''}`}
             >
               {editingContact ? 'Save' : 'Add Contact'}
             </Button>

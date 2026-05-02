@@ -251,8 +251,8 @@ export function ModeToggle({
                   <span>Exposed.</span>
                 </div>
               </TooltipTrigger>
-              <TooltipContent side="bottom" className={isCompact ? "px-2 py-1 max-w-[120px]" : "max-w-[200px]"}>
-                <p className={isCompact ? "text-[10px] whitespace-normal" : "text-xs"}>Your transactions are publicly visible on the blockchain. Encrypt your balance to enable Private Mode.</p>
+              <TooltipContent side="bottom" className={isCompact ? "px-2 py-1 max-w-[120px]" : "max-w-[160px]"}>
+                <p className={isCompact ? "text-[9px]" : "text-xs"}>Publicly visible.</p>
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>

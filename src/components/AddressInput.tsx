@@ -75,7 +75,7 @@ export function AddressActionButtons({
           size="icon"
           onClick={() => onAddToAddressBook?.(value.trim())}
           disabled={disabled}
-          className={`${isCompact ? 'h-7 w-7' : 'h-8 w-8'} flex-shrink-0 text-[#3A4DFF] hover:text-[#6C63FF] hover:bg-[#6C63FF]/10 border-[#3A4DFF]/30`}
+          className={`${isCompact ? 'h-7 w-7' : 'h-8 w-8'} flex-shrink-0 text-[#3B567F] hover:text-[#6C63FF] hover:bg-[#6C63FF]/10 border-[#3B567F]/30`}
           title="Add to address book"
         >
           <Plus className={isCompact ? 'h-3 w-3' : 'h-3.5 w-3.5'} />
@@ -241,7 +241,7 @@ export function AddressInput({
                 size="icon"
                 onClick={() => onAddToAddressBook?.(value.trim())}
                 disabled={disabled}
-                className={`${isCompact ? 'h-8 w-8' : 'h-9 w-9'} flex-shrink-0 text-[#3A4DFF] hover:text-[#6C63FF] hover:bg-[#6C63FF]/10 border-[#3A4DFF]/30`}
+                className={`${isCompact ? 'h-8 w-8' : 'h-8 w-8'} flex-shrink-0 text-[#3B567F] hover:text-[#6C63FF] hover:bg-[#6C63FF]/10 border-[#3B567F]/30`}
                 title="Add to address book"
               >
                 <Plus className={isCompact ? 'h-3.5 w-3.5' : 'h-4 w-4'} />
@@ -253,7 +253,7 @@ export function AddressInput({
               size="icon"
               onClick={() => setShowDropdown(!showDropdown)}
               disabled={disabled}
-              className={isCompact ? 'h-8 w-8 flex-shrink-0' : 'h-9 w-9 flex-shrink-0'}
+              className={isCompact ? 'h-8 w-8 flex-shrink-0' : 'h-8 w-8 flex-shrink-0'}
               title="Select from contacts"
             >
               <BookUser className={isCompact ? 'h-3.5 w-3.5' : 'h-4 w-4'} />

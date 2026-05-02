@@ -7,7 +7,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Switch } from '@/components/ui/switch';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Shield, AlertTriangle, Wallet as WalletIcon, Loader2, Plus, BookUser, Search, Globe, Server, Zap } from 'lucide-react';
-import { Wallet } from '../types/wallet';
+import { Wallet, EncryptedBalanceResponse } from '../types/wallet';
 import { fetchEncryptedBalance, createPrivateTransfer, getAddressInfo, getViewPubkey, invalidateCacheAfterPrivateSend, fetchBalance, sendTransaction, fetchRecommendedFee, ouToOct } from '../utils/api';
 import { useToast } from '@/hooks/use-toast';
 import { useAddressBook } from '@/hooks/useAddressBook';
@@ -21,7 +21,7 @@ interface PrivateTransferProps {
   wallet: Wallet | null;
   balance: number | null;
   nonce: number;
-  encryptedBalance?: any;
+  encryptedBalance?: EncryptedBalanceResponse | null;
   onBalanceUpdate: (newBalance: number) => void;
   onNonceUpdate: (newNonce: number) => void;
   onTransactionSuccess: (newTx?: {
@@ -75,8 +75,8 @@ export function PrivateTransfer({
   const [amount, setAmount] = useState('');
   const [isSending, setIsSending] = useState(false);
   const [isCheckingRecipient, setIsCheckingRecipient] = useState(false);
-  const [localEncryptedBalance, setLocalEncryptedBalance] = useState<any>(null);
-  const [recipientInfo, setRecipientInfo] = useState<any>(null);
+  const [localEncryptedBalance, setLocalEncryptedBalance] = useState<EncryptedBalanceResponse | null>(null);
+  const [recipientInfo, setRecipientInfo] = useState<{ has_public_key?: boolean; error?: string } | null>(null);
   const [showTxModal, setShowTxModal] = useState(false);
   const [txModalStatus, setTxModalStatus] = useState<TransactionStatus>('idle');
   const [txModalResult, setTxModalResult] = useState<TransactionResult>({});
@@ -343,7 +343,7 @@ export function PrivateTransfer({
       }
 
       // Submit signed transaction to blockchain
-      const submitResult = await sendTransaction(result.tx);
+      const submitResult = await sendTransaction(result.tx as import('../types/wallet').Transaction);
       if (!submitResult.success) {
         throw new Error(submitResult.error || 'Failed to submit transaction');
       }
@@ -385,7 +385,7 @@ export function PrivateTransfer({
       setRecipientInfo(null);
       // onTransactionSuccess is called via onStatusConfirmed when node confirms
       
-    } catch (error: any) {
+    } catch (error) {
       console.error('[StealthSend] Error:', error);
       throw error;
     }
@@ -429,7 +429,7 @@ export function PrivateTransfer({
         setTxModalStatus('error');
         setTxModalResult({ error: transferResult.error || "Unknown error occurred" });
       }
-    } catch (error: any) {
+    } catch (error) {
       throw error;
     }
   };
@@ -449,7 +449,7 @@ export function PrivateTransfer({
 
   if (!showTxModal && (!encryptedBalance || encryptedBalance.encrypted <= 0)) {
     return isCompact ? (
-      <Alert className="border-[#3A4DFF]/20">
+      <Alert className="border-[#3B567F]/20">
         <AlertDescription className="text-xs">
           No encrypted balance. Encrypt some OCT first.
         </AlertDescription>
@@ -508,7 +508,7 @@ export function PrivateTransfer({
                       variant="outline"
                       size="icon"
                       onClick={() => onAddToAddressBook?.(recipientAddress.trim())}
-                      className="h-7 w-7 flex-shrink-0 text-[#3A4DFF] hover:text-[#6C63FF] hover:bg-[#6C63FF]/10 border-[#3A4DFF]/30"
+                      className="h-7 w-7 flex-shrink-0 text-[#3B567F] hover:text-[#6C63FF] hover:bg-[#6C63FF]/10 border-[#3B567F]/30"
                       title="Add to address book"
                     >
                       <Plus className="h-3 w-3" />
@@ -578,7 +578,7 @@ export function PrivateTransfer({
                               >
                                 <div className="flex items-center gap-1.5">
                                   <span className="font-medium truncate">{contact.label}</span>
-                                  {contact.preferredMode === 'private' && <Shield className="h-2.5 w-2.5 text-[#3A4DFF]" />}
+                                  {contact.preferredMode === 'private' && <Shield className="h-2.5 w-2.5 text-[#3B567F]" />}
                                   {contact.preferredMode === 'public' && <Globe className="h-2.5 w-2.5 text-green-600" />}
                                 </div>
                                 <div className="font-mono text-[10px] text-muted-foreground">{truncateAddress(contact.address)}</div>
@@ -614,12 +614,12 @@ export function PrivateTransfer({
                 <Label htmlFor="amount" className="text-xs">Amount (OCT)</Label>
                 <div className="flex items-center gap-1.5 text-[10px]">
                   <span className="text-muted-foreground">
-                    Balance: <span className="font-mono">{encryptedBalance.encrypted.toFixed(4)}</span>
+                    Balance: <span className="font-mono">{(encryptedBalance?.encrypted ?? 0).toFixed(4)}</span>
                   </span>
                   <button
                     type="button"
                     onClick={() => {
-                      const maxAmount = encryptedBalance.encrypted;
+                      const maxAmount = (encryptedBalance?.encrypted ?? 0);
                       if (maxAmount > 0) {
                         setAmount(maxAmount.toFixed(8));
                       } else {
@@ -644,7 +644,7 @@ export function PrivateTransfer({
                 onChange={(e) => setAmount(e.target.value)}
                 step="0.1"
                 min="0"
-                max={encryptedBalance.encrypted}
+                max={(encryptedBalance?.encrypted ?? 0)}
                 className="text-xs h-8"
               />
             </div>
@@ -719,9 +719,9 @@ export function PrivateTransfer({
                 isCheckingRecipient ||
                 !validateAmount(amount) ||
                 !recipientInfo ||
-                recipientInfo.error ||
+                !!recipientInfo.error ||
                 !recipientInfo.has_public_key ||
-                parseFloat(amount) > encryptedBalance.encrypted
+                parseFloat(amount) > (encryptedBalance?.encrypted ?? 0)
               }
               className="w-full h-9 text-xs bg-[#00E5C0] hover:bg-[#00E5C0]/80"
             >
@@ -787,12 +787,12 @@ export function PrivateTransfer({
               <Label htmlFor="amount">Amount (OCT)</Label>
               <div className="flex items-center gap-2 text-sm">
                 <span className="text-muted-foreground">
-                  Balance: <span className="font-mono">{encryptedBalance.encrypted.toFixed(4)}</span>
+                  Balance: <span className="font-mono">{(encryptedBalance?.encrypted ?? 0).toFixed(4)}</span>
                 </span>
                 <button
                   type="button"
                   onClick={() => {
-                    const maxAmount = encryptedBalance.encrypted;
+                    const maxAmount = (encryptedBalance?.encrypted ?? 0);
                     if (maxAmount > 0) {
                       setAmount(maxAmount.toFixed(8));
                     } else {
@@ -817,9 +817,9 @@ export function PrivateTransfer({
               onChange={(e) => setAmount(e.target.value)}
               step="0.1"
               min="0"
-              max={encryptedBalance.encrypted}
+              max={(encryptedBalance?.encrypted ?? 0)}
             />
-            {amount && validateAmount(amount) && parseFloat(amount) > encryptedBalance.encrypted && (
+            {amount && validateAmount(amount) && parseFloat(amount) > (encryptedBalance?.encrypted ?? 0) && (
               <p className="text-sm text-red-600">Amount exceeds available encrypted balance</p>
             )}
           </div>
@@ -895,9 +895,9 @@ export function PrivateTransfer({
               isCheckingRecipient ||
               !validateAmount(amount) || 
               !recipientInfo ||
-              recipientInfo.error ||
+              !!recipientInfo.error ||
               !recipientInfo.has_public_key ||
-              parseFloat(amount) > encryptedBalance.encrypted
+              parseFloat(amount) > (encryptedBalance?.encrypted ?? 0)
             }
             className="w-full bg-[#00E5C0] hover:bg-[#00E5C0]/80"
             size="lg"

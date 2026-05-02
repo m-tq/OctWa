@@ -225,10 +225,12 @@ export async function signCapability(
 
 /**
  * Verify a signed capability
+ * @deprecated Not yet implemented — placeholder for future verification logic.
+ */
+
 /**
- * Create a capability ID from the capability data
+ * Derive a short capability ID from the first 16 hex chars of its signature.
  */
 export function createCapabilityId(capability: SignedCapability): string {
-  // Use first 16 chars of signature as ID
   return `cap-${capability.signature.slice(0, 16)}`;
 }

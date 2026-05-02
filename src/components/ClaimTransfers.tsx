@@ -88,10 +88,10 @@ export function ClaimTransfers({ wallet, onTransactionSuccess, isPopupMode = fal
           onTransactionSuccess();
         },
       });
-    } catch (err: any) {
+    } catch (err) {
       logger.error('Claim error', err);
       setTxModalStatus('error');
-      setTxModalResult({ error: err.message || 'Unknown error' });
+      setTxModalResult({ error: err instanceof Error ? err.message : 'Unknown error' });
     } finally {
       setClaimingId(null);
       isClaimingRef.current = false;
@@ -118,8 +118,8 @@ export function ClaimTransfers({ wallet, onTransactionSuccess, isPopupMode = fal
         successCount++;
         // Small delay to avoid overwhelming the node
         await new Promise(r => setTimeout(r, 500));
-      } catch (err: any) {
-        errors.push(`#${transfer.id}: ${err.message}`);
+      } catch (err) {
+        errors.push(`#${transfer.id}: ${err instanceof Error ? err.message : String(err)}`);
         // On error, re-fetch nonce to stay in sync
         try {
           const refetch = await fetchBalance(wallet.address, true);
@@ -176,7 +176,7 @@ export function ClaimTransfers({ wallet, onTransactionSuccess, isPopupMode = fal
       });
       if (!result.success) throw new Error(result.error || 'PVAC claim failed');
 
-      const submitResult = await sendTransaction(result.tx);
+      const submitResult = await sendTransaction(result.tx as import('../types/wallet').Transaction);
       if (!submitResult.success) throw new Error(submitResult.error || 'Submit failed');
       return submitResult.hash || 'pending';
     } else {
@@ -195,7 +195,7 @@ export function ClaimTransfers({ wallet, onTransactionSuccess, isPopupMode = fal
   }
 
   return (
-    <Card className={`${hideBorder || isPopupMode ? 'border-0 shadow-none' : 'border-[#3A4DFF]/20'}`}>
+    <Card className={`${hideBorder || isPopupMode ? 'border-0 shadow-none' : 'border-[#3B567F]/20'}`}>
       <CardContent className={isPopupMode ? 'px-0 pb-0 pt-0' : 'pt-0'}>
         {/* Refresh button */}
         {isPopupMode && (

@@ -1,5 +1,4 @@
-// Shared RPC Status Manager
-// Prevents duplicate fetching between popup and expanded modes
+// Shared RPC status manager — prevents duplicate fetching between popup and expanded views.
 
 interface RPCStatusData {
   status: 'connected' | 'disconnected' | 'checking' | 'connecting';
@@ -9,21 +8,27 @@ interface RPCStatusData {
   latestEpoch?: number;
 }
 
-const STATUS_CACHE_KEY = 'rpcStatusCache';
-const STATUS_VALID_DURATION = 3 * 60 * 1000; // 3 minutes
+interface StoredProvider {
+  url: string;
+  network?: string;
+  name?: string;
+  isActive: boolean;
+}
 
-// Get active RPC provider info
+const STATUS_CACHE_KEY = 'rpcStatusCache';
+const STATUS_VALID_DURATION = 3 * 60 * 1000;
+
 export async function getActiveRPCProvider(): Promise<{ url: string; network: string; name: string } | null> {
   try {
     const providersJson = localStorage.getItem('rpcProviders');
     if (providersJson) {
-      const providers = JSON.parse(providersJson);
-      const activeProvider = providers.find((p: any) => p.isActive);
-      if (activeProvider) {
+      const providers: StoredProvider[] = JSON.parse(providersJson);
+      const active = providers.find((p) => p.isActive);
+      if (active) {
         return {
-          url: activeProvider.url,
-          network: activeProvider.network || 'mainnet',
-          name: activeProvider.name || 'Unknown'
+          url: active.url,
+          network: active.network ?? 'mainnet',
+          name: active.name ?? 'Unknown',
         };
       }
     }
@@ -33,34 +38,25 @@ export async function getActiveRPCProvider(): Promise<{ url: string; network: st
   return null;
 }
 
-// Get cached RPC status
 async function getCachedRPCStatus(): Promise<RPCStatusData | null> {
   try {
-    // Try chrome.storage first (shared between popup and expanded)
     if (typeof chrome !== 'undefined' && chrome.storage?.local) {
       const result = await chrome.storage.local.get(STATUS_CACHE_KEY);
       if (result[STATUS_CACHE_KEY]) {
         const cached = JSON.parse(result[STATUS_CACHE_KEY]) as RPCStatusData;
-        const now = Date.now();
-        if (now - cached.lastChecked < STATUS_VALID_DURATION) {
-          const activeProvider = await getActiveRPCProvider();
-          if (activeProvider && activeProvider.url === cached.rpcUrl) {
-            return cached;
-          }
+        if (Date.now() - cached.lastChecked < STATUS_VALID_DURATION) {
+          const active = await getActiveRPCProvider();
+          if (active?.url === cached.rpcUrl) return cached;
         }
       }
     }
 
-    // Fallback to localStorage
     const localCached = localStorage.getItem(STATUS_CACHE_KEY);
     if (localCached) {
       const cached = JSON.parse(localCached) as RPCStatusData;
-      const now = Date.now();
-      if (now - cached.lastChecked < STATUS_VALID_DURATION) {
-        const activeProvider = await getActiveRPCProvider();
-        if (activeProvider && activeProvider.url === cached.rpcUrl) {
-          return cached;
-        }
+      if (Date.now() - cached.lastChecked < STATUS_VALID_DURATION) {
+        const active = await getActiveRPCProvider();
+        if (active?.url === cached.rpcUrl) return cached;
       }
     }
   } catch (e) {
@@ -182,10 +178,9 @@ export async function fetchLatestEpoch(rpcUrl: string): Promise<number | null> {
   }
 }
 
-// Listen for RPC status changes from other contexts
 export function onRPCStatusChange(callback: (data: RPCStatusData) => void): () => void {
   if (typeof chrome !== 'undefined' && chrome.storage?.onChanged) {
-    const listener = (changes: any, areaName: string) => {
+    const listener = (changes: Record<string, chrome.storage.StorageChange>, areaName: string) => {
       if (areaName === 'local' && changes[STATUS_CACHE_KEY]) {
         try {
           const newData = JSON.parse(changes[STATUS_CACHE_KEY].newValue) as RPCStatusData;

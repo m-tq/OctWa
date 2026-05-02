@@ -5,7 +5,7 @@ import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { RefreshCw, Wallet, Lock, Unlock, PieChart } from 'lucide-react';
-import { Wallet as WalletType } from '../types/wallet';
+import { Wallet as WalletType, EncryptedBalanceResponse } from '../types/wallet';
 import { fetchBalance, fetchEncryptedBalance, getPendingPrivateTransfers } from '../utils/api';
 import { useToast } from '@/hooks/use-toast';
 import { EncryptBalanceDialog } from './EncryptBalanceDialog';
@@ -18,8 +18,8 @@ import { logger } from '@/utils/logger';
 interface BalanceProps {
   wallet: WalletType | null;
   balance: number | null;
-  encryptedBalance?: any;
-  onEncryptedBalanceUpdate?: (encryptedBalance: any) => void;
+  encryptedBalance?: EncryptedBalanceResponse | null;
+  onEncryptedBalanceUpdate?: (encryptedBalance: EncryptedBalanceResponse | null) => void;
   onBalanceUpdate: (balance: number) => void;
   isLoading?: boolean;
   isLoadingEncrypted?: boolean;
@@ -27,8 +27,8 @@ interface BalanceProps {
 
 export function Balance({ wallet, balance, encryptedBalance: propEncryptedBalance, onEncryptedBalanceUpdate, onBalanceUpdate, isLoading = false, isLoadingEncrypted = false }: BalanceProps) {
   const [refreshing, setRefreshing] = useState(false);
-  const [localEncryptedBalance, setLocalEncryptedBalance] = useState<any>(null);
-  const [pendingTransfers, setPendingTransfers] = useState<any[]>([]);
+  const [localEncryptedBalance, setLocalEncryptedBalance] = useState<EncryptedBalanceResponse | null>(null);
+  const [pendingTransfers, setPendingTransfers] = useState<{ id: string }[]>([]);
   const [showEncryptDialog, setShowEncryptDialog] = useState(false);
   const [showDecryptDialog, setShowDecryptDialog] = useState(false);
   const { toast } = useToast();

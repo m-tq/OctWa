@@ -188,7 +188,7 @@ export function setActiveEVMNetwork(networkId: string): void {
 /**
  * Make JSON-RPC call
  */
-async function rpcCall(rpcUrl: string, method: string, params: any[]): Promise<any> {
+async function rpcCall(rpcUrl: string, method: string, params: unknown[]): Promise<unknown> {
   const response = await fetch(rpcUrl, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -223,7 +223,7 @@ export async function getEVMBalance(address: string, networkId?: string): Promis
   const rpcUrl = getEVMRpcUrl(network.id);
   
   try {
-    const balanceHex = await rpcCall(rpcUrl, 'eth_getBalance', [address, 'latest']);
+    const balanceHex = await rpcCall(rpcUrl, 'eth_getBalance', [address, 'latest']) as string;
     const balanceWei = BigInt(balanceHex);
     const balanceEth = Number(balanceWei) / 1e18;
     return balanceEth.toFixed(6);
@@ -255,7 +255,7 @@ export async function getERC20Balance(
     const result = await rpcCall(rpcUrl, 'eth_call', [
       { to: tokenAddress, data },
       'latest'
-    ]);
+    ]) as string;
     
     const balanceWei = BigInt(result);
     const balance = Number(balanceWei) / Math.pow(10, decimals);
@@ -291,7 +291,7 @@ export async function getERC20TokenInfo(
       rpcCall(rpcUrl, 'eth_call', [{ to: tokenAddress, data: nameData }, 'latest']),
       rpcCall(rpcUrl, 'eth_call', [{ to: tokenAddress, data: symbolData }, 'latest']),
       rpcCall(rpcUrl, 'eth_call', [{ to: tokenAddress, data: decimalsData }, 'latest']),
-    ]);
+    ]) as [string, string, string];
     
     // Decode string results (skip first 64 chars for offset, next 64 for length)
     const decodeString = (hex: string): string => {
@@ -354,7 +354,7 @@ export async function getEVMGasPrice(networkId?: string): Promise<string> {
   const rpcUrl = getEVMRpcUrl(network.id);
   
   try {
-    const gasPriceHex = await rpcCall(rpcUrl, 'eth_gasPrice', []);
+    const gasPriceHex = await rpcCall(rpcUrl, 'eth_gasPrice', []) as string;
     const gasPriceWei = BigInt(gasPriceHex);
     const gasPriceGwei = Number(gasPriceWei) / 1e9;
     return gasPriceGwei.toFixed(2);
@@ -520,7 +520,7 @@ export async function getNFTMetadata(
       rpcCall(rpcUrl, 'eth_call', [{ to: contractAddress, data: nameData }, 'latest']).catch(() => '0x'),
       rpcCall(rpcUrl, 'eth_call', [{ to: contractAddress, data: symbolData }, 'latest']).catch(() => '0x'),
       rpcCall(rpcUrl, 'eth_call', [{ to: contractAddress, data: tokenURIData }, 'latest']).catch(() => '0x'),
-    ]);
+    ]) as [string, string, string];
     
     const decodeString = (hex: string): string => {
       if (!hex || hex === '0x') return '';
@@ -589,9 +589,8 @@ export async function checkNFTOwnership(
     // ownerOf(uint256) function selector
     const data = '0x6352211e' + BigInt(tokenId).toString(16).padStart(64, '0');
     
-    const result = await rpcCall(rpcUrl, 'eth_call', [{ to: contractAddress, data }, 'latest']);
+    const result = await rpcCall(rpcUrl, 'eth_call', [{ to: contractAddress, data }, 'latest']) as string;
     
-    // Decode address (last 40 chars)
     const owner = '0x' + result.slice(-40);
     return owner.toLowerCase() === walletAddress.toLowerCase();
   } catch (error) {
@@ -636,14 +635,14 @@ async function getEVMTransactions(
       return [];
     }
     
-    return data.result.map((tx: any) => ({
-      hash: tx.hash,
-      from: tx.from,
-      to: tx.to || '',
+    return data.result.map((tx: Record<string, unknown>) => ({
+      hash: tx.hash as string,
+      from: tx.from as string,
+      to: (tx.to as string) || '',
       value: (Number(tx.value) / 1e18).toFixed(6),
       timestamp: Number(tx.timeStamp) * 1000,
       status: tx.isError === '0' ? 'confirmed' : 'confirmed',
-      type: tx.from.toLowerCase() === address.toLowerCase() ? 'sent' : 'received',
+      type: (tx.from as string).toLowerCase() === address.toLowerCase() ? 'sent' : 'received',
     }));
   } catch (error) {
     console.error('Failed to fetch ETH transactions:', error);
@@ -683,22 +682,22 @@ async function getERC20Transactions(
     // If specific token addresses provided, filter to those; otherwise return all
     const lowerTokenAddresses = tokenAddresses.map(a => a.toLowerCase());
     const txList = tokenAddresses.length > 0
-      ? data.result.filter((tx: any) => lowerTokenAddresses.includes(tx.contractAddress?.toLowerCase()))
+      ? data.result.filter((tx: Record<string, unknown>) => lowerTokenAddresses.includes((tx.contractAddress as string)?.toLowerCase()))
       : data.result;
     
-    return txList.map((tx: any) => {
-      const decimals = parseInt(tx.tokenDecimal) || 18;
+    return txList.map((tx: Record<string, unknown>) => {
+      const decimals = parseInt(tx.tokenDecimal as string) || 18;
       const value = (Number(tx.value) / Math.pow(10, decimals)).toFixed(6);
       return {
-        hash: tx.hash,
-        from: tx.from,
-        to: tx.to || '',
+        hash: tx.hash as string,
+        from: tx.from as string,
+        to: (tx.to as string) || '',
         value,
         timestamp: Number(tx.timeStamp) * 1000,
         status: 'confirmed' as const,
-        type: tx.from.toLowerCase() === address.toLowerCase() ? 'sent' : 'received',
-        tokenSymbol: tx.tokenSymbol || 'TOKEN',
-        tokenAddress: tx.contractAddress,
+        type: (tx.from as string).toLowerCase() === address.toLowerCase() ? 'sent' : 'received',
+        tokenSymbol: (tx.tokenSymbol as string) || 'TOKEN',
+        tokenAddress: tx.contractAddress as string,
       };
     });
   } catch (error) {
@@ -908,9 +907,9 @@ export async function sendEVMTransaction(
     // Don't wait for confirmation — return hash immediately so popup can close
     // Caller is responsible for tracking confirmation status
     return tx.hash;
-  } catch (error: any) {
+  } catch (error) {
     console.error('Failed to send transaction:', error);
-    const msg: string = error?.message || String(error)
+    const msg = error instanceof Error ? error.message : String(error);
     if (msg.includes('gas required exceeds allowance') || msg.includes('insufficient funds')) {
       throw new Error(
         `Insufficient ETH for gas fees. Please top up your EVM address to at least 0.002 ETH to cover gas costs.`
@@ -959,45 +958,43 @@ export async function sendERC20Transaction(
     await tx.wait();
     
     return tx.hash;
-  } catch (error: any) {
+  } catch (error) {
     console.error('Failed to send ERC20 transaction:', error);
-    throw new Error(error.message || 'ERC20 transfer failed');
+    throw new Error(error instanceof Error ? error.message : 'ERC20 transfer failed');
   }
 }
 
-/**
- * Send NFT (ERC721) transaction
- */
 export async function sendNFTTransaction(
   privateKeyHex: string,
   contractAddress: string,
   to: string,
   tokenId: string,
-  networkId?: string
+  networkId?: string,
 ): Promise<string> {
-  const network = networkId 
-    ? getAllNetworks().find(n => n.id === networkId) || getActiveEVMNetwork()
+  const network = networkId
+    ? getAllNetworks().find((n) => n.id === networkId) ?? getActiveEVMNetwork()
     : getActiveEVMNetwork();
-  
+
   const rpcUrl = getEVMRpcUrl(network.id);
-  
+
   try {
     const { JsonRpcProvider, Wallet, Contract } = await import('ethers');
-    
+
     const provider = new JsonRpcProvider(rpcUrl);
-    const wallet = new Wallet(privateKeyHex.startsWith('0x') ? privateKeyHex : `0x${privateKeyHex}`, provider);
-    
-    // ERC721 transferFrom function ABI
+    const wallet = new Wallet(
+      privateKeyHex.startsWith('0x') ? privateKeyHex : `0x${privateKeyHex}`,
+      provider,
+    );
+
     const erc721Abi = ['function transferFrom(address from, address to, uint256 tokenId)'];
     const contract = new Contract(contractAddress, erc721Abi, wallet);
-    
-    // Send transaction
+
     const tx = await contract.transferFrom(wallet.address, to, tokenId);
     await tx.wait();
-    
+
     return tx.hash;
-  } catch (error: any) {
+  } catch (error) {
     console.error('Failed to send NFT transaction:', error);
-    throw new Error(error.message || 'NFT transfer failed');
+    throw new Error(error instanceof Error ? error.message : 'NFT transfer failed');
   }
 }

@@ -19,12 +19,12 @@ const AnimatedLogo = ({ size = 112 }: { size?: number }) => (
         .outer-circle {
           stroke-dasharray: 132;
           stroke-dashoffset: 132;
-          animation: drawOuter 1s ease-out forwards;
+          animation: drawOuter 0.5s ease-out forwards;
         }
         .inner-circle {
           transform-origin: center;
           transform: scale(0);
-          animation: scaleIn 0.5s ease-out 0.8s forwards;
+          animation: scaleIn 0.3s ease-out 0.4s forwards;
         }
         @keyframes drawOuter {
           to {
@@ -42,18 +42,18 @@ const AnimatedLogo = ({ size = 112 }: { size?: number }) => (
       cx="25"
       cy="25"
       r="21"
-      stroke="#3A4DFF"
+      stroke="#3B567F"
       strokeWidth="8"
       fill="none"
       className="outer-circle"
     />
-    <circle cx="25" cy="25" r="9" fill="#3A4DFF" className="inner-circle" />
+    <circle cx="25" cy="25" r="9" fill="#3B567F" className="inner-circle" />
   </svg>
 );
 
 export function SplashScreen({
   onComplete,
-  duration = 3000,
+  duration = 1500,
   isPopupMode = false,
 }: SplashScreenProps) {
   const [isAnimating, setIsAnimating] = useState(true);
@@ -91,7 +91,7 @@ export function SplashScreen({
         <div
           className="text-center opacity-0"
           style={{
-            animation: 'fadeInUp 0.5s ease-out 1.3s forwards',
+            animation: 'fadeInUp 0.3s ease-out 0.6s forwards',
           }}
         >
           <style>
@@ -111,7 +111,7 @@ export function SplashScreen({
           <h1 
             className="font-bold" 
             style={{ 
-              color: '#3A4DFF',
+              color: '#3B567F',
               fontSize: isPopupMode ? '1.75rem' : '2.5rem'
             }}
           >

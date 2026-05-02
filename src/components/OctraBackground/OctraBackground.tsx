@@ -17,8 +17,8 @@ export function OctraBackground({
     camera: THREE.OrthographicCamera;
     points: THREE.Points;
     lines: THREE.LineSegments;
-    uniforms: any;
-    lineUniforms: any;
+    uniforms: Record<string, THREE.IUniform>;
+    lineUniforms: Record<string, THREE.IUniform>;
     positions: Float32Array;
     basePositions: Float32Array;
   } | null>(null);

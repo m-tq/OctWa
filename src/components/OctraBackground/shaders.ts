@@ -1,5 +1,6 @@
 // Octra Hypergraph Background Shaders
 // Dynamic, non-monotonous, fullscreen
+// Color palette: primary #3B567F (--color-primary)
 
 export const vertexShader = `
   attribute float seed;
@@ -87,11 +88,11 @@ export const fragmentShader = `
     // Dynamic color based on cluster (subtle shift over time)
     float colorShift = sin(uTime * 0.2 + vClusterId * 1.5) * 0.5 + 0.5;
     
-    // Octra palette with variation
-    vec3 color1 = vec3(0.227, 0.302, 1.0);   // Primary blue #3A4DFF
-    vec3 color2 = vec3(0.27, 0.27, 1.0);  // Lighter blue
-    vec3 color3 = vec3(0.53, 0.53, 1.0);  // Accent
-    vec3 color4 = vec3(0.4, 0.2, 1.0);    // Violet accent
+    // Octra palette — based on primary #3B567F
+    vec3 color1 = vec3(0.231, 0.337, 0.498);   // Primary #3B567F
+    vec3 color2 = vec3(0.318, 0.431, 0.604);   // Secondary #516E9A
+    vec3 color3 = vec3(0.549, 0.616, 0.714);   // Muted #8C9DB6
+    vec3 color4 = vec3(0.165, 0.247, 0.373);   // Dark accent #2A3F5F
     
     // Mix colors based on seed and cluster
     vec3 baseColor = mix(color1, color2, vSeed);
@@ -135,7 +136,7 @@ export const lineFragmentShader = `
   varying float vOpacity;
   
   void main() {
-    vec3 color = vec3(0.227, 0.302, 1.0); // Primary blue
+    vec3 color = vec3(0.231, 0.337, 0.498); // Primary #3B567F
     float alpha = vOpacity * 0.25;
     
     gl_FragColor = vec4(color, alpha);

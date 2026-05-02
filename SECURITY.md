@@ -72,10 +72,10 @@ This project uses `npm audit` to scan for known vulnerabilities in the dependenc
 ### Always Use `npm ci` Instead of `npm install`
 
 ```bash
-# ✅ Correct — strict install, verifies all integrity hashes
+# Correct — strict install, verifies all integrity hashes
 npm ci
 
-# ❌ Avoid — resolves version ranges, may bypass lock file
+# Avoid — resolves version ranges, may bypass lock file
 npm install
 ```
 

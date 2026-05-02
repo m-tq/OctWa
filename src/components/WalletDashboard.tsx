@@ -73,7 +73,49 @@ import { DraggableWalletList } from './DraggableWalletList';
 import { WalletDisplayName } from './WalletLabelEditor';
 import { BalancePieChart } from './BalancePieChart';
 import { DevTools } from './DevTools';
-import { Wallet } from '../types/wallet';
+import { Wallet, TransactionDetails, EncryptedBalanceResponse, PendingTransaction } from '../types/wallet';
+
+type TxDetails = TransactionDetails | PendingTransaction;
+
+function isTransactionDetails(tx: TxDetails): tx is TransactionDetails {
+  return 'tx_hash' in tx;
+}
+
+function getTxHash(tx: TxDetails): string {
+  return isTransactionDetails(tx) ? tx.tx_hash : tx.hash;
+}
+
+function getTxStatus(tx: TxDetails): string {
+  return isTransactionDetails(tx) ? tx.status : (tx.stage_status || 'pending');
+}
+
+function getTxTimestamp(tx: TxDetails): number {
+  return isTransactionDetails(tx) ? tx.timestamp : tx.timestamp;
+}
+
+function getTxFrom(tx: TxDetails): string {
+  return isTransactionDetails(tx) ? tx.from : tx.from;
+}
+
+function getTxTo(tx: TxDetails): string {
+  return isTransactionDetails(tx) ? tx.to : tx.to;
+}
+
+function getTxAmount(tx: TxDetails): string {
+  return isTransactionDetails(tx) ? tx.amount : String(tx.amount);
+}
+
+function getTxOu(tx: TxDetails): string {
+  return isTransactionDetails(tx) ? tx.ou : tx.ou;
+}
+
+function getTxNonce(tx: TxDetails): number {
+  return isTransactionDetails(tx) ? tx.nonce : tx.nonce;
+}
+
+function getTxMessage(tx: TxDetails): string | null {
+  return isTransactionDetails(tx) ? tx.message : tx.message ?? null;
+}
 import { WalletManager } from '../utils/walletManager';
 import { fetchBalance, getTransactionHistory, fetchEncryptedBalance, fetchTransactionDetails, fetchPendingTransactionByHash, getPendingPrivateTransfers, apiCache, TxCountPoller } from '../utils/api';
 import { cacheService } from '../services/cacheService';
@@ -123,6 +165,17 @@ interface WalletDashboardProps {
   isPopupMode?: boolean;
   initialEvmMode?: boolean;
   onEvmReady?: (enterFn: () => void) => void;
+}
+
+type ActivityType = 'standard' | 'encrypt' | 'decrypt' | 'stealth' | 'claim' | 'contract';
+
+function toActivityType(opType: string | undefined): ActivityType {
+  const valid: ActivityType[] = ['standard', 'encrypt', 'decrypt', 'stealth', 'claim', 'contract'];
+  return valid.includes(opType as ActivityType) ? (opType as ActivityType) : 'standard';
+}
+
+function toActivityFinality(status: string): 'pending' | 'confirmed' | 'rejected' {
+  return status === 'confirmed' ? 'confirmed' : 'pending';
 }
 
 export function WalletDashboard({ 
@@ -194,10 +247,10 @@ export function WalletDashboard({
   const [popupScreen, setPopupScreen] = useState<'main' | 'encrypt' | 'decrypt' | 'send' | 'receive' | 'claim' | 'txDetail'>('main');
   const [showReceiveDialog, setShowReceiveDialog] = useState(false);
   const [selectedTxHash, setSelectedTxHash] = useState<string | null>(null);
-  const [selectedTxDetails, setSelectedTxDetails] = useState<any>(null);
+  const [selectedTxDetails, setSelectedTxDetails] = useState<TxDetails | null>(null);
   const [loadingTxDetails, setLoadingTxDetails] = useState(false);
   const [isRefreshingData, setIsRefreshingData] = useState(false);
-  const [encryptedBalance, setEncryptedBalance] = useState<any>(null);
+  const [encryptedBalance, setEncryptedBalance] = useState<EncryptedBalanceResponse | null>(null);
   const [isDecryptingBalance, setIsDecryptingBalance] = useState(false); // spinner for pie chart
   const [rpcStatus, setRpcStatus] = useState<'connected' | 'disconnected' | 'checking' | 'connecting'>('checking');
   const [latestEpoch, setLatestEpoch] = useState<number | null>(null);
@@ -261,7 +314,7 @@ export function WalletDashboard({
   const [evmTokens, setEvmTokens] = useState<ERC20Token[]>([]);
   const activeWalletRef = useRef<Wallet | null>(null);
   const activeFetchIdRef = useRef(0);
-  const optimisticTxDetailsRef = useRef<Map<string, any>>(new Map());
+  const optimisticTxDetailsRef = useRef<Map<string, TxDetails>>(new Map());
   
               
   useEffect(() => {
@@ -655,7 +708,7 @@ export function WalletDashboard({
             autoDecryptedCipherRef.current = null; // allow retry with fresh data
             return;
           }
-          setEncryptedBalance((prev: any) => ({ ...prev, encrypted: amount }));
+          setEncryptedBalance((prev) => prev ? { ...prev, encrypted: amount } : null);
           logger.info('Auto-decrypt successful', { balance: amount });
         }
       } catch (err) {
@@ -705,11 +758,21 @@ export function WalletDashboard({
   // Reset display data immediately when wallet changes — clears pie chart and
   // balance display so stale data from previous wallet doesn't show during transition.
   useEffect(() => {
-    // Bump fetchId immediately — this marks ALL in-flight fetches for the old wallet as stale
-    activeFetchIdRef.current += 1;
+    if (!wallet) {
+      // No wallet — just reset loading flags
+      setIsLoadingBalance(false);
+      setIsLoadingEncryptedBalance(false);
+      setIsLoadingTransactions(false);
+      return;
+    }
 
-    // Don't clear transactions here — fetchInitialData will load from cache instantly
-    // Clearing here causes a flash of empty list before cache loads
+    // ── Reset stale-fetch guard immediately ──────────────────────────────────
+    // Bump BEFORE the debounce so any in-flight fetch from the previous wallet
+    // is marked stale right away, not 80ms later.
+    activeFetchIdRef.current += 1;
+    const fetchId = activeFetchIdRef.current;
+
+    // ── Reset display state ──────────────────────────────────────────────────
     setBalance(null);
     setEncryptedBalance(null);
     setNonce(0);
@@ -720,20 +783,15 @@ export function WalletDashboard({
     autoDecryptedCipherRef.current = null;
     pvacDecryptInFlightRef.current = false;
     optimisticTxDetailsRef.current.clear();
-  }, [wallet?.address]);
 
-  // Initial data fetch when wallet is connected
-  // Each data source updates the UI independently as soon as it resolves —
-  // no waiting for all fetches to complete before showing anything.
-  useEffect(() => {
+    const currentAddress = wallet.address;
+    const currentPrivateKey = wallet.privateKey;
+    const isStale = () =>
+      activeFetchIdRef.current !== fetchId ||
+      activeWalletRef.current?.address !== currentAddress;
+
     const fetchInitialData = async () => {
-      if (!wallet) return;
-      const fetchId = ++activeFetchIdRef.current;
-      const currentAddress = wallet.address;
-      const currentPrivateKey = wallet.privateKey;
-      const isStale = () => activeFetchIdRef.current !== fetchId || activeWalletRef.current?.address !== currentAddress;
-
-      // STEP 1: Load from cache instantly — show whatever is available right away
+      // STEP 1: Load from cache instantly
       const cachedData = cacheService.getWalletCacheFast(currentAddress);
 
       if (cachedData) {
@@ -741,12 +799,14 @@ export function WalletDashboard({
         setNonce(cachedData.nonce);
         setEncryptedBalance({
           public: cachedData.publicBalance,
+          public_raw: Math.floor(cachedData.publicBalance * 1_000_000),
           encrypted: cachedData.encryptedBalance.encrypted,
+          encrypted_raw: Math.floor(cachedData.encryptedBalance.encrypted * 1_000_000),
           cipher: cachedData.encryptedBalance.cipher,
-          total: cachedData.publicBalance + cachedData.encryptedBalance.encrypted
+          total: cachedData.publicBalance + cachedData.encryptedBalance.encrypted,
         });
-        if (cachedData.recentActivities && cachedData.recentActivities.length > 0) {
-          const cachedTxs = cachedData.recentActivities.map(activity => ({
+        if (cachedData.recentActivities?.length > 0) {
+          const cachedTxs = cachedData.recentActivities.map((activity) => ({
             hash: activity.hash,
             from: activity.from || currentAddress,
             to: activity.to || '',
@@ -754,7 +814,7 @@ export function WalletDashboard({
             timestamp: activity.timestamp,
             status: activity.status,
             type: activity.direction === 'out' ? 'sent' : 'received',
-            op_type: activity.type
+            op_type: activity.type,
           } as Transaction));
           setTransactions(cachedTxs);
         }
@@ -765,31 +825,28 @@ export function WalletDashboard({
       setSelectedTxHash(null);
       setSelectedTxDetails(null);
 
-      // Show skeletons only for data not yet in cache; always background-sync
       setIsLoadingBalance(!cachedData);
       setIsLoadingEncryptedBalance(!cachedData);
       setIsLoadingTransactions(!cachedData);
-      // Show syncing indicator when we have cached data but are refreshing in background
       if (cachedData) setIsSyncing(true);
-      // STEP 3: Fire all fetches independently — each updates UI as soon as it resolves
-      // Track what we need for the final cache write
+
+      // STEP 3: Fire all fetches independently
       let latestBalance: { balance: number; nonce: number } | null = null;
-      let latestEncData: any = null;
+      let latestEncData: EncryptedBalanceResponse | null = null;
       let latestTxs: Transaction[] | null = null;
 
       const saveCache = () => {
-        // Only write cache once we have at least balance + txs
         if (!latestBalance || !latestTxs) return;
-        const recentActivities = latestTxs.slice(0, 11).map(tx => ({
+        const recentActivities = latestTxs.slice(0, 11).map((tx) => ({
           hash: tx.hash,
-          type: (tx.op_type || 'standard') as any,
-          direction: tx.type === 'sent' ? 'out' : 'in' as 'in' | 'out',
+          type: toActivityType(tx.op_type),
+          direction: tx.type === 'sent' ? 'out' : ('in' as 'in' | 'out'),
           amount: tx.amount,
           timestamp: tx.timestamp,
           from: tx.from,
           to: tx.to,
           status: tx.status,
-          finality: tx.status === 'confirmed' ? 'confirmed' : 'pending' as any
+          finality: toActivityFinality(tx.status),
         }));
         cacheService.setWalletCacheFast({
           address: currentAddress,
@@ -797,18 +854,18 @@ export function WalletDashboard({
           encryptedBalance: {
             encrypted: latestEncData?.encrypted || 0,
             cipher: latestEncData?.cipher || '',
-            public: latestBalance.balance
+            public: latestBalance.balance,
           },
           nonce: latestBalance.nonce,
           recentActivities,
           lastUpdate: Date.now(),
-          version: '1.0.0'
+          version: '1.0.0',
         });
       };
 
       // Fetch 1: Public balance + nonce (fastest)
       const balanceFetch = fetchBalance(currentAddress)
-        .then(balanceData => {
+        .then((balanceData) => {
           if (isStale()) return;
           setBalance(balanceData.balance);
           setNonce(balanceData.nonce);
@@ -816,7 +873,7 @@ export function WalletDashboard({
           latestBalance = balanceData;
           saveCache();
         })
-        .catch(err => {
+        .catch((err) => {
           console.error('Failed to fetch balance:', err);
           if (!isStale()) {
             if (cachedData) {
@@ -832,33 +889,36 @@ export function WalletDashboard({
 
       // Fetch 2: Encrypted balance (medium speed)
       const encFetch = fetchEncryptedBalance(currentAddress, currentPrivateKey)
-        .then(encData => {
+        .then((encData) => {
           if (isStale()) return;
           if (encData) {
             setEncryptedBalance(encData);
             latestEncData = encData;
           } else {
-            const fallback = {
+            const fallback: EncryptedBalanceResponse = {
               public: cachedData?.publicBalance || 0,
               public_raw: Math.floor((cachedData?.publicBalance || 0) * 1_000_000),
               encrypted: 0,
               encrypted_raw: 0,
-              total: cachedData?.publicBalance || 0
+              cipher: cachedData?.encryptedBalance.cipher || '0',
+              total: cachedData?.publicBalance || 0,
             };
             setEncryptedBalance(fallback);
           }
           setIsLoadingEncryptedBalance(false);
           saveCache();
         })
-        .catch(err => {
+        .catch((err) => {
           console.error('Failed to fetch encrypted balance:', err);
           if (!isStale()) {
             if (cachedData) {
               setEncryptedBalance({
                 public: cachedData.publicBalance,
+                public_raw: Math.floor(cachedData.publicBalance * 1_000_000),
                 encrypted: cachedData.encryptedBalance.encrypted,
+                encrypted_raw: Math.floor(cachedData.encryptedBalance.encrypted * 1_000_000),
                 cipher: cachedData.encryptedBalance.cipher,
-                total: cachedData.publicBalance + cachedData.encryptedBalance.encrypted
+                total: cachedData.publicBalance + cachedData.encryptedBalance.encrypted,
               });
             }
             setIsLoadingEncryptedBalance(false);
@@ -871,40 +931,33 @@ export function WalletDashboard({
         {},
         false,
         (progressTxs) => {
-          // Called as each tx resolves — update display immediately
           if (isStale()) return;
-          const withType = progressTxs.map(tx => ({
+          const withType = progressTxs.map((tx) => ({
             ...tx,
-            type: tx.from?.toLowerCase() === currentAddress.toLowerCase() ? 'sent' : 'received'
+            type: tx.from?.toLowerCase() === currentAddress.toLowerCase() ? 'sent' : 'received',
           } as Transaction));
           setTransactions(withType);
           setIsLoadingTransactions(false);
-        }
+        },
       )
-        .then(historyResult => {
+        .then((historyResult) => {
           if (isStale()) return;
           if (Array.isArray(historyResult.transactions)) {
             const transformedTxs = historyResult.transactions.map((tx) => ({
               ...tx,
-              type: tx.from?.toLowerCase() === currentAddress.toLowerCase() ? 'sent' : 'received'
+              type: tx.from?.toLowerCase() === currentAddress.toLowerCase() ? 'sent' : 'received',
             } as Transaction));
             setTransactions(transformedTxs);
             latestTxs = transformedTxs;
-            // Pre-warm tx details cache in background (fire-and-forget, no await)
-            // This makes opening tx details instant on next access
             transformedTxs
-              .filter(tx => tx.status === 'confirmed')
+              .filter((tx) => tx.status === 'confirmed')
               .slice(0, 10)
-              .forEach(tx => {
-                apiCache.getTransactionDetails(tx.hash).then(cached => {
-                  if (!cached) {
-                    // Not cached yet — fetch and cache silently
-                    fetchTransactionDetails(tx.hash).catch(() => {/* ignore */});
-                  }
+              .forEach((tx) => {
+                apiCache.getTransactionDetails(tx.hash).then((cached) => {
+                  if (!cached) fetchTransactionDetails(tx.hash).catch(() => {});
                 });
               });
           } else {
-            // Empty result — only clear if no cached data to fall back on
             if (!cachedData) {
               setTransactions([]);
               latestTxs = [];
@@ -913,7 +966,7 @@ export function WalletDashboard({
           setIsLoadingTransactions(false);
           saveCache();
         })
-        .catch(err => {
+        .catch((err) => {
           console.error('Failed to fetch transaction history:', err);
           if (!isStale()) {
             if (!cachedData) setTransactions([]);
@@ -921,41 +974,35 @@ export function WalletDashboard({
           }
         });
 
-      // Fetch 4: Pending private transfers — runs independently, does NOT block syncing indicator
-      // (scanStealthOutputs can be slow — don't make user wait for it)
+      // Fetch 4: Pending private transfers (background, non-blocking)
       getPendingPrivateTransfers(currentAddress, currentPrivateKey)
-        .then(pendingTransfers => {
+        .then((pendingTransfers) => {
           if (isStale()) return;
           setPendingTransfersCount(pendingTransfers.length);
         })
-        .catch(err => {
+        .catch((err) => {
           console.error('Failed to fetch pending transfers:', err);
           if (!isStale()) setPendingTransfersCount(0);
         });
 
-      // Wait only for balance + history — these are fast
       await Promise.allSettled([balanceFetch, encFetch, historyFetch]);
 
-      // Done syncing — pending transfers continue in background
       if (!isStale()) setIsSyncing(false);
 
-      // Final: update operation mode now that all data is in
       if (!isStale()) {
-        const encBal = latestEncData?.encrypted || cachedData?.encryptedBalance.encrypted || 0;
-        const pendingCount = pendingTransfersCount;
-        const savedMode = loadOperationMode(encBal, pendingCount);
+        const encBal =
+          (latestEncData as EncryptedBalanceResponse | null)?.encrypted ||
+          cachedData?.encryptedBalance.encrypted ||
+          0;
+        const savedMode = loadOperationMode(encBal, pendingTransfersCount);
         setOperationMode(savedMode);
       }
     };
 
-    // Debounce: if wallet switches rapidly, wait 80ms before fetching.
-    // This prevents piling up concurrent fetches when user clicks through wallets quickly.
-    const debounceTimer = setTimeout(() => {
-      fetchInitialData();
-    }, 80);
-
+    // Debounce: prevents piling up fetches when user clicks through wallets quickly.
+    const debounceTimer = setTimeout(fetchInitialData, 80);
     return () => clearTimeout(debounceTimer);
-  }, [wallet, toast]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [wallet?.address]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ============================================
   // TX COUNT POLLER — smart sync trigger
@@ -1031,7 +1078,9 @@ export function WalletDashboard({
           setEncryptedBalance({
             public: balanceData.balance,
             public_raw: Math.floor(balanceData.balance * 1_000_000),
-            encrypted: 0, encrypted_raw: 0,
+            encrypted: 0,
+            encrypted_raw: 0,
+            cipher: '0',
             total: balanceData.balance,
           });
         }
@@ -1295,9 +1344,10 @@ export function WalletDashboard({
       await fetchEvmTokens();
       await fetchEvmNfts();
       await fetchEvmTransactions();
-    } catch (error: any) {
-      setEvmSendError(error.message || 'Transaction failed');
-      toast({ title: 'Error', description: error.message || 'Transaction failed', variant: 'destructive' });
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : 'Transaction failed';
+      setEvmSendError(msg);
+      toast({ title: 'Error', description: msg, variant: 'destructive' });
     } finally {
       setIsEvmSending(false);
     }
@@ -1325,7 +1375,7 @@ export function WalletDashboard({
       const info = await getERC20TokenInfo(evmImportTokenAddress, evmNetwork.id);
       if (info) setEvmImportTokenInfo(info);
       else toast({ title: 'Error', description: 'Could not fetch token info', variant: 'destructive' });
-    } catch (error: any) { toast({ title: 'Error', description: error.message || 'Failed to fetch token info', variant: 'destructive' }); }
+    } catch (error) { toast({ title: 'Error', description: error instanceof Error ? error.message : 'Failed to fetch token info', variant: 'destructive' }); }
     finally { setIsLoadingEvmTokenInfo(false); }
   };
 
@@ -1339,7 +1389,7 @@ export function WalletDashboard({
       await fetchEvmTransactions();
       setShowEvmImportToken(false); setEvmImportTokenAddress(''); setEvmImportTokenInfo(null);
       toast({ title: 'Success', description: `${evmImportTokenInfo.symbol} imported successfully` });
-    } catch (error: any) { toast({ title: 'Error', description: error.message || 'Failed to import token', variant: 'destructive' }); }
+    } catch (error) { toast({ title: 'Error', description: error instanceof Error ? error.message : 'Failed to import token', variant: 'destructive' }); }
   };
 
   // Import EVM NFT
@@ -1355,7 +1405,7 @@ export function WalletDashboard({
       const metadata = await getNFTMetadata(evmImportNFTAddress, evmImportNFTTokenId, evmNetwork.id);
       if (metadata) setEvmImportNFTInfo({ name: metadata.name, symbol: metadata.symbol, imageUrl: metadata.imageUrl });
       else setEvmImportNFTInfo({ name: 'Unknown NFT', symbol: 'NFT' });
-    } catch (error: any) { toast({ title: 'Error', description: error.message || 'Failed to fetch NFT info', variant: 'destructive' }); }
+    } catch (error) { toast({ title: 'Error', description: error instanceof Error ? error.message : 'Failed to fetch NFT info', variant: 'destructive' }); }
     finally { setIsLoadingEvmNFTInfo(false); }
   };
 
@@ -1382,7 +1432,7 @@ export function WalletDashboard({
       saveCustomNetwork(network); setAllEvmNetworks(getAllNetworks());
       setNewEvmNetwork({ name: '', rpcUrl: '', chainId: '', symbol: '', explorer: '' });
       toast({ title: 'Success', description: 'Network added successfully' });
-    } catch (error: any) { toast({ title: 'Error', description: error.message || 'Failed to add network', variant: 'destructive' }); }
+    } catch (error) { toast({ title: 'Error', description: error instanceof Error ? error.message : 'Failed to add network', variant: 'destructive' }); }
     finally { setIsAddingEvmNetwork(false); }
   };
 
@@ -1609,9 +1659,9 @@ export function WalletDashboard({
     // This ensures the wallet is removed from all storage locations
     try {
       // Remove from localStorage
-      const localEncryptedWallets = JSON.parse(localStorage.getItem('encryptedWallets') || '[]');
+      const localEncryptedWallets: Array<{ address: string }> = JSON.parse(localStorage.getItem('encryptedWallets') || '[]');
       const updatedLocalEncrypted = localEncryptedWallets.filter(
-        (w: any) => w.address !== addressToDelete
+        (w) => w.address !== addressToDelete
       );
       localStorage.setItem('encryptedWallets', JSON.stringify(updatedLocalEncrypted));
       
@@ -1621,11 +1671,11 @@ export function WalletDashboard({
           chrome.storage.local.get(['encryptedWallets'], (result) => {
             if (result.encryptedWallets) {
               try {
-                const chromeEncryptedWallets = typeof result.encryptedWallets === 'string' 
-                  ? JSON.parse(result.encryptedWallets) 
+                const chromeEncryptedWallets: Array<{ address: string }> = typeof result.encryptedWallets === 'string'
+                  ? JSON.parse(result.encryptedWallets)
                   : result.encryptedWallets;
                 const updatedChromeEncrypted = chromeEncryptedWallets.filter(
-                  (w: any) => w.address !== addressToDelete
+                  (w) => w.address !== addressToDelete
                 );
                 chrome.storage.local.set({ 
                   encryptedWallets: JSON.stringify(updatedChromeEncrypted) 
@@ -1800,16 +1850,48 @@ export function WalletDashboard({
             const stillPending = prev.filter(t => t.status === 'pending' && !nodeHashes.has(t.hash));
             return [...stillPending, ...txs].slice(0, 20);
           });
+
+          // Remove confirmed txs from optimistic cache so detail view fetches fresh data from node.
+          // Also update selectedTxDetails immediately if the currently-viewed tx just got confirmed —
+          // this syncs the detail badge with the list badge without any delay.
+          txs.forEach(tx => {
+            if (tx.status === 'confirmed') {
+              optimisticTxDetailsRef.current.delete(tx.hash);
+
+              // If this tx is currently open in the detail view and still shows pending,
+              // update it immediately so the badge flips at the same time as the list.
+              setSelectedTxDetails(prev => {
+                if (!prev) return prev;
+                const prevHash = getTxHash(prev);
+                if (prevHash === tx.hash && getTxStatus(prev) === 'pending') {
+                  // Fetch fresh details from node in background and update when ready
+                  fetchTransactionDetails(tx.hash)
+                    .then(details => setSelectedTxDetails(details))
+                    .catch(() => {
+                      // Fallback: just flip the status flag on the existing entry
+                      if (isTransactionDetails(prev)) {
+                        setSelectedTxDetails({ ...prev, status: 'confirmed' });
+                      }
+                    });
+                  // Return optimistic confirmed state immediately for instant badge flip
+                  if (isTransactionDetails(prev)) {
+                    return { ...prev, status: 'confirmed' };
+                  }
+                }
+                return prev;
+              });
+            }
+          });
           const recentActivities = txs.slice(0, 11).map(tx => ({
             hash: tx.hash,
-            type: (tx.op_type || 'standard') as any,
+            type: toActivityType(tx.op_type),
             direction: tx.type === 'sent' ? 'out' : 'in' as 'in' | 'out',
             amount: tx.amount,
             timestamp: tx.timestamp,
             from: tx.from,
             to: tx.to,
             status: tx.status,
-            finality: tx.status === 'confirmed' ? 'confirmed' : 'pending' as any,
+            finality: toActivityFinality(tx.status),
           }));
           cacheService.setWalletCacheFast({
             address: wallet.address,
@@ -1857,8 +1939,19 @@ export function WalletDashboard({
 
       // Cache the tx details so clicking it doesn't need a node fetch
       if (newTx.hash && newTx.hash !== 'pending') {
-        optimisticTxDetailsRef.current.set(newTx.hash, {
+        const optimisticEntry: TransactionDetails = {
           tx_hash: newTx.hash,
+          status: newTx.status || 'pending',
+          epoch: null,
+          from: newTx.from,
+          to: newTx.to,
+          amount: newTx.amount.toFixed(8),
+          amount_raw: String(Math.floor(newTx.amount * 1_000_000)),
+          nonce: nonce,
+          ou: newTx.ou !== undefined ? String(newTx.ou) : '0',
+          timestamp: Date.now() / 1000,
+          op_type: newTx.op_type || 'standard',
+          message: null,
           parsed_tx: {
             from: newTx.from,
             to: newTx.to,
@@ -1870,11 +1963,8 @@ export function WalletDashboard({
             message: null,
             op_type: newTx.op_type || 'standard',
           },
-          epoch: 0,
-          data: '',
-          source: 'optimistic',
-          op_type: newTx.op_type || 'standard',
-        });
+        };
+        optimisticTxDetailsRef.current.set(newTx.hash, optimisticEntry);
       }
     }
 
@@ -1914,7 +2004,9 @@ export function WalletDashboard({
     }
     
     try {
-      // Check optimistic cache first (for recently submitted txs)
+      // Check optimistic cache first (for recently submitted txs that are still pending).
+      // Confirmed txs are removed from this cache by silentRefreshAfterTx, so if an entry
+      // exists here it is still pending and safe to show immediately.
       const optimistic = optimisticTxDetailsRef.current.get(txHash);
       if (optimistic) {
         setSelectedTxDetails(optimistic);
@@ -2137,7 +2229,7 @@ export function WalletDashboard({
                 <Button variant="ghost" size="sm" onClick={() => setPopupScreen('main')} className="h-8 w-8 p-0">
                   <ChevronDown className="h-4 w-4 rotate-90" />
                 </Button>
-                <div className={`flex items-center gap-2 ${operationMode === 'private' ? 'text-[#00E5C0]' : 'text-[#3A4DFF]'}`}>
+                <div className={`flex items-center gap-2 ${operationMode === 'private' ? 'text-[#00E5C0]' : 'text-[#3B567F]'}`}>
                   <Gift className="h-5 w-5" />
                   <h2 className="font-semibold text-sm">Claim Transfers</h2>
                 </div>
@@ -2167,7 +2259,7 @@ export function WalletDashboard({
               <div className="flex-1 overflow-y-auto p-4">
                 {loadingTxDetails ? (
                   <div className="flex items-center justify-center py-12">
-                    <div className="w-6 h-6 rounded-full border-2 border-transparent animate-spin" style={{ borderTopColor: '#3A4DFF' }} />
+                    <div className="w-6 h-6 rounded-full border-2 border-transparent animate-spin" style={{ borderTopColor: '#3B567F' }} />
                   </div>
                 ) : selectedTxDetails ? (
                   <>
@@ -2175,13 +2267,13 @@ export function WalletDashboard({
                     {/* Status */}
                     <div className="py-2 flex items-center justify-between">
                       <span className="text-[10px] text-muted-foreground">Status</span>
-                      {'stage_status' in selectedTxDetails ? (
+                      {getTxStatus(selectedTxDetails) === 'pending' ? (
                         <Badge variant="secondary" className="text-[10px] bg-yellow-500/20 text-yellow-600 h-5">
-                          {selectedTxDetails.stage_status || 'pending'}
+                          {getTxStatus(selectedTxDetails)}
                         </Badge>
                       ) : (
                         <div className="flex items-center gap-1.5">
-                          <Badge variant="secondary" className="text-[10px] bg-[#3A4DFF]/20 text-[#3A4DFF] h-5">
+                          <Badge variant="secondary" className="text-[10px] bg-[#3B567F]/20 text-[#3B567F] h-5">
                             confirmed
                           </Badge>
                           {}
@@ -2190,14 +2282,11 @@ export function WalletDashboard({
                     </div>
 
                     {/* Time */}
-                    {('timestamp' in selectedTxDetails || 'parsed_tx' in selectedTxDetails) && (
+                    {getTxTimestamp(selectedTxDetails) > 0 && (
                       <div className="py-2 flex items-center justify-between">
                         <span className="text-[10px] text-muted-foreground">Time (UTC)</span>
                         <span className="text-xs">
-                          {'timestamp' in selectedTxDetails 
-                            ? new Date(selectedTxDetails.timestamp * 1000).toLocaleString('en-US', { timeZone: 'UTC', hour12: false })
-                            : new Date(selectedTxDetails.parsed_tx.timestamp * 1000).toLocaleString('en-US', { timeZone: 'UTC', hour12: false })
-                          }
+                          {new Date(getTxTimestamp(selectedTxDetails) * 1000).toLocaleString('en-US', { timeZone: 'UTC', hour12: false })}
                         </span>
                       </div>
                     )}
@@ -2210,18 +2299,18 @@ export function WalletDashboard({
                           variant="ghost" 
                           size="sm" 
                           className="h-5 w-5 p-0" 
-                          onClick={() => copyToClipboard('hash' in selectedTxDetails ? selectedTxDetails.hash : selectedTxDetails.tx_hash, 'txHash')}
+                          onClick={() => copyToClipboard(getTxHash(selectedTxDetails), 'txHash')}
                         >
                           {copiedField === 'txHash' ? <Check className="h-3 w-3 text-green-500" /> : <Copy className="h-3 w-3" />}
                         </Button>
                       </div>
                       <p className="font-mono text-[10px] break-all">
-                        {'hash' in selectedTxDetails ? selectedTxDetails.hash : selectedTxDetails.tx_hash}
+                        {getTxHash(selectedTxDetails)}
                       </p>
                     </div>
 
                     {/* From - full address */}
-                    {('from' in selectedTxDetails || 'parsed_tx' in selectedTxDetails) && (
+                    {getTxFrom(selectedTxDetails) && (
                       <div className="py-2">
                         <div className="flex items-center justify-between mb-1">
                           <span className="text-[10px] text-muted-foreground">From</span>
@@ -2229,19 +2318,19 @@ export function WalletDashboard({
                             variant="ghost" 
                             size="sm" 
                             className="h-5 w-5 p-0" 
-                            onClick={() => copyToClipboard('from' in selectedTxDetails ? selectedTxDetails.from : selectedTxDetails.parsed_tx.from, 'txFrom')}
+                            onClick={() => copyToClipboard(getTxFrom(selectedTxDetails), 'txFrom')}
                           >
                             {copiedField === 'txFrom' ? <Check className="h-3 w-3 text-green-500" /> : <Copy className="h-3 w-3" />}
                           </Button>
                         </div>
                         <p className="font-mono text-xs break-all">
-                          {'from' in selectedTxDetails ? selectedTxDetails.from : selectedTxDetails.parsed_tx.from}
+                          {getTxFrom(selectedTxDetails)}
                         </p>
                       </div>
                     )}
 
                     {/* To - full address */}
-                    {('to' in selectedTxDetails || 'parsed_tx' in selectedTxDetails) && (
+                    {getTxTo(selectedTxDetails) && (
                       <div className="py-2">
                         <div className="flex items-center justify-between mb-1">
                           <span className="text-[10px] text-muted-foreground">To</span>
@@ -2249,29 +2338,29 @@ export function WalletDashboard({
                             variant="ghost" 
                             size="sm" 
                             className="h-5 w-5 p-0" 
-                            onClick={() => copyToClipboard('to' in selectedTxDetails ? selectedTxDetails.to : selectedTxDetails.parsed_tx.to, 'txTo')}
+                            onClick={() => copyToClipboard(getTxTo(selectedTxDetails), 'txTo')}
                           >
                             {copiedField === 'txTo' ? <Check className="h-3 w-3 text-green-500" /> : <Copy className="h-3 w-3" />}
                           </Button>
                         </div>
                         <p className="font-mono text-xs break-all">
-                          {'to' in selectedTxDetails ? selectedTxDetails.to : selectedTxDetails.parsed_tx.to}
+                          {getTxTo(selectedTxDetails)}
                         </p>
                       </div>
                     )}
 
                     {/* Amount, OU (Gas), Nonce - 3 columns: left, center, right */}
                     <div className="grid grid-cols-3 gap-0 py-2">
-                      {('amount' in selectedTxDetails || 'parsed_tx' in selectedTxDetails) && (
+                      {getTxAmount(selectedTxDetails) && (
                         <div className="text-left">
                           <span className="text-[10px] text-muted-foreground">Amount</span>
                           <p className="font-mono text-xs mt-0.5">
-                            {'amount' in selectedTxDetails ? selectedTxDetails.amount : selectedTxDetails.parsed_tx.amount} OCT
+                            {getTxAmount(selectedTxDetails)} OCT
                           </p>
                         </div>
                       )}
-                      {('ou' in selectedTxDetails || 'parsed_tx' in selectedTxDetails) && (() => {
-                        const ouValue = 'ou' in selectedTxDetails ? selectedTxDetails.ou : selectedTxDetails.parsed_tx.ou;
+                      {getTxOu(selectedTxDetails) && (() => {
+                        const ouValue = getTxOu(selectedTxDetails);
                         const ouNum = parseInt(ouValue) || 0;
                         const feeOct = (ouNum / 1_000_000).toFixed(6);
                         return (
@@ -2282,20 +2371,19 @@ export function WalletDashboard({
                           </div>
                         );
                       })()}
-                      {('nonce' in selectedTxDetails || 'parsed_tx' in selectedTxDetails) && (
+                      {getTxNonce(selectedTxDetails) !== undefined && (
                         <div className="text-right">
                           <span className="text-[10px] text-muted-foreground">Nonce</span>
                           <p className="font-mono text-xs mt-0.5">
-                            {'nonce' in selectedTxDetails ? selectedTxDetails.nonce : selectedTxDetails.parsed_tx.nonce}
+                            {getTxNonce(selectedTxDetails)}
                           </p>
                         </div>
                       )}
                     </div>
 
                     {/* Message */}
-                    {(('message' in selectedTxDetails && selectedTxDetails.message) || 
-                      ('parsed_tx' in selectedTxDetails && selectedTxDetails.parsed_tx.message)) && (() => {
-                      const message = 'message' in selectedTxDetails ? selectedTxDetails.message : selectedTxDetails.parsed_tx.message;
+                    {getTxMessage(selectedTxDetails) && (() => {
+                      const message = getTxMessage(selectedTxDetails)!;
                       const isLongMessage = message.length > 100;
                       const truncatedMsg = isLongMessage ? `${message.slice(0, 30)}...${message.slice(-30)}` : message;
                       return (
@@ -2368,11 +2456,11 @@ export function WalletDashboard({
                       cx="25"
                       cy="25"
                       r="21"
-                      stroke="#3A4DFF"
+                      stroke="#3B567F"
                       strokeWidth="8"
                       fill="none"
                     />
-                    <circle cx="25" cy="25" r="9" fill="#3A4DFF" />
+                    <circle cx="25" cy="25" r="9" fill="#3B567F" />
                   </svg>
                 </Avatar>
                 <div className={`flex flex-col ${!isPopupMode && showWalletSidebar ? 'justify-center' : ''}`}>
@@ -2411,7 +2499,7 @@ export function WalletDashboard({
                             <SheetTrigger asChild>
                               <Button variant="ghost" className="h-auto p-0 hover:bg-transparent">
                                 <div className="flex items-center space-x-1">
-                                  <p className={`text-xs font-medium ${operationMode === 'private' ? 'text-[#00E5C0]' : 'text-[#3A4DFF]'}`}>
+                                  <p className={`text-xs font-medium ${operationMode === 'private' ? 'text-[#00E5C0]' : 'text-[#3B567F]'}`}>
                                     {truncateAddress(wallet.address)}
                                   </p>
                                   <ChevronDown className="h-2.5 w-2.5 text-muted-foreground" />
@@ -2481,7 +2569,7 @@ export function WalletDashboard({
                       ) : (
                         /* Expanded mode - show label + address only when wallet sidebar is hidden */
                         <>
-                          <p className={`text-sm font-medium whitespace-nowrap ${evmMode ? 'text-orange-600 dark:text-orange-400' : operationMode === 'private' ? 'text-[#00E5C0]' : 'text-[#3A4DFF]'}`}>
+                          <p className={`text-sm font-medium whitespace-nowrap ${evmMode ? 'text-orange-600 dark:text-orange-400' : operationMode === 'private' ? 'text-[#00E5C0]' : 'text-[#3B567F]'}`}>
                             {evmMode && selectedEVMWallet 
                               ? `${getWalletDisplayName(selectedEVMWallet.octraAddress)} - ${selectedEVMWallet.evmAddress.slice(0, 10)}...${selectedEVMWallet.evmAddress.slice(-6)}`
                               : `${getWalletDisplayName(wallet.address)} - ${truncateAddress(wallet.address)}`
@@ -2732,7 +2820,7 @@ export function WalletDashboard({
                       <div className="h-5 border-l border-dashed border-border mx-1" />
                       {/* Desktop Menu Items - Hidden in EVM mode */}
                       <div className="hidden lg:flex items-center space-x-2">
-                        {/* Buttons with caption: RPC, dApps, Address Book */}
+                        {/* Dev Tools + PVAC group */}
                         <Button
                           variant="ghost"
                           size="sm"
@@ -2748,20 +2836,23 @@ export function WalletDashboard({
                         <Button
                           variant="ghost"
                           size="sm"
-                          onClick={() => setShowRPCManager(true)}
-                          className="group flex items-center gap-2 hover:bg-transparent"
-                        >
-                          <Wifi className="h-4 w-4 transition group-hover:drop-shadow-[0_0_6px_currentColor]" />
-                          <span className="transition group-hover:drop-shadow-[0_0_6px_currentColor]">RPC</span>
-                        </Button>                        <Button
-                          variant="ghost"
-                          size="sm"
                           onClick={() => setShowPvacManager(true)}
                           className="group flex items-center gap-2 hover:bg-transparent"
                         >
                           <Server className={`h-4 w-4 transition group-hover:drop-shadow-[0_0_6px_currentColor] ${pvacStatus === 'connected' ? 'text-[#00E5C0]' : ''}`} />
                           <span className="transition group-hover:drop-shadow-[0_0_6px_currentColor]">PVAC</span>
                           {pvacStatus === 'connected' && <div className="w-1.5 h-1.5 rounded-full bg-[#00E5C0]" />}
+                        </Button>
+                        {/* Dashed separator */}
+                        <div className="h-5 border-l border-dashed border-border mx-1" />
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setShowRPCManager(true)}
+                          className="group flex items-center gap-2 hover:bg-transparent"
+                        >
+                          <Wifi className="h-4 w-4 transition group-hover:drop-shadow-[0_0_6px_currentColor]" />
+                          <span className="transition group-hover:drop-shadow-[0_0_6px_currentColor]">RPC</span>
                         </Button>
                         <Button
                           variant="ghost"
@@ -3667,8 +3758,8 @@ export function WalletDashboard({
                             <div key={`${token.address}-${token.chainId}`} className="p-2.5 bg-muted/50 rounded-lg border border-border hover:border-orange-500/30 transition-colors flex items-center justify-between">
                               <div className="flex items-center gap-2">
                                 <div className="w-8 h-8 rounded-full bg-orange-500/10 flex items-center justify-center text-xs font-bold text-orange-600 overflow-hidden flex-shrink-0">
-                                  {(token as any).logo
-                                    ? <img src={(token as any).logo} alt={token.symbol} className="w-full h-full object-contain" />
+                                  {token.logo
+                                    ? <img src={token.logo} alt={token.symbol} className="w-full h-full object-contain" />
                                     : token.symbol.slice(0, 2)
                                   }
                                 </div>
@@ -3981,7 +4072,7 @@ export function WalletDashboard({
                     <div className="p-3 pb-4 min-h-full flex flex-col">
                       {loadingTxDetails ? (
                         <div className="flex-1 flex items-center justify-center py-12">
-                          <div className="w-6 h-6 rounded-full border-2 border-transparent animate-spin" style={{ borderTopColor: '#3A4DFF' }} />
+                          <div className="w-6 h-6 rounded-full border-2 border-transparent animate-spin" style={{ borderTopColor: '#3B567F' }} />
                         </div>
                       ) : selectedTxDetails ? (
                         <>
@@ -3989,26 +4080,23 @@ export function WalletDashboard({
                           {/* Status */}
                           <div className="py-2.5 flex items-center justify-between">
                             <span className="text-xs text-muted-foreground">Status</span>
-                            {'stage_status' in selectedTxDetails ? (
+                            {getTxStatus(selectedTxDetails) === 'pending' ? (
                               <Badge variant="secondary" className="text-xs bg-yellow-500/20 text-yellow-600">
-                                {selectedTxDetails.stage_status || 'pending'}
+                                {getTxStatus(selectedTxDetails)}
                               </Badge>
                             ) : (
-                              <Badge variant="secondary" className="text-xs bg-[#3A4DFF]/20 text-[#3A4DFF]">
+                              <Badge variant="secondary" className="text-xs bg-[#3B567F]/20 text-[#3B567F]">
                                 confirmed
                               </Badge>
                             )}
                           </div>
 
                           {/* Time */}
-                          {('timestamp' in selectedTxDetails || 'parsed_tx' in selectedTxDetails) && (
+                          {getTxTimestamp(selectedTxDetails) > 0 && (
                             <div className="py-2.5 flex items-center justify-between">
                               <span className="text-xs text-muted-foreground">Time (UTC)</span>
                               <span className="text-xs">
-                                {'timestamp' in selectedTxDetails 
-                                  ? new Date(selectedTxDetails.timestamp * 1000).toLocaleString('en-US', { timeZone: 'UTC', hour12: false })
-                                  : new Date(selectedTxDetails.parsed_tx.timestamp * 1000).toLocaleString('en-US', { timeZone: 'UTC', hour12: false })
-                                }
+                                {new Date(getTxTimestamp(selectedTxDetails) * 1000).toLocaleString('en-US', { timeZone: 'UTC', hour12: false })}
                               </span>
                             </div>
                           )}
@@ -4021,18 +4109,18 @@ export function WalletDashboard({
                                 variant="ghost" 
                                 size="sm" 
                                 className="h-5 w-5 p-0" 
-                                onClick={() => copyToClipboard('hash' in selectedTxDetails ? selectedTxDetails.hash : selectedTxDetails.tx_hash, 'txHash')}
+                                onClick={() => copyToClipboard(getTxHash(selectedTxDetails), 'txHash')}
                               >
                                 {copiedField === 'txHash' ? <Check className="h-3 w-3 text-green-500" /> : <Copy className="h-3 w-3" />}
                               </Button>
                             </div>
                             <p className="font-mono text-[11px] break-all leading-relaxed">
-                              {'hash' in selectedTxDetails ? selectedTxDetails.hash : selectedTxDetails.tx_hash}
+                              {getTxHash(selectedTxDetails)}
                             </p>
                           </div>
 
                           {/* From */}
-                          {('from' in selectedTxDetails || 'parsed_tx' in selectedTxDetails) && (
+                          {getTxFrom(selectedTxDetails) && (
                             <div className="py-2.5">
                               <div className="flex items-center justify-between mb-1">
                                 <span className="text-xs text-muted-foreground">From</span>
@@ -4040,19 +4128,19 @@ export function WalletDashboard({
                                   variant="ghost" 
                                   size="sm" 
                                   className="h-5 w-5 p-0" 
-                                  onClick={() => copyToClipboard('from' in selectedTxDetails ? selectedTxDetails.from : selectedTxDetails.parsed_tx.from, 'txFrom')}
+                                  onClick={() => copyToClipboard(getTxFrom(selectedTxDetails), 'txFrom')}
                                 >
                                   {copiedField === 'txFrom' ? <Check className="h-3 w-3 text-green-500" /> : <Copy className="h-3 w-3" />}
                                 </Button>
                               </div>
                               <p className="font-mono text-xs break-all leading-relaxed">
-                                {'from' in selectedTxDetails ? selectedTxDetails.from : selectedTxDetails.parsed_tx.from}
+                                {getTxFrom(selectedTxDetails)}
                               </p>
                             </div>
                           )}
 
                           {/* To */}
-                          {('to' in selectedTxDetails || 'parsed_tx' in selectedTxDetails) && (
+                          {getTxTo(selectedTxDetails) && (
                             <div className="py-2.5">
                               <div className="flex items-center justify-between mb-1">
                                 <span className="text-xs text-muted-foreground">To</span>
@@ -4060,30 +4148,30 @@ export function WalletDashboard({
                                   variant="ghost" 
                                   size="sm" 
                                   className="h-5 w-5 p-0" 
-                                  onClick={() => copyToClipboard('to' in selectedTxDetails ? selectedTxDetails.to : selectedTxDetails.parsed_tx.to, 'txTo')}
+                                  onClick={() => copyToClipboard(getTxTo(selectedTxDetails), 'txTo')}
                                 >
                                   {copiedField === 'txTo' ? <Check className="h-3 w-3 text-green-500" /> : <Copy className="h-3 w-3" />}
                                 </Button>
                               </div>
                               <p className="font-mono text-xs break-all leading-relaxed">
-                                {'to' in selectedTxDetails ? selectedTxDetails.to : selectedTxDetails.parsed_tx.to}
+                                {getTxTo(selectedTxDetails)}
                               </p>
                             </div>
                           )}
 
                           {/* Amount */}
-                          {('amount' in selectedTxDetails || 'parsed_tx' in selectedTxDetails) && (
+                          {getTxAmount(selectedTxDetails) && (
                             <div className="py-2.5 flex items-center justify-between">
                               <span className="text-xs text-muted-foreground">Amount</span>
                               <span className="font-mono text-sm font-medium">
-                                {'amount' in selectedTxDetails ? selectedTxDetails.amount : selectedTxDetails.parsed_tx.amount} OCT
+                                {getTxAmount(selectedTxDetails)} OCT
                               </span>
                             </div>
                           )}
 
                           {/* OU (Gas) */}
-                          {('ou' in selectedTxDetails || 'parsed_tx' in selectedTxDetails) && (() => {
-                            const ouValue = 'ou' in selectedTxDetails ? selectedTxDetails.ou : selectedTxDetails.parsed_tx.ou;
+                          {getTxOu(selectedTxDetails) && (() => {
+                            const ouValue = getTxOu(selectedTxDetails);
                             const ouNum = parseInt(ouValue) || 0;
                             const feeOct = (ouNum / 1_000_000).toFixed(6);
                             return (
@@ -4098,19 +4186,18 @@ export function WalletDashboard({
                           })()}
 
                           {/* Nonce */}
-                          {('nonce' in selectedTxDetails || 'parsed_tx' in selectedTxDetails) && (
+                          {getTxNonce(selectedTxDetails) !== undefined && (
                             <div className="py-2.5 flex items-center justify-between">
                               <span className="text-xs text-muted-foreground">Nonce</span>
                               <span className="font-mono text-sm">
-                                {'nonce' in selectedTxDetails ? selectedTxDetails.nonce : selectedTxDetails.parsed_tx.nonce}
+                                {getTxNonce(selectedTxDetails)}
                               </span>
                             </div>
                           )}
 
                           {/* Message */}
-                          {(('message' in selectedTxDetails && selectedTxDetails.message) || 
-                            ('parsed_tx' in selectedTxDetails && selectedTxDetails.parsed_tx.message)) && (() => {
-                            const message = 'message' in selectedTxDetails ? selectedTxDetails.message : selectedTxDetails.parsed_tx.message;
+                          {getTxMessage(selectedTxDetails) && (() => {
+                            const message = getTxMessage(selectedTxDetails)!;
                             const isLongMessage = message.length > 250;
                             return (
                               <div className="py-2.5">
@@ -4137,7 +4224,7 @@ export function WalletDashboard({
                         <div className="flex-1" />
 
                         {/* View on Explorer - outside divide container */}
-                        {!('stage_status' in selectedTxDetails) && (
+                        {getTxStatus(selectedTxDetails) !== 'pending' && (
                           <div className="pt-4 border-t border-dashed border-x-0 border-b-0 border-border">
                             <Button
                               variant="ghost"
@@ -4575,13 +4662,13 @@ export function WalletDashboard({
             <div className="flex items-center gap-1.5">
               <div className={`w-1.5 h-1.5 rounded-full ${
                 isSyncing ? 'bg-yellow-500 animate-pulse' :
-                rpcStatus === 'connected' ? (operationMode === 'private' ? 'bg-[#00E5C0]' : 'bg-[#3A4DFF]') : 
+                rpcStatus === 'connected' ? (operationMode === 'private' ? 'bg-[#00E5C0]' : 'bg-[#3B567F]') : 
                 rpcStatus === 'disconnected' ? 'bg-red-500' : 
                 'bg-yellow-500 animate-pulse'
               }`} />
               <span className={`text-[10px] ${
                 isSyncing ? 'text-yellow-500' :
-                rpcStatus === 'connected' ? (operationMode === 'private' ? 'text-[#00E5C0]' : 'text-[#3A4DFF]') : 
+                rpcStatus === 'connected' ? (operationMode === 'private' ? 'text-[#00E5C0]' : 'text-[#3B567F]') : 
                 rpcStatus === 'disconnected' ? 'text-red-500' : 
                 'text-yellow-500'
               }`}>
@@ -4667,13 +4754,13 @@ export function WalletDashboard({
             <div className="flex items-center gap-1.5">
               <div className={`w-1.5 h-1.5 rounded-full ${
                 isSyncing ? 'bg-yellow-500 animate-pulse' :
-                rpcStatus === 'connected' ? (operationMode === 'private' ? 'bg-[#00E5C0]' : 'bg-[#3A4DFF]') : 
+                rpcStatus === 'connected' ? (operationMode === 'private' ? 'bg-[#00E5C0]' : 'bg-[#3B567F]') : 
                 rpcStatus === 'disconnected' ? 'bg-red-500' : 
                 'bg-yellow-500 animate-pulse'
               }`} />
               <span className={`${
                 isSyncing ? 'text-yellow-500' :
-                rpcStatus === 'connected' ? (operationMode === 'private' ? 'text-[#00E5C0]' : 'text-[#3A4DFF]') : 
+                rpcStatus === 'connected' ? (operationMode === 'private' ? 'text-[#00E5C0]' : 'text-[#3B567F]') : 
                 rpcStatus === 'disconnected' ? 'text-red-500' : 
                 'text-yellow-500'
               }`}>

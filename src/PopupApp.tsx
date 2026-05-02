@@ -20,11 +20,11 @@ function PopupApp() {
   const [showSplash, setShowSplash] = useState(true);
   const [isPopupMode, setIsPopupMode] = useState(true);
   const [connectionRequest, setConnectionRequest] = useState<DAppConnectionRequest | null>(null);
-  const [contractRequest, setContractRequest] = useState<any>(null);
-  const [capabilityRequest, setCapabilityRequest] = useState<any>(null);
-  const [invokeRequest, setInvokeRequest] = useState<any>(null);
-  const [signMessageRequest, setSignMessageRequest] = useState<any>(null);
-  const { toast: _toast } = useToast(); // FIX #10: Available for error notifications
+  const [contractRequest, setContractRequest] = useState<unknown>(null);
+  const [capabilityRequest, setCapabilityRequest] = useState<unknown>(null);
+  const [invokeRequest, setInvokeRequest] = useState<unknown>(null);
+  const [signMessageRequest, setSignMessageRequest] = useState<unknown>(null);
+  const { toast: _toast } = useToast();
 
   // ONLY load data once on mount - NO dependencies to prevent loops
   useEffect(() => {
@@ -265,9 +265,9 @@ function PopupApp() {
     window.addEventListener('storage', handleStorageChange);
     
     // Listen for chrome.storage changes if available
-    let chromeStorageListener: ((changes: any, areaName: string) => void) | null = null;
+    let chromeStorageListener: ((changes: Record<string, chrome.storage.StorageChange>, areaName: string) => void) | null = null;
     if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.onChanged) {
-      chromeStorageListener = (changes: any, areaName: string) => {
+      chromeStorageListener = (changes: Record<string, chrome.storage.StorageChange>, areaName: string) => {
 
         // Handle lock state change - ALWAYS respond to this
         if (changes.isWalletLocked) {
@@ -650,7 +650,7 @@ function PopupApp() {
           <div className="flex flex-col items-center space-y-3">
             <div
               className="w-8 h-8 rounded-full border-3 border-transparent animate-spin"
-              style={{ borderTopColor: '#3A4DFF', borderRightColor: '#3A4DFF' }}
+              style={{ borderTopColor: '#3B567F', borderRightColor: '#3B567F' }}
             />
             <p className="text-sm text-muted-foreground">Loading...</p>
           </div>
@@ -773,7 +773,7 @@ function PopupApp() {
             <div className="text-center">
               <div
                 className="w-8 h-8 mx-auto rounded-full border-3 border-transparent animate-spin mb-3"
-                style={{ borderTopColor: '#3A4DFF', borderRightColor: '#3A4DFF' }}
+                style={{ borderTopColor: '#3B567F', borderRightColor: '#3B567F' }}
               />
               <div className="text-sm text-muted-foreground">Loading wallet...</div>
             </div>
@@ -794,7 +794,7 @@ function PopupApp() {
             <div className="text-center">
               <div
                 className="w-8 h-8 mx-auto rounded-full border-3 border-transparent animate-spin mb-3"
-                style={{ borderTopColor: '#3A4DFF', borderRightColor: '#3A4DFF' }}
+                style={{ borderTopColor: '#3B567F', borderRightColor: '#3B567F' }}
               />
               <div className="text-sm text-muted-foreground">Loading wallet...</div>
             </div>

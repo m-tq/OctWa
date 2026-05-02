@@ -75,8 +75,8 @@ export function PvacServerManager({ onClose, onServerSelected }: PvacServerManag
           ? `Connected! Server version: ${result.version || 'unknown'}`
           : result.message,
       });
-    } catch (err: any) {
-      setValidationResult({ success: false, message: err.message || 'Connection failed' });
+    } catch (err) {
+      setValidationResult({ success: false, message: err instanceof Error ? err.message : 'Connection failed' });
     } finally {
       setIsValidating(false);
     }
@@ -103,8 +103,8 @@ export function PvacServerManager({ onClose, onServerSelected }: PvacServerManag
       }
       loadServers();
       resetForm();
-    } catch (err: any) {
-      setValidationResult({ success: false, message: err.message || 'Save failed' });
+    } catch (err) {
+      setValidationResult({ success: false, message: err instanceof Error ? err.message : 'Save failed' });
     }
   };
 

@@ -90,11 +90,11 @@ export function PvacServerSetup({ onComplete }: PvacServerSetupProps) {
           message: result.message
         });
       }
-    } catch (error: any) {
+    } catch (error) {
       logger.error('PVAC validation failed', error);
       setValidationResult({
         success: false,
-        message: error.message || 'Connection failed'
+        message: error instanceof Error ? error.message : 'Connection failed',
       });
     } finally {
       setIsValidating(false);

@@ -418,7 +418,7 @@ export function SendTransaction({
                   variant="outline"
                   size="icon"
                   onClick={() => onAddToAddressBook?.(recipientAddress.trim())}
-                  className="h-7 w-7 flex-shrink-0 text-[#3A4DFF] hover:text-[#6C63FF] hover:bg-[#6C63FF]/10 border-[#3A4DFF]/30"
+                  className="h-7 w-7 flex-shrink-0 text-[#3B567F] hover:text-[#6C63FF] hover:bg-[#6C63FF]/10 border-[#3B567F]/30"
                   title="Add to address book"
                 >
                   <Plus className="h-3 w-3" />
@@ -486,7 +486,7 @@ export function SendTransaction({
                           >
                             <div className="flex items-center gap-1.5">
                               <span className="font-medium truncate">{contact.label}</span>
-                              {contact.preferredMode === 'private' && <Shield className="h-2.5 w-2.5 text-[#3A4DFF]" />}
+                              {contact.preferredMode === 'private' && <Shield className="h-2.5 w-2.5 text-[#3B567F]" />}
                               {contact.preferredMode === 'public' && <Globe className="h-2.5 w-2.5 text-green-600" />}
                             </div>
                             <div className="font-mono text-[10px] text-muted-foreground">{truncateAddress(contact.address)}</div>
@@ -541,7 +541,7 @@ export function SendTransaction({
                     });
                   }
                 }}
-                className="text-[#3A4DFF] hover:text-[#6C63FF]/80 font-medium hover:underline"
+                className="text-[#3B567F] hover:text-[#6C63FF]/80 font-medium hover:underline"
               >
                 Max
               </button>
@@ -746,7 +746,7 @@ export function SendTransaction({
                   });
                 }
               }}
-              className="text-[#3A4DFF] hover:text-[#6C63FF]/80 font-medium hover:underline"
+              className="text-[#3B567F] hover:text-[#6C63FF]/80 font-medium hover:underline"
             >
               Max
             </button>

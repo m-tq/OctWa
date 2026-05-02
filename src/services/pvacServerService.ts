@@ -82,7 +82,7 @@ export interface StealthSendRequest {
 }
 
 export interface ClaimStealthRequest {
-  stealth_output: any;
+  stealth_output: unknown;
   private_key: string;
   public_key: string;
   address: string;
@@ -92,13 +92,13 @@ export interface ClaimStealthRequest {
 
 export interface ScanStealthRequest {
   private_key: string;
-  stealth_outputs: any[];
+  stealth_outputs: unknown[];
 }
 
 export interface PvacServerResponse {
   success: boolean;
-  tx?: any;
-  transfers?: any[];
+  tx?: unknown;
+  transfers?: unknown[];
   error?: string;
   job_id?: string;
 }
@@ -292,25 +292,23 @@ class PvacServerService {
         message: 'Connection successful',
         version: data.version || '1.0.0'
       };
-    } catch (error: any) {
-      if (error.name === 'AbortError') {
+    } catch (error) {
+      if (error instanceof Error && error.name === 'AbortError') {
         return {
           success: false,
-          message: 'Connection timeout. Please check if server is running.'
+          message: 'Connection timeout. Please check if server is running.',
         };
       }
       return {
         success: false,
-        message: 'Cannot connect to server. Please check URL and ensure server is running.'
+        message: 'Cannot connect to server. Please check URL and ensure server is running.',
       };
     }
   }
 
-  private async request<T>(endpoint: string, data?: any, operation?: string, retryCount = 0): Promise<T> {
+  private async request<T>(endpoint: string, data?: unknown, operation?: string, retryCount = 0): Promise<T> {
     const server = this.getActiveServer();
-    if (!server) {
-      throw new Error('No PVAC server configured');
-    }
+    if (!server) throw new Error('No PVAC server configured');
 
     const url = `${server.url}${endpoint}`;
     const startTime = Date.now();
@@ -324,10 +322,10 @@ class PvacServerService {
           method: data ? 'POST' : 'GET',
           headers: {
             'Authorization': `Bearer ${server.authToken}`,
-            'Content-Type': 'application/json'
+            'Content-Type': 'application/json',
           },
           body: data ? JSON.stringify(data) : undefined,
-          signal: controller.signal
+          signal: controller.signal,
         });
 
         clearTimeout(timeout);
@@ -342,39 +340,33 @@ class PvacServerService {
 
         const result = await response.json();
         const duration = Date.now() - startTime;
-        
+
         if (operation && result.job_id) {
           logger.pvacSuccess(operation, result.job_id, 'Complete', duration);
         }
-        
+
         return result;
-        
-      } catch (error: any) {
+      } catch (error) {
         clearTimeout(timeout);
-        
-        if (error.name === 'AbortError') {
+        if (error instanceof Error && error.name === 'AbortError') {
           throw new Error(`PVAC request timeout after ${this.REQUEST_TIMEOUT}ms`);
         }
-        
         throw error;
       }
-      
-    } catch (error: any) {
-      // Retry logic
+    } catch (error) {
       if (retryCount < this.MAX_RETRIES) {
-        if (error.message.includes('401') || error.message.includes('timeout')) {
-          throw error;
-        }
-        
+        const msg = error instanceof Error ? error.message : '';
+        if (msg.includes('401') || msg.includes('timeout')) throw error;
+
         const backoffMs = Math.pow(2, retryCount) * 1000;
-        await new Promise(resolve => setTimeout(resolve, backoffMs));
+        await new Promise((resolve) => setTimeout(resolve, backoffMs));
         return this.request<T>(endpoint, data, operation, retryCount + 1);
       }
-      
-      if (error.message.includes('Failed to fetch')) {
+
+      if (error instanceof Error && error.message.includes('Failed to fetch')) {
         throw new Error('Cannot connect to PVAC server. Please ensure the server is running.');
       }
-      
+
       throw error;
     }
   }

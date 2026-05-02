@@ -7,7 +7,7 @@ import { Switch } from '@/components/ui/switch';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Lock, AlertTriangle, Server, Zap, Loader2 } from 'lucide-react';
-import { Wallet, Transaction } from '../types/wallet';
+import { Wallet, Transaction, EncryptedBalanceResponse } from '../types/wallet';
 import { useToast } from '@/hooks/use-toast';
 import { AnimatedIcon } from './AnimatedIcon';
 import { TransactionModal, TransactionStatus, TransactionResult } from './TransactionModal';
@@ -22,7 +22,7 @@ interface EncryptBalanceDialogProps {
   publicBalance: number;
   onSuccess: () => void;
   onBalanceUpdate?: (newBalance: number) => void;
-  onEncryptedBalanceUpdate?: (encryptedBalance: any) => void;
+  onEncryptedBalanceUpdate?: (encryptedBalance: EncryptedBalanceResponse | null) => void;
   isPopupMode?: boolean;
   isInline?: boolean;
 }
@@ -103,18 +103,12 @@ export function EncryptBalanceDialog({
       } else {
         await handleEncryptWithBrowser(amountToEncrypt);
       }
-    } catch (error: any) {
+    } catch (error) {
       console.error('Encrypt failed:', error);
+      const msg = error instanceof Error ? error.message : 'Failed to encrypt balance';
       setTxModalStatus('error');
-      setTxModalResult({
-        error: error.message || 'Failed to encrypt balance'
-      });
-      
-      toast({
-        title: "Encryption Failed",
-        description: error.message || 'Failed to encrypt balance',
-        variant: "destructive",
-      });
+      setTxModalResult({ error: msg });
+      toast({ title: "Encryption Failed", description: msg, variant: "destructive" });
     } finally {
       setIsEncrypting(false);
     }
@@ -194,11 +188,10 @@ export function EncryptBalanceDialog({
         onSuccess();
       }
             
-    } catch (error: any) {
+    } catch (error) {
       console.error('[Encrypt] Error:', error);
-      
-      // If PVAC fails with connection error, fallback to browser
-      if (error.message.includes('Cannot connect')) {
+
+      if (error instanceof Error && error.message.includes('Cannot connect')) {
         toast({
           title: "PVAC Server Unavailable",
           description: "Falling back to browser-based encryption...",

@@ -1,3 +1,5 @@
+// Octra Web Wallet SDK — main orchestration class.
+
 import type {
   InitOptions,
   ConnectRequest,
@@ -15,13 +17,7 @@ import type {
   EncryptedPayload,
 } from './types';
 
-import {
-  NotInstalledError,
-  NotConnectedError,
-  ValidationError,
-  wrapProviderError,
-} from './errors';
-
+import { NotInstalledError, NotConnectedError, ValidationError, wrapProviderError } from './errors';
 import { NonceManager }      from './nonce-manager';
 import { CapabilityService } from './capability-service';
 import { GasService }        from './gas-service';
@@ -36,27 +32,23 @@ type EventListeners = {
 export class OctraSDK {
   private provider: OctraProvider | null = null;
   private connection: Connection | null = null;
-  private nonceManager: NonceManager;
-  private capabilityService: CapabilityService;
-  private gasService: GasService;
-  private listeners: EventListeners = {};
-  private currentOrigin: string;
+  private readonly nonceManager: NonceManager;
+  private readonly capabilityService: CapabilityService;
+  private readonly gasService: GasService;
+  private readonly listeners: EventListeners = {};
+  private readonly currentOrigin: string;
   private signingMutex: Promise<void> = Promise.resolve();
 
   private constructor() {
-    this.currentOrigin      = getCurrentOrigin();
-    this.nonceManager       = new NonceManager();
-    this.capabilityService  = new CapabilityService();
-    this.gasService         = new GasService();
+    this.currentOrigin     = getCurrentOrigin();
+    this.nonceManager      = new NonceManager();
+    this.capabilityService = new CapabilityService();
+    this.gasService        = new GasService();
   }
 
-  // ── Lifecycle ──────────────────────────────────────────────────────────────
-
   static async init(options: InitOptions = {}): Promise<OctraSDK> {
-    const sdk     = new OctraSDK();
-    const timeout = options.timeout ?? 3000;
-
-    sdk.provider = await detectProvider(timeout);
+    const sdk = new OctraSDK();
+    sdk.provider = await detectProvider(options.timeout ?? 3000);
 
     if (sdk.provider) {
       sdk.setupProviderListeners();
@@ -70,26 +62,18 @@ export class OctraSDK {
     return this.provider !== null && this.provider.isOctra === true;
   }
 
-  // ── Connection ─────────────────────────────────────────────────────────────
-
   async connect(request: ConnectRequest): Promise<Connection> {
     this.ensureInstalled();
 
-    if (!isNonEmptyString(request.circle)) {
-      throw new ValidationError('Circle ID is required');
-    }
-    if (!isNonEmptyString(request.appOrigin)) {
-      throw new ValidationError('appOrigin is required');
-    }
-
-    const fullRequest: ConnectRequest = {
-      ...request,
-      appOrigin: request.appOrigin || this.currentOrigin,
-    };
+    if (!isNonEmptyString(request.circle)) throw new ValidationError('Circle ID is required');
+    if (!isNonEmptyString(request.appOrigin)) throw new ValidationError('appOrigin is required');
 
     try {
-      const connection = await this.provider!.connect(fullRequest);
-      this.connection  = connection;
+      const connection = await this.provider!.connect({
+        ...request,
+        appOrigin: request.appOrigin || this.currentOrigin,
+      });
+      this.connection = connection;
       this.emit('connect', { connection });
       return connection;
     } catch (error) {
@@ -110,18 +94,12 @@ export class OctraSDK {
     this.emit('disconnect');
   }
 
-  // ── Capabilities ───────────────────────────────────────────────────────────
-
   async requestCapability(req: CapabilityRequest): Promise<Capability> {
     this.ensureInstalled();
     this.ensureConnected();
 
-    if (!isNonEmptyString(req.circle)) {
-      throw new ValidationError('Circle ID is required');
-    }
-    if (!req.methods || req.methods.length === 0) {
-      throw new ValidationError('At least one method is required');
-    }
+    if (!isNonEmptyString(req.circle)) throw new ValidationError('Circle ID is required');
+    if (!req.methods?.length) throw new ValidationError('At least one method is required');
     if (!isValidScope(req.scope)) {
       throw new ValidationError(`Invalid scope: '${req.scope}'. Must be 'read', 'write', or 'compute'`);
     }
@@ -166,15 +144,12 @@ export class OctraSDK {
 
   async listCapabilities(): Promise<Capability[]> {
     this.ensureInstalled();
-
     try {
       return await this.provider!.listCapabilities();
     } catch (error) {
       throw wrapProviderError(error);
     }
   }
-
-  // ── Invocation ─────────────────────────────────────────────────────────────
 
   async invoke(req: InvocationRequest): Promise<InvocationResult> {
     this.ensureInstalled();
@@ -187,7 +162,6 @@ export class OctraSDK {
       throw new ScopeViolationError(req.method, req.capabilityId);
     }
 
-    // SECURITY: Signing mutex prevents parallel signing / double-send
     return this.withSigningLock(async () => {
       const nonce    = this.nonceManager.getNextNonce(req.capabilityId);
       const branchId = req.branchId || this.connection!.branchId || 'main';
@@ -205,12 +179,14 @@ export class OctraSDK {
 
       const payloadHash = req.payload ? hashPayload(req.payload) : '';
 
-      // Serialize payload for transport
       let transportPayload: SignedInvocation['payload'];
       if (req.payload instanceof Uint8Array) {
         transportPayload = { _type: 'Uint8Array', data: Array.from(req.payload) };
       } else if (req.payload && 'data' in req.payload) {
-        transportPayload = { _type: 'Uint8Array', data: Array.from((req.payload as EncryptedPayload).data) };
+        transportPayload = {
+          _type: 'Uint8Array',
+          data: Array.from((req.payload as EncryptedPayload).data),
+        };
       }
 
       const signedInvocation: SignedInvocation = {
@@ -234,14 +210,11 @@ export class OctraSDK {
       try {
         return await this.provider!.invoke(signedInvocation);
       } catch (error) {
-        // Rollback nonce on failure
         this.nonceManager.resetNonce(req.capabilityId, nonce - 1);
         throw wrapProviderError(error);
       }
     });
   }
-
-  // ── Fee Estimation ─────────────────────────────────────────────────────────
 
   async estimatePlainTx(payload: unknown): Promise<GasEstimate> {
     this.ensureInstalled();
@@ -261,8 +234,6 @@ export class OctraSDK {
     }
   }
 
-  // ── Session ────────────────────────────────────────────────────────────────
-
   getSessionState(): SessionState {
     this.capabilityService.cleanupExpired();
     return {
@@ -273,8 +244,6 @@ export class OctraSDK {
       activeCapabilities: this.capabilityService.getActive(),
     };
   }
-
-  // ── Events ─────────────────────────────────────────────────────────────────
 
   on<E extends EventName>(event: E, callback: EventCallback<E>): () => void {
     if (!this.listeners[event]) {
@@ -298,8 +267,6 @@ export class OctraSDK {
       } catch { /* never let listener errors bubble */ }
     });
   }
-
-  // ── Internal ───────────────────────────────────────────────────────────────
 
   private setupProviderListeners(): void {
     if (!this.provider) return;
@@ -335,13 +302,11 @@ export class OctraSDK {
     if (!this.connection) throw new NotConnectedError();
   }
 
-  /**
-   * Acquire signing lock to prevent parallel signing / double-send.
-   */
+  /** Signing mutex — prevents parallel signing / double-send. */
   private async withSigningLock<T>(fn: () => Promise<T>): Promise<T> {
     await this.signingMutex;
     let release!: () => void;
-    this.signingMutex = new Promise(r => { release = r; });
+    this.signingMutex = new Promise((r) => { release = r; });
     try {
       return await fn();
     } finally {

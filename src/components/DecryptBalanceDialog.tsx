@@ -6,7 +6,7 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Unlock, AlertTriangle, Server, Zap, Loader2 } from 'lucide-react';
-import { Wallet, Transaction } from '../types/wallet';
+import { Wallet, Transaction, EncryptedBalanceResponse } from '../types/wallet';
 import { useToast } from '@/hooks/use-toast';
 import { AnimatedIcon } from './AnimatedIcon';
 import { TransactionModal, TransactionStatus, TransactionResult } from './TransactionModal';
@@ -23,7 +23,7 @@ interface DecryptBalanceDialogProps {
   currentCipher?: string;
   onSuccess: () => void;
   onBalanceUpdate?: (newBalance: number) => void;
-  onEncryptedBalanceUpdate?: (encryptedBalance: any) => void;
+  onEncryptedBalanceUpdate?: (encryptedBalance: EncryptedBalanceResponse | null) => void;
   isPopupMode?: boolean;
   isInline?: boolean;
 }
@@ -103,18 +103,12 @@ export function DecryptBalanceDialog({
       } else {
         await handleDecryptWithBrowser(amountToDecrypt);
       }
-    } catch (error: any) {
+    } catch (error) {
       console.error('Decrypt failed:', error);
+      const msg = error instanceof Error ? error.message : 'Failed to decrypt balance';
       setTxModalStatus('error');
-      setTxModalResult({
-        error: error.message || 'Failed to decrypt balance'
-      });
-      
-      toast({
-        title: "Decryption Failed",
-        description: error.message || 'Failed to decrypt balance',
-        variant: "destructive",
-      });
+      setTxModalResult({ error: msg });
+      toast({ title: "Decryption Failed", description: msg, variant: "destructive" });
     } finally {
       setIsDecrypting(false);
     }
@@ -200,11 +194,10 @@ export function DecryptBalanceDialog({
         onSuccess();
       }
             
-    } catch (error: any) {
+    } catch (error) {
       console.error('[Decrypt] Error:', error);
-      
-      // If PVAC fails with connection error, fallback to browser
-      if (error.message.includes('Cannot connect')) {
+
+      if (error instanceof Error && error.message.includes('Cannot connect')) {
         toast({
           title: "PVAC Server Unavailable",
           description: "Falling back to browser-based decryption...",

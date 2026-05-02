@@ -1,4 +1,4 @@
-﻿import { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { WelcomeScreen } from './components/WelcomeScreen';
 import { WalletDashboard } from './components/WalletDashboard';
 import { UnlockWallet } from './components/UnlockWallet';
@@ -21,8 +21,7 @@ function ExpandedApp() {
   const [showSetupSplash, setShowSetupSplash] = useState(false);
   const [pendingSetupWallet, setPendingSetupWallet] = useState<Wallet | null>(null);
   const [isDAppRequest, setIsDAppRequest] = useState(false);
-  // FIX #10: Toast for error notifications
-  const { toast: _toast } = useToast(); // Prefixed with _ to indicate intentionally unused for now
+  const { toast: _toast } = useToast();
 
   // Check if this is a dApp request
   useEffect(() => {
@@ -208,9 +207,9 @@ function ExpandedApp() {
     window.addEventListener('storage', handleStorageChange);
     
     // Listen for chrome.storage changes if available
-    let chromeStorageListener: ((changes: any, areaName: string) => void) | null = null;
+    let chromeStorageListener: ((changes: Record<string, chrome.storage.StorageChange>, areaName: string) => void) | null = null;
     if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.onChanged) {
-      chromeStorageListener = (changes: any, areaName: string) => {
+      chromeStorageListener = (changes: Record<string, chrome.storage.StorageChange>, areaName: string) => {
 
         // Handle lock state change - ALWAYS respond to this
         if (changes.isWalletLocked) {
@@ -395,9 +394,8 @@ function ExpandedApp() {
       const verifyEncrypted = localStorage.getItem('encryptedWallets');
       if (verifyEncrypted) {
         try {
-          const parsed = JSON.parse(verifyEncrypted);
-          parsed.find((w: any) => w.address === newWallet.address);
-          
+          const parsed: Array<{ address: string }> = JSON.parse(verifyEncrypted);
+          parsed.find((w) => w.address === newWallet.address);
         } catch (e) {
           console.error('Failed to verify wallet storage:', e);
         }
@@ -514,7 +512,7 @@ function ExpandedApp() {
           <div className="flex flex-col items-center space-y-4">
             <div
               className="w-10 h-10 rounded-full border-4 border-transparent animate-spin"
-              style={{ borderTopColor: '#3A4DFF', borderRightColor: '#3A4DFF' }}
+              style={{ borderTopColor: '#3B567F', borderRightColor: '#3B567F' }}
             />
             <p className="text-muted-foreground">Loading...</p>
           </div>
