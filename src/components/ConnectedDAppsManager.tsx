@@ -21,7 +21,8 @@ import {
   Eye,
   Edit,
   Cpu,
-  RefreshCw
+  RefreshCw,
+  Wallet as WalletIcon,
 } from 'lucide-react';
 import { Wallet } from '../types/wallet';
 import { useToast } from '@/hooks/use-toast';
@@ -63,6 +64,7 @@ interface ConnectedDAppsManagerProps {
 const isExtension = typeof chrome !== 'undefined' && chrome.storage?.local;
 
 export function ConnectedDAppsManager({
+  wallets,
   isPopupMode = false,
 }: ConnectedDAppsManagerProps) {
   const [connections, setConnections] = useState<StoredConnection[]>([]);
@@ -226,6 +228,17 @@ export function ConnectedDAppsManager({
       hour: '2-digit',
       minute: '2-digit',
     });
+
+  const shortenAddress = (addr: string) =>
+    addr ? `${addr.slice(0, 8)}...${addr.slice(-4)}` : '';
+
+  const getWalletLabel = (pubKey: string) => {
+    const idx = wallets.findIndex(w => w.address === pubKey);
+    return {
+      index: idx >= 0 ? idx + 1 : null,
+      address: shortenAddress(pubKey),
+    };
+  };
 
   const getScopeIcon = (scope: string) => {
     switch (scope) {
@@ -394,6 +407,18 @@ export function ConnectedDAppsManager({
                           >
                             Connected: {formatDate(connection.connectedAt)}
                           </p>
+                          {/* Wallet info */}
+                          {(() => {
+                            const { index, address } = getWalletLabel(connection.walletPubKey);
+                            return (
+                              <div className={`flex items-center gap-1 mt-0.5 ${isPopupMode ? 'text-[10px]' : 'text-xs'}`}>
+                                <WalletIcon className={`shrink-0 text-[#3B567F] ${isPopupMode ? 'h-2.5 w-2.5' : 'h-3 w-3'}`} />
+                                <span className="text-[#3B567F] font-medium font-mono truncate">
+                                  {index ? `Wallet ${index} · ` : ''}{address}
+                                </span>
+                              </div>
+                            );
+                          })()}
                         </div>
                       </div>
 
