@@ -243,6 +243,12 @@ async function handleConnectionRequest(data, sender) {
         walletPubKey: existingConnection.walletPubKey,
         evmAddress: existingConnection.evmAddress || '',
         network: existingConnection.network || 'mainnet',
+        evmNetworkId: existingConnection.evmNetworkId || await (async () => {
+          try {
+            const stored = await chrome.storage.local.get('active_evm_network');
+            return stored.active_evm_network || 'eth-mainnet';
+          } catch { return 'eth-mainnet'; }
+        })(),
         epoch: currentEpoch,
         branchId: existingConnection.branchId || 'main'
       }
