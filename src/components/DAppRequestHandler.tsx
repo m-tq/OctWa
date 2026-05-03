@@ -904,6 +904,11 @@ export function DAppRequestHandler({ wallets }: DAppRequestHandlerProps) {
           logger.debug('DAppRequestHandler: Converted value', { wei: evmTxParams.value, eth: amountEth });
         }
         
+        // Contract calls (data present) don't need to send ETH — default to "0"
+        if (!amountEth && evmTxParams.data) {
+          amountEth = '0';
+        }
+        
         if (!amountEth) {
           throw new Error('No amount or value provided for EVM transaction');
         }
