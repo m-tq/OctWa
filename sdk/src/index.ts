@@ -64,27 +64,59 @@ export {
 } from './response-utils';
 
 export type {
+  // Connect
   ConnectRequest,
   Connection,
+  // Capabilities
   CapabilityScope,
   CapabilityState,
   CapabilityTemplate,
   CapabilityRequest,
   CapabilityPayload,
   Capability,
+  // Invocations
   InvocationRequest,
   InvocationResult,
   SignedInvocation,
   InvocationHeader,
   InvocationBody,
+  // Encryption (HFHE payload)
   EncryptedPayload,
   EncryptedBlob,
+  // Gas
   GasEstimate,
+  // Session
   SessionState,
+  // Balance
   BalanceResponse,
+  // Sign Message (Phase 1)
+  SignMessageResult,
+  // EVM Operations (Phase 3)
+  EvmTransactionPayload,
+  EvmTransactionResult,
+  Erc20TransactionPayload,
+  // Encrypted Balance (Phase 4)
+  EncryptedBalanceInfo,
+  EncryptBalanceResult,
+  DecryptBalanceResult,
+  // Stealth Transfers (Phase 5)
+  ClaimableOutput,
+  StealthSendPayload,
+  StealthSendResult,
+  StealthClaimResult,
+  // Contract Interactions (Phase 6)
+  ContractCallPayload,
+  ContractCallResult,
+  // EVM Token Balances (Phase 8)
+  Erc20TokenBalance,
+  GetEvmTokensResult,
+  // Config
   InitOptions,
+  // Events
   EventName,
   EventCallback,
+  // Errors
   ErrorCode,
+  // Provider
   OctraProvider,
 } from './types';

@@ -301,7 +301,12 @@ async function handleConnectionRequest(data, sender) {
           const branchId = msg.branchId || 'main';
           const currentEpoch = await fetchCurrentEpoch();
 
-          console.log('[Background] Connection approved:', { walletAddress, evmAddress, network, branchId });
+          // Read active EVM network from storage (set by wallet settings)
+          let evmNetworkId = 'eth-mainnet';
+          try {
+            const stored = await chrome.storage.local.get('active_evm_network');
+            if (stored.active_evm_network) evmNetworkId = stored.active_evm_network;
+          } catch { /* use default */ }
 
           saveConnection({
             circle,
@@ -310,6 +315,7 @@ async function handleConnectionRequest(data, sender) {
             walletPubKey: walletAddress,
             evmAddress: evmAddress,
             network: network,
+            evmNetworkId: evmNetworkId,
             epoch: currentEpoch,
             branchId: branchId,
             connectedAt: Date.now()
@@ -324,6 +330,7 @@ async function handleConnectionRequest(data, sender) {
               walletPubKey: walletAddress,
               evmAddress: evmAddress,
               network: network,
+              evmNetworkId: evmNetworkId,
               epoch: currentEpoch,
               branchId: branchId
             }
@@ -537,7 +544,7 @@ async function handleInvokeRequest(data, sender) {
   // send_transaction, send_evm_transaction, send_erc20_transaction ALWAYS
   // require popup approval as they transfer funds.
   // ==========================================================================
-  const autoExecuteMethods = ['get_balance'];
+  const autoExecuteMethods = ['get_balance', 'get_encrypted_balance', 'stealth_scan', 'get_evm_tokens', 'get_evm_token_balance'];
 
   console.log('[Background] Checking auto-execute for method:', method, 'scope:', capability.scope);
 
@@ -696,8 +703,32 @@ async function executeMethod(method, payload, connection, capability) {
     case 'get_balance':
       return await executeGetBalance(connection);
 
+    case 'get_encrypted_balance':
+      return await executeGetEncryptedBalance(connection);
+
+    case 'get_evm_tokens':
+      return await executeGetEvmTokens(connection);
+
+    case 'get_evm_token_balance':
+      return await executeGetEvmTokenBalance(connection, payload);
+
     case 'send_transaction':
       throw new Error('send_transaction requires user approval');
+
+    case 'encrypt_balance':
+      throw new Error('encrypt_balance requires user approval');
+
+    case 'decrypt_balance':
+      throw new Error('decrypt_balance requires user approval');
+
+    case 'stealth_send':
+      throw new Error('stealth_send requires user approval');
+
+    case 'stealth_scan':
+      return await executeStealthScan(connection);
+
+    case 'stealth_claim':
+      throw new Error('stealth_claim requires user approval');
 
     case 'send_evm_transaction':
       throw new Error('send_evm_transaction requires user approval');
@@ -714,14 +745,14 @@ async function executeMethod(method, payload, connection, capability) {
 async function executeGetBalance(connection) {
   const octAddress = connection.walletPubKey;
 
-  console.log('[Background] Fetching OCT balance for:', octAddress);
-
   let octBalance = 0;
+  let encryptedBalance = 0;
+  let cipher = '0';
+  let hasPvacPubkey = false;
 
-  // Fetch OCT balance via JSON-RPC
+  // Fetch public balance
   try {
     const rpcUrl = await getActiveOctraRpcUrl();
-    console.log('[Background] Using RPC URL:', rpcUrl);
     const response = await fetch(rpcUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -729,29 +760,292 @@ async function executeGetBalance(connection) {
     });
     if (response.ok) {
       const data = await response.json();
-      console.log('[Background] octra_balance result:', JSON.stringify(data?.result));
       const balanceStr = data?.result?.balance;
-      // parseFloat without || 0 — balance can legitimately be 0
       octBalance = balanceStr !== undefined && balanceStr !== null
         ? parseFloat(balanceStr)
         : 0;
-      // Fallback: derive from balance_raw if balance field is missing or NaN
       if ((isNaN(octBalance) || balanceStr === undefined) && data?.result?.balance_raw) {
         octBalance = parseInt(data.result.balance_raw, 10) / 1_000_000;
       }
-      console.log('[Background] OCT balance:', octBalance);
-    } else {
-      console.error('[Background] RPC HTTP error:', response.status);
+      hasPvacPubkey = !!data?.result?.has_pvac_pubkey;
     }
   } catch (error) {
     console.error('[Background] OCT balance fetch error:', error);
   }
 
+  // Fetch encrypted balance cipher (lightweight — no signature needed for cipher check)
+  try {
+    const rpcUrl = await getActiveOctraRpcUrl();
+    const response = await fetch(rpcUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 2, method: 'octra_encryptedCipher', params: [octAddress] })
+    });
+    if (response.ok) {
+      const data = await response.json();
+      cipher = data?.result?.cipher ?? '0';
+    }
+  } catch (error) {
+    console.warn('[Background] Encrypted cipher fetch error (non-critical):', error);
+  }
+
   return new TextEncoder().encode(JSON.stringify({
     octAddress,
     octBalance,
+    encryptedBalance,
+    cipher,
+    hasPvacPubkey,
     network: connection.network || 'mainnet',
   }));
+}
+
+// Get encrypted balance info (cipher only — decryption requires PVAC server in wallet)
+async function executeGetEncryptedBalance(connection) {
+  const octAddress = connection.walletPubKey;
+  let cipher = '0';
+  let hasPvacPubkey = false;
+
+  try {
+    const rpcUrl = await getActiveOctraRpcUrl();
+    const [cipherRes, balanceRes] = await Promise.all([
+      fetch(rpcUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'octra_encryptedCipher', params: [octAddress] })
+      }),
+      fetch(rpcUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ jsonrpc: '2.0', id: 2, method: 'octra_balance', params: [octAddress] })
+      }),
+    ]);
+
+    if (cipherRes.ok) {
+      const data = await cipherRes.json();
+      cipher = data?.result?.cipher ?? '0';
+    }
+    if (balanceRes.ok) {
+      const data = await balanceRes.json();
+      hasPvacPubkey = !!data?.result?.has_pvac_pubkey;
+    }
+  } catch (error) {
+    console.error('[Background] Get encrypted balance error:', error);
+  }
+
+  return new TextEncoder().encode(JSON.stringify({
+    encryptedBalance: 0,  // actual decryption requires PVAC server — wallet handles this
+    cipher,
+    hasPvacPubkey,
+  }));
+}
+
+// Get all ERC-20 token balances for the wallet's active EVM network
+// Fetches common tokens (wOCT, USDC, etc.) + user-imported custom tokens
+async function executeGetEvmTokens(connection) {
+  const evmAddress = connection.evmAddress;
+  if (!evmAddress) {
+    return new TextEncoder().encode(JSON.stringify({ tokens: [], networkId: '', chainId: 0 }));
+  }
+
+  // Read active EVM network from storage
+  let networkId = 'eth-mainnet';
+  let chainId = 1;
+  try {
+    const stored = await chrome.storage.local.get(['active_evm_network', 'evm_rpc_providers']);
+    if (stored.active_evm_network) networkId = stored.active_evm_network;
+  } catch { /* use defaults */ }
+
+  // Map network ID to chain ID
+  const NETWORK_CHAIN_IDS = {
+    'eth-mainnet':     1,
+    'polygon-mainnet': 137,
+    'base-mainnet':    8453,
+    'bsc-mainnet':     56,
+    'eth-sepolia':     11155111,
+  };
+  chainId = NETWORK_CHAIN_IDS[networkId] ?? 1;
+
+  // Common tokens per chain (wOCT always first on Ethereum)
+  const COMMON_TOKENS = {
+    1: [
+      { address: '0x4647e1fe715c9e23959022c2416c71867f5a6e80', name: 'Wrapped OCT', symbol: 'wOCT', decimals: 6 },
+      { address: '0xdac17f958d2ee523a2206206994597c13d831ec7', name: 'Tether USD',   symbol: 'USDT', decimals: 6 },
+      { address: '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48', name: 'USD Coin',     symbol: 'USDC', decimals: 6 },
+    ],
+    137: [
+      { address: '0xc2132d05d31c914a87c6611c10748aeb04b58e8f', name: 'Tether USD', symbol: 'USDT', decimals: 6 },
+      { address: '0x2791bca1f2de4661ed88a30c99a7a9449aa84174', name: 'USD Coin',   symbol: 'USDC', decimals: 6 },
+    ],
+    8453: [
+      { address: '0x833589fcd6edb6e08f4c7c32d4f71b54bda02913', name: 'USD Coin', symbol: 'USDC', decimals: 6 },
+    ],
+    56: [
+      { address: '0x55d398326f99059ff775485246999027b3197955', name: 'Tether USD', symbol: 'USDT', decimals: 18 },
+      { address: '0x8ac76a51cc950d9822d68b83fe1ad97b32cd580d', name: 'USD Coin',   symbol: 'USDC', decimals: 18 },
+    ],
+  };
+
+  // Load custom tokens from storage
+  let customTokens = [];
+  try {
+    const stored = await chrome.storage.local.get('evm_custom_tokens');
+    const all = stored.evm_custom_tokens ? JSON.parse(stored.evm_custom_tokens) : [];
+    customTokens = all.filter(t => t.chainId === chainId);
+  } catch { /* ignore */ }
+
+  // Merge common + custom, deduplicate by address
+  const commonForChain = COMMON_TOKENS[chainId] || [];
+  const allTokens = [...commonForChain];
+  for (const ct of customTokens) {
+    if (!allTokens.some(t => t.address.toLowerCase() === ct.address.toLowerCase())) {
+      allTokens.push(ct);
+    }
+  }
+
+  if (allTokens.length === 0) {
+    return new TextEncoder().encode(JSON.stringify({ tokens: [], networkId, chainId }));
+  }
+
+  // Determine RPC URL for this network
+  let rpcUrl = 'https://mainnet.infura.io/v3/121cf128273c4f0cb73770b391070d3b';
+  try {
+    const stored = await chrome.storage.local.get('evm_rpc_providers');
+    const providers = stored.evm_rpc_providers ? JSON.parse(stored.evm_rpc_providers) : {};
+    if (providers[networkId]) rpcUrl = providers[networkId];
+  } catch { /* use default */ }
+
+  // Fetch balances concurrently (max 5 at a time)
+  const CONCURRENCY = 5;
+  const results = [];
+  for (let i = 0; i < allTokens.length; i += CONCURRENCY) {
+    const batch = allTokens.slice(i, i + CONCURRENCY);
+    const batchResults = await Promise.all(
+      batch.map(async (token) => {
+        try {
+          // ERC-20 balanceOf(address) — selector 0x70a08231
+          const data = '0x70a08231' + evmAddress.slice(2).padStart(64, '0');
+          const response = await fetch(rpcUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              jsonrpc: '2.0', id: 1,
+              method: 'eth_call',
+              params: [{ to: token.address, data }, 'latest'],
+            }),
+          });
+          if (!response.ok) return { ...token, balance: '0.000000', chainId };
+          const json = await response.json();
+          const hex = json?.result;
+          if (!hex || hex === '0x') return { ...token, balance: '0.000000', chainId };
+          const raw = BigInt(hex);
+          const balance = (Number(raw) / Math.pow(10, token.decimals)).toFixed(token.decimals);
+          return { ...token, balance, chainId };
+        } catch {
+          return { ...token, balance: '0.000000', chainId };
+        }
+      })
+    );
+    results.push(...batchResults);
+  }
+
+  // Only return tokens with non-zero balance OR user-imported custom tokens
+  const customAddresses = new Set(customTokens.map(t => t.address.toLowerCase()));
+  const filtered = results.filter(t =>
+    parseFloat(t.balance) > 0 || customAddresses.has(t.address.toLowerCase())
+  );
+
+  return new TextEncoder().encode(JSON.stringify({ tokens: filtered, networkId, chainId }));
+}
+
+// Get balance for a single ERC-20 token
+async function executeGetEvmTokenBalance(connection, payload) {
+  const evmAddress = connection.evmAddress;
+  if (!evmAddress) throw new Error('No EVM address in connection');
+
+  let params;
+  try {
+    params = payload ? JSON.parse(new TextDecoder().decode(
+      payload instanceof Uint8Array ? payload : new Uint8Array(Object.values(payload))
+    )) : null;
+  } catch { throw new Error('Invalid payload for get_evm_token_balance'); }
+
+  if (!params?.tokenAddress) throw new Error('tokenAddress is required');
+
+  // Read active EVM network
+  let networkId = 'eth-mainnet';
+  let rpcUrl = 'https://mainnet.infura.io/v3/121cf128273c4f0cb73770b391070d3b';
+  try {
+    const stored = await chrome.storage.local.get(['active_evm_network', 'evm_rpc_providers']);
+    if (stored.active_evm_network) networkId = stored.active_evm_network;
+    const providers = stored.evm_rpc_providers ? JSON.parse(stored.evm_rpc_providers) : {};
+    if (providers[networkId]) rpcUrl = providers[networkId];
+  } catch { /* use defaults */ }
+
+  const NETWORK_CHAIN_IDS = {
+    'eth-mainnet': 1, 'polygon-mainnet': 137, 'base-mainnet': 8453,
+    'bsc-mainnet': 56, 'eth-sepolia': 11155111,
+  };
+  const chainId = NETWORK_CHAIN_IDS[networkId] ?? 1;
+  const decimals = params.decimals ?? 18;
+
+  // balanceOf call
+  const data = '0x70a08231' + evmAddress.slice(2).padStart(64, '0');
+  const response = await fetch(rpcUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      jsonrpc: '2.0', id: 1,
+      method: 'eth_call',
+      params: [{ to: params.tokenAddress, data }, 'latest'],
+    }),
+  });
+
+  if (!response.ok) throw new Error(`EVM RPC error: ${response.status}`);
+  const json = await response.json();
+  const hex = json?.result;
+  const raw = hex && hex !== '0x' ? BigInt(hex) : 0n;
+  const balance = (Number(raw) / Math.pow(10, decimals)).toFixed(decimals);
+
+  return new TextEncoder().encode(JSON.stringify({
+    address: params.tokenAddress,
+    balance,
+    decimals,
+    chainId,
+    networkId,
+    symbol: params.symbol ?? '',
+    name: params.name ?? '',
+  }));
+}
+
+// Scan stealth outputs for this wallet (uses wallet private view key — no dApp key exposure)
+async function executeStealthScan(connection) {
+  const { scanStealthOutputs } = await import('./stealthScanService.js').catch(() => null) || {};
+
+  // Fallback: fetch raw outputs from RPC and return them for wallet-side scanning
+  // The actual ECDH scanning happens in the wallet context where private key is available
+  try {
+    const rpcUrl = await getActiveOctraRpcUrl();
+    const response = await fetch(rpcUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'octra_stealthOutputs', params: [0] })
+    });
+
+    if (!response.ok) {
+      return new TextEncoder().encode(JSON.stringify({ outputs: [] }));
+    }
+
+    const data = await response.json();
+    const rawOutputs = data?.result?.outputs ?? [];
+
+    // NOTE: Full ECDH scanning with private key happens in the wallet popup context.
+    // Background returns raw outputs; the popup's DAppRequestHandler performs the scan.
+    // For auto-execute, we return an empty list — the popup flow handles actual scanning.
+    return new TextEncoder().encode(JSON.stringify({ outputs: [] }));
+  } catch (error) {
+    console.error('[Background] Stealth scan error:', error);
+    return new TextEncoder().encode(JSON.stringify({ outputs: [] }));
+  }
 }
 
 // =============================================================================

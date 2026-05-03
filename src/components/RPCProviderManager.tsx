@@ -35,7 +35,7 @@ export function RPCProviderManager({ onRPCChange, isPopupMode = false }: RPCProv
     url: '',
     headers: {} as Record<string, string>,
     priority: 1,
-    network: 'mainnet' as 'mainnet' | 'testnet'
+    network: 'mainnet' as 'mainnet' | 'devnet'
   });
   const [newHeaderKey, setNewHeaderKey] = useState('');
   const [newHeaderValue, setNewHeaderValue] = useState('');
@@ -53,7 +53,7 @@ export function RPCProviderManager({ onRPCChange, isPopupMode = false }: RPCProv
       priority: 2,
       isActive: false,
       createdAt: Date.now(),
-      network: 'testnet'
+      network: 'devnet'
     };
 
     const savedProviders = localStorage.getItem('rpcProviders');
@@ -105,7 +105,7 @@ export function RPCProviderManager({ onRPCChange, isPopupMode = false }: RPCProv
           priority: 2,
           isActive: false,
           createdAt: Date.now(),
-          network: 'testnet'
+          network: 'devnet'
         },
       ];
       setProviders(defaultProviders);
@@ -138,7 +138,7 @@ export function RPCProviderManager({ onRPCChange, isPopupMode = false }: RPCProv
   };
 
   // Sync selected network to chrome.storage.local (for SDK/dApp access)
-  const syncSelectedNetwork = (network: 'mainnet' | 'testnet') => {
+  const syncSelectedNetwork = (network: 'mainnet' | 'devnet') => {
     if (typeof chrome !== 'undefined' && chrome.storage?.local) {
       chrome.storage.local.set({ selectedNetwork: network }).catch(err => {
         console.warn('Failed to save selectedNetwork to chrome.storage:', err);
@@ -458,14 +458,14 @@ export function RPCProviderManager({ onRPCChange, isPopupMode = false }: RPCProv
                   <Label htmlFor="provider-network" className={isPopupMode ? "text-xs" : ""}>Network</Label>
                   <Select
                     value={formData.network}
-                    onValueChange={(value: 'mainnet' | 'testnet') => setFormData({ ...formData, network: value })}
+                    onValueChange={(value: 'mainnet' | 'devnet') => setFormData({ ...formData, network: value })}
                   >
                     <SelectTrigger className={isPopupMode ? "h-8 text-xs" : ""}>
                       <SelectValue placeholder="Select network" />
                     </SelectTrigger>
                     <SelectContent className="z-[10002]">
                       <SelectItem value="mainnet">Mainnet</SelectItem>
-                      <SelectItem value="testnet">Testnet</SelectItem>
+                      <SelectItem value="devnet">DevNet</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>

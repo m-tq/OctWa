@@ -60,10 +60,19 @@ export function decodeResponseData<T = unknown>(result: InvocationResult): T | n
 
 /**
  * Decode balance response from get_balance invoke result.
- * Background now returns only OCT balance (EVM fields removed).
+ * Returns full balance including encrypted balance info.
  */
 export function decodeBalanceResponse(result: InvocationResult): BalanceResponse {
   const data = decodeResponseData<BalanceResponse>(result);
   if (!data) throw new Error('Empty balance response');
-  return data;
+
+  // Ensure backward-compatible defaults for fields added in Phase 2
+  return {
+    octAddress:        data.octAddress,
+    octBalance:        data.octBalance ?? 0,
+    encryptedBalance:  data.encryptedBalance ?? 0,
+    cipher:            data.cipher ?? '0',
+    hasPvacPubkey:     data.hasPvacPubkey ?? false,
+    network:           data.network ?? 'mainnet',
+  };
 }

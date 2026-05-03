@@ -2829,7 +2829,7 @@ export function WalletDashboard({
                         >
                           <Code2 className="h-4 w-4 transition group-hover:drop-shadow-[0_0_6px_currentColor]" />
                           <span className="transition group-hover:drop-shadow-[0_0_6px_currentColor]">Dev Tools</span>
-                          {activeNetwork === 'testnet' && (
+                          {activeNetwork === 'devnet' && (
                             <span className="text-[9px] px-1 py-0 bg-yellow-500/20 text-yellow-600 dark:text-yellow-400 border border-yellow-500/30">DevNet</span>
                           )}
                         </Button>
@@ -4673,7 +4673,7 @@ export function WalletDashboard({
                 'text-yellow-500'
               }`}>
                 {isSyncing ? 'Syncing...' :
-                 rpcStatus === 'connected' ? `Connected (${activeNetwork === 'testnet' ? 'DevNet' : activeNetwork.charAt(0).toUpperCase() + activeNetwork.slice(1)})` : 
+                 rpcStatus === 'connected' ? `Connected (${activeNetwork === 'devnet' ? 'DevNet' : activeNetwork.charAt(0).toUpperCase() + activeNetwork.slice(1)})` : 
                  rpcStatus === 'disconnected' ? 'Disconnected' : 
                  'Connecting...'}
                 {!isSyncing && rpcStatus === 'connected' && latestEpoch !== null && (
@@ -4765,7 +4765,7 @@ export function WalletDashboard({
                 'text-yellow-500'
               }`}>
                 {isSyncing ? 'Syncing...' :
-                 rpcStatus === 'connected' ? `Connected (${activeNetwork === 'testnet' ? 'DevNet' : activeNetwork.charAt(0).toUpperCase() + activeNetwork.slice(1)})` : 
+                 rpcStatus === 'connected' ? `Connected (${activeNetwork === 'devnet' ? 'DevNet' : activeNetwork.charAt(0).toUpperCase() + activeNetwork.slice(1)})` : 
                  rpcStatus === 'disconnected' ? 'Disconnected' : 
                  'Connecting...'}
                 {!isSyncing && rpcStatus === 'connected' && latestEpoch !== null && (

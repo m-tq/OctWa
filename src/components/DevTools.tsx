@@ -375,7 +375,7 @@ export function DevTools({ wallet, onExit, activeNetwork }: DevToolsProps) {
           <Code2 className="h-4 w-4 text-primary" />
           <span className="font-semibold text-sm">Dev Tools</span>
           <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
-            {activeNetwork === 'testnet' ? 'DevNet' : 'Mainnet'}
+            {activeNetwork === 'devnet' ? 'DevNet' : 'Mainnet'}
           </Badge>
           <span className="text-xs text-muted-foreground font-mono hidden sm:block">
             {wallet.address.slice(0, 10)}...{wallet.address.slice(-6)}

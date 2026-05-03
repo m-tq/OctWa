@@ -196,7 +196,7 @@ export interface RPCProvider {
   priority: number;
   isActive: boolean;
   createdAt: number;
-  network?: 'mainnet' | 'testnet'; // Network this provider connects to
+  network?: 'mainnet' | 'devnet'; // Network this provider connects to
 }
 
 // DApp connection types (Legacy - kept for backward compatibility)
@@ -239,7 +239,7 @@ export interface CircleConnection {
   appOrigin: string;
   appName: string;
   walletPubKey: string;
-  network: 'testnet' | 'mainnet';
+  network: 'mainnet' | 'devnet';
   connectedAt: number;
 }
 

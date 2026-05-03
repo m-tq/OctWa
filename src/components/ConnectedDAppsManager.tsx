@@ -33,7 +33,7 @@ interface StoredConnection {
   appName: string;
   walletPubKey: string;
   evmAddress?: string;
-  network: 'testnet' | 'mainnet';
+  network: 'devnet' | 'mainnet';
   connectedAt: number;
 }
 

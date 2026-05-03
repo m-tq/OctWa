@@ -12,10 +12,12 @@ import {
   AlertTriangle, 
   Globe,
   Lock,
+  Unlock,
   Cpu,
   Eye,
   Edit,
-  Zap
+  Zap,
+  Gift,
 } from 'lucide-react';
 import { Wallet } from '../types/wallet';
 import { useToast } from '@/hooks/use-toast';
@@ -26,11 +28,39 @@ import {
   type CapabilityPayload
 } from '../utils/capability';
 import { WalletManager } from '../utils/walletManager';
-import { createTransaction, sendTransaction, fetchBalance } from '../utils/api';
+import { createTransaction, sendTransaction, fetchBalance, fetchRecommendedFee } from '../utils/api';
 import { sendEVMTransaction, sendERC20Transaction } from '../utils/evmRpc';
 import { deriveEvmFromOctraKey } from '../utils/evmDerive';
 import { logger } from '@/utils/logger';
 import nacl from 'tweetnacl';
+
+// Decode invoke payload from various transport formats (Uint8Array, numeric-keyed object, etc.)
+function parseInvokePayload<T>(payload: unknown): T | null {
+  try {
+    if (!payload) return null;
+    if (payload instanceof Uint8Array) {
+      return JSON.parse(new TextDecoder().decode(payload)) as T;
+    }
+    if (typeof payload === 'object' && payload !== null) {
+      const obj = payload as Record<string, unknown>;
+      if ('_type' in obj && obj._type === 'Uint8Array' && Array.isArray(obj.data)) {
+        const bytes = new Uint8Array(obj.data as number[]);
+        return JSON.parse(new TextDecoder().decode(bytes)) as T;
+      }
+      // Numeric-keyed object (serialized Uint8Array from chrome messaging)
+      const keys = Object.keys(obj);
+      if (keys.length > 0 && keys.every(k => !isNaN(Number(k)))) {
+        const bytes = new Uint8Array(keys.length);
+        for (let i = 0; i < keys.length; i++) bytes[i] = obj[i.toString()] as number;
+        return JSON.parse(new TextDecoder().decode(bytes)) as T;
+      }
+      return obj as T;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
 
 // Types
 interface ConnectionRequest {
@@ -451,7 +481,7 @@ export function DAppRequestHandler({ wallets }: DAppRequestHandlerProps) {
     try {
       // Get current network from active RPC provider
       // Priority: 1) Active RPC provider's network, 2) chrome.storage selectedNetwork, 3) default mainnet
-      let currentNetwork: 'mainnet' | 'testnet' = 'mainnet';
+      let currentNetwork: 'mainnet' | 'devnet' = 'mainnet';
       
       // First try to get from rpcProviders (most accurate source)
       const rpcProviders = localStorage.getItem('rpcProviders');
@@ -1053,6 +1083,150 @@ export function DAppRequestHandler({ wallets }: DAppRequestHandlerProps) {
         sendInvokeResult(true, new TextEncoder().encode(JSON.stringify(resultData)));
         
         // Success - close popup immediately (no toast needed)
+      } else if (invokeRequest.method === 'encrypt_balance') {
+        // Move OCT from public balance into encrypted balance
+        const params = parseInvokePayload<{ amount: number }>(invokeRequest.payload);
+        if (!params?.amount || params.amount <= 0) throw new Error('Invalid amount for encrypt_balance');
+
+        const { pvacServerService } = await import('@/services/pvacServerService');
+        if (!pvacServerService.isEnabled()) throw new Error('PVAC server required for encrypt_balance. Configure it in Settings.');
+
+        const balanceData = await fetchBalance(selectedWallet.address);
+        const ou = String(await fetchRecommendedFee('encrypt'));
+
+        const encResult = await pvacServerService.encryptBalance({
+          amount: params.amount,
+          private_key: selectedWallet.privateKey!,
+          public_key: selectedWallet.publicKey!,
+          address: selectedWallet.address,
+          nonce: balanceData.nonce + 1,
+          ou,
+        });
+
+        if (!encResult.success || !encResult.tx) throw new Error(encResult.error || 'Encrypt balance failed');
+
+        const submitResult = await sendTransaction(encResult.tx as import('../types/wallet').Transaction);
+        if (!submitResult.success) throw new Error(submitResult.error || 'Failed to submit encrypt transaction');
+
+        sendInvokeResult(true, new TextEncoder().encode(JSON.stringify({
+          txHash: submitResult.hash ?? 'pending',
+          amount: params.amount,
+        })));
+
+      } else if (invokeRequest.method === 'decrypt_balance') {
+        // Move OCT from encrypted balance back into public balance
+        const params = parseInvokePayload<{ amount: number }>(invokeRequest.payload);
+        if (!params?.amount || params.amount <= 0) throw new Error('Invalid amount for decrypt_balance');
+
+        const { pvacServerService } = await import('@/services/pvacServerService');
+        if (!pvacServerService.isEnabled()) throw new Error('PVAC server required for decrypt_balance. Configure it in Settings.');
+
+        const { fetchEncryptedBalance } = await import('../utils/api');
+        const encData = await fetchEncryptedBalance(selectedWallet.address, selectedWallet.privateKey);
+        if (!encData?.cipher || encData.cipher === '0') throw new Error('No encrypted balance found');
+
+        const balanceData = await fetchBalance(selectedWallet.address);
+        const ou = String(await fetchRecommendedFee('decrypt'));
+
+        const decResult = await pvacServerService.decryptToPublic({
+          amount: params.amount,
+          private_key: selectedWallet.privateKey!,
+          public_key: selectedWallet.publicKey!,
+          current_cipher: encData.cipher,
+          address: selectedWallet.address,
+          nonce: balanceData.nonce + 1,
+          ou,
+        });
+
+        if (!decResult.success || !decResult.tx) throw new Error(decResult.error || 'Decrypt balance failed');
+
+        const submitResult = await sendTransaction(decResult.tx as import('../types/wallet').Transaction);
+        if (!submitResult.success) throw new Error(submitResult.error || 'Failed to submit decrypt transaction');
+
+        sendInvokeResult(true, new TextEncoder().encode(JSON.stringify({
+          txHash: submitResult.hash ?? 'pending',
+          amount: params.amount,
+        })));
+
+      } else if (invokeRequest.method === 'stealth_send') {
+        // Send stealth transfer from encrypted balance
+        const params = parseInvokePayload<{ to: string; amount: number }>(invokeRequest.payload);
+        if (!params?.to) throw new Error('Recipient address required for stealth_send');
+        if (!params?.amount || params.amount <= 0) throw new Error('Invalid amount for stealth_send');
+
+        const { pvacServerService } = await import('@/services/pvacServerService');
+        if (!pvacServerService.isEnabled()) throw new Error('PVAC server required for stealth_send. Configure it in Settings.');
+
+        const { getViewPubkey, fetchBalance: fetchBal } = await import('../utils/api');
+        const viewPubkey = await getViewPubkey(params.to);
+        if (!viewPubkey) throw new Error(`Recipient ${params.to.slice(0, 10)}... has no view public key registered`);
+
+        const { fetchEncryptedBalance } = await import('../utils/api');
+        const encData = await fetchEncryptedBalance(selectedWallet.address, selectedWallet.privateKey);
+        if (!encData?.cipher || encData.cipher === '0') throw new Error('No encrypted balance for stealth send');
+
+        const balanceData = await fetchBal(selectedWallet.address);
+        const ou = String(await fetchRecommendedFee('stealth'));
+
+        const stealthResult = await pvacServerService.stealthSend({
+          to_address: params.to,
+          amount: params.amount,
+          current_cipher: encData.cipher,
+          recipient_view_pubkey: viewPubkey,
+          from_address: selectedWallet.address,
+          nonce: balanceData.nonce + 1,
+          private_key: selectedWallet.privateKey!,
+          public_key: selectedWallet.publicKey!,
+          ou,
+        });
+
+        if (!stealthResult.success || !stealthResult.tx) throw new Error(stealthResult.error || 'Stealth send failed');
+
+        const submitResult = await sendTransaction(stealthResult.tx as import('../types/wallet').Transaction);
+        if (!submitResult.success) throw new Error(submitResult.error || 'Failed to submit stealth transaction');
+
+        sendInvokeResult(true, new TextEncoder().encode(JSON.stringify({
+          txHash: submitResult.hash ?? 'pending',
+          amount: params.amount,
+        })));
+
+      } else if (invokeRequest.method === 'stealth_claim') {
+        // Claim a stealth output into encrypted balance
+        const params = parseInvokePayload<{ outputId: string }>(invokeRequest.payload);
+        if (!params?.outputId) throw new Error('Output ID required for stealth_claim');
+
+        const { pvacServerService } = await import('@/services/pvacServerService');
+        if (!pvacServerService.isEnabled()) throw new Error('PVAC server required for stealth_claim. Configure it in Settings.');
+
+        const { scanStealthOutputs } = await import('@/services/stealthScanService');
+        const claimable = await scanStealthOutputs(selectedWallet.privateKey!);
+        const output = claimable.find(o => o.id === params.outputId);
+        if (!output) throw new Error(`Stealth output ${params.outputId} not found or already claimed`);
+
+        const { fetchBalance: fetchBal } = await import('../utils/api');
+        const balanceData = await fetchBal(selectedWallet.address);
+        const ou = String(await fetchRecommendedFee('stealth'));
+
+        const claimResult = await pvacServerService.claimStealth({
+          stealth_output: output.rawOutput,
+          private_key: selectedWallet.privateKey!,
+          public_key: selectedWallet.publicKey!,
+          address: selectedWallet.address,
+          nonce: balanceData.nonce + 1,
+          ou,
+        });
+
+        if (!claimResult.success || !claimResult.tx) throw new Error(claimResult.error || 'Stealth claim failed');
+
+        const submitResult = await sendTransaction(claimResult.tx as import('../types/wallet').Transaction);
+        if (!submitResult.success) throw new Error(submitResult.error || 'Failed to submit claim transaction');
+
+        sendInvokeResult(true, new TextEncoder().encode(JSON.stringify({
+          txHash: submitResult.hash ?? 'pending',
+          amount: output.amount,
+          outputId: params.outputId,
+        })));
+
       } else {
         // For other methods, return mock success (to be implemented)
         logger.debug('DAppRequestHandler: Executing other method:', invokeRequest.method);
@@ -1408,8 +1582,69 @@ export function DAppRequestHandler({ wallets }: DAppRequestHandlerProps) {
               </div>
             )}
 
-            <Alert className={`py-2 ${invokeRequest.method === 'send_transaction' || invokeRequest.method === 'send_evm_transaction' || invokeRequest.method === 'send_erc20_transaction' ? 'border-amber-500/30 bg-amber-500/10' : ''}`}>
-              {invokeRequest.method === 'send_transaction' || invokeRequest.method === 'send_evm_transaction' || invokeRequest.method === 'send_erc20_transaction' ? (
+            {invokeRequest.method === 'encrypt_balance' && (() => {
+              const p = parseInvokePayload<{ amount: number }>(invokeRequest.payload);
+              return p ? (
+                <div className="p-2.5 bg-[#3B567F]/10 border border-[#3B567F]/30 rounded space-y-2 text-xs">
+                  <h4 className="font-medium text-[#3B567F] dark:text-blue-300 flex items-center gap-1.5">
+                    <Lock className="h-3.5 w-3.5" />Encrypt Balance
+                  </h4>
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between"><span className="text-muted-foreground">Amount</span><span className="font-bold">{p.amount} OCT</span></div>
+                    <p className="text-muted-foreground text-[10px]">Moves OCT from your public balance into encrypted balance.</p>
+                  </div>
+                </div>
+              ) : null;
+            })()}
+
+            {invokeRequest.method === 'decrypt_balance' && (() => {
+              const p = parseInvokePayload<{ amount: number }>(invokeRequest.payload);
+              return p ? (
+                <div className="p-2.5 bg-[#00E5C0]/10 border border-[#00E5C0]/30 rounded space-y-2 text-xs">
+                  <h4 className="font-medium text-[#00E5C0] flex items-center gap-1.5">
+                    <Unlock className="h-3.5 w-3.5" />Decrypt Balance
+                  </h4>
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between"><span className="text-muted-foreground">Amount</span><span className="font-bold">{p.amount} OCT</span></div>
+                    <p className="text-muted-foreground text-[10px]">Moves OCT from encrypted balance back to public balance.</p>
+                  </div>
+                </div>
+              ) : null;
+            })()}
+
+            {invokeRequest.method === 'stealth_send' && (() => {
+              const p = parseInvokePayload<{ to: string; amount: number }>(invokeRequest.payload);
+              return p ? (
+                <div className="p-2.5 bg-[#00E5C0]/10 border border-[#00E5C0]/30 rounded space-y-2 text-xs">
+                  <h4 className="font-medium text-[#00E5C0] flex items-center gap-1.5">
+                    <Shield className="h-3.5 w-3.5" />Stealth Transfer
+                  </h4>
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between"><span className="text-muted-foreground">To</span><span className="font-mono truncate max-w-[200px]">{p.to}</span></div>
+                    <div className="flex items-center justify-between"><span className="text-muted-foreground">Amount</span><span className="font-bold">{p.amount} OCT</span></div>
+                    <p className="text-muted-foreground text-[10px]">Private transfer from encrypted balance. Recipient must scan to claim.</p>
+                  </div>
+                </div>
+              ) : null;
+            })()}
+
+            {invokeRequest.method === 'stealth_claim' && (() => {
+              const p = parseInvokePayload<{ outputId: string }>(invokeRequest.payload);
+              return p ? (
+                <div className="p-2.5 bg-[#00E5C0]/10 border border-[#00E5C0]/30 rounded space-y-2 text-xs">
+                  <h4 className="font-medium text-[#00E5C0] flex items-center gap-1.5">
+                    <Gift className="h-3.5 w-3.5" />Claim Stealth Output
+                  </h4>
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between"><span className="text-muted-foreground">Output ID</span><span className="font-mono truncate max-w-[200px]">{p.outputId}</span></div>
+                    <p className="text-muted-foreground text-[10px]">Claims a stealth output into your encrypted balance.</p>
+                  </div>
+                </div>
+              ) : null;
+            })()}
+
+            <Alert className={`py-2 ${['send_transaction','send_evm_transaction','send_erc20_transaction','encrypt_balance','decrypt_balance','stealth_send','stealth_claim'].includes(invokeRequest.method) ? 'border-amber-500/30 bg-amber-500/10' : ''}`}>
+              {['send_transaction','send_evm_transaction','send_erc20_transaction','encrypt_balance','decrypt_balance','stealth_send','stealth_claim'].includes(invokeRequest.method) ? (
                 <><AlertTriangle className="h-3 w-3 text-amber-500" /><AlertDescription className="text-xs text-amber-600 dark:text-amber-400">This will send funds from your wallet. Only approve if you trust this dApp.</AlertDescription></>
               ) : (
                 <><Zap className="h-3 w-3" /><AlertDescription className="text-xs">Executes the method using your granted capability.</AlertDescription></>
