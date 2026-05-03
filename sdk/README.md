@@ -432,6 +432,13 @@ The active network is read from the wallet's RPC provider settings — dApps do 
 
 ## Changelog
 
+### v1.3.4
+- Fix `sendContractCall()` — correct Octra wire format for contract calls
+  - `encrypted_data` is now the plain method name string (e.g. `'lock_to_eth'`)
+  - `message` carries params as JSON array string (e.g. `'["0xAddr"]'`)
+  - Previously `encrypted_data` was incorrectly JSON-wrapping `{method, params}`
+  - This matches the Octra node's expected format (verified from on-chain txs)
+
 ### v1.3.3
 - Add `signMessage()` — Ed25519 message signing for auth flows
 - Add `getBalance()` — full balance including encrypted balance info
