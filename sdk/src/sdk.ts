@@ -480,6 +480,13 @@ export class OctraSDK {
    * Send a state-changing contract call transaction.
    * Always opens a popup for user approval.
    * Requires a capability with `send_transaction` method and `write` scope.
+   *
+   * Octra contract call wire format (matches webcli tx_builder.hpp):
+   *   op_type:        'call'
+   *   encrypted_data: method name as plain string  (e.g. 'lock_to_eth')
+   *   message:        params as JSON array string  (e.g. '["0xAddr"]')
+   *   to:             contract address
+   *   amount:         OCT to attach (default 0)
    */
   async sendContractCall(
     capabilityId: string,
@@ -492,23 +499,21 @@ export class OctraSDK {
       capabilityId,
       method: 'send_transaction',
       payload: new TextEncoder().encode(JSON.stringify({
-        to: payload.contract,
-        amount: payload.amount ?? 0,
-        op_type: 'call',
-        encrypted_data: JSON.stringify({
-          method: payload.method,
-          params: payload.params ?? [],
-        }),
-        ou: payload.ou,
+        to:             payload.contract,
+        amount:         payload.amount ?? 0,
+        op_type:        'call',
+        encrypted_data: payload.method,                              // plain method name string
+        message:        JSON.stringify(payload.params ?? []),        // params as JSON array string
+        ou:             payload.ou,
       })),
     });
 
     const data = decodeResponseData<{ txHash: string }>(result);
     if (!data?.txHash) throw new Error('No transaction hash in contract call response');
     return {
-      txHash: data.txHash,
+      txHash:   data.txHash,
       contract: payload.contract,
-      method: payload.method,
+      method:   payload.method,
     };
   }
 

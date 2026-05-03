@@ -1,6 +1,6 @@
 {
   "name": "@octwa/sdk",
-  "version": "1.3.3",
+  "version": "1.3.4",
   "description": "Official TypeScript SDK for integrating dApps with OctWa Wallet Extension. Implements capability-based authorization with full HFHE support.",
   "main": "dist/index.js",
   "module": "dist/index.mjs",
