@@ -228,31 +228,46 @@ async function handleConnectionRequest(data, sender) {
   console.log('[Background] Connection request:', { circle, appOrigin, appName });
 
   // Check if already connected - return existing connection without popup
+  // BUT verify the active wallet hasn't changed since the connection was saved.
+  // If the user switched wallets, the cached connection is stale — force a new popup.
   const existingConnection = await getConnection(appOrigin);
   if (existingConnection && existingConnection.circle === circle) {
-    console.log('[Background] Already connected, returning existing connection');
+    // Check if the currently active wallet matches the cached connection
+    let activeWalletId = null;
+    try {
+      const stored = await chrome.storage.local.get('activeWalletId');
+      activeWalletId = stored.activeWalletId || null;
+    } catch { /* ignore */ }
 
-    const currentEpoch = await fetchCurrentEpoch();
+    const walletChanged = activeWalletId && activeWalletId !== existingConnection.walletPubKey;
 
-    return {
-      type: 'CONNECTION_RESPONSE',
-      success: true,
-      result: {
-        circle: existingConnection.circle,
-        sessionId: `session-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-        walletPubKey: existingConnection.walletPubKey,
-        evmAddress: existingConnection.evmAddress || '',
-        network: existingConnection.network || 'mainnet',
-        evmNetworkId: existingConnection.evmNetworkId || await (async () => {
-          try {
-            const stored = await chrome.storage.local.get('active_evm_network');
-            return stored.active_evm_network || 'eth-mainnet';
-          } catch { return 'eth-mainnet'; }
-        })(),
-        epoch: currentEpoch,
-        branchId: existingConnection.branchId || 'main'
-      }
-    };
+    if (!walletChanged) {
+      console.log('[Background] Already connected, returning existing connection');
+      const currentEpoch = await fetchCurrentEpoch();
+      return {
+        type: 'CONNECTION_RESPONSE',
+        success: true,
+        result: {
+          circle: existingConnection.circle,
+          sessionId: `session-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+          walletPubKey: existingConnection.walletPubKey,
+          evmAddress: existingConnection.evmAddress || '',
+          network: existingConnection.network || 'mainnet',
+          evmNetworkId: existingConnection.evmNetworkId || await (async () => {
+            try {
+              const stored = await chrome.storage.local.get('active_evm_network');
+              return stored.active_evm_network || 'eth-mainnet';
+            } catch { return 'eth-mainnet'; }
+          })(),
+          epoch: currentEpoch,
+          branchId: existingConnection.branchId || 'main'
+        }
+      };
+    }
+
+    // Active wallet changed — remove stale connection and fall through to popup
+    console.log('[Background] Active wallet changed, clearing stale connection for', appOrigin);
+    await removeConnection(appOrigin);
   }
 
   // Generate unique key for this pending request
