@@ -201,6 +201,33 @@ export function DAppRequestHandler({ wallets }: DAppRequestHandlerProps) {
     }
   }, [invokeRequest, wallets]);
 
+  // For capabilityRequest: select wallet matching the stored connection for this origin.
+  // This fixes the bug where capability popup shows wallet A even though user picked wallet B
+  // during the connection popup — because selectedWallet defaults to wallets[0].
+  useEffect(() => {
+    if (!capabilityRequest || wallets.length === 0) return;
+    const selectWalletForCapability = async () => {
+      try {
+        if (typeof chrome !== 'undefined' && chrome.storage?.local) {
+          const data = await chrome.storage.local.get(['connectedDApps']);
+          const connections: Array<{ appOrigin: string; walletPubKey: string }> = data.connectedDApps || [];
+          const conn = connections.find(c => c.appOrigin === capabilityRequest.appOrigin);
+          if (conn?.walletPubKey) {
+            const wallet = wallets.find(w => w.address === conn.walletPubKey);
+            if (wallet) {
+              logger.debug('DAppRequestHandler: capability — using wallet from connection:', wallet.address);
+              setSelectedWallet(wallet);
+              return;
+            }
+          }
+        }
+      } catch (e) {
+        logger.warn('DAppRequestHandler: Could not resolve wallet for capability origin');
+      }
+    };
+    selectWalletForCapability();
+  }, [capabilityRequest, wallets]);
+
   // For signMessage: select wallet matching the stored connection for this origin
   useEffect(() => {
     if (!signMessageRequest || wallets.length === 0) return;
