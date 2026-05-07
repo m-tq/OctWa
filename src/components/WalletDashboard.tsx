@@ -37,6 +37,7 @@ import {
   Check,
   Wallet as WalletIcon,
   BookUser,
+  Layers,
   FileText,
   Coins,
   X,
@@ -48,6 +49,7 @@ import {
   Code2,
 } from 'lucide-react';
 import { ExtensionStorageManager } from '../utils/extensionStorage';
+import { MultiSend } from './MultiSend';
 import { SendTransaction } from './SendTransaction';
 import { PrivateTransfer } from './PrivateTransfer';
 import { ClaimTransfers } from './ClaimTransfers';
@@ -261,10 +263,11 @@ export function WalletDashboard({
   const [evmExportKeyVisible, setEvmExportKeyVisible] = useState(false);
   const [evmExportKeyCopied, setEvmExportKeyCopied] = useState(false);
   // Expanded mode send modal states
-  const [expandedSendModal, setExpandedSendModal] = useState<'standard' | 'bulk' | null>(null);
+  const [expandedSendModal, setExpandedSendModal] = useState<'standard' | 'multi' | 'bulk' | null>(null);
   const [sendModalAnimating, setSendModalAnimating] = useState(false);
   const [sendModalClosing, setSendModalClosing] = useState(false);
   const [bulkResetTrigger, setBulkResetTrigger] = useState(0);
+  const [multiResetTrigger, setMultiResetTrigger] = useState(0);
   const [copiedField, setCopiedField] = useState<string | null>(null);
   // Expanded mode encrypt/decrypt modal states (for private mode)
   const [expandedPrivateModal, setExpandedPrivateModal] = useState<'encrypt' | 'decrypt' | null>(null);
@@ -362,11 +365,11 @@ export function WalletDashboard({
   }, [showAddressBook]);
 
   // Handle opening send modal with animation
-  const openSendModal = (type: 'standard' | 'bulk') => {
+  const openSendModal = (type: 'standard' | 'multi' | 'bulk') => {
     setSendModalAnimating(true);
     setExpandedSendModal(type);
-    // Hide history panel for bulk send, save previous state
-    if (type === 'bulk') {
+    // Hide history panel for multi/bulk send, save previous state
+    if (type === 'multi' || type === 'bulk') {
       setHistoryPanelWasOpen(showHistorySidebar);
       setShowHistorySidebar(false);
     }
@@ -376,8 +379,8 @@ export function WalletDashboard({
   // Handle closing send modal with animation
   const closeSendModal = () => {
     setSendModalClosing(true);
-    // Restore history panel if it was open before bulk send
-    if (expandedSendModal === 'bulk') {
+    // Restore history panel if it was open before multi/bulk send
+    if (expandedSendModal === 'multi' || expandedSendModal === 'bulk') {
       if (historyPanelWasOpen) {
         setShowHistorySidebar(true);
       }
@@ -3895,7 +3898,7 @@ export function WalletDashboard({
                 {/* Action Buttons */}
                 {operationMode === 'public' ? (
                   /* Public Mode Actions */
-                  <div className="grid grid-cols-2 gap-3 w-full max-w-lg">
+                  <div className="grid grid-cols-3 gap-3 w-full max-w-lg">
                     {/* Standard Send */}
                     <Button
                       variant="outline"
@@ -3906,7 +3909,18 @@ export function WalletDashboard({
                       <span className="text-sm font-medium transition-colors group-hover:drop-shadow-[0_0_12px_rgba(58,77,255,0.7)]">Send</span>
                       <span className="text-[10px] text-muted-foreground">Single transfer</span>
                     </Button>
-                    
+
+                    {/* Multi Send */}
+                    <Button
+                      variant="outline"
+                      className="group flex flex-col items-center gap-2 h-auto py-4 border-0 rounded-none bg-transparent shadow-none hover:bg-transparent hover:text-primary transition-colors"
+                      onClick={() => openSendModal('multi')}
+                    >
+                      <Layers className="h-7 w-7 transition-colors group-hover:drop-shadow-[0_0_8px_rgba(58,77,255,0.5)]" />
+                      <span className="text-sm font-medium transition-colors group-hover:drop-shadow-[0_0_8px_rgba(58,77,255,0.5)]">Multi Send</span>
+                      <span className="text-[10px] text-muted-foreground">Multiple recipients</span>
+                    </Button>
+
                     {/* Bulk Send */}
                     <Button
                       variant="outline"
@@ -4469,6 +4483,7 @@ export function WalletDashboard({
                 ) : (
                   <>
                     {expandedSendModal === 'standard' && <Send className="h-5 w-5" />}
+                    {expandedSendModal === 'multi' && <Layers className="h-5 w-5" />}
                     {expandedSendModal === 'bulk' && <FileText className="h-5 w-5" />}
                   </>
                 )}
@@ -4476,6 +4491,7 @@ export function WalletDashboard({
                   {operationMode === 'private' ? 'Private Transfer' : (
                     <>
                       {expandedSendModal === 'standard' && 'Single Send'}
+                      {expandedSendModal === 'multi' && 'Multi Send'}
                       {expandedSendModal === 'bulk' && 'Bulk Send'}
                     </>
                   )}
@@ -4487,6 +4503,17 @@ export function WalletDashboard({
                 variant="outline"
                 size="sm"
                 onClick={() => setBulkResetTrigger(prev => prev + 1)}
+                className="text-xs"
+              >
+                <RotateCcw className="h-3.5 w-3.5 mr-1.5" />
+                Reset
+              </Button>
+            )}
+            {expandedSendModal === 'multi' && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setMultiResetTrigger(prev => prev + 1)}
                 className="text-xs"
               >
                 <RotateCcw className="h-3.5 w-3.5 mr-1.5" />
@@ -4533,6 +4560,22 @@ export function WalletDashboard({
             </ScrollArea>
           ) : (
             <div className="flex-1 px-6 py-2 overflow-auto xl:overflow-hidden">
+              {expandedSendModal === 'multi' && (
+                <MultiSend
+                  wallet={wallet}
+                  balance={balance}
+                  nonce={nonce}
+                  onBalanceUpdate={handleBalanceUpdate}
+                  onNonceUpdate={handleNonceUpdate}
+                  onTransactionSuccess={handleTransactionSuccess}
+                  onModalClose={closeSendModal}
+                  hideBorder={true}
+                  resetTrigger={multiResetTrigger}
+                  sidebarOpen={showWalletSidebar}
+                  historySidebarOpen={showHistorySidebar}
+                  onAddToAddressBook={handleAddToAddressBook}
+                />
+              )}
               {expandedSendModal === 'bulk' && (
                 <FileMultiSend
                   wallet={wallet}
