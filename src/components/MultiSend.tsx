@@ -11,12 +11,13 @@ import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@/compone
 import { VisuallyHidden } from '@/components/ui/visually-hidden';
 import { ScrollArea, ScrollAreaContent } from '@/components/ui/scroll-area';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { Plus, Trash2, AlertTriangle, Wallet as WalletIcon, CheckCircle, MessageSquare, Loader2, Settings2, XCircle, ChevronDown, Clock } from 'lucide-react';
+import { Plus, Trash2, AlertTriangle, Wallet as WalletIcon, CheckCircle, MessageSquare, Loader2, Settings2, XCircle, ChevronDown, Clock, ExternalLink } from 'lucide-react';
 import { Wallet } from '../types/wallet';
 import { fetchBalance, createTransaction, invalidateCacheAfterTransaction, sendTransactionBatch, sendTransaction, fetchRecommendedFee, ouToOct } from '../utils/api';
 import { useToast } from '@/hooks/use-toast';
 import { AnimatedIcon } from './AnimatedIcon';
 import { AddressInput } from './AddressInput';
+import { getTxExplorerUrl } from '../utils/explorer';
 
 interface Recipient {
   address: string;
@@ -613,23 +614,17 @@ export function MultiSend({ wallet, balance, onBalanceUpdate, onNonceUpdate, onT
             {/* Sending State */}
             {txModalStatus === 'sending' && (
               <>
-                <svg
-                  width={64}
-                  height={64}
-                  viewBox="0 0 50 50"
-                  fill="none"
-                  xmlns="http://www.w3.org/2000/svg"
-                  className="animate-bounce"
-                  style={{ animationDuration: '0.8s' }}
-                >
-                  <circle cx="25" cy="25" r="21" stroke="#3B567F" strokeWidth="8" fill="none" />
-                  <circle cx="25" cy="25" r="9" fill="#3B567F" />
-                </svg>
+                <div className="relative w-14 h-14">
+                  <div className="absolute inset-0 rounded-full border-4 border-transparent animate-spin" style={{ borderTopColor: '#3B567F', borderRightColor: '#3B567F' }} />
+                  <div className="absolute inset-3 rounded-full bg-[#3B567F]/10 flex items-center justify-center">
+                    <Loader2 className="h-5 w-5 text-[#3B567F] animate-spin" style={{ animationDuration: '1.5s' }} />
+                  </div>
+                </div>
                 <div className="text-center space-y-1">
-                  <h3 className="text-base font-semibold">Sending ({txProgress.current}/{txProgress.total})</h3>
+                  <h3 className="text-base font-semibold">Submitting batch...</h3>
                   {txProgress.currentRecipient && (
                     <p className="text-xs text-muted-foreground font-mono">
-                      oct...{txProgress.currentRecipient.slice(-10)} - {txProgress.currentAmount} OCT
+                      {txProgress.currentRecipient}
                     </p>
                   )}
                 </div>
@@ -638,10 +633,12 @@ export function MultiSend({ wallet, balance, onBalanceUpdate, onNonceUpdate, onT
                   <ScrollArea className="w-full max-h-32">
                     <div className="space-y-1 pr-3">
                       {results.map((result, idx) => (
-                        <div key={idx} className={`flex items-center gap-2 p-1.5 rounded text-xs ${result.success ? 'bg-[#3B567F]/10 dark:bg-[#3B567F]/20' : 'bg-red-50 dark:bg-red-950/50'}`}>
-                          {result.success ? <CheckCircle className="h-3 w-3 text-[#3B567F] flex-shrink-0" /> : <XCircle className="h-3 w-3 text-red-500 flex-shrink-0" />}
-                          <span className="font-mono truncate">oct...{result.recipient.slice(-10)}</span>
-                          <span className="ml-auto">{result.amount} OCT</span>
+                        <div key={idx} className={`space-y-0.5 p-1.5 rounded text-xs ${result.success ? 'bg-[#3B567F]/10 dark:bg-[#3B567F]/20' : 'bg-red-50 dark:bg-red-950/50'}`}>
+                          <div className="flex items-center gap-2">
+                            {result.success ? <CheckCircle className="h-3 w-3 text-[#3B567F] flex-shrink-0" /> : <XCircle className="h-3 w-3 text-red-500 flex-shrink-0" />}
+                            <span className="font-mono truncate">oct...{result.recipient.slice(-10)}</span>
+                            <span className="ml-auto">{result.amount} OCT</span>
+                          </div>
                         </div>
                       ))}
                     </div>
@@ -676,12 +673,27 @@ export function MultiSend({ wallet, balance, onBalanceUpdate, onNonceUpdate, onT
                 )}
                 {/* Results log */}
                 <ScrollArea className="w-full max-h-40">
-                  <div className="space-y-1 pr-3">
+                  <div className="space-y-1.5 pr-3">
                     {results.map((result, idx) => (
-                      <div key={idx} className="flex items-center gap-2 p-1.5 rounded text-xs bg-[#3B567F]/10 dark:bg-[#3B567F]/20">
-                        <CheckCircle className="h-3 w-3 text-[#3B567F] flex-shrink-0" />
-                        <span className="font-mono truncate">oct...{result.recipient.slice(-10)}</span>
-                        <span className="ml-auto text-red-600 font-medium">- {result.amount} OCT</span>
+                      <div key={idx} className="space-y-0.5 p-1.5 rounded text-xs bg-[#3B567F]/10 dark:bg-[#3B567F]/20">
+                        <div className="flex items-center gap-2">
+                          <CheckCircle className="h-3 w-3 text-[#3B567F] flex-shrink-0" />
+                          <span className="font-mono truncate">oct...{result.recipient.slice(-10)}</span>
+                          <span className="ml-auto text-red-600 font-medium">- {result.amount} OCT</span>
+                        </div>
+                        {result.hash && (
+                          <div className="flex items-center gap-1 pl-5">
+                            <span className="font-mono text-[10px] text-muted-foreground truncate">{result.hash.slice(0, 16)}...{result.hash.slice(-8)}</span>
+                            <a
+                              href={getTxExplorerUrl(result.hash)}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="flex-shrink-0 text-muted-foreground hover:text-foreground"
+                            >
+                              <ExternalLink className="h-2.5 w-2.5" />
+                            </a>
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>
@@ -715,16 +727,31 @@ export function MultiSend({ wallet, balance, onBalanceUpdate, onNonceUpdate, onT
                 )}
                 {/* Results log */}
                 <ScrollArea className="w-full max-h-48">
-                  <div className="space-y-1 pr-3">
+                  <div className="space-y-1.5 pr-3">
                     {results.map((result, idx) => (
-                      <div key={idx} className={`flex items-center gap-2 p-1.5 rounded text-xs ${result.success ? 'bg-[#3B567F]/10 dark:bg-[#3B567F]/20' : 'bg-red-50 dark:bg-red-950/50'}`}>
-                        {result.success ? <CheckCircle className="h-3 w-3 text-[#3B567F] flex-shrink-0" /> : <XCircle className="h-3 w-3 text-red-500 flex-shrink-0" />}
-                        <span className="font-mono truncate">oct...{result.recipient.slice(-10)}</span>
-                        <span className={`ml-auto font-medium ${result.success ? 'text-red-600' : 'text-muted-foreground'}`}>
-                          {result.success ? `- ${result.amount}` : result.amount} OCT
-                        </span>
+                      <div key={idx} className={`space-y-0.5 p-1.5 rounded text-xs ${result.success ? 'bg-[#3B567F]/10 dark:bg-[#3B567F]/20' : 'bg-red-50 dark:bg-red-950/50'}`}>
+                        <div className="flex items-center gap-2">
+                          {result.success ? <CheckCircle className="h-3 w-3 text-[#3B567F] flex-shrink-0" /> : <XCircle className="h-3 w-3 text-red-500 flex-shrink-0" />}
+                          <span className="font-mono truncate">oct...{result.recipient.slice(-10)}</span>
+                          <span className={`ml-auto font-medium ${result.success ? 'text-red-600' : 'text-muted-foreground'}`}>
+                            {result.success ? `- ${result.amount}` : result.amount} OCT
+                          </span>
+                        </div>
+                        {result.success && result.hash && (
+                          <div className="flex items-center gap-1 pl-5">
+                            <span className="font-mono text-[10px] text-muted-foreground truncate">{result.hash.slice(0, 16)}...{result.hash.slice(-8)}</span>
+                            <a
+                              href={getTxExplorerUrl(result.hash)}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="flex-shrink-0 text-muted-foreground hover:text-foreground"
+                            >
+                              <ExternalLink className="h-2.5 w-2.5" />
+                            </a>
+                          </div>
+                        )}
                         {!result.success && result.error && (
-                          <span className="text-red-500 truncate max-w-[120px] text-[10px]" title={result.error}>{result.error}</span>
+                          <p className="text-red-500 text-[10px] pl-5 truncate" title={result.error}>{result.error}</p>
                         )}
                       </div>
                     ))}
