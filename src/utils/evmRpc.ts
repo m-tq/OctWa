@@ -13,15 +13,76 @@ export interface EVMNetwork {
   isCustom?: boolean;
 }
 
-// Infura API Key - can be overridden via environment variable
-const INFURA_API_KEY = import.meta.env.VITE_INFURA_API_KEY || '121cf128273c4f0cb73770b391070d3b';
+// Storage keys for user-overridden API keys (optional — falls back to .env defaults)
+export const EVM_INFURA_KEY_STORAGE    = 'evm_infura_key';
+export const EVM_ETHERSCAN_KEY_STORAGE = 'evm_etherscan_key';
+
+// Build-time defaults from .env (VITE_INFURA_API_KEY / VITE_ETHERSCAN_API_KEY)
+const ENV_INFURA_KEY    = import.meta.env.VITE_INFURA_API_KEY    || '';
+const ENV_ETHERSCAN_KEY = import.meta.env.VITE_ETHERSCAN_API_KEY || '';
+
+/**
+ * Get the active Infura API key.
+ * Priority: user-saved in localStorage → .env default.
+ */
+export function getEvmInfuraKey(): string {
+  try {
+    return localStorage.getItem(EVM_INFURA_KEY_STORAGE) || ENV_INFURA_KEY;
+  } catch {
+    return ENV_INFURA_KEY;
+  }
+}
+
+/**
+ * Save a user-supplied Infura key to localStorage + chrome.storage.
+ */
+export function saveEvmInfuraKey(key: string): void {
+  localStorage.setItem(EVM_INFURA_KEY_STORAGE, key.trim());
+  if (typeof chrome !== 'undefined' && chrome.storage?.local) {
+    chrome.storage.local.set({ [EVM_INFURA_KEY_STORAGE]: key.trim() }).catch(() => {});
+  }
+}
+
+/**
+ * Get the active Etherscan API key.
+ * Priority: user-saved in localStorage → .env default.
+ */
+export function getEvmEtherscanKey(): string {
+  try {
+    return localStorage.getItem(EVM_ETHERSCAN_KEY_STORAGE) || ENV_ETHERSCAN_KEY;
+  } catch {
+    return ENV_ETHERSCAN_KEY;
+  }
+}
+
+/**
+ * Save a user-supplied Etherscan key to localStorage + chrome.storage.
+ */
+export function saveEvmEtherscanKey(key: string): void {
+  localStorage.setItem(EVM_ETHERSCAN_KEY_STORAGE, key.trim());
+  if (typeof chrome !== 'undefined' && chrome.storage?.local) {
+    chrome.storage.local.set({ [EVM_ETHERSCAN_KEY_STORAGE]: key.trim() }).catch(() => {});
+  }
+}
+
+/**
+ * Build the default Infura RPC URL for a network.
+ * Uses the active Infura key (localStorage override → .env default).
+ */
+function buildRpcUrl(_network: string, infuraSubdomain: string): string {
+  const key = getEvmInfuraKey();
+  if (key) {
+    return `https://${infuraSubdomain}.infura.io/v3/${key}`;
+  }
+  return '';
+}
 
 export const DEFAULT_EVM_NETWORKS: EVMNetwork[] = [
   {
     id: 'eth-mainnet',
     name: 'Ethereum Mainnet',
     chainId: 1,
-    rpcUrl: `https://mainnet.infura.io/v3/${INFURA_API_KEY}`,
+    rpcUrl: buildRpcUrl('eth', 'mainnet'),
     symbol: 'ETH',
     explorer: 'https://etherscan.io',
     isTestnet: false
@@ -30,7 +91,7 @@ export const DEFAULT_EVM_NETWORKS: EVMNetwork[] = [
     id: 'polygon-mainnet',
     name: 'Polygon Mainnet',
     chainId: 137,
-    rpcUrl: `https://polygon-mainnet.infura.io/v3/${INFURA_API_KEY}`,
+    rpcUrl: buildRpcUrl('polygon', 'polygon-mainnet'),
     symbol: 'POL',
     explorer: 'https://polygonscan.com',
     isTestnet: false
@@ -39,7 +100,7 @@ export const DEFAULT_EVM_NETWORKS: EVMNetwork[] = [
     id: 'base-mainnet',
     name: 'Base Mainnet',
     chainId: 8453,
-    rpcUrl: `https://base-mainnet.infura.io/v3/${INFURA_API_KEY}`,
+    rpcUrl: buildRpcUrl('base', 'base-mainnet'),
     symbol: 'ETH',
     explorer: 'https://basescan.org',
     isTestnet: false
@@ -48,7 +109,7 @@ export const DEFAULT_EVM_NETWORKS: EVMNetwork[] = [
     id: 'bsc-mainnet',
     name: 'BSC Mainnet',
     chainId: 56,
-    rpcUrl: `https://bsc-mainnet.infura.io/v3/${INFURA_API_KEY}`,
+    rpcUrl: buildRpcUrl('bsc', 'bsc-mainnet'),
     symbol: 'BNB',
     explorer: 'https://bscscan.com',
     isTestnet: false
@@ -57,7 +118,7 @@ export const DEFAULT_EVM_NETWORKS: EVMNetwork[] = [
     id: 'eth-sepolia',
     name: 'Ethereum Sepolia',
     chainId: 11155111,
-    rpcUrl: `https://sepolia.infura.io/v3/${INFURA_API_KEY}`,
+    rpcUrl: buildRpcUrl('sepolia', 'sepolia'),
     symbol: 'ETH',
     explorer: 'https://sepolia.etherscan.io',
     isTestnet: true
@@ -92,22 +153,39 @@ export function saveEVMProvider(networkId: string, rpcUrl: string): void {
   localStorage.setItem(EVM_RPC_STORAGE_KEY, JSON.stringify(providers));
 }
 
+// Infura subdomain map for default networks
+const INFURA_SUBDOMAINS: Record<string, string> = {
+  'eth-mainnet':     'mainnet',
+  'polygon-mainnet': 'polygon-mainnet',
+  'base-mainnet':    'base-mainnet',
+  'bsc-mainnet':     'bsc-mainnet',
+  'eth-sepolia':     'sepolia',
+};
+
 /**
- * Get RPC URL for a network (custom or default)
+ * Get RPC URL for a network (custom > Infura key > empty)
+ * Dynamically reads the Infura key from localStorage so changes take effect immediately.
  */
 export function getEVMRpcUrl(networkId: string): string {
+  // 1. User-saved custom RPC for this specific network
   const customProviders = getStoredEVMProviders();
   if (customProviders[networkId]) {
     return customProviders[networkId];
   }
-  // Check custom networks
+  // 2. Custom network with its own RPC URL
   const customNetworks = getCustomNetworks();
   const customNetwork = customNetworks.find(n => n.id === networkId);
   if (customNetwork) {
     return customNetwork.rpcUrl;
   }
-  const network = DEFAULT_EVM_NETWORKS.find(n => n.id === networkId);
-  return network?.rpcUrl || DEFAULT_EVM_NETWORKS[0].rpcUrl;
+  // 3. Build direct Infura URL from user-configured key
+  const infuraKey = getEvmInfuraKey();
+  const subdomain = INFURA_SUBDOMAINS[networkId];
+  if (infuraKey && subdomain) {
+    return `https://${subdomain}.infura.io/v3/${infuraKey}`;
+  }
+  // 4. Not configured
+  return '';
 }
 
 /**
@@ -610,7 +688,7 @@ async function getEVMTransactions(
     ? getAllNetworks().find(n => n.id === networkId) || getActiveEVMNetwork()
     : getActiveEVMNetwork();
   
-  const apiKey = import.meta.env.VITE_ETHERSCAN_API_KEY || '';
+  const apiKey = getEvmEtherscanKey();
   
   try {
     // Etherscan API V2 with chainid parameter
@@ -665,7 +743,7 @@ async function getERC20Transactions(
     ? getAllNetworks().find(n => n.id === networkId) || getActiveEVMNetwork()
     : getActiveEVMNetwork();
   
-  const apiKey = import.meta.env.VITE_ETHERSCAN_API_KEY || '';
+  const apiKey = getEvmEtherscanKey();
   
   try {
     // Fetch ALL ERC-20 transfers for this address (no token filter)

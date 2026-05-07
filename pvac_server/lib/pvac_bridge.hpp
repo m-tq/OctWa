@@ -32,10 +32,10 @@
 #include <array>
 #include <vector>
 #include <stdexcept>
-#include "crypto_utils.hpp"
+#include "../crypto_utils.hpp"
 
 extern "C" {
-#include "../pvac/pvac_c_api.h"
+#include "pvac_c_api.h"
 }
 
 namespace octra {

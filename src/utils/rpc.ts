@@ -1,6 +1,30 @@
 import { RPCProvider } from '../types/wallet';
 
-const DEFAULT_RPC_URL = 'http://46.101.86.250:8080';
+const MAINNET_URL = 'http://46.101.86.250:8080';
+const DEVNET_URL  = 'http://165.227.225.79:8080';
+
+/** Stale devnet URLs that must be migrated to the correct IP. */
+const STALE_DEVNET_URLS = ['devnet.octrascan', ':8081'];
+
+function isStaleDevnetUrl(url: string): boolean {
+  return STALE_DEVNET_URLS.some((pattern) => url.includes(pattern));
+}
+
+/**
+ * Migrate any stale devnet URLs to the correct direct IP.
+ * Returns the (possibly mutated) array and a flag indicating whether a save is needed.
+ */
+function migrateStaleUrls(providers: RPCProvider[]): { providers: RPCProvider[]; changed: boolean } {
+  let changed = false;
+  const migrated = providers.map((p) => {
+    if (p.id === 'devnet' && isStaleDevnetUrl(p.url)) {
+      changed = true;
+      return { ...p, url: DEVNET_URL };
+    }
+    return p;
+  });
+  return { providers: migrated, changed };
+}
 
 function syncProvidersToExtensionStorage(providers: RPCProvider[]): void {
   if (typeof chrome === 'undefined' || !chrome.storage?.local) return;
@@ -17,7 +41,7 @@ function buildDefaultProvider(): RPCProvider {
   return {
     id: 'default',
     name: 'Octra Mainnet',
-    url: DEFAULT_RPC_URL,
+    url: MAINNET_URL,
     headers: {},
     priority: 1,
     isActive: true,
@@ -27,10 +51,23 @@ function buildDefaultProvider(): RPCProvider {
 }
 
 export function getActiveRPCProvider(): RPCProvider | null {
-  try {
-    const providers: RPCProvider[] = JSON.parse(localStorage.getItem('rpcProviders') ?? '[]');
-    const active = providers.find((p) => p.isActive);
+  // Web Workers don't have localStorage — return default provider silently
+  if (typeof localStorage === 'undefined') {
+    return buildDefaultProvider();
+  }
 
+  try {
+    let providers: RPCProvider[] = JSON.parse(localStorage.getItem('rpcProviders') ?? '[]');
+
+    // Always migrate stale devnet URLs on read so the worker always gets the correct URL
+    const { providers: migrated, changed } = migrateStaleUrls(providers);
+    if (changed) {
+      providers = migrated;
+      localStorage.setItem('rpcProviders', JSON.stringify(providers));
+      syncProvidersToExtensionStorage(providers);
+    }
+
+    const active = providers.find((p) => p.isActive);
     if (active) {
       syncProvidersToExtensionStorage(providers);
       return active;

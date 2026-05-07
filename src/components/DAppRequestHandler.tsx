@@ -1116,28 +1116,22 @@ export function DAppRequestHandler({ wallets }: DAppRequestHandlerProps) {
         
         // Success - close popup immediately (no toast needed)
       } else if (invokeRequest.method === 'encrypt_balance') {
-        // Move OCT from public balance into encrypted balance
         const params = parseInvokePayload<{ amount: number }>(invokeRequest.payload);
         if (!params?.amount || params.amount <= 0) throw new Error('Invalid amount for encrypt_balance');
 
-        const { pvacServerService } = await import('@/services/pvacServerService');
-        if (!pvacServerService.isEnabled()) throw new Error('PVAC server required for encrypt_balance. Configure it in Settings.');
-
+        const { runInWorker } = await import('@/lib/pvac/pvac-worker-client');
         const balanceData = await fetchBalance(selectedWallet.address);
         const ou = String(await fetchRecommendedFee('encrypt'));
-
-        const encResult = await pvacServerService.encryptBalance({
-          amount: params.amount,
-          private_key: selectedWallet.privateKey!,
-          public_key: selectedWallet.publicKey!,
+        const result = await runInWorker<{ tx: import('../types/wallet').Transaction }>('encryptBalance', {
+          privateKey: selectedWallet.privateKey!,
+          publicKey: selectedWallet.publicKey!,
           address: selectedWallet.address,
+          amountRaw: BigInt(params.amount).toString(),
           nonce: balanceData.nonce + 1,
           ou,
         });
-
-        if (!encResult.success || !encResult.tx) throw new Error(encResult.error || 'Encrypt balance failed');
-
-        const submitResult = await sendTransaction(encResult.tx as import('../types/wallet').Transaction);
+        if (!result.success || !result.data) throw new Error(result.error || 'Encrypt balance failed');
+        const submitResult = await sendTransaction(result.data.tx);
         if (!submitResult.success) throw new Error(submitResult.error || 'Failed to submit encrypt transaction');
 
         sendInvokeResult(true, new TextEncoder().encode(JSON.stringify({
@@ -1146,33 +1140,26 @@ export function DAppRequestHandler({ wallets }: DAppRequestHandlerProps) {
         })));
 
       } else if (invokeRequest.method === 'decrypt_balance') {
-        // Move OCT from encrypted balance back into public balance
         const params = parseInvokePayload<{ amount: number }>(invokeRequest.payload);
         if (!params?.amount || params.amount <= 0) throw new Error('Invalid amount for decrypt_balance');
-
-        const { pvacServerService } = await import('@/services/pvacServerService');
-        if (!pvacServerService.isEnabled()) throw new Error('PVAC server required for decrypt_balance. Configure it in Settings.');
 
         const { fetchEncryptedBalance } = await import('../utils/api');
         const encData = await fetchEncryptedBalance(selectedWallet.address, selectedWallet.privateKey);
         if (!encData?.cipher || encData.cipher === '0') throw new Error('No encrypted balance found');
-
         const balanceData = await fetchBalance(selectedWallet.address);
         const ou = String(await fetchRecommendedFee('decrypt'));
-
-        const decResult = await pvacServerService.decryptToPublic({
-          amount: params.amount,
-          private_key: selectedWallet.privateKey!,
-          public_key: selectedWallet.publicKey!,
-          current_cipher: encData.cipher,
+        const { decryptToPublic } = await import('@/lib/pvac/balance-ops');
+        const result = await decryptToPublic({
+          privateKey: selectedWallet.privateKey!,
+          publicKey: selectedWallet.publicKey!,
           address: selectedWallet.address,
+          amountRaw: BigInt(params.amount),
+          currentCipher: encData.cipher,
           nonce: balanceData.nonce + 1,
           ou,
         });
-
-        if (!decResult.success || !decResult.tx) throw new Error(decResult.error || 'Decrypt balance failed');
-
-        const submitResult = await sendTransaction(decResult.tx as import('../types/wallet').Transaction);
+        if (!result.success || !result.data) throw new Error(result.error || 'Decrypt balance failed');
+        const submitResult = await sendTransaction(result.data.tx);
         if (!submitResult.success) throw new Error(submitResult.error || 'Failed to submit decrypt transaction');
 
         sendInvokeResult(true, new TextEncoder().encode(JSON.stringify({
@@ -1181,40 +1168,31 @@ export function DAppRequestHandler({ wallets }: DAppRequestHandlerProps) {
         })));
 
       } else if (invokeRequest.method === 'stealth_send') {
-        // Send stealth transfer from encrypted balance
         const params = parseInvokePayload<{ to: string; amount: number }>(invokeRequest.payload);
         if (!params?.to) throw new Error('Recipient address required for stealth_send');
         if (!params?.amount || params.amount <= 0) throw new Error('Invalid amount for stealth_send');
 
-        const { pvacServerService } = await import('@/services/pvacServerService');
-        if (!pvacServerService.isEnabled()) throw new Error('PVAC server required for stealth_send. Configure it in Settings.');
-
-        const { getViewPubkey, fetchBalance: fetchBal } = await import('../utils/api');
+        const { getViewPubkey, fetchBalance: fetchBal, fetchEncryptedBalance } = await import('../utils/api');
         const viewPubkey = await getViewPubkey(params.to);
-        if (!viewPubkey) throw new Error(`Recipient ${params.to.slice(0, 10)}... has no view public key registered`);
-
-        const { fetchEncryptedBalance } = await import('../utils/api');
+        if (!viewPubkey) throw new Error('Recipient has no view public key registered');
         const encData = await fetchEncryptedBalance(selectedWallet.address, selectedWallet.privateKey);
         if (!encData?.cipher || encData.cipher === '0') throw new Error('No encrypted balance for stealth send');
-
         const balanceData = await fetchBal(selectedWallet.address);
         const ou = String(await fetchRecommendedFee('stealth'));
-
-        const stealthResult = await pvacServerService.stealthSend({
-          to_address: params.to,
-          amount: params.amount,
-          current_cipher: encData.cipher,
-          recipient_view_pubkey: viewPubkey,
-          from_address: selectedWallet.address,
+        const { stealthSend } = await import('@/lib/pvac/stealth-ops');
+        const result = await stealthSend({
+          privateKey: selectedWallet.privateKey!,
+          publicKey: selectedWallet.publicKey!,
+          address: selectedWallet.address,
+          toAddress: params.to,
+          amountRaw: BigInt(params.amount),
+          currentCipher: encData.cipher,
+          recipientViewPubkey: viewPubkey,
           nonce: balanceData.nonce + 1,
-          private_key: selectedWallet.privateKey!,
-          public_key: selectedWallet.publicKey!,
           ou,
         });
-
-        if (!stealthResult.success || !stealthResult.tx) throw new Error(stealthResult.error || 'Stealth send failed');
-
-        const submitResult = await sendTransaction(stealthResult.tx as import('../types/wallet').Transaction);
+        if (!result.success || !result.data) throw new Error(result.error || 'Stealth send failed');
+        const submitResult = await sendTransaction(result.data.tx);
         if (!submitResult.success) throw new Error(submitResult.error || 'Failed to submit stealth transaction');
 
         sendInvokeResult(true, new TextEncoder().encode(JSON.stringify({
@@ -1223,34 +1201,27 @@ export function DAppRequestHandler({ wallets }: DAppRequestHandlerProps) {
         })));
 
       } else if (invokeRequest.method === 'stealth_claim') {
-        // Claim a stealth output into encrypted balance
         const params = parseInvokePayload<{ outputId: string }>(invokeRequest.payload);
         if (!params?.outputId) throw new Error('Output ID required for stealth_claim');
 
-        const { pvacServerService } = await import('@/services/pvacServerService');
-        if (!pvacServerService.isEnabled()) throw new Error('PVAC server required for stealth_claim. Configure it in Settings.');
-
+        const { runInWorker } = await import('@/lib/pvac/pvac-worker-client');
         const { scanStealthOutputs } = await import('@/services/stealthScanService');
+        const { fetchBalance: fetchBal } = await import('../utils/api');
         const claimable = await scanStealthOutputs(selectedWallet.privateKey!);
         const output = claimable.find(o => o.id === params.outputId);
         if (!output) throw new Error(`Stealth output ${params.outputId} not found or already claimed`);
-
-        const { fetchBalance: fetchBal } = await import('../utils/api');
         const balanceData = await fetchBal(selectedWallet.address);
         const ou = String(await fetchRecommendedFee('stealth'));
-
-        const claimResult = await pvacServerService.claimStealth({
-          stealth_output: output.rawOutput,
-          private_key: selectedWallet.privateKey!,
-          public_key: selectedWallet.publicKey!,
+        const result = await runInWorker<{ tx: import('../types/wallet').Transaction }>('claimStealth', {
+          privateKey: selectedWallet.privateKey!,
+          publicKey: selectedWallet.publicKey!,
           address: selectedWallet.address,
+          stealthOutput: output.rawOutput,
           nonce: balanceData.nonce + 1,
           ou,
         });
-
-        if (!claimResult.success || !claimResult.tx) throw new Error(claimResult.error || 'Stealth claim failed');
-
-        const submitResult = await sendTransaction(claimResult.tx as import('../types/wallet').Transaction);
+        if (!result.success || !result.data) throw new Error(result.error || 'Stealth claim failed');
+        const submitResult = await sendTransaction(result.data.tx);
         if (!submitResult.success) throw new Error(submitResult.error || 'Failed to submit claim transaction');
 
         sendInvokeResult(true, new TextEncoder().encode(JSON.stringify({

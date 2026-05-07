@@ -3,12 +3,13 @@
  * encrypt/decrypt/stealth operation. The node rejects unregistered wallets with:
  *   "bad_zero_proof : encrypt [reason - no pvac pubkey registered]"
  *
- * Delegates to the PVAC server's /api/ensure_pvac_registered endpoint.
- * Safe to call before every PVAC operation — the server is idempotent.
+ * Uses the browser WASM engine — no local server required.
+ * Safe to call before every PVAC operation — idempotent.
  */
 
-import { pvacServerService } from '@/services/pvacServerService';
-import { getActiveRPCProvider } from '@/utils/rpc';
+import { getPvacWasm } from '@/lib/pvac/wasm-loader';
+import { ensurePvacRegisteredOnNode } from '@/lib/pvac/node-registration';
+import { resolveSecretKey64, hexPubkeyToBase64 } from '@/lib/pvac/crypto-utils';
 
 export interface EnsurePvacResult {
   success: boolean;
@@ -22,23 +23,13 @@ export async function ensurePvacRegistered(
   publicKey: string
 ): Promise<EnsurePvacResult> {
   try {
-    const rpcUrl = getActiveRPCProvider()?.url || '';
-    if (!rpcUrl) {
-      return { success: false, error: 'No RPC provider configured' };
-    }
+    const pvac = await getPvacWasm(privateKey);
+    const sk64 = resolveSecretKey64(privateKey);
+    const publicKeyB64 = hexPubkeyToBase64(publicKey);
 
-    const result = await pvacServerService.ensurePvacRegistered({
-      private_key: privateKey,
-      public_key: publicKey,
-      address,
-      rpc_url: rpcUrl,
-    });
+    const result = await ensurePvacRegisteredOnNode(pvac, address, sk64, publicKeyB64);
 
-    if (!result.success) {
-      return { success: false, error: result.error || 'PVAC registration failed' };
-    }
-
-    return { success: true };
+    return result;
   } catch (error) {
     console.error('[ensurePvacRegistered] Error:', error);
     return {

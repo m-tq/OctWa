@@ -3,17 +3,18 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Switch } from '@/components/ui/switch';
-import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Unlock, AlertTriangle, Server, Zap, Loader2 } from 'lucide-react';
+import { Unlock, AlertTriangle, Loader2 } from 'lucide-react';
 import { Wallet, Transaction, EncryptedBalanceResponse } from '../types/wallet';
 import { useToast } from '@/hooks/use-toast';
 import { AnimatedIcon } from './AnimatedIcon';
 import { TransactionModal, TransactionStatus, TransactionResult } from './TransactionModal';
+import { PvacOperationModal } from './PvacOperationModal';
+import { FeeSelector, FeeOption, getEffectiveFee } from './FeeSelector';
 import { InfoTooltip } from './InfoTooltip';
-import { pvacServerService } from '@/services/pvacServerService';
-import { sendTransaction, fetchBalance, fetchEncryptedBalance, invalidateCacheAfterDecrypt, fetchRecommendedFee, ouToOct } from '@/utils/api';
-import { ensurePvacRegistered } from '@/utils/ensurePvacRegistered';
+import { sendTransaction, fetchBalance, fetchEncryptedBalance, invalidateCacheAfterDecrypt, fetchRecommendedFee } from '@/utils/api';
+import { usePvacOperation } from '@/hooks/usePvacOperation';
+import { RangeServerSetup } from './RangeServerSetup';
+import { isRangeServerAvailable } from '@/services/rangeProofServer';
 
 interface DecryptBalanceDialogProps {
   open: boolean;
@@ -21,7 +22,8 @@ interface DecryptBalanceDialogProps {
   wallet: Wallet;
   encryptedBalance: number;
   currentCipher?: string;
-  onSuccess: () => void;
+  /** Called after tx confirmed + balances refreshed. Receives fresh data for immediate cache update. */
+  onSuccess: (freshPublic: number, freshEnc: EncryptedBalanceResponse | null, freshNonce: number) => void;
   onBalanceUpdate?: (newBalance: number) => void;
   onEncryptedBalanceUpdate?: (encryptedBalance: EncryptedBalanceResponse | null) => void;
   isPopupMode?: boolean;
@@ -42,34 +44,60 @@ export function DecryptBalanceDialog({
 }: DecryptBalanceDialogProps) {
   const [amount, setAmount] = useState('');
   const [isDecrypting, setIsDecrypting] = useState(false);
+  const [showPvacModal, setShowPvacModal] = useState(false);
   const [showTxModal, setShowTxModal] = useState(false);
   const [txModalStatus, setTxModalStatus] = useState<TransactionStatus>('idle');
   const [txModalResult, setTxModalResult] = useState<TransactionResult>({});
-  const [usePvacServer, setUsePvacServer] = useState(false);
-  const [isPvacAvailable, setIsPvacAvailable] = useState(false);
-  const [recommendedFee, setRecommendedFee] = useState(3000); // decrypt default
+  const [recommendedFee, setRecommendedFee] = useState(3000);
+  const [feeOption, setFeeOption] = useState<FeeOption>('recommended');
   const [customFee, setCustomFee] = useState('');
+  const [rangeServerReady, setRangeServerReady] = useState(false);
   const { toast } = useToast();
+  const pvacOp = usePvacOperation();
   
-  // Check PVAC availability when dialog opens + fetch dynamic fee
   useEffect(() => {
     if (open) {
-      const available = pvacServerService.isEnabled();
-      setIsPvacAvailable(available);
-      setUsePvacServer(available);
-      // Always refetch to get latest fee from node
       fetchRecommendedFee('decrypt').then(fee => setRecommendedFee(fee)).catch(() => {});
+      isRangeServerAvailable().then(setRangeServerReady);
     }
   }, [open]);
 
-  const effectiveFee = customFee ? (parseInt(customFee) || recommendedFee) : recommendedFee;
+  const effectiveFee = getEffectiveFee(recommendedFee, feeOption, customFee);
   
   const handleTxModalOpenChange = (open: boolean) => {
-    
     setShowTxModal(open);
     if (!open) {
       setTxModalStatus('idle');
-      
+    }
+  };
+
+  // Shared helper: submit a signed tx and refresh balances
+  const submitAndRefresh = async (tx: Transaction, amountToDecrypt: number) => {
+    const submitResult = await sendTransaction(tx);
+    if (!submitResult.success) {
+      throw new Error(submitResult.error || 'Failed to submit transaction to blockchain');
+    }
+    const txHash = submitResult.hash || 'unknown';
+
+    setShowPvacModal(false);
+    setShowTxModal(true);
+    setTxModalStatus('success');
+    setTxModalResult({ hash: txHash, amount: amountToDecrypt.toFixed(8) });
+
+    toast({ title: "Decryption Successful", description: `Decrypted ${amountToDecrypt} OCT` });
+    setAmount('');
+
+    try {
+      await invalidateCacheAfterDecrypt(wallet.address);
+      const [freshBalance, freshEncrypted] = await Promise.all([
+        fetchBalance(wallet.address, true),
+        fetchEncryptedBalance(wallet.address, wallet.privateKey, true),
+      ]);
+      if (onBalanceUpdate) onBalanceUpdate(freshBalance.balance);
+      if (onEncryptedBalanceUpdate && freshEncrypted) onEncryptedBalanceUpdate(freshEncrypted);
+      onSuccess(freshBalance.balance, freshEncrypted, freshBalance.nonce);
+    } catch {
+      onSuccess(0, null, 0);
     }
   };
 
@@ -93,16 +121,56 @@ export function DecryptBalanceDialog({
       return;
     }
 
+    if (!currentCipher || currentCipher === '0' || !currentCipher.startsWith('hfhe_v1|')) {
+      toast({
+        title: "No Encrypted Balance",
+        description: "No valid encrypted balance cipher available. Please encrypt some balance first.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setIsDecrypting(true);
-    setShowTxModal(true);
-    setTxModalStatus('sending');
+    setShowPvacModal(true);
+    pvacOp.reset();
 
     try {
-      if (usePvacServer && isPvacAvailable) {
-        await handleDecryptWithPvac(amountToDecrypt);
-      } else {
-        await handleDecryptWithBrowser(amountToDecrypt);
+      const amountRaw = BigInt(Math.floor(amountToDecrypt * 1_000_000));
+      // Force-refresh both nonce AND encrypted balance cipher before decrypt.
+      // After wallet switch, the UI may still show stale cipher/balance from
+      // the previous wallet. Always fetch fresh data from the node.
+      const [freshBalanceData, freshEncData] = await Promise.all([
+        fetchBalance(wallet.address, true),
+        fetchEncryptedBalance(wallet.address, wallet.privateKey, true),
+      ]);
+      const currentNonce = freshBalanceData.nonce;
+
+      // Use fresh cipher from node — never trust the prop which may be stale
+      const freshCipher = freshEncData?.cipher;
+      if (!freshCipher || freshCipher === '0' || !freshCipher.startsWith('hfhe_v1|')) {
+        throw new Error('No valid encrypted balance found for this wallet. Please encrypt some balance first.');
       }
+
+      const freshEncryptedBalance = freshEncData?.encrypted ?? 0;
+      if (amountToDecrypt > freshEncryptedBalance) {
+        throw new Error(`Insufficient encrypted balance: have ${freshEncryptedBalance.toFixed(6)} OCT, need ${amountToDecrypt.toFixed(6)} OCT`);
+      }
+
+      const result = await pvacOp.runWorker<{ tx: Transaction }>('decryptToPublic', {
+        privateKey:    wallet.privateKey,
+        publicKey:     wallet.publicKey || '',
+        address:       wallet.address,
+        amountRaw:     amountRaw.toString(),
+        currentCipher: freshCipher,
+        nonce:         currentNonce + 1,
+        ou:            String(effectiveFee),
+      });
+
+      if (!result.success || !result.data) {
+        throw new Error(result.error || 'Decryption failed');
+      }
+
+      await submitAndRefresh(result.data.tx as Transaction, amountToDecrypt);
     } catch (error) {
       console.error('Decrypt failed:', error);
       const msg = error instanceof Error ? error.message : 'Failed to decrypt balance';
@@ -112,124 +180,6 @@ export function DecryptBalanceDialog({
     } finally {
       setIsDecrypting(false);
     }
-  };
-
-  const handleDecryptWithPvac = async (amountToDecrypt: number) => {
-    try {
-      // Ensure PVAC pubkey is registered on the node before decrypting
-      const regResult = await ensurePvacRegistered(
-        wallet.address,
-        wallet.privateKey,
-        wallet.publicKey || ''
-      );
-      if (!regResult.success) {
-        throw new Error(regResult.error || 'Failed to register PVAC pubkey on node');
-      }
-
-      // Convert amount to raw units (1 OCT = 1,000,000 raw units)
-      const amountRaw = Math.floor(amountToDecrypt * 1_000_000);
-      
-      // Fetch fresh nonce from blockchain
-      const freshBalanceData = await fetchBalance(wallet.address);
-      const currentNonce = freshBalanceData.nonce;
-
-      // Get current encrypted balance cipher
-      if (!currentCipher || currentCipher === '0' || !currentCipher.startsWith('hfhe_v1|')) {
-        throw new Error('No valid encrypted balance cipher available. Please encrypt some balance first.');
-      }
-
-      // Call PVAC server to decrypt balance to public
-      const result = await pvacServerService.decryptToPublic({
-        amount: amountRaw,
-        private_key: wallet.privateKey,
-        public_key: wallet.publicKey || '',
-        current_cipher: currentCipher,
-        address: wallet.address,
-        nonce: currentNonce + 1,
-        ou: String(effectiveFee)
-      });
-
-      if (!result.success) {
-        throw new Error(result.error || 'PVAC server returned error');
-      }
-
-      if (!result.tx) {
-        throw new Error('PVAC server did not return transaction data');
-      }
-
-      const submitResult = await sendTransaction(result.tx as Transaction);
-
-      if (!submitResult.success) {
-        throw new Error(submitResult.error || 'Failed to submit transaction to blockchain');
-      }
-
-      const txHash = submitResult.hash || 'unknown';
-      
-      setTxModalStatus('success');
-      setTxModalResult({
-        hash: txHash,
-        amount: amountToDecrypt.toFixed(8)
-      });
-
-      toast({
-        title: "Decryption Successful",
-        description: `Decrypted ${amountToDecrypt} OCT and submitted to blockchain`,
-      });
-
-      // Reset form
-      setAmount('');
-
-      // Immediately refresh both balances after successful decrypt
-      try {
-        await invalidateCacheAfterDecrypt(wallet.address);
-        const [freshBalance, freshEncrypted] = await Promise.all([
-          fetchBalance(wallet.address, true),
-          fetchEncryptedBalance(wallet.address, wallet.privateKey, true),
-        ]);
-        if (onBalanceUpdate) onBalanceUpdate(freshBalance.balance);
-        if (onEncryptedBalanceUpdate && freshEncrypted) onEncryptedBalanceUpdate(freshEncrypted);
-        onSuccess();
-      } catch (error) {
-        console.error('[Decrypt] Failed to refresh balance:', error);
-        onSuccess();
-      }
-            
-    } catch (error) {
-      console.error('[Decrypt] Error:', error);
-
-      if (error instanceof Error && error.message.includes('Cannot connect')) {
-        toast({
-          title: "PVAC Server Unavailable",
-          description: "Falling back to browser-based decryption...",
-        });
-        await handleDecryptWithBrowser(amountToDecrypt);
-      } else {
-        throw error;
-      }
-    }
-  };
-
-  const handleDecryptWithBrowser = async (_amountToDecrypt: number) => {
-    // Browser-based decryption (slower fallback)
-    toast({
-      title: "Using Browser Decryption",
-      description: "This may take longer. Consider using PVAC server for faster operations.",
-    });
-    
-    // Simulate browser-based decryption
-    await new Promise(resolve => setTimeout(resolve, 5000));
-    
-    // TODO: Implement actual browser-based decryption
-    toast({
-      title: "Coming Soon",
-      description: "Browser-based encrypted balance feature will be available in a future release.",
-      variant: "default",
-    });
-    
-    setTxModalStatus('error');
-    setTxModalResult({
-      error: 'Browser-based decryption not yet implemented. Please use PVAC server.'
-    });
   };
 
   const content = showTxModal ? (
@@ -273,6 +223,14 @@ export function DecryptBalanceDialog({
         </div>
       )}
 
+      {/* Range server setup — shown when server is not running */}
+      {!rangeServerReady && (
+        <RangeServerSetup
+          onAvailable={() => setRangeServerReady(true)}
+          compact={isPopupMode}
+        />
+      )}
+
       <div className={isPopupMode ? "space-y-1 pt-4" : "space-y-2 pt-6"}>
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-1">
@@ -311,70 +269,20 @@ export function DecryptBalanceDialog({
       </div>
 
       {/* Network Fee */}
-      <div className={isPopupMode ? "space-y-1" : "space-y-2"}>
-        <div className="flex items-center justify-between">
-          <Label className={isPopupMode ? "text-xs text-muted-foreground" : "text-sm text-muted-foreground"}>
-            Network Fee (OU)
-          </Label>
-          <span className={`text-muted-foreground ${isPopupMode ? 'text-[10px]' : 'text-xs'}`}>
-            Recommended: <span className="font-mono text-[#00E5C0]">{recommendedFee.toLocaleString()}</span>
-            <span className="ml-1">≈ {ouToOct(recommendedFee)} OCT</span>
-          </span>
-        </div>
-        <Input
-          type="number"
-          placeholder={String(recommendedFee)}
-          value={customFee}
-          onChange={(e) => setCustomFee(e.target.value)}
-          min="1"
+      <div className={isPopupMode ? "space-y-1" : "space-y-1.5"}>
+        <Label className={isPopupMode ? "text-xs text-muted-foreground" : "text-sm text-muted-foreground"}>
+          Network Fee
+        </Label>
+        <FeeSelector
+          recommendedFee={recommendedFee}
+          feeOption={feeOption}
+          customFee={customFee}
+          onFeeOptionChange={setFeeOption}
+          onCustomFeeChange={setCustomFee}
           disabled={isDecrypting}
-          className={`font-mono ${isPopupMode ? 'h-9 text-xs' : ''}`}
+          isPopupMode={isPopupMode}
         />
       </div>
-
-      {/* PVAC Server Option */}
-      {isPvacAvailable && !isInline && (
-        <div className={`flex items-center justify-between p-3 bg-muted/50 rounded-lg ${isPopupMode ? 'py-2' : ''}`}>
-          <div className="flex items-center gap-2">
-            <Server className={`${isPopupMode ? 'h-3 w-3' : 'h-4 w-4'} text-primary`} />
-            <div>
-              <Label className={`${isPopupMode ? 'text-xs' : 'text-sm'} font-medium cursor-pointer`}>
-                Use PVAC Server
-              </Label>
-              <p className={`${isPopupMode ? 'text-[10px]' : 'text-xs'} text-muted-foreground`}>
-                {usePvacServer ? '~500ms' : '~5s'} decryption time
-              </p>
-            </div>
-          </div>
-          <Switch
-            checked={usePvacServer}
-            onCheckedChange={setUsePvacServer}
-            disabled={isDecrypting}
-          />
-        </div>
-      )}
-
-      {/* Performance Info */}
-      {usePvacServer && isPvacAvailable && !isInline && (
-        <Alert className={isPopupMode ? 'py-2' : ''}>
-          <Zap className={`${isPopupMode ? 'h-3 w-3' : 'h-4 w-4'}`} />
-          <AlertDescription className={isPopupMode ? 'text-[10px]' : 'text-xs'}>
-            PVAC server will process this operation ~10x faster than browser-based decryption.
-            Expected time: 500-1000ms
-          </AlertDescription>
-        </Alert>
-      )}
-
-      {/* PVAC Not Available Warning */}
-      {!isPvacAvailable && !isInline && (
-        <Alert variant="destructive" className={isPopupMode ? 'py-2' : ''}>
-          <AlertTriangle className={`${isPopupMode ? 'h-3 w-3' : 'h-4 w-4'}`} />
-          <AlertDescription className={isPopupMode ? 'text-[10px]' : 'text-xs'}>
-            PVAC server not configured. Browser-based decryption not yet available.
-            Please configure PVAC server in settings.
-          </AlertDescription>
-        </Alert>
-      )}
 
       <div className="flex gap-2 pt-2">
         <Button
@@ -387,7 +295,7 @@ export function DecryptBalanceDialog({
         </Button>
         <Button
           onClick={handleDecrypt}
-          disabled={isDecrypting || !amount || parseFloat(amount) <= 0 || parseFloat(amount) > encryptedBalance || (!isPvacAvailable && !usePvacServer)}
+          disabled={isDecrypting || !amount || parseFloat(amount) <= 0 || parseFloat(amount) > encryptedBalance || !rangeServerReady}
           className={`flex-1 ${isPopupMode ? 'h-10 text-sm' : 'h-12 text-base'}`}
         >
           {isDecrypting ? (
@@ -398,7 +306,7 @@ export function DecryptBalanceDialog({
           ) : (
             <>
               <Unlock className={`${isPopupMode ? 'h-4 w-4 mr-1.5' : 'h-4 w-4 mr-2'}`} />
-              Decrypt {usePvacServer && isPvacAvailable && '(PVAC)'}
+              Decrypt
             </>
           )}
         </Button>
@@ -407,25 +315,45 @@ export function DecryptBalanceDialog({
     </div>
   );
 
-  // Inline mode - render content directly without Dialog wrapper
+  // Inline mode
   if (isInline) {
-    return content;
+    return (
+      <>
+        {showPvacModal && (
+          <PvacOperationModal
+            opType="decrypt"
+            {...pvacOp}
+            onDismiss={() => { setShowPvacModal(false); pvacOp.reset(); }}
+          />
+        )}
+        {content}
+      </>
+    );
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className={isPopupMode ? "w-[320px] p-3" : "sm:max-w-md"}>
-        <DialogHeader className={isPopupMode ? "pb-2" : ""}>
-          <DialogTitle className={`flex items-center gap-2 ${isPopupMode ? 'text-sm' : ''}`}>
-            <Unlock className={isPopupMode ? "h-4 w-4" : "h-5 w-5"} />
-            Decrypt Balance
-          </DialogTitle>
-          <DialogDescription className="sr-only">
-            Convert private OCT back to public OCT
-          </DialogDescription>
-        </DialogHeader>
-        {content}
-      </DialogContent>
-    </Dialog>
+    <>
+      {showPvacModal && (
+        <PvacOperationModal
+          opType="decrypt"
+          {...pvacOp}
+          onDismiss={() => { setShowPvacModal(false); pvacOp.reset(); }}
+        />
+      )}
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent className={isPopupMode ? "w-[320px] p-3" : "sm:max-w-md"}>
+          <DialogHeader className={isPopupMode ? "pb-2" : ""}>
+            <DialogTitle className={`flex items-center gap-2 ${isPopupMode ? 'text-sm' : ''}`}>
+              <Unlock className={isPopupMode ? "h-4 w-4" : "h-5 w-5"} />
+              Decrypt Balance
+            </DialogTitle>
+            <DialogDescription className="sr-only">
+              Convert private OCT back to public OCT
+            </DialogDescription>
+          </DialogHeader>
+          {content}
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }

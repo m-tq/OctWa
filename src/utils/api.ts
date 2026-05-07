@@ -417,34 +417,55 @@ export const apiCache = new APICache();
 export async function invalidateCacheAfterTransaction(address: string): Promise<void> {
   await apiCache.invalidateBalance(address);
   await apiCache.invalidateHistory(address);
+  clearLocalWalletCache(address);
 }
 
 // Invalidate ALL cached data when switching RPC so stale data is never shown.
 export async function invalidateCacheForNetworkSwitch(): Promise<void> {
   await apiCache.clearAll();
+  // Clear PVAC registration cache — new network needs fresh registration check
+  const { clearRegistrationCache } = await import('../lib/pvac/node-registration');
+  clearRegistrationCache();
 }
 
 export async function invalidateCacheAfterEncrypt(address: string): Promise<void> {
   await apiCache.invalidateBalance(address);
   await apiCache.invalidateEncryptedBalance(address);
   await apiCache.invalidateHistory(address);
+  clearLocalWalletCache(address);
 }
 
 export async function invalidateCacheAfterDecrypt(address: string): Promise<void> {
   await apiCache.invalidateBalance(address);
   await apiCache.invalidateEncryptedBalance(address);
   await apiCache.invalidateHistory(address);
+  clearLocalWalletCache(address);
 }
 
 export async function invalidateCacheAfterClaim(address: string): Promise<void> {
+  await apiCache.invalidateBalance(address);
   await apiCache.invalidateEncryptedBalance(address);
   await apiCache.invalidatePendingTransfers(address);
   await apiCache.invalidateHistory(address);
+  clearLocalWalletCache(address);
 }
 
 export async function invalidateCacheAfterPrivateSend(address: string): Promise<void> {
   await apiCache.invalidateEncryptedBalance(address);
   await apiCache.invalidateHistory(address);
+  clearLocalWalletCache(address);
+}
+
+/**
+ * Clear the cacheService localStorage entry for an address.
+ * Called after any operation that changes balance or history so the
+ * fresh-cache threshold in WalletDashboard doesn't serve stale data.
+ * Uses the same key prefix as CacheService to avoid a circular import.
+ */
+function clearLocalWalletCache(address: string): void {
+  try {
+    localStorage.removeItem(`octwa_cache_${address}`);
+  } catch { /* ignore */ }
 }
 
 // ============================================
@@ -469,7 +490,7 @@ const isRetryableError = (error: unknown, response?: Response): boolean => {
 };
 
 // Use the active RPC provider for API requests with retry logic
-async function makeAPIRequest(endpoint: string, options: RequestInit = {}, retryCount = 0): Promise<Response> {
+async function makeAPIRequest(endpoint: string, options: RequestInit = {}, retryCount = 0, timeoutMs = 30_000): Promise<Response> {
   const provider = getActiveRPCProvider();
   
   if (!provider) {
@@ -519,9 +540,8 @@ async function makeAPIRequest(endpoint: string, options: RequestInit = {}, retry
     const response = await fetch(url, {
       ...options,
       headers,
-      // Add timeout to prevent hanging requests
-      // Increased to 60 seconds to handle large transaction histories
-      signal: AbortSignal.timeout(300_000) // 5 minute timeout for large histories
+      // Default 30 s; callers can pass a longer timeout for heavy operations.
+      signal: AbortSignal.timeout(timeoutMs)
     });
     
     // Check if we should retry on server errors
@@ -529,7 +549,7 @@ async function makeAPIRequest(endpoint: string, options: RequestInit = {}, retry
       const delayMs = RETRY_DELAY_MS * Math.pow(RETRY_BACKOFF_MULTIPLIER, retryCount);
       console.warn(`API request to ${cleanEndpoint} failed with status ${response.status}, retrying in ${delayMs}ms (attempt ${retryCount + 1}/${MAX_RETRIES})`);
       await delay(delayMs);
-      return makeAPIRequest(endpoint, options, retryCount + 1);
+      return makeAPIRequest(endpoint, options, retryCount + 1, timeoutMs);
     }
     
     return response;
@@ -539,7 +559,7 @@ async function makeAPIRequest(endpoint: string, options: RequestInit = {}, retry
       const delayMs = RETRY_DELAY_MS * Math.pow(RETRY_BACKOFF_MULTIPLIER, retryCount);
       console.warn(`API request to ${cleanEndpoint} failed with error, retrying in ${delayMs}ms (attempt ${retryCount + 1}/${MAX_RETRIES}):`, error);
       await delay(delayMs);
-      return makeAPIRequest(endpoint, options, retryCount + 1);
+      return makeAPIRequest(endpoint, options, retryCount + 1, timeoutMs);
     }
     
     console.error(`API request failed for ${url} after ${retryCount} retries:`, error);
@@ -825,7 +845,7 @@ export async function sendTransactionBatch(transactions: Transaction[]): Promise
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(rpcRequest),
-    });
+    }, 0, 60_000); // 60 s — batch submission can be slow for large batches
 
     const text = await response.text();
 
@@ -1452,6 +1472,12 @@ export async function fetchBalance(address: string, forceRefresh = false): Promi
 
 export async function fetchEncryptedBalance(address: string, privateKey?: string, forceRefresh = false): Promise<EncryptedBalanceResponse | null> {
   try {
+    // Check apiCache first (shared via chrome.storage between popup and expanded view)
+    if (!forceRefresh) {
+      const cached = await apiCache.getEncryptedBalance(address);
+      if (cached) return cached;
+    }
+
     // Step 1: Fetch public balance first
     const publicBalance = await fetchBalance(address, forceRefresh);
     
@@ -1481,25 +1507,31 @@ export async function fetchEncryptedBalance(address: string, privateKey?: string
         
         cipher = result.cipher;
         
-        // Try to decrypt using PVAC server if cipher exists
+        // Try to decrypt using WASM worker (non-blocking) if cipher exists
         if (cipher && cipher !== '0' && cipher.startsWith('hfhe_v1|')) {
           try {
-            const { pvacServerService } = await import('../services/pvacServerService');
-            
-            if (pvacServerService.isEnabled()) {
-              
-              const decryptResult = await pvacServerService.decryptBalance(cipher, privateKey);
-              
-              if (decryptResult.success && decryptResult.balance) {
-                // Guard: reject negative or non-finite values (stale/corrupted PVAC result)
-                if (decryptResult.balance >= 0 && isFinite(decryptResult.balance)) {
-                  encryptedRaw = decryptResult.balance;
-                } else {
-                  console.warn('[EncryptedBalance] PVAC returned invalid balance, ignoring', decryptResult.balance);
+            const { runInWorker, isWorkerAvailable } = await import('../lib/pvac/pvac-worker-client');
+            if (isWorkerAvailable()) {
+              const decryptResult = await runInWorker<{ balanceRaw: bigint }>(
+                'decryptBalance',
+                { cipher, privateKey }
+              );
+              if (decryptResult.success && decryptResult.data) {
+                const amount = Number(decryptResult.data.balanceRaw);
+                if (amount >= 0 && isFinite(amount)) {
+                  encryptedRaw = amount;
                 }
               }
             } else {
-              
+              // Worker unavailable — fall back to main thread
+              const { decryptBalance } = await import('../lib/pvac/balance-ops');
+              const decryptResult = await decryptBalance({ cipher, privateKey });
+              if (decryptResult.success && decryptResult.data) {
+                const amount = Number(decryptResult.data.balanceRaw);
+                if (amount >= 0 && isFinite(amount)) {
+                  encryptedRaw = amount;
+                }
+              }
             }
           } catch (decryptError) {
             console.warn('[EncryptedBalance] Failed to decrypt balance:', decryptError);
@@ -1512,8 +1544,8 @@ export async function fetchEncryptedBalance(address: string, privateKey?: string
         // Continue with public balance only
       }
     }
-    
-    return {
+
+    const result: EncryptedBalanceResponse = {
       public: publicBalance.balance,
       public_raw: Math.floor(publicBalance.balance * MU_FACTOR),
       encrypted: encryptedRaw / MU_FACTOR,
@@ -1521,6 +1553,11 @@ export async function fetchEncryptedBalance(address: string, privateKey?: string
       total: publicBalance.balance + (encryptedRaw / MU_FACTOR),
       cipher
     };
+
+    // Cache the result so expanded view can reuse it without re-decrypting
+    apiCache.setEncryptedBalance(address, result).catch(() => {});
+
+    return result;
   } catch (error) {
     console.error('Error fetching balance:', error);
     return null;
@@ -1592,9 +1629,10 @@ export async function createPrivateTransfer(fromAddress: string, toAddress: stri
 export async function getPendingPrivateTransfers(address: string, privateKey?: string, _forceRefresh = false): Promise<PendingPrivateTransfer[]> {
   if (!privateKey) return [];
   try {
-    const { scanStealthOutputs } = await import('../services/stealthScanService');
-    const claimable = await scanStealthOutputs(privateKey);
-    // Map to PendingPrivateTransfer shape expected by existing callers
+    const { scanStealthOutputs, setCachedScanResults } = await import('../services/stealthScanService');
+    const claimable = await scanStealthOutputs(privateKey, address);
+    // Store in cache so ClaimTransfers can use it without re-scanning
+    setCachedScanResults(address, claimable);
     return claimable.map((t) => ({
       id: t.id,
       from: t.sender,

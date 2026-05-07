@@ -2,7 +2,27 @@
 
 #include <cstdint>
 #include <vector>
+
+#ifdef __EMSCRIPTEN__
+// WASM is single-threaded -- replace std::mutex with no-op stubs.
+// std::mutex and std::lock_guard are not available in Emscripten's
+// single-threaded mode without -pthread.
+struct PvacNoOpMutex {
+    void lock() {}
+    void unlock() {}
+};
+template<typename T>
+struct PvacLockGuard {
+    explicit PvacLockGuard(T&) {}
+};
+#define PVAC_MUTEX_TYPE PvacNoOpMutex
+#define PVAC_LOCK(m)    PvacLockGuard<PvacNoOpMutex> _pvac_lg(m)
+#else
 #include <mutex>
+#define PVAC_MUTEX_TYPE std::mutex
+#define PVAC_LOCK(m)    std::lock_guard<std::mutex> _pvac_lg(m)
+#endif
+
 #include "../../core/hash.hpp"
 #include "../ristretto255.hpp"
 
@@ -10,7 +30,6 @@ namespace pvac {
 namespace bp {
 
 inline RistrettoPoint hash_to_ristretto_point(const char* domain, uint64_t index) {
-
     Sha256 h;
     h.init();
     size_t dlen = strlen(domain);
@@ -58,7 +77,7 @@ inline RistrettoPoint hash_to_ristretto_point(const char* domain, uint64_t index
 class GeneratorTable {
     mutable std::vector<RistrettoPoint> G_;
     mutable std::vector<RistrettoPoint> H_;
-    mutable std::mutex mtx_;
+    mutable PVAC_MUTEX_TYPE mtx_;
 
     void ensure_size(size_t n) const {
         if (G_.size() >= n) return;
@@ -75,30 +94,30 @@ public:
     GeneratorTable() = default;
 
     const RistrettoPoint& G(size_t i) const {
-        std::lock_guard<std::mutex> lock(mtx_);
+        PVAC_LOCK(mtx_);
         ensure_size(i + 1);
         return G_[i];
     }
 
     const RistrettoPoint& H(size_t i) const {
-        std::lock_guard<std::mutex> lock(mtx_);
+        PVAC_LOCK(mtx_);
         ensure_size(i + 1);
         return H_[i];
     }
 
     void precompute(size_t n) const {
-        std::lock_guard<std::mutex> lock(mtx_);
+        PVAC_LOCK(mtx_);
         ensure_size(n);
     }
 
     std::vector<RistrettoPoint> G_vec(size_t n) const {
-        std::lock_guard<std::mutex> lock(mtx_);
+        PVAC_LOCK(mtx_);
         ensure_size(n);
         return std::vector<RistrettoPoint>(G_.begin(), G_.begin() + n);
     }
 
     std::vector<RistrettoPoint> H_vec(size_t n) const {
-        std::lock_guard<std::mutex> lock(mtx_);
+        PVAC_LOCK(mtx_);
         ensure_size(n);
         return std::vector<RistrettoPoint>(H_.begin(), H_.begin() + n);
     }
@@ -127,7 +146,10 @@ inline size_t next_power_of_2(size_t n) {
     n |= n >> 4;
     n |= n >> 8;
     n |= n >> 16;
+#if SIZE_MAX > 0xFFFFFFFFU
+    // Only valid on 64-bit platforms; WASM32 has size_t=32bit so skip this.
     n |= n >> 32;
+#endif
     return n + 1;
 }
 

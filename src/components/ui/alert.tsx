@@ -3,14 +3,24 @@ import { cva, type VariantProps } from 'class-variance-authority';
 
 import { cn } from '@/lib/utils';
 
+/**
+ * Alert — octrascan design system
+ * Flat, 1px border, 11px text, no radius.
+ * Every alert must have visible text — no color-only status.
+ */
 const alertVariants = cva(
-  'relative w-full border px-4 py-3 text-sm [&>svg+div]:translate-y-[-3px] [&>svg]:absolute [&>svg]:left-4 [&>svg]:top-4 [&>svg]:text-foreground [&>svg~*]:pl-7',
+  'relative w-full border px-3 py-2 text-[11px] [&>svg+div]:translate-y-[-3px] [&>svg]:absolute [&>svg]:left-3 [&>svg]:top-3 [&>svg]:text-foreground [&>svg~*]:pl-6',
   {
     variants: {
       variant: {
-        default: 'bg-background text-foreground',
+        default:
+          'bg-background text-foreground border-oc-border',
         destructive:
-          'border-destructive/50 text-destructive dark:border-destructive [&>svg]:text-destructive',
+          'border-oc-danger bg-[var(--oct-color-danger-bg)] text-oc-danger [&>svg]:text-oc-danger',
+        warning:
+          'border-oc-warning bg-[var(--oct-color-warning-bg)] text-oc-warning [&>svg]:text-oc-warning',
+        success:
+          'border-oc-success bg-transparent text-oc-success [&>svg]:text-oc-success',
       },
     },
     defaultVariants: {
@@ -38,7 +48,7 @@ const AlertTitle = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <h5
     ref={ref}
-    className={cn('mb-1 font-medium leading-none tracking-tight', className)}
+    className={cn('mb-1 font-bold leading-none tracking-tight text-[11px]', className)}
     {...props}
   />
 ));
@@ -50,7 +60,7 @@ const AlertDescription = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <div
     ref={ref}
-    className={cn('text-sm [&_p]:leading-relaxed', className)}
+    className={cn('text-[11px] [&_p]:leading-relaxed', className)}
     {...props}
   />
 ));

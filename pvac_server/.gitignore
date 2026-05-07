@@ -1,31 +1,24 @@
-# Logs
-logs
+# ── Build output directories ──────────────────────────────────────────────────
+build/
+build-wasm/
+release/
+
+# ── Compiled object files ─────────────────────────────────────────────────────
+*.o
+
+# ── WASM generated output (in wasm/ subdir) ───────────────────────────────────
+wasm/*.wasm
+wasm/*.mjs
+wasm/*.js
+wasm/*.d.ts
+
+# ── CMake artifacts ───────────────────────────────────────────────────────────
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+Makefile
+*.cmake
+
+# ── Misc ──────────────────────────────────────────────────────────────────────
 *.log
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-pnpm-debug.log*
-lerna-debug.log*
-pvac_server/build/*
-build/*
-node_modules
-dist
-dist-ssr
-*.local
-.env
-**/.env
-
-# Database
-*.db
-
-# Editor directories and files
-.kiro/*
-.vscode/*
-!.vscode/extensions.json
-.idea
 .DS_Store
-*.suo
-*.ntvs*
-*.njsproj
-*.sln
-*.sw?

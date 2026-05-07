@@ -25,6 +25,7 @@ import {
 import { Wallet } from '../types/wallet';
 import { fetchBalance, createTransaction, fetchCurrentEpoch, invalidateCacheAfterTransaction, sendTransaction, fetchRecommendedFee, ouToOct } from '../utils/api';
 import { useToast } from '@/hooks/use-toast';
+import { getTxExplorerUrl } from '@/utils/explorer';
 
 interface FileRecipient {
   address: string;
@@ -97,7 +98,7 @@ function validateRecipientInput(input: string): { isValid: boolean; error?: stri
   };
 }
 
-export function FileMultiSend({ wallet, balance, onBalanceUpdate, onNonceUpdate, resetTrigger, sidebarOpen = true, historySidebarOpen = true }: MultiSendProps) {
+export function FileMultiSend({ wallet, balance, onBalanceUpdate, onNonceUpdate, onTransactionSuccess, resetTrigger, sidebarOpen = true, historySidebarOpen = true }: MultiSendProps) {
   const [recipients, setRecipients] = useState<FileRecipient[]>([]);
   const [amountMode, setAmountMode] = useState<'same' | 'different'>('same');
   const [sameAmount, setSameAmount] = useState('');
@@ -111,8 +112,8 @@ export function FileMultiSend({ wallet, balance, onBalanceUpdate, onNonceUpdate,
   const [txLogs, setTxLogs] = useState<(TxLogEntry | SummaryLogEntry | BatchLogEntry)[]>([]);
   const txLogsEndRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
-  // Hardcoded octrascan.io URL
-  const scannerUrl = 'https://octrascan.io/tx.html?hash=';
+  // Dynamic explorer URL based on active network
+  const scannerUrl = getTxExplorerUrl;
 
   // Auto-scroll to bottom when new logs are added
   useEffect(() => {
@@ -792,8 +793,11 @@ export function FileMultiSend({ wallet, balance, onBalanceUpdate, onNonceUpdate,
           const finalBalance = await fetchBalance(wallet.address, true);
           onNonceUpdate(finalBalance.nonce);
           onBalanceUpdate(finalBalance.balance);
+          // Notify WalletDashboard so it triggers silentRefreshAfterTx + cache update
+          onTransactionSuccess();
         } catch (error) {
           console.error('Failed to refresh balance:', error);
+          onTransactionSuccess();
         }
       }
     } catch (error) {
@@ -1284,7 +1288,7 @@ export function FileMultiSend({ wallet, balance, onBalanceUpdate, onNonceUpdate,
                       </div>
                       {txLog.hash && (
                         <a 
-                          href={`${scannerUrl}${txLog.hash}`}
+                          href={`${scannerUrl(txLog.hash)}`}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="text-[10px] text-[#3B567F] hover:underline mt-1 block truncate"

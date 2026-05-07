@@ -17,7 +17,7 @@ function App() {
   const [isLocked, setIsLocked] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [showSplash, setShowSplash] = useState(false);
-  const [connectionRequest, setConnectionRequest] = useState<any>(null);
+  const [connectionRequest, setConnectionRequest] = useState<unknown>(null);
   const [capabilityRequest, setCapabilityRequest] = useState<unknown>(null);
   const [invokeRequest, setInvokeRequest] = useState<unknown>(null);
 
@@ -373,42 +373,48 @@ function App() {
     };
   }, [isLocked]);
 
-  const handleUnlock = async (unlockedWallets: Wallet[]) => {
-
+  const handleUnlock = (unlockedWallets: Wallet[]) => {
     // Re-setup auto-lock callback after unlock
     WalletManager.setAutoLockCallback(() => {
-      
       setWallet(null);
       setWallets([]);
       setIsLocked(true);
     });
-    
-    if (unlockedWallets.length > 0) {
-      setWallets(unlockedWallets);
-      setIsLocked(false);
-      
-      const activeWalletId = localStorage.getItem('activeWalletId') || await ExtensionStorageManager.get('activeWalletId');
-      let activeWallet = unlockedWallets[0];
-      
-      if (activeWalletId) {
-        const foundWallet = unlockedWallets.find(w => w.address === activeWalletId);
-        if (foundWallet) {
-          activeWallet = foundWallet;
-        } else {
-          localStorage.setItem('activeWalletId', activeWallet.address);
-          await ExtensionStorageManager.set('activeWalletId', activeWallet.address);
-        }
-      } else {
-        localStorage.setItem('activeWalletId', activeWallet.address);
-        await ExtensionStorageManager.set('activeWalletId', activeWallet.address);
-      }
-      
-      setWallet(activeWallet);
-    } else {
+
+    if (unlockedWallets.length === 0) {
       setWallets([]);
       setWallet(null);
       setIsLocked(false);
+      return;
     }
+
+    // Set state immediately so dashboard renders without waiting for storage reads
+    const cachedActiveId = localStorage.getItem('activeWalletId') ?? ''
+    const initialWallet: Wallet = (cachedActiveId
+      ? unlockedWallets.find(w => w.address === cachedActiveId)
+      : undefined) ?? unlockedWallets[0]
+
+    setWallets(unlockedWallets);
+    setWallet(initialWallet);
+    setIsLocked(false);
+
+    // Persist active wallet ID in background â€” not needed before first render
+    setTimeout(async () => {
+      const storedId = cachedActiveId || await ExtensionStorageManager.get('activeWalletId') || '';
+      const activeWallet: Wallet = (storedId
+        ? unlockedWallets.find(w => w.address === storedId)
+        : undefined) ?? unlockedWallets[0];
+
+      if (!storedId || activeWallet.address !== cachedActiveId) {
+        localStorage.setItem('activeWalletId', activeWallet.address);
+        ExtensionStorageManager.set('activeWalletId', activeWallet.address).catch(() => {});
+      }
+
+      // Update wallet if the persisted active wallet differs from what we showed initially
+      if (activeWallet.address !== initialWallet.address) {
+        setWallet(activeWallet);
+      }
+    }, 0);
   };
 
   const addWallet = async (newWallet: Wallet) => {
@@ -517,7 +523,7 @@ function App() {
     setIsLocked(true);
   };
 
-  // Show splash screen — hanya saat fresh install (belum ada wallet)
+  // Show splash screen ï¿½ hanya saat fresh install (belum ada wallet)
   if (showSplash) {
     return (
       <ThemeProvider defaultTheme="dark" storageKey="octra-wallet-theme">

@@ -1,0 +1,100 @@
+name: Release pvac_server (Linux)
+
+# Trigger: push a tag like pvac-v1.2.0
+# Windows build is done locally and uploaded manually to the release.
+on:
+  push:
+    tags:
+      - 'pvac-v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version override (e.g. 1.2.0) — leave blank to use tag'
+        required: false
+        default: ''
+
+jobs:
+  build-linux:
+    name: Build Linux (x64)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y build-essential cmake libssl-dev pkg-config
+
+      - name: Resolve version
+        id: ver
+        run: |
+          V="${{ github.event.inputs.version }}"
+          if [ -z "$V" ]; then
+            TAG="${GITHUB_REF_NAME:-0.0.0}"
+            V="${TAG#pvac-v}"; V="${V#v}"
+          fi
+          [ -z "$V" ] && V="0.0.0"
+          echo "version=$V" >> "$GITHUB_OUTPUT"
+          echo "tag=${GITHUB_REF_NAME:-pvac-v$V}" >> "$GITHUB_OUTPUT"
+
+      - name: Build
+        working-directory: pvac_server
+        run: |
+          mkdir -p build
+          cmake -B build -S . \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DPVAC_STATIC=ON
+          cmake --build build --config Release -j"$(nproc)"
+
+      - name: Package
+        id: pkg
+        working-directory: pvac_server
+        run: |
+          V="${{ steps.ver.outputs.version }}"
+          TARBALL="pvac_server-linux-x64-${V}.tar.gz"
+          mkdir -p release
+          tar -czf "release/${TARBALL}" -C build pvac_server
+          echo "tarball=$TARBALL" >> "$GITHUB_OUTPUT"
+          echo "Packaged: release/${TARBALL} ($(du -sh "release/${TARBALL}" | cut -f1))"
+
+      - name: Create release and upload Linux binary
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.ver.outputs.tag }}
+          name: "pvac_server v${{ steps.ver.outputs.version }}"
+          body: |
+            ## pvac_server v${{ steps.ver.outputs.version }}
+
+            Native C++ sidecar for PVAC cryptographic operations.
+
+            ### Downloads
+
+            | Platform | File | Status |
+            |----------|------|--------|
+            | Linux x64   | `pvac_server-linux-x64-${{ steps.ver.outputs.version }}.tar.gz` | ✅ Auto-built |
+            | Windows x64 | `pvac_server-windows-x64-${{ steps.ver.outputs.version }}.zip` | ⬆️ Uploaded manually |
+
+            ### Linux
+            ```bash
+            tar -xzf pvac_server-linux-x64-${{ steps.ver.outputs.version }}.tar.gz
+            chmod +x pvac_server
+            ./pvac_server 9090
+            ```
+
+            ### Windows
+            Extract zip → run `pvac_server.exe`
+            (keep `libcrypto-3-x64__.dll` in the same folder).
+
+            ### Build from source
+            ```bash
+            # Linux
+            bash pvac_server/build-linux.sh
+
+            # Windows (Strawberry Perl required)
+            powershell -ExecutionPolicy Bypass -File pvac_server\build-windows.ps1
+            ```
+          files: pvac_server/release/${{ steps.pkg.outputs.tarball }}
+          draft: false
+          prerelease: false

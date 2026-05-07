@@ -111,9 +111,14 @@ if (-not (Test-Path "build")) {
 try {
     Write-Host "  Running CMake configuration (MinGW Makefiles)..." -ForegroundColor Gray
 
-    $cmakeArgs = @("-G", "MinGW Makefiles", "-DCMAKE_BUILD_TYPE=Release")
+    $cmakeArgs = @("-G", "MinGW Makefiles", "-DCMAKE_BUILD_TYPE=Release", "-DPVAC_STATIC=ON")
     if ($opensslRoot) {
         $cmakeArgs += @("-DOPENSSL_ROOT_DIR=$opensslRoot")
+    } else {
+        # Fallback: try Strawberry Perl default path
+        if (Test-Path "C:\Strawberry\c\include\openssl\ssl.h") {
+            $cmakeArgs += @("-DOPENSSL_ROOT_DIR=C:\Strawberry\c")
+        }
     }
     $cmakeArgs += @("-B", "build", "-S", ".")
 
@@ -163,24 +168,37 @@ if (-not $exePath) {
 
 $exeSizeKB = [math]::Round((Get-Item $exePath).Length / 1KB)
 Write-Host "[OK] Executable: $exePath ($exeSizeKB KB)" -ForegroundColor Green
+
+# Check for bundled DLL
+$dllPath = Join-Path (Split-Path $exePath) "libcrypto-3-x64__.dll"
+if (Test-Path $dllPath) {
+    $dllSizeKB = [math]::Round((Get-Item $dllPath).Length / 1KB)
+    Write-Host "[OK] Bundled DLL: $dllPath ($dllSizeKB KB)" -ForegroundColor Green
+}
+
 Write-Host ""
 Write-Host "========================================" -ForegroundColor Green
 Write-Host "  BUILD SUCCESS!" -ForegroundColor Green
 Write-Host "========================================" -ForegroundColor Green
 Write-Host ""
-Write-Host "Endpoints available after start:" -ForegroundColor Gray
-Write-Host "  POST /api/ensure_pvac_registered" -ForegroundColor Gray
-Write-Host "  POST /api/encrypt_balance" -ForegroundColor Gray
-Write-Host "  POST /api/decrypt_to_public" -ForegroundColor Gray
-Write-Host "  POST /api/stealth_send" -ForegroundColor Gray
-Write-Host "  POST /api/claim_stealth" -ForegroundColor Gray
-Write-Host "  POST /api/scan_stealth" -ForegroundColor Gray
+Write-Host "Distribution files (copy BOTH to distribute):" -ForegroundColor Cyan
+Write-Host "  $exePath" -ForegroundColor White
+if (Test-Path $dllPath) {
+    Write-Host "  $dllPath" -ForegroundColor White
+    Write-Host ""
+    Write-Host "NOTE: Both files must be in the same folder to run." -ForegroundColor Yellow
+}
+Write-Host ""
+Write-Host "Endpoints:" -ForegroundColor Gray
+Write-Host "  GET  /health" -ForegroundColor Gray
+Write-Host "  POST /decrypt_to_public" -ForegroundColor Gray
+Write-Host "  POST /stealth_send" -ForegroundColor Gray
 Write-Host ""
 
 $run = Read-Host "Run server now? (Y/N, default=Y)"
 if ($run -eq "" -or $run -eq "Y" -or $run -eq "y") {
     Write-Host ""
-    Write-Host "Starting PVAC server on port 8765..." -ForegroundColor Cyan
+    Write-Host "Starting pvac-local-server on port 9090..." -ForegroundColor Cyan
     Write-Host "Press Ctrl+C to stop." -ForegroundColor Gray
     Write-Host ""
     & ".\$exePath"

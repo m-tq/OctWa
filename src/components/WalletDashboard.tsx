@@ -37,7 +37,6 @@ import {
   Check,
   Wallet as WalletIcon,
   BookUser,
-  Layers,
   FileText,
   Coins,
   X,
@@ -46,11 +45,9 @@ import {
   AlertCircle,
   Image,
   Settings,
-  Server,
   Code2,
 } from 'lucide-react';
 import { ExtensionStorageManager } from '../utils/extensionStorage';
-import { MultiSend } from './MultiSend';
 import { SendTransaction } from './SendTransaction';
 import { PrivateTransfer } from './PrivateTransfer';
 import { ClaimTransfers } from './ClaimTransfers';
@@ -67,8 +64,6 @@ import { ReceiveDialog } from './ReceiveDialog';
 import { EncryptBalanceDialog } from './EncryptBalanceDialog';
 import { DecryptBalanceDialog } from './DecryptBalanceDialog';
 import { AddressBook } from './AddressBook';
-import { PvacServerSetup, usePvacSetup, resetPvacSetupState } from './PvacServerSetup';
-import { PvacServerManager } from './PvacServerManager';
 import { DraggableWalletList } from './DraggableWalletList';
 import { WalletDisplayName } from './WalletLabelEditor';
 import { BalancePieChart } from './BalancePieChart';
@@ -130,6 +125,7 @@ import {
   sendERC20Transaction, sendNFTTransaction, COMMON_TOKENS,
   saveCustomNetwork, removeCustomNetwork,
   getAllEVMTransactions,
+  getEvmInfuraKey, saveEvmInfuraKey, getEvmEtherscanKey, saveEvmEtherscanKey,
 } from '../utils/evmRpc';
 
 import { useToast } from '@/hooks/use-toast';
@@ -138,8 +134,7 @@ import { verifyPassword } from '../utils/password';
 import { useAddressBook } from '../hooks/useAddressBook';
 import { useOctPrice, formatUsd } from '../hooks/useOctPrice';
 import { addressBook } from '../utils/addressBook';
-import { pvacServerService } from '@/services/pvacServerService';
-import { logger } from '@/utils/logger';
+import { getTxExplorerUrl, getAddressExplorerUrl, getExplorerName } from '../utils/explorer';
 
 interface Transaction {
   hash: string;
@@ -195,6 +190,7 @@ export function WalletDashboard({
   const [balance, setBalance] = useState<number | null>(null);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [isLoadingBalance, setIsLoadingBalance] = useState(true);
+  const [balanceError, setBalanceError] = useState(false);
   const [isLoadingEncryptedBalance, setIsLoadingEncryptedBalance] = useState(true);
   const [isLoadingTransactions, setIsLoadingTransactions] = useState(true);
   const [isRefreshingOctraHistory, setIsRefreshingOctraHistory] = useState(false);
@@ -254,9 +250,6 @@ export function WalletDashboard({
   const [isDecryptingBalance, setIsDecryptingBalance] = useState(false); // spinner for pie chart
   const [rpcStatus, setRpcStatus] = useState<'connected' | 'disconnected' | 'checking' | 'connecting'>('checking');
   const [latestEpoch, setLatestEpoch] = useState<number | null>(null);
-  const [isSyncing, setIsSyncing] = useState(false); // background data sync indicator
-  const [pvacStatus, setPvacStatus] = useState<'connected' | 'disconnected' | 'checking'>('checking');
-  const [showPvacManager, setShowPvacManager] = useState(false);
   const [operationMode, setOperationMode] = useState<OperationMode>('public');
   const [pendingTransfersCount, setPendingTransfersCount] = useState<number>(0);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
@@ -268,11 +261,10 @@ export function WalletDashboard({
   const [evmExportKeyVisible, setEvmExportKeyVisible] = useState(false);
   const [evmExportKeyCopied, setEvmExportKeyCopied] = useState(false);
   // Expanded mode send modal states
-  const [expandedSendModal, setExpandedSendModal] = useState<'standard' | 'multi' | 'bulk' | null>(null);
+  const [expandedSendModal, setExpandedSendModal] = useState<'standard' | 'bulk' | null>(null);
   const [sendModalAnimating, setSendModalAnimating] = useState(false);
   const [sendModalClosing, setSendModalClosing] = useState(false);
   const [bulkResetTrigger, setBulkResetTrigger] = useState(0);
-  const [multiResetTrigger, setMultiResetTrigger] = useState(0);
   const [copiedField, setCopiedField] = useState<string | null>(null);
   // Expanded mode encrypt/decrypt modal states (for private mode)
   const [expandedPrivateModal, setExpandedPrivateModal] = useState<'encrypt' | 'decrypt' | null>(null);
@@ -310,6 +302,10 @@ export function WalletDashboard({
   const [evmTxHash, setEvmTxHash] = useState<string | null>(null);
   const [showEvmRpcManager, setShowEvmRpcManager] = useState(false);
   const [evmCustomRpcUrl, setEvmCustomRpcUrl] = useState('');
+  // EVM API key state (Infura + Etherscan — stored in chrome.storage, never in bundle)
+  const [evmInfuraKey, setEvmInfuraKey] = useState('');
+  const [evmEtherscanKey, setEvmEtherscanKey] = useState('');
+  const [evmApiKeysSaved, setEvmApiKeysSaved] = useState(false);
   // EVM Tokens & NFTs state
   const [evmTokens, setEvmTokens] = useState<ERC20Token[]>([]);
   const activeWalletRef = useRef<Wallet | null>(null);
@@ -340,30 +336,17 @@ export function WalletDashboard({
   const [newEvmNetwork, setNewEvmNetwork] = useState({ name: '', rpcUrl: '', chainId: '', symbol: '', explorer: '' });
   const [isAddingEvmNetwork, setIsAddingEvmNetwork] = useState(false);
 
-  // Scanner/Explorer configuration from environment variables
-  const scannerUrl = import.meta.env.VITE_SCANNER_URL || 'https://octrascan.io/tx.html?hash=';
-  const scannerName = import.meta.env.VITE_SCANNER_NAME || 'Explorer';
-  const scannerAddressUrl = import.meta.env.VITE_SCANNER_ADDRESS_URL || 'https://octrascan.io/address.html?addr=';
+  // Scanner/Explorer — dynamic based on active network (mainnet/devnet)
+  const scannerUrl = getTxExplorerUrl;
+  const scannerName = getExplorerName();
+  const scannerAddressUrl = getAddressExplorerUrl;
   // Track history panel state before hiding for multi/bulk send
   const [historyPanelWasOpen, setHistoryPanelWasOpen] = useState(false);
   // Message expansion state for transaction details
   const [showFullMessage, setShowFullMessage] = useState(false);
   const { autoLabelWallets, getWalletDisplayName } = useAddressBook();
-  const { shouldShow: shouldShowPvacSetup } = usePvacSetup();
-  const [showPvacSetup, setShowPvacSetup] = useState(false);
   const octPrice = useOctPrice();
   const { toast } = useToast();
-
-  // Show PVAC setup after dashboard loads (only once)
-  useEffect(() => {
-    if (shouldShowPvacSetup && !isPopupMode) {
-      // Small delay to let dashboard render first
-      const timer = setTimeout(() => {
-        setShowPvacSetup(true);
-      }, 500);
-      return () => clearTimeout(timer);
-    }
-  }, [shouldShowPvacSetup, isPopupMode]);
 
   // Handle add to address book from AddressInput
   const handleAddToAddressBook = (address: string) => {
@@ -379,11 +362,11 @@ export function WalletDashboard({
   }, [showAddressBook]);
 
   // Handle opening send modal with animation
-  const openSendModal = (type: 'standard' | 'multi' | 'bulk') => {
+  const openSendModal = (type: 'standard' | 'bulk') => {
     setSendModalAnimating(true);
     setExpandedSendModal(type);
-    // Hide history panel for multi/bulk send, save previous state
-    if (type === 'multi' || type === 'bulk') {
+    // Hide history panel for bulk send, save previous state
+    if (type === 'bulk') {
       setHistoryPanelWasOpen(showHistorySidebar);
       setShowHistorySidebar(false);
     }
@@ -393,8 +376,8 @@ export function WalletDashboard({
   // Handle closing send modal with animation
   const closeSendModal = () => {
     setSendModalClosing(true);
-    // Restore history panel if it was open before multi/bulk send
-    if (expandedSendModal === 'multi' || expandedSendModal === 'bulk') {
+    // Restore history panel if it was open before bulk send
+    if (expandedSendModal === 'bulk') {
       if (historyPanelWasOpen) {
         setShowHistorySidebar(true);
       }
@@ -658,103 +641,6 @@ export function WalletDashboard({
     return () => { cleanup?.(); };
   }, []);
 
-  // ─── Centralised PVAC connect + auto-decrypt ─────────────────────────────────
-  // Called after: setup onComplete, manager onServerSelected, and the 30s interval.
-  const triggerPvacConnect = async () => {
-    // Prevent concurrent decrypt calls
-    if (pvacDecryptInFlightRef.current) return;
-
-    setPvacStatus('checking');
-    try {
-      const isAvailable = await pvacServerService.checkAvailability();
-      setPvacStatus(isAvailable ? 'connected' : 'disconnected');
-
-      if (!isAvailable || !wallet) return;
-
-      const cipher = encryptedBalance?.cipher;
-      if (
-        !cipher || cipher === '0' || cipher.length <= 10 ||
-        !cipher.startsWith('hfhe_v1|')
-      ) return;
-
-      if (encryptedBalance?.encrypted && encryptedBalance.encrypted > 0) return;
-      if (autoDecryptedCipherRef.current === cipher) return;
-
-      // Capture wallet address before async work — used to discard stale results
-      const decryptingForAddress = wallet.address;
-      const decryptingPrivateKey = wallet.privateKey;
-
-      // Mark in-flight before any await to prevent race
-      pvacDecryptInFlightRef.current = true;
-      autoDecryptedCipherRef.current = cipher;
-
-      setIsDecryptingBalance(true);
-      try {
-        logger.info('Auto-decrypting encrypted balance via PVAC');
-        const result = await pvacServerService.decryptBalance(cipher, decryptingPrivateKey);
-
-        // Discard result if wallet switched while decrypt was in-flight
-        if (activeWalletRef.current?.address !== decryptingForAddress) {
-          logger.info('Auto-decrypt discarded — wallet switched during decrypt');
-          return;
-        }
-
-        if (result.success && result.balance !== undefined) {
-          // Guard: PVAC can return stale/corrupted results from previous wallet's cipher.
-          // Encrypted balance must be a non-negative finite number.
-          const amount = result.balance / 1_000_000;
-          if (amount < 0 || !isFinite(amount)) {
-            logger.warn('Auto-decrypt returned invalid balance, ignoring', { raw: result.balance });
-            autoDecryptedCipherRef.current = null; // allow retry with fresh data
-            return;
-          }
-          setEncryptedBalance((prev) => prev ? { ...prev, encrypted: amount } : null);
-          logger.info('Auto-decrypt successful', { balance: amount });
-        }
-      } catch (err) {
-        autoDecryptedCipherRef.current = null;
-        logger.error('Auto-decrypt failed', err);
-      } finally {
-        pvacDecryptInFlightRef.current = false;
-        // Only clear spinner if still on the same wallet
-        if (activeWalletRef.current?.address === decryptingForAddress) {
-          setIsDecryptingBalance(false);
-        }
-      }
-    } catch {
-      setPvacStatus('disconnected');
-    }
-  };
-
-  // Check PVAC server status and auto-decrypt
-  // Use a ref to track which cipher has already been auto-decrypted — prevents
-  // re-triggering every time encryptedBalance state updates after decrypt.
-  const autoDecryptedCipherRef = useRef<string | null>(null);
-  const pvacDecryptInFlightRef = useRef(false); // prevent concurrent decrypt calls
-
-  useEffect(() => {
-    triggerPvacConnect();
-    const interval = setInterval(triggerPvacConnect, 30000);
-    return () => clearInterval(interval);
-  }, [wallet?.address]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // When a new cipher arrives (from cache or fresh fetch) and encrypted = 0,
-  // immediately attempt auto-decrypt without waiting for the 30s interval.
-  // Use a small debounce to avoid racing with the wallet?.address effect above.
-  useEffect(() => {
-    const cipher = encryptedBalance?.cipher;
-    if (
-      cipher && cipher !== '0' && cipher.startsWith('hfhe_v1|') &&
-      (!encryptedBalance?.encrypted || encryptedBalance.encrypted === 0) &&
-      autoDecryptedCipherRef.current !== cipher &&
-      !pvacDecryptInFlightRef.current
-    ) {
-      const t = setTimeout(() => triggerPvacConnect(), 200);
-      return () => clearTimeout(t);
-    }
-  }, [encryptedBalance?.cipher]); // eslint-disable-line react-hooks/exhaustive-deps
-
-
   // Reset display data immediately when wallet changes — clears pie chart and
   // balance display so stale data from previous wallet doesn't show during transition.
   useEffect(() => {
@@ -778,10 +664,9 @@ export function WalletDashboard({
     setNonce(0);
     setIsDecryptingBalance(false);
     setIsLoadingBalance(true);
+    setBalanceError(false);
     setIsLoadingEncryptedBalance(true);
     setIsLoadingTransactions(true);
-    autoDecryptedCipherRef.current = null;
-    pvacDecryptInFlightRef.current = false;
     optimisticTxDetailsRef.current.clear();
 
     const currentAddress = wallet.address;
@@ -825,12 +710,20 @@ export function WalletDashboard({
       setSelectedTxHash(null);
       setSelectedTxDetails(null);
 
-      setIsLoadingBalance(!cachedData);
-      setIsLoadingEncryptedBalance(!cachedData);
-      setIsLoadingTransactions(!cachedData);
-      if (cachedData) setIsSyncing(true);
+      // If cache is very fresh (< 30s), skip balance + history network fetches entirely.
+      // This covers the popup → expanded view transition where data was just loaded.
+      // Encrypted balance is always re-fetched (stateful, can change after encrypt/decrypt).
+      const FRESH_THRESHOLD_MS = 30_000;
+      const cacheIsFresh = !!cachedData && (Date.now() - cachedData.lastUpdate) < FRESH_THRESHOLD_MS;
 
-      // STEP 3: Fire all fetches independently
+      setIsLoadingBalance(!cachedData);
+      // Encrypted balance always shows loading until the fresh fetch completes —
+      // the cached value may be stale (e.g. after encrypt/decrypt tx) and the
+      // PVAC decrypt takes a few seconds. Showing 0 while loading is misleading.
+      setIsLoadingEncryptedBalance(true);
+      setIsLoadingTransactions(!cachedData);
+
+      // STEP 3: Fire fetches — skip balance + history if cache is fresh
       let latestBalance: { balance: number; nonce: number } | null = null;
       let latestEncData: EncryptedBalanceResponse | null = null;
       let latestTxs: Transaction[] | null = null;
@@ -863,116 +756,159 @@ export function WalletDashboard({
         });
       };
 
-      // Fetch 1: Public balance + nonce (fastest)
-      const balanceFetch = fetchBalance(currentAddress)
-        .then((balanceData) => {
-          if (isStale()) return;
-          setBalance(balanceData.balance);
-          setNonce(balanceData.nonce);
-          setIsLoadingBalance(false);
-          latestBalance = balanceData;
-          saveCache();
-        })
-        .catch((err) => {
-          console.error('Failed to fetch balance:', err);
-          if (!isStale()) {
-            if (cachedData) {
-              setBalance(cachedData.publicBalance);
-              setNonce(cachedData.nonce);
-            } else {
-              setBalance(0);
-              setNonce(0);
-            }
+      // Fetch 1: Public balance + nonce — skip if cache is fresh
+      const balanceFetch = cacheIsFresh
+        ? Promise.resolve().then(() => {
+            if (isStale()) return;
             setIsLoadingBalance(false);
-          }
-        });
+            latestBalance = { balance: cachedData!.publicBalance, nonce: cachedData!.nonce };
+          })
+        : fetchBalance(currentAddress)
+            .then((balanceData) => {
+              if (isStale()) return;
+              setBalance(balanceData.balance);
+              setNonce(balanceData.nonce);
+              setIsLoadingBalance(false);
+              setBalanceError(false);
+              latestBalance = balanceData;
+              saveCache();
+            })
+            .catch((err) => {
+              console.error('Failed to fetch balance:', err);
+              if (!isStale()) {
+                if (cachedData) {
+                  setBalance(cachedData.publicBalance);
+                  setNonce(cachedData.nonce);
+                } else {
+                  setBalance(0);
+                  setNonce(0);
+                  setBalanceError(true);
+                }
+                setIsLoadingBalance(false);
+              }
+            });
 
-      // Fetch 2: Encrypted balance (medium speed)
-      const encFetch = fetchEncryptedBalance(currentAddress, currentPrivateKey)
-        .then((encData) => {
-          if (isStale()) return;
-          if (encData) {
-            setEncryptedBalance(encData);
-            latestEncData = encData;
-          } else {
-            const fallback: EncryptedBalanceResponse = {
-              public: cachedData?.publicBalance || 0,
-              public_raw: Math.floor((cachedData?.publicBalance || 0) * 1_000_000),
-              encrypted: 0,
-              encrypted_raw: 0,
-              cipher: cachedData?.encryptedBalance.cipher || '0',
-              total: cachedData?.publicBalance || 0,
-            };
-            setEncryptedBalance(fallback);
-          }
-          setIsLoadingEncryptedBalance(false);
-          saveCache();
-        })
-        .catch((err) => {
-          console.error('Failed to fetch encrypted balance:', err);
-          if (!isStale()) {
+      // Fetch 2: Encrypted balance — skip if cache is fresh, otherwise always re-fetch
+      const encFetch = cacheIsFresh
+        ? Promise.resolve().then(() => {
+            if (isStale()) return;
+            // Use value already set from cacheService in step 1
+            setIsLoadingEncryptedBalance(false);
             if (cachedData) {
-              setEncryptedBalance({
+              latestEncData = {
                 public: cachedData.publicBalance,
                 public_raw: Math.floor(cachedData.publicBalance * 1_000_000),
                 encrypted: cachedData.encryptedBalance.encrypted,
                 encrypted_raw: Math.floor(cachedData.encryptedBalance.encrypted * 1_000_000),
                 cipher: cachedData.encryptedBalance.cipher,
                 total: cachedData.publicBalance + cachedData.encryptedBalance.encrypted,
-              });
+              };
             }
-            setIsLoadingEncryptedBalance(false);
-          }
-        });
+          })
+        : fetchEncryptedBalance(currentAddress, currentPrivateKey)
+            .then((encData) => {
+              if (isStale()) return;
+              if (encData) {
+                setEncryptedBalance(encData);
+                latestEncData = encData;
+              } else {
+                const fallback: EncryptedBalanceResponse = {
+                  public: cachedData?.publicBalance || 0,
+                  public_raw: Math.floor((cachedData?.publicBalance || 0) * 1_000_000),
+                  encrypted: 0,
+                  encrypted_raw: 0,
+                  cipher: cachedData?.encryptedBalance.cipher || '0',
+                  total: cachedData?.publicBalance || 0,
+                };
+                setEncryptedBalance(fallback);
+              }
+              setIsLoadingEncryptedBalance(false);
+              saveCache();
+            })
+            .catch((err) => {
+              console.error('Failed to fetch encrypted balance:', err);
+              if (!isStale()) {
+                if (cachedData) {
+                  setEncryptedBalance({
+                    public: cachedData.publicBalance,
+                    public_raw: Math.floor(cachedData.publicBalance * 1_000_000),
+                    encrypted: cachedData.encryptedBalance.encrypted,
+                    encrypted_raw: Math.floor(cachedData.encryptedBalance.encrypted * 1_000_000),
+                    cipher: cachedData.encryptedBalance.cipher,
+                    total: cachedData.publicBalance + cachedData.encryptedBalance.encrypted,
+                  });
+                }
+                setIsLoadingEncryptedBalance(false);
+              }
+            });
 
-      // Fetch 3: Transaction history (slowest) — progressive display via onProgress
-      const historyFetch = getTransactionHistory(
-        currentAddress,
-        {},
-        false,
-        (progressTxs) => {
-          if (isStale()) return;
-          const withType = progressTxs.map((tx) => ({
-            ...tx,
-            type: tx.from?.toLowerCase() === currentAddress.toLowerCase() ? 'sent' : 'received',
-          } as Transaction));
-          setTransactions(withType);
-          setIsLoadingTransactions(false);
-        },
-      )
-        .then((historyResult) => {
-          if (isStale()) return;
-          if (Array.isArray(historyResult.transactions)) {
-            const transformedTxs = historyResult.transactions.map((tx) => ({
-              ...tx,
-              type: tx.from?.toLowerCase() === currentAddress.toLowerCase() ? 'sent' : 'received',
-            } as Transaction));
-            setTransactions(transformedTxs);
-            latestTxs = transformedTxs;
-            transformedTxs
-              .filter((tx) => tx.status === 'confirmed')
-              .slice(0, 10)
-              .forEach((tx) => {
-                apiCache.getTransactionDetails(tx.hash).then((cached) => {
-                  if (!cached) fetchTransactionDetails(tx.hash).catch(() => {});
-                });
-              });
-          } else {
-            if (!cachedData) {
-              setTransactions([]);
+      // Fetch 3: Transaction history — skip if cache is fresh
+      const historyFetch = cacheIsFresh
+        ? Promise.resolve().then(() => {
+            if (isStale()) return;
+            setIsLoadingTransactions(false);
+            if (cachedData?.recentActivities?.length) {
+              latestTxs = cachedData.recentActivities.map((activity) => ({
+                hash: activity.hash,
+                from: activity.from || currentAddress,
+                to: activity.to || '',
+                amount: activity.amount,
+                timestamp: activity.timestamp,
+                status: activity.status,
+                type: activity.direction === 'out' ? 'sent' : 'received',
+                op_type: activity.type,
+              } as Transaction));
+            } else {
               latestTxs = [];
             }
-          }
-          setIsLoadingTransactions(false);
-          saveCache();
-        })
-        .catch((err) => {
-          console.error('Failed to fetch transaction history:', err);
-          if (!isStale()) {
-            if (!cachedData) setTransactions([]);
-            setIsLoadingTransactions(false);
-          }
-        });
+          })
+        : getTransactionHistory(
+            currentAddress,
+            {},
+            false,
+            (progressTxs) => {
+              if (isStale()) return;
+              const withType = progressTxs.map((tx) => ({
+                ...tx,
+                type: tx.from?.toLowerCase() === currentAddress.toLowerCase() ? 'sent' : 'received',
+              } as Transaction));
+              setTransactions(withType);
+              setIsLoadingTransactions(false);
+            },
+          )
+            .then((historyResult) => {
+              if (isStale()) return;
+              if (Array.isArray(historyResult.transactions)) {
+                const transformedTxs = historyResult.transactions.map((tx) => ({
+                  ...tx,
+                  type: tx.from?.toLowerCase() === currentAddress.toLowerCase() ? 'sent' : 'received',
+                } as Transaction));
+                setTransactions(transformedTxs);
+                latestTxs = transformedTxs;
+                transformedTxs
+                  .filter((tx) => tx.status === 'confirmed')
+                  .slice(0, 10)
+                  .forEach((tx) => {
+                    apiCache.getTransactionDetails(tx.hash).then((cached) => {
+                      if (!cached) fetchTransactionDetails(tx.hash).catch(() => {});
+                    });
+                  });
+              } else {
+                if (!cachedData) {
+                  setTransactions([]);
+                  latestTxs = [];
+                }
+              }
+              setIsLoadingTransactions(false);
+              saveCache();
+            })
+            .catch((err) => {
+              console.error('Failed to fetch transaction history:', err);
+              if (!isStale()) {
+                if (!cachedData) setTransactions([]);
+                setIsLoadingTransactions(false);
+              }
+            });
 
       // Fetch 4: Pending private transfers (background, non-blocking)
       getPendingPrivateTransfers(currentAddress, currentPrivateKey)
@@ -985,9 +921,19 @@ export function WalletDashboard({
           if (!isStale()) setPendingTransfersCount(0);
         });
 
-      await Promise.allSettled([balanceFetch, encFetch, historyFetch]);
+      // Fetch 5: PVAC pubkey registration (background, non-blocking, once per wallet+network).
+      // Runs silently so encrypt/decrypt/stealth operations are ready immediately
+      // without the 20s registration delay on first use.
+      if (currentPrivateKey && wallet?.publicKey) {
+        const pubKey = wallet.publicKey;
+        import('../utils/ensurePvacRegistered').then(({ ensurePvacRegistered }) => {
+          ensurePvacRegistered(currentAddress, currentPrivateKey, pubKey).catch(() => {
+            // Silent — registration will retry on first actual operation
+          });
+        });
+      }
 
-      if (!isStale()) setIsSyncing(false);
+      await Promise.allSettled([balanceFetch, encFetch, historyFetch]);
 
       if (!isStale()) {
         const encBal =
@@ -1036,7 +982,7 @@ export function WalletDashboard({
     if (!wallet) return;
     
     setIsRefreshingData(true);
-    setIsSyncing(true);
+    setBalanceError(false);
 
     const addr = wallet.address;
     const pk = wallet.privateKey;
@@ -1047,8 +993,14 @@ export function WalletDashboard({
         fetchBalance(addr).then(data => {
           setBalance(data.balance);
           setNonce(data.nonce);
+          setBalanceError(false);
           return data;
-        }).catch(err => { console.error('Balance fetch failed:', err); return null; }),
+        }).catch(err => {
+          console.error('Balance fetch failed:', err);
+          setBalanceError(true);
+          toast({ title: "Balance Error", description: "Could not load balance. Check your connection.", variant: "destructive" });
+          return null;
+        }),
 
         getTransactionHistory(addr, {}, false, (progressTxs) => {
           const withType = progressTxs.map(tx => ({
@@ -1067,10 +1019,8 @@ export function WalletDashboard({
         }).catch(err => console.error('History fetch failed:', err)),
       ]);
 
-      // Clear syncing as soon as balance + history are done
-      setIsSyncing(false);
-
       // Encrypted balance runs independently (can be slow due to PVAC)
+      setIsLoadingEncryptedBalance(true);
       fetchEncryptedBalance(addr, pk).then(encData => {
         if (encData) {
           setEncryptedBalance(encData);
@@ -1084,14 +1034,17 @@ export function WalletDashboard({
             total: balanceData.balance,
           });
         }
-      }).catch(err => console.error('Enc balance fetch failed:', err));
+        setIsLoadingEncryptedBalance(false);
+      }).catch(err => {
+        console.error('Enc balance fetch failed:', err);
+        setIsLoadingEncryptedBalance(false);
+      });
 
     } catch (error) {
       console.error('Failed to refresh wallet data:', error);
       toast({ title: "Refresh Failed", description: "Failed to refresh data.", variant: "destructive" });
     } finally {
       setIsRefreshingData(false);
-      setIsSyncing(false); // ensure cleared even on error
     }
   };
 
@@ -1455,6 +1408,25 @@ export function WalletDashboard({
     }
   };
 
+  // Load saved API keys when RPC manager opens
+  useEffect(() => {
+    if (showEvmRpcManager) {
+      setEvmInfuraKey(getEvmInfuraKey());
+      setEvmEtherscanKey(getEvmEtherscanKey());
+      setEvmApiKeysSaved(false);
+    }
+  }, [showEvmRpcManager]);
+
+  // Save Infura + Etherscan API keys
+  const handleSaveEvmApiKeys = () => {
+    saveEvmInfuraKey(evmInfuraKey);
+    saveEvmEtherscanKey(evmEtherscanKey);
+    setEvmApiKeysSaved(true);
+    // Re-initialize EVM mode so new RPC URLs are picked up
+    initializeEvmMode();
+    toast({ title: 'API Keys Saved', description: 'Infura and Etherscan keys saved to wallet settings.' });
+  };
+
   // Effect: Fetch EVM data when wallet changes in EVM mode
   useEffect(() => {
     if (!evmMode || !selectedEVMWallet) return;
@@ -1575,9 +1547,6 @@ export function WalletDashboard({
 
       // Reset mode switch reminder preference
       resetModeSwitchReminder();
-
-      // Reset PVAC setup state
-      resetPvacSetupState();
 
       // Clear API cache from chrome.storage
       if (typeof chrome !== 'undefined' && chrome.storage?.local) {
@@ -1767,6 +1736,58 @@ export function WalletDashboard({
     setTransactions(newTransactions);
   };
 
+  /**
+   * Immediately write fresh balance + encrypted balance into the fast cache
+   * (localStorage). Called right after encrypt/decrypt/claim/stealth-send
+   * completes so the cache reflects the new state before the delayed
+   * silentRefreshAfterTx fires.
+   */
+  const updateCacheAfterTx = (
+    freshPublic: number,
+    freshEnc: import('../types/wallet').EncryptedBalanceResponse | null,
+    freshNonce: number,
+  ) => {
+    const existing = cacheService.getWalletCacheFast(wallet.address);
+    cacheService.setWalletCacheFast({
+      address: wallet.address,
+      publicBalance: freshPublic,
+      encryptedBalance: {
+        encrypted: freshEnc?.encrypted ?? existing?.encryptedBalance.encrypted ?? 0,
+        cipher:    freshEnc?.cipher    ?? existing?.encryptedBalance.cipher    ?? '',
+        public:    freshPublic,
+      },
+      nonce: freshNonce,
+      recentActivities: existing?.recentActivities ?? [],
+      lastUpdate: Date.now(),
+      version: '1.0.0',
+    });
+  };
+
+  /**
+   * Called by PrivateTransfer and ClaimTransfers when they have a fresh
+   * encrypted balance from the node. Updates React state AND the fast cache
+   * immediately — no waiting for silentRefreshAfterTx.
+   */
+  const handleEncryptedBalanceUpdate = (freshEnc: EncryptedBalanceResponse | null) => {
+    if (!freshEnc) return;
+    setEncryptedBalance(freshEnc);
+    // Update cache with the fresh encrypted balance, keeping current public balance
+    const existing = cacheService.getWalletCacheFast(wallet.address);
+    cacheService.setWalletCacheFast({
+      address: wallet.address,
+      publicBalance: existing?.publicBalance ?? balance ?? 0,
+      encryptedBalance: {
+        encrypted: freshEnc.encrypted,
+        cipher:    freshEnc.cipher ?? '',
+        public:    existing?.publicBalance ?? balance ?? 0,
+      },
+      nonce: existing?.nonce ?? nonce,
+      recentActivities: existing?.recentActivities ?? [],
+      lastUpdate: Date.now(),
+      version: '1.0.0',
+    });
+  };
+
   // Refresh Octra history - updates history first, then other data in background
   const refreshOctraHistory = async () => {
     if (!wallet || isRefreshingOctraHistory) return;
@@ -1847,8 +1868,24 @@ export function WalletDashboard({
           } as Transaction));
           setTransactions(prev => {
             const nodeHashes = new Set(txs.map(t => t.hash));
-            const stillPending = prev.filter(t => t.status === 'pending' && !nodeHashes.has(t.hash));
-            return [...stillPending, ...txs].slice(0, 20);
+            // Keep optimistic entries that are either:
+            //   a) not yet seen by the node (not in nodeHashes), OR
+            //   b) already marked confirmed optimistically — never downgrade to pending
+            const stillPending = prev.filter(t =>
+              t.status === 'pending' && !nodeHashes.has(t.hash)
+            );
+            const optimisticallyConfirmed = prev.filter(t =>
+              t.status === 'confirmed' && nodeHashes.has(t.hash)
+            );
+            // Merge: node txs take precedence, but preserve confirmed status
+            // for any tx the node still reports as pending (race condition window)
+            const confirmedHashes = new Set(optimisticallyConfirmed.map(t => t.hash));
+            const merged = txs.map(t =>
+              confirmedHashes.has(t.hash) && t.status === 'pending'
+                ? { ...t, status: 'confirmed' as const }
+                : t
+            );
+            return [...stillPending, ...merged].slice(0, 20);
           });
 
           // Remove confirmed txs from optimistic cache so detail view fetches fresh data from node.
@@ -1897,8 +1934,8 @@ export function WalletDashboard({
             address: wallet.address,
             publicBalance: balanceData.balance,
             encryptedBalance: {
-              encrypted: freshEncrypted?.encrypted || encryptedBalance?.encrypted || 0,
-              cipher: freshEncrypted?.cipher || encryptedBalance?.cipher || '',
+              encrypted: freshEncrypted?.encrypted ?? encryptedBalance?.encrypted ?? 0,
+              cipher:    freshEncrypted?.cipher    ?? encryptedBalance?.cipher    ?? '',
               public: balanceData.balance,
             },
             nonce: balanceData.nonce,
@@ -1923,8 +1960,31 @@ export function WalletDashboard({
     status: 'confirmed' | 'pending' | 'failed'; finality?: string;
     op_type?: string;
     ou?: string | number;
+    /** Fresh balance from node — passed by SendTransaction/MultiSend after their post-tx fetch. */
+    freshBalance?: number;
+    freshNonce?: number;
   }) => {
     WalletManager.refreshSessionTimeout();
+
+    // If the caller already fetched a fresh balance, update the cache immediately.
+    // This covers standard/multi/bulk send where SendTransaction already called
+    // fetchBalance and passed the result via onBalanceUpdate.
+    if (newTx?.freshBalance !== undefined) {
+      const existing = cacheService.getWalletCacheFast(wallet.address);
+      cacheService.setWalletCacheFast({
+        address: wallet.address,
+        publicBalance: newTx.freshBalance,
+        encryptedBalance: {
+          encrypted: existing?.encryptedBalance.encrypted ?? encryptedBalance?.encrypted ?? 0,
+          cipher:    existing?.encryptedBalance.cipher    ?? encryptedBalance?.cipher    ?? '',
+          public:    newTx.freshBalance,
+        },
+        nonce: newTx.freshNonce ?? existing?.nonce ?? nonce,
+        recentActivities: existing?.recentActivities ?? [],
+        lastUpdate: Date.now(),
+        version: '1.0.0',
+      });
+    }
 
     // Optimistic: prepend tx to history list immediately
     if (newTx) {
@@ -2067,27 +2127,6 @@ export function WalletDashboard({
         />
       )}
 
-      {/* PVAC Server Setup - shows only once after first wallet setup */}
-      {showPvacSetup && !isPopupMode && (
-        <PvacServerSetup onComplete={() => {
-          setShowPvacSetup(false);
-          // Immediately check PVAC status and attempt auto-decrypt
-          triggerPvacConnect();
-        }} />
-      )}
-
-      {/* PVAC Server Manager - manage multiple servers */}
-      {showPvacManager && (
-        <PvacServerManager 
-          onClose={() => setShowPvacManager(false)}
-          onServerSelected={() => {
-            // Don't close — let user continue managing. Just refresh PVAC status.
-            autoDecryptedCipherRef.current = null;
-            triggerPvacConnect();
-          }}
-        />
-      )}
-
       {/* ============================================ */}
       {/* POPUP MODE - NEW FULLSCREEN UI */}
       {/* ============================================ */}
@@ -2116,9 +2155,9 @@ export function WalletDashboard({
                     publicBalance={balance || 0}
                     onBalanceUpdate={setBalance}
                     onEncryptedBalanceUpdate={setEncryptedBalance}
-                    onSuccess={() => {
+                    onSuccess={(freshPublic, freshEnc, freshNonce) => {
+                      updateCacheAfterTx(freshPublic, freshEnc, freshNonce);
                       silentRefreshAfterTx(3000);
-                      // Don't auto-close — let user close the tx result modal manually
                     }}
                     isPopupMode={true}
                     isInline={true}
@@ -2152,9 +2191,9 @@ export function WalletDashboard({
                     currentCipher={encryptedBalance?.cipher}
                     onBalanceUpdate={setBalance}
                     onEncryptedBalanceUpdate={setEncryptedBalance}
-                    onSuccess={() => {
+                    onSuccess={(freshPublic, freshEnc, freshNonce) => {
+                      updateCacheAfterTx(freshPublic, freshEnc, freshNonce);
                       silentRefreshAfterTx(3000);
-                      // Don't auto-close — let user close the tx result modal manually
                     }}
                     isPopupMode={true}
                     isInline={true}
@@ -2200,6 +2239,7 @@ export function WalletDashboard({
                       onBalanceUpdate={handleBalanceUpdate}
                       onNonceUpdate={handleNonceUpdate}
                       onTransactionSuccess={handleTransactionSuccess}
+                      onEncryptedBalanceUpdate={handleEncryptedBalanceUpdate}
                       isCompact={true}
                       onAddToAddressBook={handleAddToAddressBook}
                     />
@@ -2238,6 +2278,8 @@ export function WalletDashboard({
                 <ClaimTransfers
                   wallet={wallet}
                   onTransactionSuccess={handleTransactionSuccess}
+                  onEncryptedBalanceUpdate={handleEncryptedBalanceUpdate}
+                  onPendingCountChange={setPendingTransfersCount}
                   isPopupMode={true}
                   hideBorder={true}
                 />
@@ -2415,7 +2457,7 @@ export function WalletDashboard({
                       asChild
                     >
                       <a 
-                        href={`${scannerUrl}${selectedTxHash}`} 
+                        href={`${scannerUrl(selectedTxHash ?? "")}`} 
                         target="_blank" 
                         rel="noopener noreferrer"
                       >
@@ -2672,21 +2714,6 @@ export function WalletDashboard({
                           <span className="transition group-hover:drop-shadow-[0_0_6px_currentColor]">RPC Provider</span>
                         </Button>
 
-                        {/* PVAC Server */}
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => {
-                            setShowPvacManager(true);
-                            setShowMobileMenu(false);
-                          }}
-                          className="group w-full justify-start gap-1.5 text-xs h-10 hover:bg-transparent"
-                        >
-                          <Server className={`h-3.5 w-3.5 transition group-hover:drop-shadow-[0_0_6px_currentColor] ${pvacStatus === 'connected' ? 'text-[#00E5C0]' : ''}`} />
-                          <span className="transition group-hover:drop-shadow-[0_0_6px_currentColor]">PVAC Server</span>
-                          {pvacStatus === 'connected' && <div className="ml-auto w-1.5 h-1.5 rounded-full bg-[#00E5C0]" />}
-                        </Button>
-
                         {/* Connected dApps */}
                         <Button
                           variant="ghost"
@@ -2829,19 +2856,6 @@ export function WalletDashboard({
                         >
                           <Code2 className="h-4 w-4 transition group-hover:drop-shadow-[0_0_6px_currentColor]" />
                           <span className="transition group-hover:drop-shadow-[0_0_6px_currentColor]">Dev Tools</span>
-                          {activeNetwork === 'devnet' && (
-                            <span className="text-[9px] px-1 py-0 bg-yellow-500/20 text-yellow-600 dark:text-yellow-400 border border-yellow-500/30">DevNet</span>
-                          )}
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => setShowPvacManager(true)}
-                          className="group flex items-center gap-2 hover:bg-transparent"
-                        >
-                          <Server className={`h-4 w-4 transition group-hover:drop-shadow-[0_0_6px_currentColor] ${pvacStatus === 'connected' ? 'text-[#00E5C0]' : ''}`} />
-                          <span className="transition group-hover:drop-shadow-[0_0_6px_currentColor]">PVAC</span>
-                          {pvacStatus === 'connected' && <div className="w-1.5 h-1.5 rounded-full bg-[#00E5C0]" />}
                         </Button>
                         {/* Dashed separator */}
                         <div className="h-5 border-l border-dashed border-border mx-1" />
@@ -2928,20 +2942,6 @@ export function WalletDashboard({
                               >
                                 <Wifi className="h-4 w-4" />
                                 RPC Provider
-                          </Button>
-
-                          {/* PVAC Server */}
-                          <Button
-                            variant="outline"
-                            onClick={() => {
-                              setShowPvacManager(true);
-                              setShowMobileMenu(false);
-                            }}
-                            className="w-full justify-start gap-2"
-                          >
-                            <Server className={`h-4 w-4 ${pvacStatus === 'connected' ? 'text-[#00E5C0]' : ''}`} />
-                            PVAC Server
-                            {pvacStatus === 'connected' && <div className="ml-auto w-2 h-2 rounded-full bg-[#00E5C0]" />}
                           </Button>
 
                           {/* Connected dApps */}
@@ -3359,6 +3359,8 @@ export function WalletDashboard({
                 encryptedBalance={encryptedBalance?.encrypted || 0}
                 pendingTransfersCount={pendingTransfersCount}
                 isCompact={false}
+                onRefresh={refreshWalletData}
+                isRefreshing={isRefreshingData}
               />
             )}
           </div>
@@ -3534,6 +3536,8 @@ export function WalletDashboard({
                   encryptedBalance={encryptedBalance?.encrypted || 0}
                   pendingTransfersCount={pendingTransfersCount}
                   isCompact={true}
+                  onRefresh={refreshWalletData}
+                  isRefreshing={isRefreshingData}
                 />
               </div>
 
@@ -3546,6 +3550,18 @@ export function WalletDashboard({
                   {(operationMode === 'private' ? isLoadingEncryptedBalance : isLoadingBalance) ? (
                     <div className="h-10 flex items-center justify-center">
                       <div className="w-5 h-5 rounded-full border-2 border-transparent animate-spin" style={{ borderTopColor: '#00E5C0' }} />
+                    </div>
+                  ) : balanceError && operationMode === 'public' ? (
+                    <div className="flex items-center justify-center gap-1.5 text-destructive text-xs py-2">
+                      <AlertCircle className="h-3.5 w-3.5 flex-shrink-0" />
+                      <span>Failed to load</span>
+                      <button
+                        type="button"
+                        onClick={refreshWalletData}
+                        className="underline hover:no-underline ml-0.5"
+                      >
+                        Retry
+                      </button>
                     </div>
                   ) : (
                     <>
@@ -3651,7 +3667,7 @@ export function WalletDashboard({
                 </h3>
                 <div className="flex items-center gap-1.5">
                   <a 
-                    href={`${scannerAddressUrl}${wallet.address}`}
+                    href={`${scannerAddressUrl(wallet.address)}`}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="p-1 rounded hover:bg-muted transition-colors"
@@ -3717,7 +3733,7 @@ export function WalletDashboard({
                       {ethPrice !== null && selectedEVMWallet?.balance && (
                         <div className="text-lg text-muted-foreground mt-1">
                           ≈ {calculateUSDValue(selectedEVMWallet.balance, ethPrice)}
-                          {evmNetwork.isTestnet && <span className="text-xs ml-2">(testnet)</span>}
+                          {evmNetwork.isTestnet && <span className="text-xs ml-2">(devnet)</span>}
                         </div>
                       )}
                     </>
@@ -3818,6 +3834,18 @@ export function WalletDashboard({
                     <div className="flex items-center justify-center gap-2">
                       <div className="w-6 h-6 rounded-full border-2 border-transparent animate-spin" style={{ borderTopColor: '#00E5C0' }} />
                     </div>
+                  ) : balanceError && operationMode === 'public' ? (
+                    <div className="flex items-center justify-center gap-2 text-destructive text-sm py-1">
+                      <AlertCircle className="h-4 w-4 flex-shrink-0" />
+                      <span>Failed to load balance</span>
+                      <button
+                        type="button"
+                        onClick={refreshWalletData}
+                        className="underline hover:no-underline text-sm"
+                      >
+                        Retry
+                      </button>
+                    </div>
                   ) : (
                     <>
                       <div className="flex items-center justify-center gap-4">
@@ -3867,7 +3895,7 @@ export function WalletDashboard({
                 {/* Action Buttons */}
                 {operationMode === 'public' ? (
                   /* Public Mode Actions */
-                  <div className="grid grid-cols-3 gap-3 w-full max-w-lg">
+                  <div className="grid grid-cols-2 gap-3 w-full max-w-lg">
                     {/* Standard Send */}
                     <Button
                       variant="outline"
@@ -3877,17 +3905,6 @@ export function WalletDashboard({
                       <Send className="h-7 w-7 transition-colors group-hover:drop-shadow-[0_0_12px_rgba(58,77,255,0.7)]" />
                       <span className="text-sm font-medium transition-colors group-hover:drop-shadow-[0_0_12px_rgba(58,77,255,0.7)]">Send</span>
                       <span className="text-[10px] text-muted-foreground">Single transfer</span>
-                    </Button>
-                    
-                    {/* Multi Send */}
-                    <Button
-                      variant="outline"
-                      className="group flex flex-col items-center gap-2 h-auto py-4 border-0 rounded-none bg-transparent shadow-none hover:bg-transparent hover:text-primary transition-colors"
-                      onClick={() => openSendModal('multi')}
-                    >
-                      <Layers className="h-7 w-7 transition-colors group-hover:drop-shadow-[0_0_8px_rgba(58,77,255,0.5)]" />
-                      <span className="text-sm font-medium transition-colors group-hover:drop-shadow-[0_0_8px_rgba(58,77,255,0.5)]">Multi Send</span>
-                      <span className="text-[10px] text-muted-foreground">Multiple recipients</span>
                     </Button>
                     
                     {/* Bulk Send */}
@@ -3903,7 +3920,7 @@ export function WalletDashboard({
                   </div>
                 ) : (
                   /* Private Mode Actions */
-                  <div className="grid grid-cols-3 gap-3 w-full max-w-lg">
+                  <div className="grid grid-cols-2 gap-3 w-full max-w-lg">
                     {/* Send (Private Transfer) */}
                     <Button
                       variant="outline"
@@ -3914,18 +3931,6 @@ export function WalletDashboard({
                       <span className="text-sm font-medium transition-colors group-hover:drop-shadow-[0_0_8px_rgba(0,229,192,0.5)]">Send</span>
                       <span className="text-[10px] text-muted-foreground">Private transfer</span>
                     </Button>
-                    
-                    {/* Multi Send - Coming Soon */}
-                    <Button
-                      variant="outline"
-                      className="group flex flex-col items-center gap-2 h-auto py-4 border-0 rounded-none bg-transparent shadow-none opacity-50 cursor-not-allowed"
-                      disabled
-                    >
-                      <Layers className="h-7 w-7 transition-colors group-hover:drop-shadow-[0_0_8px_rgba(0,229,192,0.5)]" />
-                      <span className="text-sm font-medium transition-colors group-hover:drop-shadow-[0_0_8px_rgba(0,229,192,0.5)]">Multi Send</span>
-                      <span className="text-[10px] text-muted-foreground">Coming soon</span>
-                    </Button>
-                    
                     {/* Claim */}
                     <Button
                       variant="outline"
@@ -3966,8 +3971,8 @@ export function WalletDashboard({
                       </div>
                     </Button>
 
-                    {/* Balance Pie Chart - below EVM Assets */}
-                    {balance !== null && encryptedBalance && (balance > 0 || encryptedBalance.encrypted > 0 || isDecryptingBalance) && (
+                    {/* Balance Pie Chart - shows immediately with public balance, encrypted loads progressively */}
+                    {balance !== null && balance > 0 && (
                       <>
                         <div className="border-t border-dashed border-border mt-1" />
                         <div className="mt-2">
@@ -3975,7 +3980,7 @@ export function WalletDashboard({
                             publicBalance={balance || 0}
                             encryptedBalance={encryptedBalance?.encrypted || 0}
                             isCompact={false}
-                            isDecrypting={isDecryptingBalance}
+                            isDecrypting={isDecryptingBalance || isLoadingEncryptedBalance}
                             octPrice={octPrice ?? undefined}
                           />
                         </div>
@@ -4025,6 +4030,8 @@ export function WalletDashboard({
                 <ClaimTransfers
                   wallet={wallet}
                   onTransactionSuccess={handleTransactionSuccess}
+                  onEncryptedBalanceUpdate={handleEncryptedBalanceUpdate}
+                  onPendingCountChange={setPendingTransfersCount}
                   isPopupMode={false}
                   hideBorder={true}
                 />
@@ -4232,7 +4239,7 @@ export function WalletDashboard({
                               asChild
                             >
                               <a 
-                                href={`${scannerUrl}${selectedTxHash}`} 
+                                href={`${scannerUrl(selectedTxHash ?? "")}`} 
                                 target="_blank" 
                                 rel="noopener noreferrer"
                               >
@@ -4378,7 +4385,7 @@ export function WalletDashboard({
                             className="h-7 w-7 p-0"
                             asChild
                           >
-                          <a href={`${scannerAddressUrl}${wallet.address}`} target="_blank" rel="noopener noreferrer">
+                          <a href={`${scannerAddressUrl(wallet.address)}`} target="_blank" rel="noopener noreferrer">
                               <ExternalLink className="h-3.5 w-3.5" />
                             </a>
                           </Button>
@@ -4462,7 +4469,6 @@ export function WalletDashboard({
                 ) : (
                   <>
                     {expandedSendModal === 'standard' && <Send className="h-5 w-5" />}
-                    {expandedSendModal === 'multi' && <Layers className="h-5 w-5" />}
                     {expandedSendModal === 'bulk' && <FileText className="h-5 w-5" />}
                   </>
                 )}
@@ -4470,7 +4476,6 @@ export function WalletDashboard({
                   {operationMode === 'private' ? 'Private Transfer' : (
                     <>
                       {expandedSendModal === 'standard' && 'Single Send'}
-                      {expandedSendModal === 'multi' && 'Multi Send'}
                       {expandedSendModal === 'bulk' && 'Bulk Send'}
                     </>
                   )}
@@ -4482,17 +4487,6 @@ export function WalletDashboard({
                 variant="outline"
                 size="sm"
                 onClick={() => setBulkResetTrigger(prev => prev + 1)}
-                className="text-xs"
-              >
-                <RotateCcw className="h-3.5 w-3.5 mr-1.5" />
-                Reset
-              </Button>
-            )}
-            {expandedSendModal === 'multi' && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setMultiResetTrigger(prev => prev + 1)}
                 className="text-xs"
               >
                 <RotateCcw className="h-3.5 w-3.5 mr-1.5" />
@@ -4516,6 +4510,7 @@ export function WalletDashboard({
                   onTransactionSuccess={() => {
                     handleTransactionSuccess();
                   }}
+                  onEncryptedBalanceUpdate={handleEncryptedBalanceUpdate}
                   isCompact={false}
                   onAddToAddressBook={handleAddToAddressBook}
                 />
@@ -4538,22 +4533,6 @@ export function WalletDashboard({
             </ScrollArea>
           ) : (
             <div className="flex-1 px-6 py-2 overflow-auto xl:overflow-hidden">
-              {expandedSendModal === 'multi' && (
-                <MultiSend
-                  wallet={wallet}
-                  balance={balance}
-                  nonce={nonce}
-                  onBalanceUpdate={handleBalanceUpdate}
-                  onNonceUpdate={handleNonceUpdate}
-                  onTransactionSuccess={handleTransactionSuccess}
-                  onModalClose={closeSendModal}
-                  hideBorder={true}
-                  resetTrigger={multiResetTrigger}
-                  sidebarOpen={showWalletSidebar}
-                  historySidebarOpen={showHistorySidebar}
-                  onAddToAddressBook={handleAddToAddressBook}
-                />
-              )}
               {expandedSendModal === 'bulk' && (
                 <FileMultiSend
                   wallet={wallet}
@@ -4621,8 +4600,8 @@ export function WalletDashboard({
                   publicBalance={encryptedBalance?.public || balance || 0}
                   onBalanceUpdate={setBalance}
                   onEncryptedBalanceUpdate={setEncryptedBalance}
-                  onSuccess={() => {
-                    // Don't auto-close — let user close the tx result modal manually
+                  onSuccess={(freshPublic, freshEnc, freshNonce) => {
+                    updateCacheAfterTx(freshPublic, freshEnc, freshNonce);
                     silentRefreshAfterTx(3000);
                   }}
                   isPopupMode={false}
@@ -4640,8 +4619,8 @@ export function WalletDashboard({
                   currentCipher={encryptedBalance?.cipher}
                   onBalanceUpdate={setBalance}
                   onEncryptedBalanceUpdate={setEncryptedBalance}
-                  onSuccess={() => {
-                    // Don't auto-close — let user close the tx result modal manually
+                  onSuccess={(freshPublic, freshEnc, freshNonce) => {
+                    updateCacheAfterTx(freshPublic, freshEnc, freshNonce);
                     silentRefreshAfterTx(3000);
                   }}
                   isPopupMode={false}
@@ -4661,22 +4640,19 @@ export function WalletDashboard({
             {/* Left: Connection Status */}
             <div className="flex items-center gap-1.5">
               <div className={`w-1.5 h-1.5 rounded-full ${
-                isSyncing ? 'bg-yellow-500 animate-pulse' :
                 rpcStatus === 'connected' ? (operationMode === 'private' ? 'bg-[#00E5C0]' : 'bg-[#3B567F]') : 
                 rpcStatus === 'disconnected' ? 'bg-red-500' : 
                 'bg-yellow-500 animate-pulse'
               }`} />
               <span className={`text-[10px] ${
-                isSyncing ? 'text-yellow-500' :
                 rpcStatus === 'connected' ? (operationMode === 'private' ? 'text-[#00E5C0]' : 'text-[#3B567F]') : 
                 rpcStatus === 'disconnected' ? 'text-red-500' : 
                 'text-yellow-500'
               }`}>
-                {isSyncing ? 'Syncing...' :
-                 rpcStatus === 'connected' ? `Connected (${activeNetwork === 'devnet' ? 'DevNet' : activeNetwork.charAt(0).toUpperCase() + activeNetwork.slice(1)})` : 
+                {rpcStatus === 'connected' ? `Connected (${activeNetwork === 'devnet' ? 'DevNet' : activeNetwork.charAt(0).toUpperCase() + activeNetwork.slice(1)})` : 
                  rpcStatus === 'disconnected' ? 'Disconnected' : 
                  'Connecting...'}
-                {!isSyncing && rpcStatus === 'connected' && latestEpoch !== null && (
+                {rpcStatus === 'connected' && latestEpoch !== null && (
                   <span className="text-muted-foreground"> | #{latestEpoch}</span>
                 )}
               </span>
@@ -4753,56 +4729,30 @@ export function WalletDashboard({
             /* Normal Octra Footer */
             <div className="flex items-center gap-1.5">
               <div className={`w-1.5 h-1.5 rounded-full ${
-                isSyncing ? 'bg-yellow-500 animate-pulse' :
                 rpcStatus === 'connected' ? (operationMode === 'private' ? 'bg-[#00E5C0]' : 'bg-[#3B567F]') : 
                 rpcStatus === 'disconnected' ? 'bg-red-500' : 
                 'bg-yellow-500 animate-pulse'
               }`} />
               <span className={`${
-                isSyncing ? 'text-yellow-500' :
                 rpcStatus === 'connected' ? (operationMode === 'private' ? 'text-[#00E5C0]' : 'text-[#3B567F]') : 
                 rpcStatus === 'disconnected' ? 'text-red-500' : 
                 'text-yellow-500'
               }`}>
-                {isSyncing ? 'Syncing...' :
-                 rpcStatus === 'connected' ? `Connected (${activeNetwork === 'devnet' ? 'DevNet' : activeNetwork.charAt(0).toUpperCase() + activeNetwork.slice(1)})` : 
+                {rpcStatus === 'connected' ? `Connected (${activeNetwork === 'devnet' ? 'DevNet' : activeNetwork.charAt(0).toUpperCase() + activeNetwork.slice(1)})` : 
                  rpcStatus === 'disconnected' ? 'Disconnected' : 
                  'Connecting...'}
-                {!isSyncing && rpcStatus === 'connected' && latestEpoch !== null && (
+                {rpcStatus === 'connected' && latestEpoch !== null && (
                   <span className="text-muted-foreground"> | #{latestEpoch}</span>
                 )}
               </span>
             </div>
           )}
           
-          {/* Center: PVAC Server Status (Octra mode) or Gas price (EVM mode) */}
-          {evmMode ? (
-            /* EVM Mode - Gas price */
-            evmGasPrice && (
-              <span className="text-orange-600 dark:text-orange-400">
-                Gas: <span className="font-medium">{evmGasPrice} Gwei</span>
-              </span>
-            )
-          ) : (
-            /* Octra Mode - PVAC Server Status - Clickable */
-            <button
-              onClick={() => setShowPvacManager(true)}
-              className="flex items-center gap-1.5 hover:opacity-80 transition-opacity"
-              title="Click to manage PVAC servers"
-            >
-              <Server className={`h-3 w-3 ${
-                pvacStatus === 'connected' ? 'text-[#00E5C0]' : 
-                pvacStatus === 'disconnected' ? 'text-muted-foreground' : 
-                'text-yellow-500'
-              }`} />
-              <span className={`text-xs ${
-                pvacStatus === 'connected' ? 'text-[#00E5C0]' : 
-                pvacStatus === 'disconnected' ? 'text-muted-foreground' : 
-                'text-yellow-500'
-              }`}>
-                PVAC: {pvacStatus === 'connected' ? 'Ready' : pvacStatus === 'disconnected' ? 'Offline' : 'Checking...'}
-              </span>
-            </button>
+          {/* Center: Gas price (EVM mode) */}
+          {evmMode && evmGasPrice && (
+            <span className="text-orange-600 dark:text-orange-400">
+              Gas: <span className="font-medium">{evmGasPrice} Gwei</span>
+            </span>
           )}
           
           {/* Right: GitHub + Version */}
@@ -4953,7 +4903,7 @@ export function WalletDashboard({
                             <span className="text-sm font-medium truncate">{network.name}</span>
                             <Badge variant="outline" className="text-[9px] shrink-0">{network.symbol}</Badge>
                             {network.isCustom && <Badge variant="secondary" className="text-[9px] shrink-0">Custom</Badge>}
-                            {network.isTestnet && <Badge variant="outline" className="text-[9px] shrink-0 border-yellow-500/50 text-yellow-600">Testnet</Badge>}
+                            {network.isTestnet && <Badge variant="outline" className="text-[9px] shrink-0 border-yellow-500/50 text-yellow-600">Devnet</Badge>}
                           </div>
                           <span className="text-[10px] text-muted-foreground truncate">{getRpcDisplayName(getEVMRpcUrl(network.id))}</span>
                         </div>
@@ -4993,6 +4943,58 @@ export function WalletDashboard({
               </div>
             </div>
             
+            <div className="border-t border-dashed border-border" />
+            
+            {/* Infura & Etherscan API Keys */}
+            <div className="space-y-3">
+              <Label className="text-sm font-medium">EVM API Keys</Label>
+              <p className="text-[11px] text-muted-foreground leading-relaxed">
+                Keys are stored locally in your wallet and never embedded in the extension bundle.
+                Infura is used for RPC calls; Etherscan for transaction history.
+              </p>
+              <div className="space-y-2">
+                <Label className="text-xs text-muted-foreground">Infura Project ID</Label>
+                <Input
+                  placeholder="Enter your Infura Project ID"
+                  value={evmInfuraKey}
+                  onChange={(e) => setEvmInfuraKey(e.target.value)}
+                  className="h-8 text-sm font-mono"
+                  type="password"
+                  autoComplete="off"
+                />
+                <p className="text-[10px] text-muted-foreground">
+                  Get one free at{' '}
+                  <a href="https://app.infura.io/" target="_blank" rel="noopener noreferrer" className="text-orange-500 hover:underline">
+                    app.infura.io
+                  </a>
+                </p>
+              </div>
+              <div className="space-y-2">
+                <Label className="text-xs text-muted-foreground">Etherscan API Key <span className="text-muted-foreground/60">(optional)</span></Label>
+                <Input
+                  placeholder="Enter your Etherscan API key"
+                  value={evmEtherscanKey}
+                  onChange={(e) => setEvmEtherscanKey(e.target.value)}
+                  className="h-8 text-sm font-mono"
+                  type="password"
+                  autoComplete="off"
+                />
+                <p className="text-[10px] text-muted-foreground">
+                  For transaction history. Get one at{' '}
+                  <a href="https://etherscan.io/myapikey" target="_blank" rel="noopener noreferrer" className="text-orange-500 hover:underline">
+                    etherscan.io/myapikey
+                  </a>
+                </p>
+              </div>
+              <Button
+                size="sm"
+                onClick={handleSaveEvmApiKeys}
+                className="w-full bg-orange-500 hover:bg-orange-600"
+              >
+                {evmApiKeysSaved ? '✓ Keys Saved' : 'Save API Keys'}
+              </Button>
+            </div>
+
             <div className="border-t border-dashed border-border" />
             
             {/* Add Custom Network */}

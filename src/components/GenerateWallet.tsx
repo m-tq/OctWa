@@ -365,11 +365,11 @@ export function GenerateWallet({ onWalletGenerated, isCompact = false, hideBorde
       </Dialog>
       <Card className={`${hideBorder ? 'bg-transparent border-0 shadow-none' : 'bg-card/95 backdrop-blur-sm'}`}>
       {!hideBorder && (
-        <CardHeader className="pb-4">
-          <CardTitle className="text-lg">Backup Your Wallet</CardTitle>
+        <CardHeader className="mb-4">
+          <CardTitle>Backup Your Wallet</CardTitle>
         </CardHeader>
       )}
-      <CardContent className={`space-y-4 ${hideBorder ? 'p-0' : ''}`}>
+      <CardContent className={`space-y-3 ${hideBorder ? 'p-0' : ''}`}>
         <div className="space-y-2">
           <label className="text-sm font-medium">Address</label>
           <div className="flex items-center gap-2">

@@ -1,10 +1,12 @@
 import { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { Button } from '@/components/ui/button';
-import { CheckCircle, XCircle, Copy, ExternalLink, Check, Clock, ArrowRight, Lock, Unlock, Gift, X } from 'lucide-react';
+import { CheckCircle, XCircle, Copy, ExternalLink, Check, Clock, ArrowRight, Lock, Unlock, Gift, Shield, X } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { pollTransactionStatus } from '@/utils/api';
+import { getTxExplorerUrl } from '@/utils/explorer';
 
-export type TransactionStatus = 'idle' | 'sending' | 'success' | 'error';
+export type TransactionStatus = 'idle' | 'sending' | 'success' | 'error' | 'retrieving';
 
 export interface TransactionResult {
   hash?: string;
@@ -40,8 +42,8 @@ export function TransactionModal({
   const [copied, setCopied] = useState(false);
   const [currentFinality, setCurrentFinality] = useState<'pending' | 'confirmed' | 'rejected' | undefined>(result.finality);
   const { toast } = useToast();
-  // Hardcoded octrascan.io URL
-  const scannerUrl = 'https://octrascan.io/tx.html?hash=';
+  // Dynamic explorer URL based on active network (mainnet/devnet)
+  const scannerUrl = (hash: string) => getTxExplorerUrl(hash);
 
   // Auto-poll transaction status when hash is available and status is success
   useEffect(() => {
@@ -171,7 +173,11 @@ export function TransactionModal({
   const sizeTitle = isPopupMode ? 'text-sm' : 'text-lg';
   const sizeText = isPopupMode ? 'text-xs' : 'text-sm';
 
-  return (
+  // Private operations (encrypt/decrypt/transfer/claim) render inside a
+  // full-screen backdrop so the user cannot interact with anything else.
+  const isPrivateOp = type === 'encrypt' || type === 'decrypt' || type === 'transfer' || type === 'claim';
+
+  const content = (
     <div className={`${isPopupMode ? 'p-3' : 'p-4'} space-y-4`}>
       <div className="flex items-center justify-end">
         <Button variant="ghost" size="icon" onClick={handleClose} className={isPopupMode ? 'h-7 w-7' : 'h-8 w-8'}>
@@ -223,6 +229,34 @@ export function TransactionModal({
         </div>
       )}
 
+      {/* Retrieving result — shown between worker completion and tx hash arrival */}
+      {status === 'retrieving' && (
+        <div className="flex flex-col items-center gap-4 py-4">
+          <div className="relative h-16 w-16">
+            <div className={`absolute inset-0 rounded-full border-2 border-dashed ${accent.ring} animate-spin`} />
+            <div className={`absolute inset-2 rounded-full border-2 ${accent.ring} opacity-40`} />
+            <div className="absolute inset-0 flex items-center justify-center">
+              <Shield className={`${accent.text} h-6 w-6`} />
+            </div>
+          </div>
+          <div className="text-center space-y-1">
+            <div className={`font-medium ${sizeText}`}>Submitting transaction...</div>
+            <div className={`text-muted-foreground ${isPopupMode ? 'text-[10px]' : 'text-xs'}`}>
+              Retrieving result from network
+            </div>
+          </div>
+          <div className="flex gap-1">
+            {[0, 1, 2].map(i => (
+              <div
+                key={i}
+                className={`w-1.5 h-1.5 rounded-full ${accent.bg} animate-bounce`}
+                style={{ animationDelay: `${i * 150}ms` }}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+
       {status === 'success' && (
         <div className="flex flex-col items-center gap-3">
           <div className={`${isPopupMode ? 'w-12 h-12' : 'w-16 h-16'} rounded-full ${accent.bg} flex items-center justify-center`}>
@@ -242,7 +276,7 @@ export function TransactionModal({
                   {copied ? <Check className={`${isPopupMode ? "h-3 w-3" : "h-4 w-4"} ${accent.text}`} /> : <Copy className={isPopupMode ? "h-3 w-3" : "h-4 w-4"} />}
                 </Button>
                 <Button variant="ghost" size="sm" className={isPopupMode ? "h-6 w-6 p-0" : "h-8 w-8 p-0"} asChild>
-                  <a href={`${scannerUrl}${result.hash}`} target="_blank" rel="noopener noreferrer">
+                  <a href={scannerUrl(result.hash!)} target="_blank" rel="noopener noreferrer">
                     <ExternalLink className={isPopupMode ? "h-3 w-3" : "h-4 w-4"} />
                   </a>
                 </Button>
@@ -312,4 +346,21 @@ export function TransactionModal({
       )}
     </div>
   );
+
+  // Private operations get a full-screen backdrop rendered via portal so
+  // the overlay escapes any parent stacking context (Dialog, positioned
+  // containers, etc.) and truly covers the full viewport.
+  if (isPrivateOp) {
+    return createPortal(
+      <div className="fixed inset-0 z-[9999] flex items-center justify-center">
+        <div className="absolute inset-0 bg-background/95 backdrop-blur-sm" />
+        <div className={`relative z-10 w-full ${isPopupMode ? 'max-w-xs' : 'max-w-md'} mx-4 border border-border bg-card shadow-2xl`}>
+          {content}
+        </div>
+      </div>,
+      document.body,
+    );
+  }
+
+  return content;
 }

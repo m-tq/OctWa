@@ -38,7 +38,7 @@ extern "C" {
 #include "tweetnacl.h"
 }
 
-#include "crypto_utils.hpp"
+#include "../crypto_utils.hpp"
 
 namespace octra {
 
@@ -87,23 +87,6 @@ inline std::string canonical_json(const Transaction& tx) {
         s += ",\"encrypted_data\":\"" + json_escape(tx.encrypted_data) + "\"";
     if (!tx.message.empty())
         s += ",\"message\":\"" + json_escape(tx.message) + "\"";
-    s += "}";
-    return s;
-}
-
-// Convert nlohmann::json to canonical JSON string
-inline std::string canonical_json_from_json(const nlohmann::json& j) {
-    std::string s = "{\"from\":\"" + json_escape(j.value("from", "")) + "\""
-        ",\"to_\":\"" + json_escape(j.value("to_", "")) + "\""
-        ",\"amount\":\"" + json_escape(j.value("amount", "")) + "\""
-        ",\"nonce\":" + std::to_string(j.value("nonce", 0)) +
-        ",\"ou\":\"" + json_escape(j.value("ou", "")) + "\""
-        ",\"timestamp\":" + format_timestamp(j.value("timestamp", 0.0)) +
-        ",\"op_type\":\"" + json_escape(j.value("op_type", "standard")) + "\"";
-    if (j.contains("encrypted_data") && !j["encrypted_data"].get<std::string>().empty())
-        s += ",\"encrypted_data\":\"" + json_escape(j["encrypted_data"].get<std::string>()) + "\"";
-    if (j.contains("message") && !j["message"].get<std::string>().empty())
-        s += ",\"message\":\"" + json_escape(j["message"].get<std::string>()) + "\"";
     s += "}";
     return s;
 }

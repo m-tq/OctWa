@@ -72,69 +72,74 @@ async function injectVersionToProvider(extDir, distDir) {
   const providerSrc = path.join(extDir, 'provider.js');
   const providerDest = path.join(distDir, 'provider.js');
   
-  // Read manifest version
   const manifestContent = await fs.readFile(manifestPath, 'utf8');
   const manifest = JSON.parse(manifestContent);
   const version = manifest.version || '0.0.0';
   
-  // Read provider.js
   let providerContent = await fs.readFile(providerSrc, 'utf8');
-  
-  // Replace PROVIDER_VERSION value
-  // Matches: const PROVIDER_VERSION = 'x.x.x'; or const PROVIDER_VERSION = "x.x.x";
   providerContent = providerContent.replace(
     /const PROVIDER_VERSION = ['"][^'"]+['"]/,
     `const PROVIDER_VERSION = '${version}'`
   );
   
-  // Write to dist
   await ensureDir(distDir);
   await fs.writeFile(providerDest, providerContent, 'utf8');
-  
   process.stdout.write(`Injected version ${version} into provider.js\n`);
 }
 
 /**
- * Inject environment variables into background.js
+ * Inject environment variables into background.js.
+ *
+ * Placeholders replaced:
+ *   __VITE_OCTRA_RPC_URL__      — default Octra node URL
+ *   __VITE_INFURA_API_KEY__     — Infura Project ID (from VITE_INFURA_API_KEY in .env)
+ *   __VITE_ETHERSCAN_API_KEY__  — Etherscan API key (from VITE_ETHERSCAN_API_KEY in .env)
+ *
+ * Keys from .env are the build-time defaults. Users can override them at runtime
+ * via Wallet Settings → EVM API Keys (stored in chrome.storage.local).
  */
 async function injectEnvToBackground(extDir, distDir, env) {
-  const backgroundSrc = path.join(extDir, 'background.js');
+  const backgroundSrc  = path.join(extDir, 'background.js');
   const backgroundDest = path.join(distDir, 'background.js');
   
-  // Read background.js
   let content = await fs.readFile(backgroundSrc, 'utf8');
   
-  const infuraApiKey = env.VITE_INFURA_API_KEY || '';
-  
-  // Environment variables to inject (with defaults)
+  const infuraKey    = env.VITE_INFURA_API_KEY    || '';
+  const etherscanKey = env.VITE_ETHERSCAN_API_KEY || '';
+  const octraRpc     = env.VITE_OCTRA_RPC_URL     || 'http://46.101.86.250:8080';
+
   const envVars = {
-    '__VITE_OCTRA_RPC_URL__': env.VITE_OCTRA_RPC_URL || 'http://46.101.86.250:8080',
-    '__VITE_INFURA_API_KEY__': infuraApiKey,
+    '__VITE_OCTRA_RPC_URL__':     octraRpc,
+    '__VITE_INFURA_API_KEY__':    infuraKey,
+    '__VITE_ETHERSCAN_API_KEY__': etherscanKey,
   };
   
-  // Replace placeholders with actual values
   for (const [placeholder, value] of Object.entries(envVars)) {
-    content = content.replace(new RegExp(placeholder, 'g'), value);
+    // Escape special regex chars in placeholder before using as pattern
+    const escaped = placeholder.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    content = content.replace(new RegExp(escaped, 'g'), value);
   }
   
-  // Write to dist
   await ensureDir(distDir);
   await fs.writeFile(backgroundDest, content, 'utf8');
   
-  process.stdout.write(`Injected env variables into background.js (Infura: ${infuraApiKey ? 'Yes' : 'No'})\n`);
+  process.stdout.write(
+    `Injected env into background.js` +
+    ` (Octra RPC: ${octraRpc},` +
+    ` Infura: ${infuraKey ? 'set' : 'not set'},` +
+    ` Etherscan: ${etherscanKey ? 'set' : 'not set'})\n`
+  );
 }
 
 async function main() {
-  const root = path.resolve(__dirname, '..');
+  const root    = path.resolve(__dirname, '..');
   const distDir = path.join(root, 'dist');
-  const extDir = path.join(root, 'extensionFiles');
+  const extDir  = path.join(root, 'extensionFiles');
   
-  // Load environment variables
   const env = await loadEnv(path.join(root, '.env'));
 
   await ensureDir(distDir);
 
-  // Files to copy (excluding provider.js and background.js - handled separately)
   const files = [
     'manifest.json',
     'popup.html',
@@ -150,10 +155,7 @@ async function main() {
     }
   }
 
-  // Inject version and copy provider.js
   await injectVersionToProvider(extDir, distDir);
-  
-  // Inject env variables and copy background.js
   await injectEnvToBackground(extDir, distDir, env);
 
   process.stdout.write('Extension files copied to dist\n');

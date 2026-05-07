@@ -51,7 +51,7 @@ export function createMockProvider(
         sessionId:    `session-${Date.now()}`,
         walletPubKey: 'mock-pub-key-' + Math.random().toString(36).slice(2),
         evmAddress:   '0x' + '0'.repeat(40),
-        network:      'testnet',
+        network:      'devnet',
         epoch:        0,
         branchId:     'main',
       };

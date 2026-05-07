@@ -159,14 +159,14 @@ export function ImportWallet({ onWalletImported, defaultTab = 'private-key', isC
     return (
       <Card className={`${hideBorder ? 'bg-transparent border-0 shadow-none' : 'bg-card/95 backdrop-blur-sm'}`}>
         {!hideBorder && (
-          <CardHeader className="pb-4">
-            <CardTitle className="flex items-center gap-2 text-lg">
-              <FileText className="h-5 w-5" />
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <FileText className="h-3.5 w-3.5" />
               Import from Mnemonic
             </CardTitle>
           </CardHeader>
         )}
-        <CardContent className={`space-y-4 ${hideBorder ? 'p-0' : ''}`}>
+        <CardContent className={`space-y-3 pt-3 ${hideBorder ? 'p-0' : ''}`}>
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <Label htmlFor="mnemonic">Mnemonic Phrase</Label>
@@ -190,7 +190,7 @@ export function ImportWallet({ onWalletImported, defaultTab = 'private-key', isC
                 value={mnemonic}
                 onChange={(e) => { setMnemonic(e.target.value); setMnemonicError(''); }}
                 rows={3}
-                className={`font-mono text-sm ${mnemonicError ? 'border-destructive' : ''} ${!showMnemonic && mnemonic ? 'text-transparent' : ''}`}
+                className={`font-mono text-xs ${mnemonicError ? 'border-destructive' : ''} ${!showMnemonic && mnemonic ? 'text-transparent' : ''}`}
                 style={!showMnemonic && mnemonic ? { textShadow: '0 0 8px currentColor' } : undefined}
               />
               {!showMnemonic && mnemonic && (
@@ -198,16 +198,16 @@ export function ImportWallet({ onWalletImported, defaultTab = 'private-key', isC
                   className="absolute inset-0 flex items-center justify-center bg-muted/50 rounded-md cursor-pointer backdrop-blur-sm"
                   onClick={() => setShowMnemonic(true)}
                 >
-                  <span className="text-sm text-muted-foreground flex items-center gap-1.5">
-                    <Eye className="h-4 w-4" />
+                  <span className="text-xs text-muted-foreground flex items-center gap-1.5">
+                    <Eye className="h-3.5 w-3.5" />
                     Click to reveal
                   </span>
                 </div>
               )}
             </div>
             {mnemonicError && (
-              <p className="text-sm text-destructive mt-1.5 flex items-center gap-1">
-                <AlertCircle className="h-4 w-4" />
+              <p className="text-xs text-destructive mt-1.5 flex items-center gap-1">
+                <AlertCircle className="h-3.5 w-3.5" />
                 {mnemonicError}
               </p>
             )}
@@ -216,7 +216,7 @@ export function ImportWallet({ onWalletImported, defaultTab = 'private-key', isC
             onClick={handleImportFromMnemonic}
             disabled={isImporting || !mnemonic.trim()}
             className="w-full"
-            size="lg"
+            size="default"
           >
             {isImporting ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Importing...</> : "Import Wallet"}
           </Button>
@@ -275,14 +275,14 @@ export function ImportWallet({ onWalletImported, defaultTab = 'private-key', isC
   return (
     <Card className={`${hideBorder ? 'bg-transparent border-0 shadow-none' : 'bg-card/95 backdrop-blur-sm'}`}>
       {!hideBorder && (
-        <CardHeader className="pb-4">
-          <CardTitle className="flex items-center gap-2 text-lg">
-            <Key className="h-5 w-5" />
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Key className="h-3.5 w-3.5" />
             Import from Private Key
           </CardTitle>
         </CardHeader>
       )}
-      <CardContent className={`space-y-4 ${hideBorder ? 'p-0' : ''}`}>
+      <CardContent className={`space-y-3 pt-3 ${hideBorder ? 'p-0' : ''}`}>
         <div className="space-y-2">
           <div className="flex items-center justify-between">
             <Label htmlFor="private-key">Private Key</Label>
@@ -318,7 +318,7 @@ export function ImportWallet({ onWalletImported, defaultTab = 'private-key', isC
           onClick={handleImportFromPrivateKey}
           disabled={isImporting || !privateKey.trim()}
           className="w-full"
-          size="lg"
+          size="default"
         >
           {isImporting ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Importing...</> : "Import Wallet"}
         </Button>

@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Badge } from '@/components/ui/badge';
-import { Globe, Shield, Check, AlertTriangle, Gift } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Globe, Shield, Gift, RefreshCw } from 'lucide-react';
 import { OperationMode } from '../utils/modeStorage';
 import { ModeSwitchConfirmDialog, isModeSwitchReminderDisabled } from './ModeSwitchConfirmDialog';
 
@@ -13,16 +14,22 @@ interface ModeToggleProps {
   pendingTransfersCount?: number;
   isCompact?: boolean;
   showConfirmation?: boolean;
+  /** Called when user clicks Refresh Data button */
+  onRefresh?: () => void;
+  /** Whether a refresh is currently in progress */
+  isRefreshing?: boolean;
 }
 
 export function ModeToggle({
   currentMode,
   onModeChange,
   privateEnabled,
-  encryptedBalance = 0,
+  encryptedBalance: _encryptedBalance = 0,
   pendingTransfersCount = 0,
   isCompact = false,
-  showConfirmation = true
+  showConfirmation = true,
+  onRefresh,
+  isRefreshing = false,
 }: ModeToggleProps) {
   const [displayMode, setDisplayMode] = useState(currentMode);
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
@@ -32,10 +39,7 @@ export function ModeToggle({
     setDisplayMode(currentMode);
   }, [currentMode]);
 
-  // Determine if user is "exposed" (public mode or no encrypted balance/pending transfers)
-  const isExposed = currentMode === 'public' || (encryptedBalance <= 0 && pendingTransfersCount <= 0);
-  const isProtected = currentMode === 'private' && (encryptedBalance > 0 || pendingTransfersCount > 0);
-
+  // Determine if private mode is available (encrypted balance > 0 OR pending transfers > 0)
   const isPrivate = displayMode === 'private';
 
   const executeToggle = (newMode: OperationMode) => {
@@ -226,33 +230,26 @@ export function ModeToggle({
           </div>
         </div>
         
-        {/* Right: Status message - same for both compact and expanded */}
-        {isProtected && (
+        {/* Right: Refresh Data button */}
+        {onRefresh && (
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
-                <div className={`flex items-center gap-1 ${isCompact ? 'text-[10px]' : 'text-xs'} font-medium text-[#00E5C0] cursor-help`}>
-                  <Check className={`${isCompact ? 'h-3 w-3' : 'h-3.5 w-3.5'}`} />
-                  <span>Encrypted.</span>
-                </div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={onRefresh}
+                  disabled={isRefreshing}
+                  className={`flex items-center gap-1.5 ${isCompact ? 'h-7 px-2 text-[10px]' : 'h-8 px-2.5 text-xs'} text-muted-foreground hover:text-foreground`}
+                >
+                  <RefreshCw className={`${isCompact ? 'h-3 w-3' : 'h-3.5 w-3.5'} ${isRefreshing ? 'animate-spin' : ''}`} />
+                  <span>Refresh Data</span>
+                </Button>
               </TooltipTrigger>
-              <TooltipContent side="bottom" className={isCompact ? "px-2 py-1" : ""}>
-                <p className={isCompact ? "text-[10px]" : "text-xs"}>{isCompact ? "Untraceable" : "You're untraceable"}</p>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-        )}
-        {isExposed && (
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <div className={`flex items-center gap-1 ${isCompact ? 'text-[10px]' : 'text-xs'} font-medium text-[#F2C94C] cursor-help`}>
-                  <AlertTriangle className={`${isCompact ? 'h-3 w-3' : 'h-3.5 w-3.5'} text-[#F2C94C]`} />
-                  <span>Exposed.</span>
-                </div>
-              </TooltipTrigger>
-              <TooltipContent side="bottom" className={isCompact ? "px-2 py-1 max-w-[120px]" : "max-w-[160px]"}>
-                <p className={isCompact ? "text-[9px]" : "text-xs"}>Publicly visible.</p>
+              <TooltipContent side="bottom" className={isCompact ? 'px-2 py-1' : ''}>
+                <p className={isCompact ? 'text-[10px]' : 'text-xs'}>
+                  Refresh balance, encrypted balance &amp; activity
+                </p>
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>

@@ -50,7 +50,7 @@ describe('OctraSDK', () => {
       expect(result.circle).toBe('test-circle');
       expect(result.sessionId).toBeDefined();
       expect(result.walletPubKey).toBeDefined();
-      expect(result.network).toBe('testnet');
+      expect(result.network).toBe('devnet');
     });
 
     it('should throw NotInstalledError when provider not available', async () => {

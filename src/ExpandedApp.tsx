@@ -17,7 +17,9 @@ function ExpandedApp() {
   const [wallets, setWallets] = useState<Wallet[]>([]);
   const [isLocked, setIsLocked] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
-  const [showSplash, setShowSplash] = useState(true);
+  // Only show splash on fresh install (no stored wallet) to avoid
+  // a 1.5 s delay every time the expanded view is opened.
+  const [showSplash, setShowSplash] = useState(false);
   const [showSetupSplash, setShowSetupSplash] = useState(false);
   const [pendingSetupWallet, setPendingSetupWallet] = useState<Wallet | null>(null);
   const [isDAppRequest, setIsDAppRequest] = useState(false);
@@ -88,7 +90,8 @@ function ExpandedApp() {
 
         // If no wallet setup, show welcome screen
         if (!hasPassword || !hasEncryptedWallets) {
-          
+          // Show splash only on fresh install (no existing wallet data)
+          setShowSplash(true);
           setIsLocked(false);
           setIsLoading(false);
           return;

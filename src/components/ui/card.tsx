@@ -2,6 +2,11 @@ import * as React from 'react';
 
 import { cn } from '@/lib/utils';
 
+/**
+ * Card — octrascan design system
+ * Flat, 1px border, no shadow, no radius.
+ * Use for grouping related content — not for decorative stacking.
+ */
 const Card = React.forwardRef<
   HTMLDivElement,
   React.HTMLAttributes<HTMLDivElement>
@@ -23,7 +28,10 @@ const CardHeader = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <div
     ref={ref}
-    className={cn('flex flex-col space-y-1 p-4', className)}
+    className={cn(
+      'flex flex-col space-y-1 px-3 py-2 border-b border-oc-border bg-oc-surface',
+      className
+    )}
     {...props}
   />
 ));
@@ -35,7 +43,10 @@ const CardTitle = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <h3
     ref={ref}
-    className={cn('text-sm font-bold leading-none tracking-wide text-primary', className)}
+    className={cn(
+      'text-[11px] font-bold leading-none tracking-wide text-primary uppercase',
+      className
+    )}
     {...props}
   />
 ));
@@ -47,7 +58,7 @@ const CardDescription = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <p
     ref={ref}
-    className={cn('text-xs text-muted-foreground', className)}
+    className={cn('text-[10px] text-muted-foreground', className)}
     {...props}
   />
 ));
@@ -57,7 +68,7 @@ const CardContent = React.forwardRef<
   HTMLDivElement,
   React.HTMLAttributes<HTMLDivElement>
 >(({ className, ...props }, ref) => (
-  <div ref={ref} className={cn('p-4 pt-0', className)} {...props} />
+  <div ref={ref} className={cn('p-3 pt-0', className)} {...props} />
 ));
 CardContent.displayName = 'CardContent';
 
@@ -67,7 +78,10 @@ const CardFooter = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <div
     ref={ref}
-    className={cn('flex items-center p-4 pt-0', className)}
+    className={cn(
+      'flex items-center px-3 py-2 border-t border-oc-border bg-oc-surface',
+      className
+    )}
     {...props}
   />
 ));

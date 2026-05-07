@@ -1,4 +1,21 @@
 #pragma once
+// PVAC_CTZ64: portable count-trailing-zeros for 64-bit integers
+#if defined(__GNUC__) || defined(__clang__)
+#  define PVAC_CTZ64(x) __builtin_ctzll((unsigned long long)(x))
+#else
+static inline int pvac_ctz64_fallback(uint64_t x) {
+    if (!x) return 64;
+    int n = 0;
+    if (!(x & 0xFFFFFFFFULL)) { n += 32; x >>= 32; }
+    if (!(x & 0x0000FFFFULL)) { n += 16; x >>= 16; }
+    if (!(x & 0x00FFULL))     { n +=  8; x >>=  8; }
+    if (!(x & 0x0FULL))       { n +=  4; x >>=  4; }
+    if (!(x & 0x3ULL))        { n +=  2; x >>=  2; }
+    if (!(x & 0x1ULL))        { n +=  1; }
+    return n;
+}
+#  define PVAC_CTZ64(x) pvac_ctz64_fallback((uint64_t)(x))
+#endif
 
 #include <cstdint>
 #include <vector>
@@ -32,7 +49,7 @@ inline void gf2_conv_scalar(
         uint64_t a = A[i];
         while (a) {
             uint64_t bmask = a & -a;
-            int k = __builtin_ctzll(a);
+            int k = PVAC_CTZ64(a);
             for (size_t j = 0; j < Wb; j++) {
                 uint64_t b = B[j];
                 if (k == 0) {

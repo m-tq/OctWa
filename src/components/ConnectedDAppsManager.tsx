@@ -270,8 +270,8 @@ export function ConnectedDAppsManager({
     <div className={isPopupMode ? 'space-y-3' : 'space-y-6'}>
       <Card className={isPopupMode ? 'border-0 shadow-none' : ''}>
         <CardHeader
-          className={`flex flex-row items-center justify-between space-y-0 ${
-            isPopupMode ? 'p-0 pb-3' : 'pb-4'
+          className={`flex flex-row items-center justify-between space-y-0 mb-2 ${
+            isPopupMode ? 'p-0 pb-1' : 'pb-2'
           }`}
         >
           <CardTitle

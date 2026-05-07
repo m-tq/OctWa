@@ -33,7 +33,7 @@
 #include <vector>
 #include <optional>
 #include <openssl/evp.h>
-#include "crypto_utils.hpp"
+#include "../crypto_utils.hpp"
 
 extern "C" {
 #include "tweetnacl.h"

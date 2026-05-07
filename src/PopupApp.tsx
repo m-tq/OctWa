@@ -17,7 +17,9 @@ function PopupApp() {
   const [wallets, setWallets] = useState<Wallet[]>([]);
   const [isLocked, setIsLocked] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
-  const [showSplash, setShowSplash] = useState(true);
+  // Only show splash on very first open (no stored wallet data) to avoid
+  // a 1.5 s delay every time the popup is opened.
+  const [showSplash, setShowSplash] = useState(false);
   const [isPopupMode, setIsPopupMode] = useState(true);
   const [connectionRequest, setConnectionRequest] = useState<DAppConnectionRequest | null>(null);
   const [contractRequest, setContractRequest] = useState<unknown>(null);
@@ -147,7 +149,8 @@ function PopupApp() {
 
         // If no wallet setup, show welcome screen
         if (!hasPassword || !hasEncryptedWallets) {
-          
+          // Show splash only on fresh install (no existing wallet data)
+          setShowSplash(true);
           setIsLocked(false);
           setIsLoading(false);
           return;
@@ -649,7 +652,7 @@ function PopupApp() {
         <div className="w-[400px] h-[600px] bg-background flex items-center justify-center overflow-hidden">
           <div className="flex flex-col items-center space-y-3">
             <div
-              className="w-8 h-8 rounded-full border-3 border-transparent animate-spin"
+              className="w-8 h-8 rounded-full border-2 border-transparent animate-spin"
               style={{ borderTopColor: '#3B567F', borderRightColor: '#3B567F' }}
             />
             <p className="text-sm text-muted-foreground">Loading...</p>
@@ -772,7 +775,7 @@ function PopupApp() {
           <div className="popup-container h-full overflow-y-auto flex items-center justify-center">
             <div className="text-center">
               <div
-                className="w-8 h-8 mx-auto rounded-full border-3 border-transparent animate-spin mb-3"
+                className="w-8 h-8 mx-auto rounded-full border-2 border-transparent animate-spin mb-3"
                 style={{ borderTopColor: '#3B567F', borderRightColor: '#3B567F' }}
               />
               <div className="text-sm text-muted-foreground">Loading wallet...</div>
@@ -793,7 +796,7 @@ function PopupApp() {
           <div className="popup-container h-full overflow-y-auto flex items-center justify-center">
             <div className="text-center">
               <div
-                className="w-8 h-8 mx-auto rounded-full border-3 border-transparent animate-spin mb-3"
+                className="w-8 h-8 mx-auto rounded-full border-2 border-transparent animate-spin mb-3"
                 style={{ borderTopColor: '#3B567F', borderRightColor: '#3B567F' }}
               />
               <div className="text-sm text-muted-foreground">Loading wallet...</div>

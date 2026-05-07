@@ -34,6 +34,8 @@ interface SendTransactionProps {
     finality?: 'pending' | 'confirmed' | 'rejected';
     op_type?: string;
     ou?: string | number;
+    freshBalance?: number;
+    freshNonce?: number;
   }) => void;
   onModalClose?: () => void; // Called when transaction result modal is closed
   isCompact?: boolean;
@@ -329,26 +331,43 @@ export function SendTransaction({
           const updatedBalance = await fetchBalance(wallet.address, true);
           onBalanceUpdate(updatedBalance.balance);
           onNonceUpdate(updatedBalance.nonce);
+
+          // Map finality to status
+          const status: 'confirmed' | 'pending' | 'failed' = 
+            sendResult.finality === 'confirmed' ? 'confirmed' :
+            sendResult.finality === 'rejected' ? 'failed' :
+            'pending';
+          
+          onTransactionSuccess({
+            hash: sendResult.hash!,
+            from: wallet.address,
+            to: recipientAddress,
+            amount: amountNum,
+            status,
+            finality: sendResult.finality,
+            op_type: 'standard',
+            ou: submittedOu,
+            freshBalance: updatedBalance.balance,
+            freshNonce: updatedBalance.nonce,
+          });
         } catch (error) {
           console.error('Failed to refresh balance after transaction:', error);
+          // Still call onTransactionSuccess even if balance refresh failed
+          const status: 'confirmed' | 'pending' | 'failed' = 
+            sendResult.finality === 'confirmed' ? 'confirmed' :
+            sendResult.finality === 'rejected' ? 'failed' :
+            'pending';
+          onTransactionSuccess({
+            hash: sendResult.hash!,
+            from: wallet.address,
+            to: recipientAddress,
+            amount: amountNum,
+            status,
+            finality: sendResult.finality,
+            op_type: 'standard',
+            ou: submittedOu,
+          });
         }
-
-        // Map finality to status
-        const status: 'confirmed' | 'pending' | 'failed' = 
-          sendResult.finality === 'confirmed' ? 'confirmed' :
-          sendResult.finality === 'rejected' ? 'failed' :
-          'pending';
-        
-        onTransactionSuccess({
-          hash: sendResult.hash!,
-          from: wallet.address,
-          to: recipientAddress,
-          amount: amountNum,
-          status,
-          finality: sendResult.finality,
-          op_type: 'standard',
-          ou: submittedOu,
-        });
       } else {
         const errorMsg = sendResult.error || sendResult.reason || "Unknown error occurred";
         setTxModalStatus('error');

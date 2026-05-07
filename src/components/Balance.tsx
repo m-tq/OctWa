@@ -25,7 +25,15 @@ interface BalanceProps {
   isLoadingEncrypted?: boolean;
 }
 
-export function Balance({ wallet, balance, encryptedBalance: propEncryptedBalance, onEncryptedBalanceUpdate, onBalanceUpdate, isLoading = false, isLoadingEncrypted = false }: BalanceProps) {
+export function Balance({
+  wallet,
+  balance,
+  encryptedBalance: propEncryptedBalance,
+  onEncryptedBalanceUpdate,
+  onBalanceUpdate,
+  isLoading = false,
+  isLoadingEncrypted = false,
+}: BalanceProps) {
   const [refreshing, setRefreshing] = useState(false);
   const [localEncryptedBalance, setLocalEncryptedBalance] = useState<EncryptedBalanceResponse | null>(null);
   const [pendingTransfers, setPendingTransfers] = useState<{ id: string }[]>([]);
@@ -33,35 +41,24 @@ export function Balance({ wallet, balance, encryptedBalance: propEncryptedBalanc
   const [showDecryptDialog, setShowDecryptDialog] = useState(false);
   const { toast } = useToast();
 
-  // Use prop encrypted balance if provided, otherwise use local state
   const encryptedBalance = propEncryptedBalance || localEncryptedBalance;
   const setEncryptedBalance = onEncryptedBalanceUpdate || setLocalEncryptedBalance;
 
   const fetchWalletBalance = async () => {
     if (!wallet) return;
-    
     setRefreshing(true);
     try {
       const balanceData = await fetchBalance(wallet.address);
-      
-      // Handle balance response (0 is valid for new addresses)
       onBalanceUpdate(balanceData.balance);
-      
-      // Fetch encrypted balance
       try {
         const encData = await fetchEncryptedBalance(wallet.address, wallet.privateKey);
-        if (encData) {
-          setEncryptedBalance(encData);
-        } else {
-          // Reset encrypted balance to default values when fetch fails
-          setEncryptedBalance({
-            public: balanceData.balance,
-            public_raw: Math.floor(balanceData.balance * 1_000_000),
-            encrypted: 0,
-            encrypted_raw: 0,
-            total: balanceData.balance
-          });
-        }
+        setEncryptedBalance(encData ?? {
+          public: balanceData.balance,
+          public_raw: Math.floor(balanceData.balance * 1_000_000),
+          encrypted: 0,
+          encrypted_raw: 0,
+          total: balanceData.balance,
+        });
       } catch (encError) {
         logger.error('Failed to fetch encrypted balance', encError);
         setEncryptedBalance({
@@ -69,28 +66,21 @@ export function Balance({ wallet, balance, encryptedBalance: propEncryptedBalanc
           public_raw: Math.floor(balanceData.balance * 1_000_000),
           encrypted: 0,
           encrypted_raw: 0,
-          total: balanceData.balance
+          total: balanceData.balance,
         });
       }
-      
-      // Fetch pending private transfers
       try {
         const pending = await getPendingPrivateTransfers(wallet.address, wallet.privateKey);
         setPendingTransfers(pending);
       } catch (error) {
         logger.warn('Failed to fetch pending transfers', error);
-        // Set default values when fetch fails (new address)
       }
-      
-      toast({
-        title: "Balance Updated",
-        description: "Balance has been refreshed successfully",
-      });
+      toast({ title: 'balance updated', description: 'balance has been refreshed' });
     } catch (error) {
       toast({
-        title: "Error",
-        description: "Failed to refresh balance. This might be a new address or RPC connection issue.",
-        variant: "destructive",
+        title: 'error',
+        description: 'failed to refresh balance. check rpc connection.',
+        variant: 'destructive',
       });
       logger.error('Balance fetch error', error);
     } finally {
@@ -98,71 +88,43 @@ export function Balance({ wallet, balance, encryptedBalance: propEncryptedBalanc
     }
   };
 
-  // Initial fetch of encrypted balance
   useEffect(() => {
-    if (wallet) {
-      // Fetch balance first to check RPC connectivity
-      fetchBalance(wallet.address)
-        .then(balanceData => {
-          // Fetch encrypted balance
-          return fetchEncryptedBalance(wallet.address, wallet.privateKey)
-            .then(encData => {
-              if (encData) {
-                setEncryptedBalance(encData);
-              } else {
-                setEncryptedBalance({
-                  public: balanceData.balance,
-                  public_raw: Math.floor(balanceData.balance * 1_000_000),
-                  encrypted: 0,
-                  encrypted_raw: 0,
-                  total: balanceData.balance
-                });
-              }
-            })
-            .then(() => {
-              // Fetch pending transfers
-              return getPendingPrivateTransfers(wallet.address, wallet.privateKey)
-                .then(setPendingTransfers)
-                .catch(error => {
-                  logger.warn('Failed to fetch pending transfers on mount', error);
-                  setPendingTransfers([]);
-                });
+    if (!wallet) return;
+    fetchBalance(wallet.address)
+      .then(balanceData =>
+        fetchEncryptedBalance(wallet.address, wallet.privateKey)
+          .then(encData => {
+            setEncryptedBalance(encData ?? {
+              public: balanceData.balance,
+              public_raw: Math.floor(balanceData.balance * 1_000_000),
+              encrypted: 0,
+              encrypted_raw: 0,
+              total: balanceData.balance,
             });
-        })
-        .catch(error => {
-          logger.error('Failed to fetch balance on mount', error);
-          // Set default values when fetch fails
-          setEncryptedBalance({
-            public: 0,
-            public_raw: 0,
-            encrypted: 0,
-            encrypted_raw: 0,
-            total: 0
-          });
-          setPendingTransfers([]);
-        });
-    }
+          })
+          .then(() =>
+            getPendingPrivateTransfers(wallet.address, wallet.privateKey)
+              .then(setPendingTransfers)
+              .catch(err => {
+                logger.warn('Failed to fetch pending transfers on mount', err);
+                setPendingTransfers([]);
+              })
+          )
+      )
+      .catch(err => {
+        logger.error('Failed to fetch balance on mount', err);
+        setEncryptedBalance({ public: 0, public_raw: 0, encrypted: 0, encrypted_raw: 0, total: 0 });
+        setPendingTransfers([]);
+      });
   }, [wallet]);
-
-  const handleEncryptSuccess = () => {
-    // Don't auto-close dialog - let user close manually
-    // setShowEncryptDialog(false);
-    fetchWalletBalance();
-  };
-
-  const handleDecryptSuccess = () => {
-    // Don't auto-close dialog - let user close manually
-    // setShowDecryptDialog(false);
-    fetchWalletBalance();
-  };
 
   if (!wallet) {
     return (
       <Alert>
-        <div className="flex items-start space-x-3">
-          <Wallet className="h-4 w-4 mt-0.5 flex-shrink-0" />
+        <div className="flex items-start gap-2">
+          <Wallet className="h-3.5 w-3.5 mt-0.5 flex-shrink-0" />
           <AlertDescription>
-            No wallet available. Please generate or import a wallet first.
+            no wallet available. please generate or import a wallet first.
           </AlertDescription>
         </div>
       </Alert>
@@ -170,129 +132,149 @@ export function Balance({ wallet, balance, encryptedBalance: propEncryptedBalanc
   }
 
   return (
-    <div className="space-y-6">
-      {/* Balance Overview */}
+    <div className="space-y-3">
+
+      {/* ── Balance overview card ── */}
       <Card>
-        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
-          <CardTitle className="flex items-center gap-2">
-            <PieChart className="h-5 w-5" />
-            Wallet Overview
+        {/* Card header — section title style */}
+        <CardHeader className="flex flex-row items-center justify-between py-1.5">
+          <CardTitle className="flex items-center gap-1.5">
+            <PieChart className="h-3.5 w-3.5" />
+            wallet overview
           </CardTitle>
           <Button
             variant="outline"
             size="sm"
             onClick={fetchWalletBalance}
             disabled={refreshing}
+            aria-label="Refresh balance"
           >
-            <RefreshCw className={`h-4 w-4 mr-2 ${refreshing ? 'animate-spin' : ''}`} />
-            Refresh
+            <RefreshCw className={`h-3.5 w-3.5 mr-1.5 ${refreshing ? 'animate-spin' : ''}`} />
+            refresh
           </Button>
         </CardHeader>
-        <CardContent className="space-y-6">
-          {/* Public Balance */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 balance-overview">
-            <div className="space-y-2 balance-item">
-              <div className="flex items-center gap-2">
-                <Wallet className="h-4 w-4 text-blue-500" />
-                <span className="text-sm font-medium text-muted-foreground">Public Balance</span>
+
+        <CardContent className="space-y-0 p-0">
+
+          {/* ── Metrics row — public + private balance ── */}
+          <div className="flex border-b border-oc-border balance-overview">
+
+            {/* Public balance */}
+            <div className="flex-1 px-3 py-2 border-r border-oc-border balance-item">
+              <div className="flex items-center gap-1.5 mb-1">
+                <Wallet className="h-3 w-3 text-oc-primary" />
+                <span className="text-muted-foreground lowercase" style={{ fontSize: 'var(--oct-type-size-02)' }}>
+                  public balance
+                </span>
               </div>
               {isLoading ? (
-                <Skeleton className="h-8 w-32" />
+                <Skeleton className="h-5 w-28" />
               ) : (
-                <div className="flex items-center gap-x-2">
-                  <div className="text-2xl font-bold text-blue-600">
-                    {balance !== null ? `${balance.toFixed(8)}` : '0.00000000'}
-                  </div>
-                  <Badge variant="secondary" className="text-xs font-bold mt-0.5">
-                    OCT
-                  </Badge>
+                <div className="flex items-baseline gap-1.5">
+                  <span
+                    className="font-bold text-primary font-mono"
+                    style={{ fontSize: 'var(--oct-type-size-03)' }}
+                  >
+                    {balance !== null ? balance.toFixed(8) : '0.00000000'}
+                  </span>
+                  <Badge variant="secondary" className="text-[10px]">OCT</Badge>
                 </div>
               )}
             </div>
 
-            {/* Encrypted Balance */}
-            <div className="space-y-2 balance-item">
-              <div className="flex items-center gap-2">
-                <Lock className="h-4 w-4 text-yellow-500" />
-                <span className="text-sm font-medium text-muted-foreground">Private Balance</span>
-                <InfoTooltip 
-                  content="Funds processed using fully homomorphic encryption. Visible only to you. Computable without decryption."
+            {/* Private balance */}
+            <div className="flex-1 px-3 py-2 balance-item">
+              <div className="flex items-center gap-1.5 mb-1">
+                <Lock className="h-3 w-3 text-oc-warning" />
+                <span className="text-muted-foreground lowercase" style={{ fontSize: 'var(--oct-type-size-02)' }}>
+                  private balance
+                </span>
+                <InfoTooltip
+                  content="Funds processed using fully homomorphic encryption. Visible only to you."
                   side="top"
                 />
               </div>
               {isLoadingEncrypted ? (
-                <Skeleton className="h-8 w-32" />
+                <Skeleton className="h-5 w-28" />
               ) : (
-                <div className="flex items-center gap-x-2">
-                  <div className="text-2xl font-bold text-yellow-600">
-                    {encryptedBalance ? `${encryptedBalance.encrypted.toFixed(8)}` : '0.00000000'}
-                  </div>
-                  <Badge variant="secondary" className="text-xs font-bold mt-0.5">
-                    OCT
-                  </Badge>
+                <div className="flex items-baseline gap-1.5">
+                  <span
+                    className="font-bold font-mono"
+                    style={{ fontSize: 'var(--oct-type-size-03)', color: 'hsl(var(--oc-warning))' }}
+                  >
+                    {encryptedBalance ? encryptedBalance.encrypted.toFixed(8) : '0.00000000'}
+                  </span>
+                  <Badge variant="secondary" className="text-[10px]">OCT</Badge>
                 </div>
               )}
             </div>
           </div>
 
-          {/* Total Balance */}
+          {/* ── Total balance row ── */}
           {encryptedBalance && (
-            <div className="pt-5">
-              <div className="flex items-center justify-between">
-                <span className="text-sm font-medium text-muted-foreground">Total Balance</span>
-                <div className="text-lg font-bold text-green-600">
-                  {encryptedBalance.total.toFixed(8)} OCT
-                </div>
-              </div>
+            <div className="flex items-center justify-between px-3 py-1.5 border-b border-oc-border bg-oc-surface-muted">
+              <span className="text-muted-foreground lowercase" style={{ fontSize: 'var(--oct-type-size-02)' }}>
+                total balance
+              </span>
+              <span
+                className="font-bold font-mono text-oc-success"
+                style={{ fontSize: 'var(--oct-type-size-02)' }}
+              >
+                {encryptedBalance.total.toFixed(8)} OCT
+              </span>
             </div>
           )}
 
-          {/* Pending Transfers */}
+          {/* ── Pending transfers row ── */}
           {pendingTransfers.length > 0 && (
-            <div className="pt-5 border-t">
-              <div className="flex items-center justify-between">
-                <span className="text-sm font-medium text-muted-foreground">Claimable Transfers</span>
-                <Badge variant="outline" className="text-green-600 pb-1">
-                  {pendingTransfers.length} pending
-                </Badge>
-              </div>
+            <div className="flex items-center justify-between px-3 py-1.5 border-b border-oc-border">
+              <span className="text-muted-foreground lowercase" style={{ fontSize: 'var(--oct-type-size-02)' }}>
+                claimable transfers
+              </span>
+              <Badge variant="warning">{pendingTransfers.length} pending</Badge>
             </div>
           )}
 
-          {/* Balance Actions */}
-          <div className="pt-5 border-t space-y-3">
-            {/* Primary Actions */}
-            <div className="flex flex-wrap justify-center gap-2">
+          {/* ── Actions ── */}
+          <div className="px-3 py-2 space-y-2">
+            <div className="flex flex-wrap gap-2">
               <Button
                 variant="outline"
                 size="sm"
                 onClick={() => setShowEncryptDialog(true)}
                 disabled={!balance || balance <= 1}
-                className="flex items-center gap-2"
               >
-                <Lock className="h-4 w-4" />
-                Encrypt Balance
+                <Lock className="h-3.5 w-3.5 mr-1.5" />
+                encrypt balance
               </Button>
             </div>
-            
-            {/* Sensitive Actions - with subtle warning styling */}
-            <div className="flex flex-wrap justify-center gap-2 pt-2 border-t border-dashed border-orange-200 dark:border-orange-800/30">
-              <p className="w-full text-center text-[10px] text-orange-500/70 mb-1">Sensitive Actions</p>
+
+            {/* Sensitive actions — clearly separated */}
+            <div
+              className="flex flex-wrap gap-2 pt-2 border-t border-dashed"
+              style={{ borderColor: 'hsl(var(--oc-warning) / 0.3)' }}
+            >
+              <p
+                className="w-full"
+                style={{ fontSize: 'var(--oct-type-size-01)', color: 'hsl(var(--oc-warning) / 0.7)' }}
+              >
+                sensitive actions
+              </p>
               <SensitiveActionButton
                 size="sm"
                 onClick={() => setShowDecryptDialog(true)}
                 disabled={!encryptedBalance || encryptedBalance.encrypted <= 0}
                 tooltipText="Converts private OCT back to public OCT. Your balance will become visible."
               >
-                <Unlock className="h-4 w-4 mr-1.5" />
-                Decrypt
+                <Unlock className="h-3.5 w-3.5 mr-1.5" />
+                decrypt
               </SensitiveActionButton>
             </div>
           </div>
         </CardContent>
       </Card>
 
-      {/* Export Private Keys */}
+      {/* Export private keys */}
       <ExportPrivateKeys wallet={wallet} />
 
       {/* Dialogs */}
@@ -301,16 +283,15 @@ export function Balance({ wallet, balance, encryptedBalance: propEncryptedBalanc
         onOpenChange={setShowEncryptDialog}
         wallet={wallet}
         publicBalance={balance || 0}
-        onSuccess={handleEncryptSuccess}
+        onSuccess={() => fetchWalletBalance()}
       />
-
       <DecryptBalanceDialog
         open={showDecryptDialog}
         onOpenChange={setShowDecryptDialog}
         wallet={wallet}
         encryptedBalance={encryptedBalance?.encrypted || 0}
         currentCipher={encryptedBalance?.cipher}
-        onSuccess={handleDecryptSuccess}
+        onSuccess={() => fetchWalletBalance()}
       />
     </div>
   );

@@ -203,9 +203,10 @@ build_project() {
 
     mkdir -p build
 
-    info "Configuring with CMake..."
+    info "Configuring with CMake (static binary)..."
     cmake -B build -S . \
         -DCMAKE_BUILD_TYPE=Release \
+        -DPVAC_STATIC=ON \
         2>&1 | grep -v "^--" || true
 
     echo ""

@@ -128,7 +128,7 @@ export function PasswordSetup({ wallet, onPasswordSet, onBack }: PasswordSetupPr
 
       onPasswordSet(wallet);
     } catch (error) {
-      console.error('🔐 PasswordSetup: Error:', error);
+      console.error('[!] PasswordSetup: Error:', error);
       toast({ title: "Error", description: "Failed to create password", variant: "destructive" });
     } finally {
       setIsCreating(false);
@@ -138,9 +138,9 @@ export function PasswordSetup({ wallet, onPasswordSet, onBack }: PasswordSetupPr
   return (
     <div className="w-full max-w-sm mx-auto">
       <Card className="bg-card/95 backdrop-blur-sm">
-        <CardHeader className="pb-4">
-          <CardTitle className="flex items-center gap-2 text-lg">
-            <Shield className="h-5 w-5" />
+        <CardHeader className="mb-4">
+          <CardTitle className="flex items-center gap-2">
+            <Shield className="h-3.5 w-3.5" />
             Create Password
           </CardTitle>
         </CardHeader>

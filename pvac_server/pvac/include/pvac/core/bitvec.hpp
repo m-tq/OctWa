@@ -1,4 +1,16 @@
 #pragma once
+// PVAC_POPCOUNT64: portable popcount for 64-bit integers
+#if defined(__GNUC__) || defined(__clang__)
+#  define PVAC_POPCOUNT64(x) __builtin_popcountll((unsigned long long)(x))
+#else
+static inline int pvac_popcount64_fallback(uint64_t x) {
+    x = x - ((x >> 1) & 0x5555555555555555ULL);
+    x = (x & 0x3333333333333333ULL) + ((x >> 2) & 0x3333333333333333ULL);
+    x = (x + (x >> 4)) & 0x0f0f0f0f0f0f0f0fULL;
+    return (int)((x * 0x0101010101010101ULL) >> 56);
+}
+#  define PVAC_POPCOUNT64(x) pvac_popcount64_fallback((uint64_t)(x))
+#endif
 
 #include <cstdint>
 #include <vector>
@@ -26,7 +38,7 @@ struct BitVec {
 
     size_t popcnt() const {
         auto pc = [](uint64_t x) {
-            return (uint32_t)__builtin_popcountll(x);
+            return (uint32_t)PVAC_POPCOUNT64(x);
         };
 
         size_t s = 0;

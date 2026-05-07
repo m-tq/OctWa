@@ -443,11 +443,21 @@ export class WalletManager {
         }
 
         await this.updateSessionWallets(decryptedWallets);
-        await this.storeAllEvmAddresses(decryptedWallets);
+
+        // Defer non-critical background tasks so UI renders immediately after unlock.
+        // EVM derivation (secp256k1 + Keccak-256) and security audit are not needed
+        // before the dashboard is shown — run them after the current call stack clears.
+        const walletsSnapshot = [...decryptedWallets];
+        setTimeout(() => {
+          this.storeAllEvmAddresses(walletsSnapshot).catch(() => {});
+        }, 0);
       }
 
-      await this.cleanupUnencryptedData();
-      await this.securityAudit();
+      // Defer cleanup and audit — neither blocks wallet usage
+      setTimeout(() => {
+        this.cleanupUnencryptedData().catch(() => {});
+        this.securityAudit().catch(() => {});
+      }, 0);
 
       return decryptedWallets;
     } catch (error) {

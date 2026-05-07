@@ -40,6 +40,7 @@ import {
   isContractCall
 } from '../utils/historyMerge';
 import { OperationMode } from '../utils/modeStorage';
+import { getTxExplorerUrl, getAddressExplorerUrl, getExplorerName } from '@/utils/explorer';
 
 const PAGE_SIZE = 20;
 
@@ -65,11 +66,6 @@ export function UnifiedHistory({ wallet, transactions, onTransactionsUpdate, isL
   const [totalCount, setTotalCount] = useState(0);
   const historyListRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
-
-  // Hardcoded octrascan.io URLs
-  const scannerUrl = 'https://octrascan.io/tx.html?hash=';
-  const scannerName = 'Octrascan';
-  const scannerAddressUrl = 'https://octrascan.io/address.html?addr=';
 
   // Unified: show ALL transactions regardless of operationMode
   const filteredTransactions = transactions;
@@ -240,7 +236,7 @@ export function UnifiedHistory({ wallet, transactions, onTransactionsUpdate, isL
         <div className="flex items-center gap-1">
           {!isCompact && !isPopupMode && (
             <Button variant="ghost" size="sm" asChild>
-              <a href={`${scannerAddressUrl}${wallet.address}`} target="_blank" rel="noopener noreferrer">
+              <a href={getAddressExplorerUrl(wallet.address)} target="_blank" rel="noopener noreferrer">
                 <ExternalLink className="h-4 w-4 mr-2" />
                 View All
               </a>
@@ -405,7 +401,7 @@ export function UnifiedHistory({ wallet, transactions, onTransactionsUpdate, isL
                       getStatusIcon={getStatusIcon}
                       getStatusColor={getStatusColor}
                       copyToClipboard={copyToClipboard}
-                      scannerUrl={scannerUrl}
+                      scannerUrl={getTxExplorerUrl}
                       isPopupMode={isPopupMode}
                       isCompact={isCompact}
                       onItemClick={onViewTxDetails}
@@ -416,7 +412,7 @@ export function UnifiedHistory({ wallet, transactions, onTransactionsUpdate, isL
                       contract={item.contractInteraction}
                       truncateAddress={truncateAddress}
                       copyToClipboard={copyToClipboard}
-                      scannerUrl={scannerUrl}
+                      scannerUrl={getTxExplorerUrl}
                       isPopupMode={isPopupMode}
                     />
                   )}
@@ -580,10 +576,10 @@ export function UnifiedHistory({ wallet, transactions, onTransactionsUpdate, isL
                     </div>
                   )}
                   <Button variant="outline" className="w-full h-9" asChild>
-                    <a href={`${scannerUrl}${'hash' in selectedTx ? selectedTx.hash : selectedTx.tx_hash}`}
+                    <a href={getTxExplorerUrl('hash' in selectedTx ? selectedTx.hash : selectedTx.tx_hash)}
                       target="_blank" rel="noopener noreferrer">
                       <ExternalLink className="h-4 w-4 mr-2" />
-                      View on {scannerName}
+                      View on {getExplorerName()}
                     </a>
                   </Button>
                 </div>
@@ -610,7 +606,7 @@ interface TransferItemProps {
   getStatusIcon: (status: string, small?: boolean) => React.ReactNode;
   getStatusColor: (status: string) => string;
   copyToClipboard: (text: string, label: string) => void;
-  scannerUrl: string;
+  scannerUrl: (hash: string) => string;
   isPopupMode?: boolean;
   isCompact?: boolean;
   onItemClick?: (txHash: string, isPending: boolean) => void;
@@ -869,7 +865,7 @@ function TransferItem({
           </Button>
           {tx.status === 'confirmed' && (
             <Button variant="ghost" size="sm" asChild>
-              <a href={`${scannerUrl}${tx.hash}`} target="_blank" rel="noopener noreferrer">
+              <a href={`${scannerUrl(tx.hash)}`} target="_blank" rel="noopener noreferrer">
                 <ExternalLink className="h-4 w-4" />
               </a>
             </Button>
@@ -925,7 +921,7 @@ interface ContractItemProps {
   contract: ContractInteraction;
   truncateAddress: (address: string) => string;
   copyToClipboard: (text: string, label: string) => void;
-  scannerUrl: string;
+  scannerUrl: (hash: string) => string;
   isPopupMode?: boolean;
 }
 
@@ -952,7 +948,7 @@ function ContractItem({ contract, truncateAddress, scannerUrl, isPopupMode = fal
         </div>
         {contract.txHash && (
           <Button variant="ghost" size="sm" className="h-7 w-7 p-0 flex-shrink-0" asChild>
-            <a href={`${scannerUrl}${contract.txHash}`} target="_blank" rel="noopener noreferrer">
+            <a href={`${scannerUrl(contract.txHash)}`} target="_blank" rel="noopener noreferrer">
               <ExternalLink className="h-3.5 w-3.5" />
             </a>
           </Button>
@@ -979,7 +975,7 @@ function ContractItem({ contract, truncateAddress, scannerUrl, isPopupMode = fal
         </div>
         {contract.txHash && (
           <Button variant="ghost" size="sm" asChild>
-            <a href={`${scannerUrl}${contract.txHash}`} target="_blank" rel="noopener noreferrer">
+            <a href={`${scannerUrl(contract.txHash)}`} target="_blank" rel="noopener noreferrer">
               <ExternalLink className="h-4 w-4" />
             </a>
           </Button>

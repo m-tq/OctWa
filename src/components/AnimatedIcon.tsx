@@ -1,7 +1,7 @@
-import { Lock, Unlock, Send, Users } from 'lucide-react';
+import { Lock, Unlock, Send } from 'lucide-react';
 
 interface AnimatedIconProps {
-  type: 'encrypt' | 'decrypt' | 'send-public' | 'send-private' | 'multi-send';
+  type: 'encrypt' | 'decrypt' | 'send-public' | 'send-private';
   size?: 'xs' | 'sm' | 'md' | 'lg';
 }
 
@@ -52,9 +52,6 @@ export function AnimatedIcon({ type, size = 'md' }: AnimatedIconProps) {
           {type === 'decrypt' && <Unlock className={`${iconSizes[size]} animate-pulse`} style={{ animationDuration: '2s' }} />}
           {(type === 'send-public' || type === 'send-private') && (
             <Send className={`${iconSizes[size]} animate-pulse`} style={{ animationDuration: '2s' }} />
-          )}
-          {type === 'multi-send' && (
-            <Users className={`${iconSizes[size]} animate-pulse`} style={{ animationDuration: '2s' }} />
           )}
         </div>
       </div>

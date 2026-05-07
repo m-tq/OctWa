@@ -48,12 +48,12 @@ export function RPCProviderManager({ onRPCChange, isPopupMode = false }: RPCProv
     const DEVNET_ENTRY: RPCProvider = {
       id: 'devnet',
       name: 'Octra DevNet',
-      url: 'https://devnet.octrascan.io',  // placeholder — update when devnet URL is available
+      url: 'http://165.227.225.79:8080',
       headers: {},
       priority: 2,
       isActive: false,
       createdAt: Date.now(),
-      network: 'devnet'
+      network: 'devnet',
     };
 
     const savedProviders = localStorage.getItem('rpcProviders');
@@ -70,6 +70,7 @@ export function RPCProviderManager({ onRPCChange, isPopupMode = false }: RPCProv
           chrome.storage.local.set({ rpcProviders: updated }).catch(() => {});
         }
       }
+      // URL migration is handled centrally in rpc.ts → getActiveRPCProvider()
 
       setProviders(parsed.sort((a: RPCProvider, b: RPCProvider) => a.priority - b.priority));
       
@@ -100,7 +101,7 @@ export function RPCProviderManager({ onRPCChange, isPopupMode = false }: RPCProv
         {
           id: 'devnet',
           name: 'Octra DevNet',
-          url: 'https://devnet.octrascan.io',
+          url: 'http://165.227.225.79:8080',
           headers: {},
           priority: 2,
           isActive: false,
@@ -393,7 +394,7 @@ export function RPCProviderManager({ onRPCChange, isPopupMode = false }: RPCProv
   return (
     <div className={isPopupMode ? "space-y-3" : "space-y-6"}>
       <Card className={isPopupMode ? "border-0 shadow-none" : ""}>
-        <CardHeader className={`flex flex-row items-center justify-between space-y-0 ${isPopupMode ? "p-0 pb-3" : "pb-4"}`}>
+        <CardHeader className={`flex flex-row items-center justify-between space-y-0 mb-3 ${isPopupMode ? "p-0" : "pb-2"}`}>
           <CardTitle className={`flex items-center gap-2 ${isPopupMode ? "text-sm" : ""}`}>
             <Wifi className={isPopupMode ? "h-4 w-4" : "h-5 w-5"} />
             RPC Providers

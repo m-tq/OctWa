@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Octra Wallet  Background Service Worker
  *
  * Capability-based authorization model (v2).
@@ -862,6 +862,50 @@ async function executeGetEncryptedBalance(connection) {
 
 // Get all ERC-20 token balances for the wallet's active EVM network
 // Fetches common tokens (wOCT, USDC, etc.) + user-imported custom tokens
+
+// =============================================================================
+// EVM RPC URL helper — reads Infura key from wallet settings (chrome.storage)
+// No hardcoded API keys or proxy URLs here.
+// =============================================================================
+
+/**
+ * Build the Infura RPC URL for a given network.
+ * Priority: user-saved custom RPC → user-saved Infura key → .env default key (injected at build).
+ * No hardcoded API keys — all come from wallet settings or build-time .env injection.
+ */
+async function getEvmRpcUrlForNetwork(networkId) {
+  const INFURA_SUBDOMAINS = {
+    'eth-mainnet':     'mainnet',
+    'polygon-mainnet': 'polygon-mainnet',
+    'base-mainnet':    'base-mainnet',
+    'bsc-mainnet':     'bsc-mainnet',
+    'eth-sepolia':     'sepolia',
+  };
+
+  try {
+    const stored = await chrome.storage.local.get(['evm_rpc_providers', 'evm_infura_key']);
+
+    // 1. User-saved custom RPC for this specific network takes highest priority
+    const providers = stored.evm_rpc_providers ? JSON.parse(stored.evm_rpc_providers) : {};
+    if (providers[networkId]) return providers[networkId];
+
+    // 2. User-saved Infura key (set via wallet settings UI)
+    const userKey = (stored.evm_infura_key || '').trim();
+    const subdomain = INFURA_SUBDOMAINS[networkId];
+    if (userKey && subdomain) {
+      return `https://${subdomain}.infura.io/v3/${userKey}`;
+    }
+
+    // 3. Build-time default from .env (VITE_INFURA_API_KEY injected by copy-extension-files.mjs)
+    const envKey = '__VITE_INFURA_API_KEY__';
+    if (envKey && subdomain) {
+      return `https://${subdomain}.infura.io/v3/${envKey}`;
+    }
+  } catch { /* fall through */ }
+
+  return ''; // Not configured
+}
+
 async function executeGetEvmTokens(connection) {
   const evmAddress = connection.evmAddress;
   if (!evmAddress) {
@@ -927,13 +971,14 @@ async function executeGetEvmTokens(connection) {
     return new TextEncoder().encode(JSON.stringify({ tokens: [], networkId, chainId }));
   }
 
-  // Determine RPC URL for this network
-  let rpcUrl = 'https://mainnet.infura.io/v3/121cf128273c4f0cb73770b391070d3b';
-  try {
-    const stored = await chrome.storage.local.get('evm_rpc_providers');
-    const providers = stored.evm_rpc_providers ? JSON.parse(stored.evm_rpc_providers) : {};
-    if (providers[networkId]) rpcUrl = providers[networkId];
-  } catch { /* use default */ }
+  // Determine RPC URL for this network — reads user-configured Infura key or custom RPC
+  // from chrome.storage.local (set via Wallet Settings → EVM API Keys).
+  // No hardcoded API keys or proxy URLs.
+  let rpcUrl = await getEvmRpcUrlForNetwork(networkId);
+  if (!rpcUrl) {
+    // No RPC configured — return empty token list gracefully
+    return new TextEncoder().encode(JSON.stringify({ tokens: [], networkId, chainId, error: 'EVM RPC not configured. Please add your Infura API key in Wallet Settings → EVM API Keys.' }));
+  }
 
   // Fetch balances concurrently (max 5 at a time)
   const CONCURRENCY = 5;
@@ -994,13 +1039,16 @@ async function executeGetEvmTokenBalance(connection, payload) {
 
   // Read active EVM network
   let networkId = 'eth-mainnet';
-  let rpcUrl = 'https://mainnet.infura.io/v3/121cf128273c4f0cb73770b391070d3b';
+  let rpcUrl = '';
   try {
     const stored = await chrome.storage.local.get(['active_evm_network', 'evm_rpc_providers']);
     if (stored.active_evm_network) networkId = stored.active_evm_network;
-    const providers = stored.evm_rpc_providers ? JSON.parse(stored.evm_rpc_providers) : {};
-    if (providers[networkId]) rpcUrl = providers[networkId];
+    rpcUrl = await getEvmRpcUrlForNetwork(networkId);
   } catch { /* use defaults */ }
+
+  if (!rpcUrl) {
+    throw new Error('EVM RPC not configured. Please add your Infura API key in Wallet Settings → EVM API Keys.');
+  }
 
   const NETWORK_CHAIN_IDS = {
     'eth-mainnet': 1, 'polygon-mainnet': 137, 'base-mainnet': 8453,

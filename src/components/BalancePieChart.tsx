@@ -35,15 +35,15 @@ export function BalancePieChart({
   }, [publicBalance, encryptedBalance]);
 
   const pieGradient = useMemo(() => {
-    if (total === 0 && !isDecrypting) return 'conic-gradient(#e5e7eb 0deg 360deg)';
+    if (total === 0) return 'conic-gradient(#e5e7eb 0deg 360deg)';
     const publicDeg = (publicPercent / 100) * 360;
     return `conic-gradient(
       #3B567F 0deg ${publicDeg}deg,
       #00E5C0 ${publicDeg}deg 360deg
     )`;
-  }, [publicPercent, total, isDecrypting]);
+  }, [publicPercent, total]);
 
-  // Show chart if there's balance OR if we're still decrypting (cipher exists)
+  // Show chart if there's balance OR if we're still loading encrypted balance
   if (total === 0 && !isDecrypting) return null;
 
   if (isCompact) {

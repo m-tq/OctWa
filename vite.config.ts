@@ -44,11 +44,17 @@ export default defineConfig({
     __APP_NAME__: JSON.stringify(APP_NAME),
     __APP_TITLE__: JSON.stringify(APP_TITLE),
   },
+  // Allow Vite to serve .wasm files from pvac_server/build-wasm
+  assetsInclude: ['**/*.wasm'],
+  // Web Worker configuration — must use es format for code-splitting builds
+  worker: {
+    format: 'es',
+  },
   build: {
     outDir: 'dist',
     sourcemap: false,
     minify: 'terser',
-    chunkSizeWarningLimit: 1000,
+    chunkSizeWarningLimit: 1500,
     copyPublicDir: true,
     rollupOptions: {
       input: {
@@ -58,16 +64,63 @@ export default defineConfig({
       },
       output: {
         entryFileNames: 'assets/[name].js',
-        chunkFileNames: 'assets/[name].js',
-        assetFileNames: 'assets/[name].[ext]',
+        chunkFileNames: 'assets/[name]-[hash].js',
+        assetFileNames: (assetInfo) => {
+          // Keep WASM files without hash to avoid duplicates
+          if (assetInfo.name?.endsWith('.wasm')) {
+            return 'assets/[name][extname]';
+          }
+          // Keep CSS without hash so popup.html can reference it with
+          // a stable filename (extension popup.html uses hardcoded path)
+          if (assetInfo.name?.endsWith('.css')) {
+            return 'assets/[name][extname]';
+          }
+          return 'assets/[name]-[hash][extname]';
+        },
         manualChunks: (id) => {
+          // Deduplicate PVAC modules into single chunks
+          if (id.includes('lib/pvac/')) {
+            if (id.includes('balance-ops')) return 'pvac-balance';
+            if (id.includes('stealth-ops')) return 'pvac-stealth';
+            if (id.includes('wasm-loader')) return 'pvac-wasm';
+            if (id.includes('pvac-worker')) return 'pvac-worker';
+            if (id.includes('node-registration')) return 'pvac-core';
+            if (id.includes('crypto-utils')) return 'pvac-core';
+          }
+          
           if (id.includes('node_modules')) {
-            if (id.includes('ethers')) {
-              return 'ethers';
-            }
-            if (id.includes('three')) {
-              return 'three';
-            }
+            // React core — must be in its own chunk and resolved first.
+            // Using exact path segments to avoid matching react-* packages
+            // that live in the vendor chunk and import React (which would
+            // create a circular dependency and break useLayoutEffect).
+            if (
+              id.includes('/node_modules/react/') ||
+              id.includes('/node_modules/react-dom/') ||
+              id.includes('/node_modules/react-is/') ||
+              id.includes('/node_modules/scheduler/')
+            ) return 'react-vendor';
+
+            // React-based UI libraries that import React — keep together with
+            // react-vendor to prevent vendor <-> react-vendor circular chunks.
+            if (
+              id.includes('/node_modules/recharts/') ||
+              id.includes('/node_modules/react-day-picker/') ||
+              id.includes('/node_modules/react-hook-form/') ||
+              id.includes('/node_modules/react-loading-skeleton/') ||
+              id.includes('/node_modules/react-resizable-panels/') ||
+              id.includes('/node_modules/embla-carousel-react/') ||
+              id.includes('/node_modules/vaul/') ||
+              id.includes('/node_modules/cmdk/') ||
+              id.includes('/node_modules/sonner/') ||
+              id.includes('/node_modules/input-otp/') ||
+              id.includes('/node_modules/next-themes/') ||
+              id.includes('/node_modules/qrcode.react/') ||
+              id.includes('/node_modules/@dnd-kit/')
+            ) return 'react-vendor';
+
+            if (id.includes('/node_modules/ethers/')) return 'ethers';
+            if (id.includes('/node_modules/three/')) return 'three';
+            if (id.includes('/node_modules/@radix-ui/')) return 'ui-vendor';
             return 'vendor';
           }
         }

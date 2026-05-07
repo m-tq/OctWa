@@ -3,52 +3,46 @@
 @tailwind utilities;
 
 /* ============================================
-   OCTRASCAN-INSPIRED DESIGN SYSTEM
-   Palet: biru-abu dingin, flat, utilitarian
-   Referensi: ALT_STYLE.md
+   OCTRASCAN DESIGN SYSTEM
+   Dense · exact · scanner-first · zero decoration
+   Tokens follow chiefofautism.com/ui-kit/llms.txt
    ============================================ */
 
 @layer base {
   :root {
-    /* --- Base surfaces (light) --- */
-    /* #FFFFFF → white bg */
+    /* ── Shadcn/Tailwind base tokens (light) ── */
     --background:    0 0% 100%;
     --foreground:    0 0% 0%;
-    /* #FFFFFF card */
     --card:          0 0% 100%;
     --card-foreground: 0 0% 0%;
-    /* #FFFFFF popover */
     --popover:       0 0% 100%;
     --popover-foreground: 0 0% 0%;
 
-    /* --- Brand / Primary: #3B567F (Octrascan blue) --- */
+    /* Primary: #3B567F */
     --primary:       214 37% 36%;
     --primary-foreground: 0 0% 100%;
 
-    /* --- Secondary surface: #E5E9EF --- */
+    /* Secondary surface: #E5E9EF */
     --secondary:     216 18% 91%;
     --secondary-foreground: 0 0% 0%;
 
-    /* --- Muted: #F6F7F9 (table header bg) --- */
+    /* Muted: #F6F7F9 */
     --muted:         220 14% 97%;
-    --muted-foreground: 214 20% 55%;   /* #8C9DB6 */
+    --muted-foreground: 214 20% 55%;
 
-    /* --- Accent: #D0D7E2 (header bg, hover) --- */
+    /* Accent: #D0D7E2 */
     --accent:        216 18% 85%;
     --accent-foreground: 0 0% 0%;
 
-    /* --- Destructive: #dc2626 --- */
+    /* Destructive: #dc2626 */
     --destructive:   0 72% 51%;
     --destructive-foreground: 0 0% 100%;
 
-    /* --- Border: #D0D7E2 --- */
+    /* Border: #D0D7E2 / Input: #C0C6D0 */
     --border:        216 18% 85%;
-    /* --- Input border: #C0C6D0 --- */
     --input:         216 13% 78%;
-    /* --- Focus ring: #3B567F --- */
     --ring:          214 37% 36%;
 
-    /* --- Chart colors --- */
     --chart-1: 214 37% 36%;
     --chart-2: 142 72% 29%;
     --chart-3: 38 92% 50%;
@@ -58,7 +52,7 @@
     --radius: 0rem;
     color-scheme: light;
 
-    /* --- Octrascan semantic tokens (light) --- */
+    /* ── Octrascan semantic tokens (light) ── */
     --oc-surface:       216 18% 91%;   /* #E5E9EF */
     --oc-surface-muted: 220 14% 97%;   /* #F6F7F9 */
     --oc-header:        216 18% 85%;   /* #D0D7E2 */
@@ -68,34 +62,76 @@
     --oc-secondary-btn: 214 30% 47%;   /* #516E9A */
     --oc-muted-text:    214 20% 55%;   /* #8C9DB6 */
     --oc-label:         214 25% 45%;   /* #556C8F */
-    --oc-success:       142 72% 29%;   /* #16a34a */
+    --oc-success:       142 72% 29%;   /* #15803d */
     --oc-warning:       38 92% 50%;    /* #ca8a04 */
     --oc-danger:        0 72% 51%;     /* #dc2626 */
     --oc-teal:          161 91% 30%;   /* #059669 */
+
+    /* ── Canonical oct-* design tokens (light) ── */
+    --oct-color-bg:           #ffffff;
+    --oct-color-text:         #000000;
+    --oct-color-surface:      #e5e9ef;
+    --oct-color-surface-soft: #f6f7f9;
+    --oct-color-header:       #d0d7e2;
+    --oct-color-border:       #d0d7e2;
+    --oct-color-border-strong:#c0c6d0;
+    --oct-color-primary:      #3b567f;
+    --oct-color-primary-soft: #516e9a;
+    --oct-color-muted:        #8c9db6;
+    --oct-color-success:      #15803d;
+    --oct-color-warning:      #ca8a04;
+    --oct-color-warning-bg:   #fffbeb;
+    --oct-color-danger:       #dc2626;
+    --oct-color-danger-bg:    #fef2f2;
+    --oct-color-code-bg:      #172033;
+    --oct-color-code-text:    #e5e9ef;
+
+    /* ── Typography tokens ── */
+    --oct-type-ui:   Tahoma, Arial, sans-serif;
+    --oct-type-mono: "SF Mono", Consolas, Monaco, monospace;
+    --oct-type-size-01: 10px;
+    --oct-type-size-02: 11px;
+    --oct-type-size-03: 12px;
+    --oct-type-size-04: 16px;
+    --oct-line-height: 150%;
+    --oct-letter-space: 1px;
+
+    /* ── Spacing tokens ── */
+    --oct-space-01: 2px;
+    --oct-space-02: 4px;
+    --oct-space-03: 6px;
+    --oct-space-04: 8px;
+    --oct-space-05: 10px;
+    --oct-space-06: 14px;
+    --oct-space-07: 18px;
+    --oct-space-08: 24px;
+
+    /* ── Component tokens ── */
+    --oct-radius-none: 0;
+    --oct-shadow-focus: 0 0 0 2px rgba(59, 86, 127, 0.24);
+    --oct-component-header-height: 38px;
+    --oct-component-sidebar-width: 220px;
+    --oct-component-table-row-height: 28px;
   }
 
   .dark {
-    /* --- Dark theme: Octrascan dark panel (#1a1a2e) as base --- */
-    --background:    232 28% 14%;      /* #1a1a2e */
-    --foreground:    216 25% 85%;      /* #c8d0dc */
-    --card:          232 24% 17%;      /* slightly lighter than bg */
+    /* ── Shadcn/Tailwind base tokens (dark) ── */
+    --background:    232 28% 14%;      /* #111722 */
+    --foreground:    216 25% 85%;      /* #edf2f7 */
+    --card:          232 24% 17%;
     --card-foreground: 216 25% 85%;
     --popover:       232 24% 17%;
     --popover-foreground: 216 25% 85%;
 
-    /* Primary stays #3B567F but brighter for dark bg */
-    --primary:       214 37% 55%;      /* #516E9A lightened */
+    --primary:       214 37% 55%;
     --primary-foreground: 0 0% 100%;
 
-    /* Secondary surface */
     --secondary:     232 20% 22%;
     --secondary-foreground: 216 25% 85%;
 
-    /* Muted */
     --muted:         232 20% 22%;
-    --muted-foreground: 214 20% 55%;   /* #8C9DB6 */
+    --muted-foreground: 214 20% 55%;
 
-    /* Accent */
     --accent:        232 20% 26%;
     --accent-foreground: 216 25% 85%;
 
@@ -117,7 +153,7 @@
 
     color-scheme: dark;
 
-    /* --- Octrascan semantic tokens (dark) --- */
+    /* ── Octrascan semantic tokens (dark) ── */
     --oc-surface:       232 20% 22%;
     --oc-surface-muted: 232 20% 19%;
     --oc-header:        232 20% 20%;
@@ -131,6 +167,20 @@
     --oc-warning:       38 80% 55%;
     --oc-danger:        0 62% 50%;
     --oc-teal:          161 80% 40%;
+
+    /* ── Canonical oct-* design tokens (dark) ── */
+    --oct-color-bg:           #111722;
+    --oct-color-text:         #edf2f7;
+    --oct-color-surface:      #1e293b;
+    --oct-color-surface-soft: #172033;
+    --oct-color-header:       #263449;
+    --oct-color-border:       #334155;
+    --oct-color-border-strong:#475569;
+    --oct-color-primary:      #a9c4ee;
+    --oct-color-primary-soft: #6f8dbb;
+    --oct-color-muted:        #94a3b8;
+    --oct-color-warning-bg:   #302712;
+    --oct-color-danger-bg:    #351a1a;
   }
 
   .light {
@@ -175,10 +225,10 @@
 
   body {
     @apply bg-background text-foreground antialiased;
-    /* Fira Code sebagai font utama */
-    font-family: 'Fira Code', 'Tahoma', 'Segoe UI', Arial, sans-serif;
-    font-size: 13px;
-    line-height: 1.55;
+    /* Octrascan: Tahoma as primary UI font, Fira Code as fallback */
+    font-family: 'Fira Code', Tahoma, 'Segoe UI', Arial, sans-serif;
+    font-size: var(--oct-type-size-02); /* 11px */
+    line-height: var(--oct-line-height); /* 150% */
     letter-spacing: 0.3px;
   }
 
@@ -193,11 +243,11 @@
     letter-spacing: 0.5px;
   }
 
-  /* Monospace for addresses, hashes, amounts */
+  /* Monospace for addresses, hashes, amounts, protocol values */
   .mono, code, pre,
   [data-mono],
   .font-mono {
-    font-family: 'SF Mono', 'Fira Code', 'Consolas', 'Monaco', monospace;
+    font-family: var(--oct-type-mono);
     font-size: 0.85em;
     letter-spacing: 0.2px;
   }
@@ -205,40 +255,41 @@
 
 /* ============================================
    OCTRA COMPONENT CLASSES
-   Octrascan-inspired, improved for wallet app
+   Octrascan design system — scanner-first
    ============================================ */
 
-/* Container */
+/* ── Layout ── */
 .octra-container {
   @apply max-w-6xl mx-auto px-4;
 }
 
-/* Header bar */
+/* Header bar — 38px, 1px border-bottom */
 .octra-header {
   background: hsl(var(--background));
   border-bottom: 1px solid hsl(var(--oc-border));
   @apply px-3 flex items-center justify-between;
-  min-height: 38px;
+  min-height: var(--oct-component-header-height);
 }
 
-/* Card — flat, bordered, no shadow */
+/* Card — flat, bordered, no shadow, no radius */
 .octra-card {
   background: hsl(var(--card));
   border: 1px solid hsl(var(--oc-border));
   border-radius: 0 !important;
 }
 
-/* Section title bar — like Octrascan section headers */
+/* Section title bar */
 .octra-section-title {
   background: hsl(var(--oc-header));
   border-top: 1px solid hsl(var(--oc-border-dark));
   border-bottom: 1px solid hsl(var(--oc-border-dark));
   color: hsl(var(--oc-primary));
-  @apply px-3 py-1 text-xs font-bold uppercase tracking-wider;
-  letter-spacing: 1px;
+  @apply px-3 py-1 font-bold uppercase tracking-wider;
+  font-size: var(--oct-type-size-02);
+  letter-spacing: var(--oct-letter-space);
 }
 
-/* Stat box — like Octrascan stats row */
+/* Metrics row — dense stat boxes */
 .octra-stat-box {
   background: hsl(var(--oc-surface));
   border-right: 1px solid hsl(var(--oc-border));
@@ -246,16 +297,19 @@
 }
 .octra-stat-box .label {
   color: hsl(var(--oc-muted-text));
-  @apply text-xs lowercase font-normal;
+  font-size: var(--oct-type-size-02);
+  @apply lowercase font-normal;
 }
 .octra-stat-box .value {
   color: hsl(var(--oc-primary));
-  @apply text-xs font-bold mt-0.5;
+  font-size: var(--oct-type-size-02);
+  @apply font-bold mt-0.5;
 }
 
 /* Nav item */
 .octra-nav-item {
-  @apply text-xs font-medium transition-colors;
+  font-size: var(--oct-type-size-02);
+  @apply font-medium transition-colors;
   color: hsl(var(--oc-muted-text));
   letter-spacing: 0.5px;
 }
@@ -264,13 +318,18 @@
   color: hsl(var(--oc-primary));
 }
 
-/* Button base */
+/* ── Buttons ── */
 .octra-button {
-  @apply inline-flex items-center justify-center text-xs font-bold transition-colors;
-  @apply focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring;
+  @apply inline-flex items-center justify-center font-bold transition-colors;
+  @apply focus-visible:outline-none;
   @apply disabled:pointer-events-none disabled:opacity-50;
+  font-size: var(--oct-type-size-02);
   border-radius: 0 !important;
   letter-spacing: 0.5px;
+  box-shadow: var(--oct-shadow-focus) transparent;
+}
+.octra-button:focus-visible {
+  box-shadow: var(--oct-shadow-focus);
 }
 
 /* Primary button */
@@ -278,7 +337,8 @@
   background: hsl(var(--oc-primary));
   color: #fff;
   border: 1px solid hsl(var(--oc-primary));
-  @apply px-4 py-1.5 text-xs font-bold;
+  @apply px-4 py-1.5 font-bold;
+  font-size: var(--oct-type-size-02);
 }
 .octra-btn-primary:hover {
   background: hsl(var(--oc-secondary-btn));
@@ -287,6 +347,7 @@
 .octra-btn-primary:disabled {
   background: hsl(var(--oc-muted-text));
   border-color: hsl(var(--oc-muted-text));
+  opacity: 0.6;
 }
 
 /* Outline button */
@@ -294,32 +355,39 @@
   background: hsl(var(--oc-surface));
   color: hsl(var(--oc-primary));
   border: 1px solid hsl(var(--oc-border-dark));
-  @apply px-4 py-1.5 text-xs font-bold;
+  @apply px-4 py-1.5 font-bold;
+  font-size: var(--oct-type-size-02);
 }
 .octra-btn-outline:hover {
   background: hsl(var(--oc-header));
 }
 
-/* Tag / Badge styles */
+/* ── Tags / Badges ── */
+/* Base tag — 10px, compact, square, textual */
 .octra-tag {
   display: inline-block;
   background: hsl(var(--oc-secondary-btn));
   color: #fff;
-  @apply text-[10px] px-1.5 py-0;
+  padding: 0 var(--oct-space-02);
+  font-size: var(--oct-type-size-01);
   letter-spacing: 0.3px;
   line-height: 1.6;
+  border-radius: 0 !important;
 }
-.octra-tag-success {
-  background: hsl(var(--oc-teal));
+.octra-tag-success  { background: hsl(var(--oc-teal)); }
+.octra-tag-warning  { background: hsl(var(--oc-warning)); color: #000; }
+.octra-tag-danger   { background: hsl(var(--oc-danger)); }
+.octra-tag-staging  { background: hsl(var(--oc-warning)); color: #000; }
+.octra-tag-pending  {
+  background: hsl(var(--oc-secondary-btn));
+  animation: tag-pending-pulse 1.5s steps(2) infinite;
 }
-.octra-tag-warning {
-  background: hsl(var(--oc-warning));
-}
-.octra-tag-danger {
-  background: hsl(var(--oc-danger));
+@keyframes tag-pending-pulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.6; }
 }
 
-/* Table styles */
+/* ── Tables ── */
 .octra-table {
   @apply w-full border-collapse;
   table-layout: fixed;
@@ -328,47 +396,58 @@
   background: hsl(var(--oc-surface-muted));
   color: hsl(var(--oc-label));
   border-bottom: 1px solid hsl(var(--oc-border));
-  @apply text-left text-[11px] px-2 py-1 font-normal lowercase;
+  @apply text-left px-2 py-1 font-normal lowercase;
+  font-size: var(--oct-type-size-02);
   letter-spacing: 0.5px;
 }
 .octra-table td {
   border-bottom: 1px solid hsl(var(--oc-surface));
-  @apply text-[11px] px-2 py-1.5;
+  @apply px-2;
+  font-size: var(--oct-type-size-02);
+  padding-top: var(--oct-space-02);
+  padding-bottom: var(--oct-space-02);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  height: var(--oct-component-table-row-height);
 }
 .octra-table tr:hover td {
   background: hsl(var(--oc-surface));
 }
+.octra-table .row--staging td { background: var(--oct-color-warning-bg); }
+.octra-table .row--rejected td { background: var(--oct-color-danger-bg); }
 
-/* Input */
+/* ── Input ── */
 .octra-input {
   background: hsl(var(--background));
   border: 1px solid hsl(var(--oc-border-dark));
   color: hsl(var(--foreground));
-  @apply w-full px-2 py-1.5 text-xs;
+  @apply w-full px-2 py-1.5;
+  font-size: var(--oct-type-size-02);
   font-family: inherit;
   letter-spacing: 0.3px;
   outline: none;
   transition: border-color 0.15s;
+  border-radius: 0 !important;
 }
 .octra-input:focus {
   border-color: hsl(var(--oc-primary));
+  box-shadow: var(--oct-shadow-focus);
 }
 .octra-input::placeholder {
   color: hsl(var(--oc-muted-text));
 }
 
-/* Footer */
+/* ── Footer ── */
 .octra-footer {
   background: hsl(var(--oc-header));
   border-top: 1px solid hsl(var(--oc-border-dark));
   color: hsl(var(--oc-muted-text));
-  @apply px-3 py-1.5 text-[11px] text-center;
+  @apply px-3 py-1.5 text-center;
+  font-size: var(--oct-type-size-02);
 }
 
-/* Tab bar */
+/* ── Tab bar ── */
 .octra-tab-bar {
   background: hsl(var(--oc-surface));
   border-bottom: 1px solid hsl(var(--oc-border-dark));
@@ -377,7 +456,8 @@
 .octra-tab {
   color: hsl(var(--oc-muted-text));
   border-bottom: 2px solid transparent;
-  @apply px-4 py-1.5 text-xs font-bold cursor-pointer lowercase;
+  @apply px-4 py-1.5 font-bold cursor-pointer lowercase;
+  font-size: var(--oct-type-size-02);
   letter-spacing: 0.5px;
   transition: color 0.15s, border-color 0.15s;
 }
@@ -391,7 +471,23 @@
   background: hsl(var(--background));
 }
 
-/* Subtle fade-in */
+/* ── State helpers ── */
+.muted        { color: hsl(var(--oc-muted-text)); }
+.helper-text  { color: hsl(var(--oc-muted-text)); font-size: var(--oct-type-size-01); }
+.amount       { font-family: var(--oct-type-mono); font-size: var(--oct-type-size-02); }
+.loading-line { color: hsl(var(--oc-muted-text)); font-size: var(--oct-type-size-02); font-style: italic; }
+.empty-line   { color: hsl(var(--oc-muted-text)); font-size: var(--oct-type-size-02); font-style: italic; }
+
+/* ── Alert / Error ── */
+.alert--error {
+  background: var(--oct-color-danger-bg);
+  border: 1px solid hsl(var(--oc-danger));
+  color: hsl(var(--oc-danger));
+  @apply px-3 py-2;
+  font-size: var(--oct-type-size-02);
+}
+
+/* ── Subtle fade-in ── */
 .octra-fade-in {
   animation: fadeIn 0.25s ease-out;
 }
@@ -401,15 +497,16 @@
   to   { opacity: 1; transform: translateY(0); }
 }
 
-/* Docs-style content */
+/* ── Docs-style content ── */
 .docs-content h1 { @apply text-2xl font-bold mb-5 text-foreground; }
 .docs-content h2 { @apply text-xl font-semibold mb-3 mt-7 text-foreground; }
 .docs-content h3 { @apply text-base font-medium mb-2 mt-5 text-foreground; }
-.docs-content p  { @apply text-sm mb-3 leading-relaxed; color: hsl(var(--oc-muted-text)); }
+.docs-content p  { font-size: var(--oct-type-size-02); @apply mb-3 leading-relaxed; color: hsl(var(--oc-muted-text)); }
 
 .docs-nav { @apply space-y-0.5; }
 .docs-nav-item {
-  @apply block px-3 py-1.5 text-xs font-medium transition-colors;
+  @apply block px-3 py-1.5 font-medium transition-colors;
+  font-size: var(--oct-type-size-02);
   color: hsl(var(--oc-muted-text));
   border-radius: 0 !important;
 }
@@ -425,8 +522,8 @@
   @apply p-4;
   border-radius: 0 !important;
 }
-.docs-card-title   { @apply text-sm font-semibold text-foreground mb-1; }
-.docs-card-description { @apply text-xs; color: hsl(var(--oc-muted-text)); }
+.docs-card-title       { @apply text-sm font-semibold text-foreground mb-1; }
+.docs-card-description { font-size: var(--oct-type-size-02); color: hsl(var(--oc-muted-text)); }
 
 /* ============================================
    TOAST POSITIONING

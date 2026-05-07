@@ -131,7 +131,7 @@ OctWa is a non-custodial browser wallet extension that serves as the **final cry
 ### Network Support
 
 - ✅ **Octra Mainnet** - Production network
-- ✅ **Octra Testnet** - Development network
+- ✅ **Octra Devnet** - Development network
 - ✅ **Ethereum Mainnet** - EVM compatibility
 - ✅ **Ethereum Sepolia** - EVM testnet
 - ✅ **Polygon** - Layer 2 scaling

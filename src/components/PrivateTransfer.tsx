@@ -4,18 +4,22 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Switch } from '@/components/ui/switch';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Shield, AlertTriangle, Wallet as WalletIcon, Loader2, Plus, BookUser, Search, Globe, Server, Zap } from 'lucide-react';
+import { Shield, AlertTriangle, Wallet as WalletIcon, Loader2, Plus, BookUser, Search, Globe } from 'lucide-react';
 import { Wallet, EncryptedBalanceResponse } from '../types/wallet';
-import { fetchEncryptedBalance, createPrivateTransfer, getAddressInfo, getViewPubkey, invalidateCacheAfterPrivateSend, fetchBalance, sendTransaction, fetchRecommendedFee, ouToOct } from '../utils/api';
+import { fetchEncryptedBalance, getAddressInfo, getViewPubkey, invalidateCacheAfterPrivateSend, fetchBalance, sendTransaction, fetchRecommendedFee } from '../utils/api';
+import { getPvacWasm } from '@/lib/pvac/wasm-loader';
 import { useToast } from '@/hooks/use-toast';
 import { useAddressBook } from '@/hooks/useAddressBook';
 import { TransactionModal, TransactionStatus, TransactionResult } from './TransactionModal';
 import { AnimatedIcon } from './AnimatedIcon';
 import { AddressInput } from './AddressInput';
-import { pvacServerService } from '@/services/pvacServerService';
-import { ensurePvacRegistered } from '@/utils/ensurePvacRegistered';
+import { PvacProgressBar } from './PvacProgressBar';
+import { PvacOperationModal } from './PvacOperationModal';
+import { FeeSelector, FeeOption, getEffectiveFee } from './FeeSelector';
+import { usePvacOperation } from '@/hooks/usePvacOperation';
+import { RangeServerSetup } from './RangeServerSetup';
+import { isRangeServerAvailable } from '@/services/rangeProofServer';
 
 interface PrivateTransferProps {
   wallet: Wallet | null;
@@ -30,8 +34,10 @@ interface PrivateTransferProps {
     op_type?: string;
     ou?: string | number;
   }) => void;
+  /** Called with fresh encrypted balance right after stealth send completes. */
+  onEncryptedBalanceUpdate?: (enc: EncryptedBalanceResponse | null) => void;
   isCompact?: boolean;
-  onAddToAddressBook?: (address: string) => void; // Callback to add address to address book
+  onAddToAddressBook?: (address: string) => void;
 }
 
 // Simple address validation function
@@ -67,6 +73,7 @@ export function PrivateTransfer({
   onBalanceUpdate: _onBalanceUpdate,
   onNonceUpdate: _onNonceUpdate,
   onTransactionSuccess,
+  onEncryptedBalanceUpdate,
   isCompact = false,
   onAddToAddressBook
 }: PrivateTransferProps) {
@@ -81,25 +88,28 @@ export function PrivateTransfer({
   const [txModalStatus, setTxModalStatus] = useState<TransactionStatus>('idle');
   const [txModalResult, setTxModalResult] = useState<TransactionResult>({});
   const [txContext, setTxContext] = useState<{ from: string; to: string } | null>(null);
+  const [showPvacModal, setShowPvacModal] = useState(false);
   const [showAddressBookDropdown, setShowAddressBookDropdown] = useState(false);
   const [addressBookSearch, setAddressBookSearch] = useState('');
-  const [usePvacServer, setUsePvacServer] = useState(false);
-  const [isPvacAvailable, setIsPvacAvailable] = useState(false);
   const [customFee, setCustomFee] = useState('');
-  const [recommendedFee, setRecommendedFee] = useState(5000); // stealth default
+  const [feeOption, setFeeOption] = useState<FeeOption>('recommended');
+  const [recommendedFee, setRecommendedFee] = useState(5000);
+  const [rangeServerReady, setRangeServerReady] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
-  const isSendingRef = useRef(false); // hard guard against concurrent sends
+  const isSendingRef = useRef(false);
   const { toast } = useToast();
   const { contacts, walletLabels } = useAddressBook();
+  const pvacOp = usePvacOperation();
   
-  // Check PVAC availability on mount + fetch dynamic stealth fee
+  // Fetch dynamic stealth fee on mount + pre-warm WASM so first send is instant
   useEffect(() => {
-    const available = pvacServerService.isEnabled();
-    setIsPvacAvailable(available);
-    setUsePvacServer(available); // Auto-enable if available
-    // Fetch recommended fee for stealth op_type
     fetchRecommendedFee('stealth').then(fee => setRecommendedFee(fee)).catch(() => {});
-  }, []);
+    isRangeServerAvailable().then(setRangeServerReady);
+    // Pre-warm: load WASM module in background so keygen is cached before user clicks Send
+    if (wallet?.privateKey) {
+      getPvacWasm(wallet.privateKey).catch(() => { /* best-effort */ });
+    }
+  }, [wallet?.privateKey]);
   
   const handleTxModalOpenChange = (open: boolean) => {
     setShowTxModal(open);
@@ -272,23 +282,16 @@ export function PrivateTransfer({
 
     setIsSending(true);
     isSendingRef.current = true;
-    
-    // Show modal with sending state
+
     setTxContext({ from: wallet.address, to: finalRecipientAddress });
-    setTxModalStatus('sending');
-    setTxModalResult({});
-    setShowTxModal(true);
+    setShowPvacModal(true);
+    pvacOp.reset();
 
     try {
-      if (usePvacServer && isPvacAvailable) {
-        await handleSendWithPvac(finalRecipientAddress, amountNum);
-      } else {
-        await handleSendWithBrowser(finalRecipientAddress, amountNum);
-      }
+      await handleSendWithBrowser(finalRecipientAddress, amountNum);
     } catch (error) {
       console.error('Private transfer error:', error);
       const errorMsg = error instanceof Error ? error.message : 'Unknown error';
-      // Update modal to error state
       setTxModalStatus('error');
       setTxModalResult({ error: errorMsg });
     } finally {
@@ -297,141 +300,105 @@ export function PrivateTransfer({
     }
   };
 
-  const handleSendWithPvac = async (toAddress: string, amountNum: number) => {
-    try {
-      // Ensure PVAC pubkey is registered on the node before stealth send
-      const regResult = await ensurePvacRegistered(
-        wallet!.address,
-        wallet!.privateKey,
-        wallet!.publicKey || ''
-      );
-      if (!regResult.success) {
-        throw new Error(regResult.error || 'Failed to register PVAC pubkey on node');
-      }
-
-      // Convert amount to raw units
-      const amountRaw = Math.floor(amountNum * 1_000_000);
-      
-      // Fetch fresh nonce from blockchain
-      const freshBalanceData = await fetchBalance(wallet!.address);
-      const nonce = freshBalanceData.nonce;
-
-      // Get current encrypted balance cipher
-      const currentCipher = encryptedBalance?.cipher || "hfhe_v1|...";
-      
-      // Fetch recipient's Curve25519 view pubkey via RPC octra_viewPubkey
-      const recipientViewPubkey = await getViewPubkey(toAddress);
-      if (!recipientViewPubkey) {
-        throw new Error("Recipient has no view pubkey — they must register PVAC first");
-      }
-      
-      // Call PVAC server for stealth send
-      const result = await pvacServerService.stealthSend({
-        to_address: toAddress,
-        amount: amountRaw,
-        current_cipher: currentCipher,
-        recipient_view_pubkey: recipientViewPubkey,
-        from_address: wallet!.address,
-        nonce: nonce + 1,
-        private_key: wallet!.privateKey,
-        public_key: wallet!.publicKey || '',
-        ou: String(customFee ? parseInt(customFee) || recommendedFee : recommendedFee)
-      });
-
-      if (!result.success) {
-        throw new Error(result.error || 'PVAC server returned error');
-      }
-
-      // Submit signed transaction to blockchain
-      const submitResult = await sendTransaction(result.tx as import('../types/wallet').Transaction);
-      if (!submitResult.success) {
-        throw new Error(submitResult.error || 'Failed to submit transaction');
-      }
-      const txHash = submitResult.hash || 'pending';
-      
-      // Invalidate cache and immediately refresh encrypted balance
-      await invalidateCacheAfterPrivateSend(wallet!.address);
-      const freshEncrypted = await fetchEncryptedBalance(wallet!.address, wallet!.privateKey, true);
-      setLocalEncryptedBalance(freshEncrypted);
-      
-      // Update modal to success state — wire onStatusConfirmed so when node
-      // confirms the tx, we immediately refresh balance + history
-      setTxModalStatus('success');
-      setTxModalResult({
-        hash: txHash,
-        amount: amountNum.toFixed(8),
-        finality: 'pending',
-        onStatusConfirmed: () => {
-          onTransactionSuccess({
-            hash: txHash,
-            from: wallet!.address,
-            to: 'stealth',
-            amount: amountNum,
-            status: 'confirmed',
-            op_type: 'stealth',
-            ou: customFee ? parseInt(customFee) || recommendedFee : recommendedFee,
-          });
-        },
-      });
-
-      toast({
-        title: "Transfer Successful",
-        description: `Sent ${amountNum} OCT privately using PVAC server`,
-      });
-
-      // Reset form
-      setRecipientAddress('');
-      setAmount('');
-      setRecipientInfo(null);
-      // onTransactionSuccess is called via onStatusConfirmed when node confirms
-      
-    } catch (error) {
-      console.error('[StealthSend] Error:', error);
-      throw error;
-    }
-  };
-
   const handleSendWithBrowser = async (toAddress: string, amountNum: number) => {
-    try {
-      // Use existing API method (browser-based or server-based)
-      const transferResult = await createPrivateTransfer(
-        wallet!.address,
-        toAddress,
-        amountNum,
-        wallet!.privateKey
-      );
-
-      if (transferResult.success) {
-        // Invalidate cache and immediately refresh encrypted balance
-        await invalidateCacheAfterPrivateSend(wallet!.address);
-        const freshEncrypted = await fetchEncryptedBalance(wallet!.address, wallet!.privateKey, true);
-        setLocalEncryptedBalance(freshEncrypted);
-        
-        const txHash = transferResult.tx_hash || 'pending';
-
-        // Update modal to success state — wire onStatusConfirmed for confirmed refresh
-        setTxModalStatus('success');
-        setTxModalResult({
-          hash: txHash,
-          amount: amountNum.toFixed(8),
-          finality: 'pending',
-          onStatusConfirmed: () => {
-            onTransactionSuccess();
-          },
-        });
-
-        // Reset form
-        setRecipientAddress('');
-        setAmount('');
-        setRecipientInfo(null);
-      } else {
-        // Update modal to error state
-        setTxModalStatus('error');
-        setTxModalResult({ error: transferResult.error || "Unknown error occurred" });
-      }
-    } catch (error) {
-      throw error;
+    const recipientViewPubkey = await getViewPubkey(toAddress);
+    if (!recipientViewPubkey) {
+      throw new Error('Recipient has no view pubkey -- they must register PVAC first');
     }
+
+    const amountRaw = BigInt(Math.floor(amountNum * 1_000_000));
+
+    // Force-refresh both nonce AND encrypted balance cipher before stealth send.
+    // After wallet switch, the UI may still show stale cipher/balance from the
+    // previous wallet. Always fetch fresh data from the node.
+    const [freshBalanceData, freshEncData] = await Promise.all([
+      fetchBalance(wallet!.address, true),
+      fetchEncryptedBalance(wallet!.address, wallet!.privateKey, true),
+    ]);
+    const nonce = freshBalanceData.nonce;
+
+    // Use fresh cipher from node — never trust the prop which may be stale
+    const freshCipher = freshEncData?.cipher;
+    console.log('[StealthSend] address:', wallet!.address,
+      'freshEncrypted:', freshEncData?.encrypted,
+      'cipherLen:', freshCipher?.length,
+      'amount:', amountNum);
+
+    if (!freshCipher || freshCipher === '0' || !freshCipher.startsWith('hfhe_v1|')) {
+      throw new Error('No valid encrypted balance found for this wallet. Please encrypt some balance first.');
+    }
+
+    const freshEncryptedBalance = freshEncData?.encrypted ?? 0;
+    if (amountNum > freshEncryptedBalance) {
+      throw new Error(`Insufficient encrypted balance: have ${freshEncryptedBalance.toFixed(6)} OCT, need ${amountNum.toFixed(6)} OCT`);
+    }
+
+    const ou = String(getEffectiveFee(recommendedFee, feeOption, customFee));
+
+    const result = await pvacOp.runWorker<{ tx: import('../types/wallet').Transaction }>(
+      'stealthSend',
+      {
+        privateKey:          wallet!.privateKey,
+        publicKey:           wallet!.publicKey || '',
+        address:             wallet!.address,
+        toAddress,
+        amountRaw:           amountRaw.toString(),
+        currentCipher:       freshCipher,
+        recipientViewPubkey,
+        nonce:               nonce + 1,
+        ou,
+      },
+    );
+
+    if (!result.success || !result.data) {
+      throw new Error(result.error || 'Stealth send failed');
+    }
+
+    // Show "retrieving result" immediately while sendTransaction runs.
+    setShowPvacModal(false);
+    setShowTxModal(true);
+    setTxModalStatus('retrieving');
+
+    const submitResult = await sendTransaction(
+      result.data.tx as import('../types/wallet').Transaction
+    );
+    if (!submitResult.success) {
+      throw new Error(submitResult.error || 'Failed to submit transaction');
+    }
+
+    const txHash = submitResult.hash || 'pending';
+    setTxModalStatus('success');
+    setTxModalResult({
+      hash: txHash,
+      amount: amountNum.toFixed(8),
+      finality: 'pending',
+    });
+
+    // Add to history immediately as pending — silentRefreshAfterTx will upgrade to confirmed
+    onTransactionSuccess({
+      hash: txHash,
+      from: wallet!.address,
+      to: 'stealth',
+      amount: amountNum,
+      status: 'pending',
+      op_type: 'stealth',
+      ou: getEffectiveFee(recommendedFee, feeOption, customFee),
+    });
+
+    toast({ title: "Transfer Successful", description: `Sent ${amountNum} OCT privately` });
+    setRecipientAddress('');
+    setAmount('');
+    setRecipientInfo(null);
+
+    // Refresh balance in background -- does not block the success modal.
+    invalidateCacheAfterPrivateSend(wallet!.address)
+      .then(() => fetchEncryptedBalance(wallet!.address, wallet!.privateKey, true))
+      .then((freshEncrypted) => {
+        setLocalEncryptedBalance(freshEncrypted);
+        // Propagate fresh encrypted balance to WalletDashboard for immediate cache update
+        if (onEncryptedBalanceUpdate) onEncryptedBalanceUpdate(freshEncrypted);
+      })
+      .catch(() => { /* best-effort */ });
   };
 
   if (!wallet) {
@@ -480,6 +447,13 @@ export function PrivateTransfer({
   if (isCompact) {
     return (
       <div className="space-y-3" ref={dropdownRef}>
+        {showPvacModal && (
+          <PvacOperationModal
+            opType="stealth_send"
+            {...pvacOp}
+            onDismiss={() => { setShowPvacModal(false); pvacOp.reset(); }}
+          />
+        )}
         {showTxModal ? (
           <TransactionModal
             open={showTxModal}
@@ -649,67 +623,27 @@ export function PrivateTransfer({
               />
             </div>
 
-            {/* PVAC Server Option - Compact Mode */}
-            {isPvacAvailable && (
-              <div className="flex items-center justify-between p-2 bg-muted/50 rounded-lg">
-                <div className="flex items-center gap-1.5">
-                  <Server className="h-3 w-3 text-primary" />
-                  <div>
-                    <Label className="text-[10px] font-medium cursor-pointer">
-                      Use PVAC Server
-                    </Label>
-                    <p className="text-[9px] text-muted-foreground">
-                      {usePvacServer ? '~1.5s' : '~20s'} send time
-                    </p>
-                  </div>
-                </div>
-                <Switch
-                  checked={usePvacServer}
-                  onCheckedChange={setUsePvacServer}
-                  disabled={isSending}
-                  className="scale-75"
-                />
-              </div>
+            {/* Range server setup — compact */}
+            {!rangeServerReady && (
+              <RangeServerSetup
+                onAvailable={() => setRangeServerReady(true)}
+                compact
+              />
             )}
 
             {/* Custom Fee - Compact Mode */}
             <div className="space-y-1">
-              <div className="flex items-center justify-between">
-                <Label className="text-xs text-muted-foreground">Network Fee (OU)</Label>
-                <span className="text-[10px] text-muted-foreground">
-                  Recommended: <span className="font-mono text-[#00E5C0]">{recommendedFee.toLocaleString()}</span>
-                  <span className="ml-1">≈ {ouToOct(recommendedFee)} OCT</span>
-                </span>
-              </div>
-              <Input
-                type="number"
-                placeholder={String(recommendedFee)}
-                value={customFee}
-                onChange={(e) => setCustomFee(e.target.value)}
-                min="1"
-                className="text-xs h-8 font-mono"
+              <Label className="text-xs text-muted-foreground">Network Fee</Label>
+              <FeeSelector
+                recommendedFee={recommendedFee}
+                feeOption={feeOption}
+                customFee={customFee}
+                onFeeOptionChange={setFeeOption}
+                onCustomFeeChange={setCustomFee}
+                disabled={isSending}
+                isPopupMode
               />
             </div>
-
-            {/* Performance Info - Compact Mode */}
-            {usePvacServer && isPvacAvailable && (
-              <Alert className="py-1.5">
-                <Zap className="h-3 w-3" />
-                <AlertDescription className="text-[10px]">
-                  PVAC server: ~13x faster stealth send
-                </AlertDescription>
-              </Alert>
-            )}
-
-            {/* PVAC Not Available Warning - Compact Mode */}
-            {!isPvacAvailable && (
-              <Alert variant="destructive" className="py-1.5">
-                <AlertTriangle className="h-3 w-3" />
-                <AlertDescription className="text-[10px]">
-                  PVAC server not configured. Using slower method.
-                </AlertDescription>
-              </Alert>
-            )}
 
             <Button
               onClick={handleSend}
@@ -721,7 +655,8 @@ export function PrivateTransfer({
                 !recipientInfo ||
                 !!recipientInfo.error ||
                 !recipientInfo.has_public_key ||
-                parseFloat(amount) > (encryptedBalance?.encrypted ?? 0)
+                parseFloat(amount) > (encryptedBalance?.encrypted ?? 0) ||
+                !rangeServerReady
               }
               className="w-full h-9 text-xs bg-[#00E5C0] hover:bg-[#00E5C0]/80"
             >
@@ -731,7 +666,7 @@ export function PrivateTransfer({
                   <span>Sending...</span>
                 </div>
               ) : (
-                <>Send Private {usePvacServer && isPvacAvailable && '(PVAC)'}</>
+                <>Send Private</>
               )}
             </Button>
           </>
@@ -743,6 +678,13 @@ export function PrivateTransfer({
   // Full mode - Simplified
   return (
     <div className="space-y-4 max-w-xl mx-auto">
+      {showPvacModal && (
+        <PvacOperationModal
+          opType="stealth_send"
+          {...pvacOp}
+          onDismiss={() => { setShowPvacModal(false); pvacOp.reset(); }}
+        />
+      )}
       {showTxModal ? (
         <TransactionModal
           open={showTxModal}
@@ -824,67 +766,27 @@ export function PrivateTransfer({
             )}
           </div>
 
-          {/* PVAC Server Option - Full Mode */}
-          {isPvacAvailable && (
-            <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
-              <div className="flex items-center gap-2">
-                <Server className="h-4 w-4 text-primary" />
-                <div>
-                  <Label className="text-sm font-medium cursor-pointer">
-                    Use PVAC Server
-                  </Label>
-                  <p className="text-xs text-muted-foreground">
-                    {usePvacServer ? '~1.5s' : '~20s'} stealth send time
-                  </p>
-                </div>
-              </div>
-              <Switch
-                checked={usePvacServer}
-                onCheckedChange={setUsePvacServer}
-                disabled={isSending}
-              />
-            </div>
+          {/* Range server setup — full mode */}
+          {!rangeServerReady && (
+            <RangeServerSetup onAvailable={() => setRangeServerReady(true)} />
           )}
 
           {/* Custom Fee - Full Mode */}
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <Label className="text-sm text-muted-foreground">Network Fee (OU)</Label>
-              <span className="text-xs text-muted-foreground">
-                Recommended: <span className="font-mono text-[#00E5C0]">{recommendedFee.toLocaleString()}</span>
-                <span className="ml-1">≈ {ouToOct(recommendedFee)} OCT</span>
-              </span>
-            </div>
-            <Input
-              type="number"
-              placeholder={String(recommendedFee)}
-              value={customFee}
-              onChange={(e) => setCustomFee(e.target.value)}
-              min="1"
-              className="font-mono"
+          <div className="space-y-1.5">
+            <Label className="text-sm text-muted-foreground">Network Fee</Label>
+            <FeeSelector
+              recommendedFee={recommendedFee}
+              feeOption={feeOption}
+              customFee={customFee}
+              onFeeOptionChange={setFeeOption}
+              onCustomFeeChange={setCustomFee}
+              disabled={isSending}
             />
           </div>
 
-          {/* Performance Info - Full Mode */}
-          {usePvacServer && isPvacAvailable && (
-            <Alert>
-              <Zap className="h-4 w-4" />
-              <AlertDescription className="text-xs">
-                PVAC server will process this stealth send ~13x faster than browser-based method.
-                Expected time: 1-2 seconds
-              </AlertDescription>
-            </Alert>
-          )}
-
-          {/* PVAC Not Available Warning - Full Mode */}
-          {!isPvacAvailable && (
-            <Alert variant="destructive">
-              <AlertTriangle className="h-4 w-4" />
-              <AlertDescription className="text-xs">
-                PVAC server not configured. Using slower browser-based method (~20s).
-                Configure PVAC server in settings for faster operations.
-              </AlertDescription>
-            </Alert>
+          {/* Progress bar during browser-based stealth send */}
+          {pvacOp.isRunning && (
+            <PvacProgressBar progress={pvacOp.progress} isRunning={pvacOp.isRunning} />
           )}
 
           <Button 
@@ -897,7 +799,8 @@ export function PrivateTransfer({
               !recipientInfo ||
               !!recipientInfo.error ||
               !recipientInfo.has_public_key ||
-              parseFloat(amount) > (encryptedBalance?.encrypted ?? 0)
+              parseFloat(amount) > (encryptedBalance?.encrypted ?? 0) ||
+              !rangeServerReady
             }
             className="w-full bg-[#00E5C0] hover:bg-[#00E5C0]/80"
             size="lg"
@@ -908,7 +811,7 @@ export function PrivateTransfer({
                 Sending...
               </>
             ) : (
-              `Send ${parseFloat(amount || '0').toFixed(8)} OCT${usePvacServer && isPvacAvailable ? ' (PVAC)' : ''}`
+              `Send ${parseFloat(amount || '0').toFixed(8)} OCT`
             )}
           </Button>
         </>

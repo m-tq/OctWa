@@ -121,7 +121,40 @@ export interface ClaimableTransfer {
   rawOutput: unknown;
 }
 
-export async function scanStealthOutputs(seedOrSkB64: string): Promise<ClaimableTransfer[]> {
+// ─── In-memory scan cache ─────────────────────────────────────────────────────
+// Keyed by wallet address. Populated by background scan in WalletDashboard
+// so ClaimTransfers can display results instantly without re-scanning.
+
+interface ScanCacheEntry {
+  transfers: ClaimableTransfer[];
+  scannedAt: number;  // Date.now()
+}
+
+const scanCache = new Map<string, ScanCacheEntry>()
+const SCAN_CACHE_TTL_MS = 5 * 60 * 1000  // 5 minutes
+
+/** Store scan results for an address (called by WalletDashboard background scan). */
+export function setCachedScanResults(address: string, transfers: ClaimableTransfer[]): void {
+  scanCache.set(address, { transfers, scannedAt: Date.now() })
+}
+
+/** Get cached scan results if still fresh, or null if expired/missing. */
+export function getCachedScanResults(address: string): ClaimableTransfer[] | null {
+  const entry = scanCache.get(address)
+  if (!entry) return null
+  if (Date.now() - entry.scannedAt > SCAN_CACHE_TTL_MS) {
+    scanCache.delete(address)
+    return null
+  }
+  return entry.transfers
+}
+
+/** Invalidate cache for an address (call after a successful claim). */
+export function invalidateScanCache(address: string): void {
+  scanCache.delete(address)
+}
+
+export async function scanStealthOutputs(seedOrSkB64: string, address?: string): Promise<ClaimableTransfer[]> {
   const result = await makeRpcCall('octra_stealthOutputs', [0]);
   if (!result || typeof result !== 'object') return [];
 
@@ -170,5 +203,6 @@ export async function scanStealthOutputs(seedOrSkB64: string): Promise<Claimable
     }
   }
 
+  if (address) setCachedScanResults(address, claimable)
   return claimable;
 }
