@@ -1,5 +1,8 @@
 # pvac-local-server
 
+> **⬇️ Ready-to-run binaries:** [github.com/m-tq/OctWa/releases/tag/pvac_server](https://github.com/m-tq/OctWa/releases/tag/pvac_server)
+> **📖 Source & build guide:** [github.com/m-tq/OctWa/tree/master/pvac_server](https://github.com/m-tq/OctWa/tree/master/pvac_server)
+
 Native C++ sidecar for OctWa wallet — handles heavy PVAC cryptographic operations
 that require hardware AES-NI (range proofs, stealth send, decrypt-to-public).
 

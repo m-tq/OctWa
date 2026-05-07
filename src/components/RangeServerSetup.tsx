@@ -115,7 +115,7 @@ export function RangeServerSetup({ onAvailable, compact = false }: RangeServerSe
 
       {/* Docs link */}
       <a
-        href="https://github.com/m-tq/OctWa/tree/master/pvac_server/range_server"
+        href="https://github.com/m-tq/OctWa/tree/master/pvac_server"
         target="_blank"
         rel="noopener noreferrer"
         className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
