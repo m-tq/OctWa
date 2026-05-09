@@ -2,7 +2,7 @@
 
 A secure, private-first browser wallet for the Octra blockchain. Available as a Chrome/Edge extension and web application.
 
-**Version:** 1.3.2 · **License:** MIT · **Status:** Production Ready
+**Extension version:** 1.3.7 · **SDK:** [`@octwa/sdk@1.6.0`](https://www.npmjs.com/package/@octwa/sdk) · **License:** MIT · **Status:** Production Ready
 
 ---
 
@@ -11,19 +11,23 @@ A secure, private-first browser wallet for the Octra blockchain. Available as a 
 ```
 main/
 ├── src/                     # Wallet UI (React + TypeScript + Vite)
-│   ├── components/          # UI components (Dashboard, Send, MultiSend, etc.)
-│   ├── utils/               # api.ts, evmRpc.ts, walletManager.ts, rpc.ts
+│   ├── components/          # Dashboard, Send, MultiSend, DAppRequestHandler, ...
+│   ├── utils/               # api.ts, evmRpc.ts, walletManager.ts, rpc.ts, ...
 │   ├── types/               # TypeScript type definitions
 │   ├── stores/              # Job store, event bus
 │   ├── services/            # PVAC server, stealth scan
-│   └── permissions/         # Capability permission manager
+│   ├── lib/pvac/            # PVAC WASM loader + worker + balance/stealth ops
+│   ├── permissions/         # Capability permission manager
+│   └── offscreen.ts         # MV3 offscreen PVAC runner (silent, no popup)
 ├── extensionFiles/          # Browser extension files
-│   ├── background.js        # Service worker — key custody, signing, RPC
+│   ├── background.js        # Service worker — key custody, signing, RPC, offscreen delegate
 │   ├── content.js           # Content script — message bridge + whitelist
 │   ├── provider.js          # window.octra provider injection
 │   ├── core.js              # Canonical serialization + real SHA-256
-│   └── manifest.json        # MV3 manifest
-├── packages/sdk/            # @octwa/sdk v1.2.0 — dApp integration SDK
+│   └── manifest.json        # MV3 manifest — permissions: storage, offscreen
+├── offscreen.html           # MV3 offscreen document host (hosts src/offscreen.ts)
+├── sdk/                     # @octwa/sdk v1.6.0 — dApp integration SDK (published to npm)
+├── pvac_server/             # Native C++ PVAC sidecar + WASM build
 └── scripts/                 # Build scripts (copy-extension-files.mjs)
 ```
 
@@ -33,16 +37,17 @@ main/
 
 ```bash
 npm ci                    # install (uses package-lock.json, verifies hashes)
-npm run dev               # development server
+npm run dev               # development server (wallet web UI)
 npm run build:prod        # production build
-npm run build:extension   # build + copy extension files to dist/
+npm run build:extension   # build + copy extension files into dist/
 ```
 
 ### Load Extension
 
 1. `npm run build:extension`
-2. Open `chrome://extensions` → Enable Developer mode
-3. Load unpacked → select `dist/` folder
+2. Open `chrome://extensions` → enable **Developer mode**
+3. **Load unpacked** → select the `dist/` folder
+4. Pin the OctWa icon to the toolbar, unlock the wallet once to warm the PVAC cache
 
 ---
 
@@ -52,47 +57,56 @@ npm run build:extension   # build + copy extension files to dist/
 DApp (window.octra)
     │  postMessage
     ▼
-content.js          ← isolated world, message bridge
+content.js          ← isolated world, message bridge + whitelist
     │  chrome.runtime.sendMessage
     ▼
-background.js       ← service worker, trusted zone
-    │  fetch
-    ▼
-Octra Node RPC      ← http://46.101.86.250:8080/rpc (default)
+background.js       ← MV3 service worker, trusted zone, key custody
+    │                  └─ delegates silent PVAC ops to the offscreen document
+    │
+    ├─ fetch ────────▶ Octra Node RPC
+    │                  (default http://46.101.86.250:8080)
+    │
+    └─ chrome.offscreen.createDocument('offscreen.html')
+        ▼
+       offscreen.html ← invisible page hosting the PVAC WASM worker
+        │
+        └─ pvac-worker (Web Worker) — decrypt_cipher / encrypt_value / scan_outputs / …
 ```
 
 ### Extension Files
 
 | File | Role |
 |------|------|
-| `manifest.json` | MV3, `host_permissions: ["https://*/*","http://*/*"]` |
+| `manifest.json` | MV3, `permissions: ["storage", "offscreen"]`, `host_permissions: ["https://*/*","http://*/*"]` |
 | `provider.js` | Injects `window.octra`, announces via `octra:announceProvider` (EIP-6963 analog) |
 | `content.js` | Bridges page ↔ background, validates `VALID_MESSAGE_TYPES` whitelist + requestId length |
-| `background.js` | Service worker — key custody, capability validation, RPC calls, signing mutex |
+| `background.js` | Service worker — key custody, capability validation, RPC calls, signing mutex, offscreen delegation |
+| `offscreen.html` + `src/offscreen.ts` | Invisible PVAC runner — runs silent crypto (decrypt_cipher, encrypt_value, scan_outputs, get_crypto_identity, compute_shared_secret) without ever flashing a popup |
 | `core.js` | Canonical serialization + real SHA-256 via `crypto.subtle` (shared with SDK) |
 
 ### Security Architecture
 
 | Mechanism | Description |
 |-----------|-------------|
-| **Private key isolation** | Keys live only in `background.js` service worker — never in SDK or dApp |
+| **Private key isolation** | Keys live only in `background.js` service worker + the offscreen runner — never in SDK or dApp context |
+| **Offscreen delegation** | Silent PVAC ops run in an invisible `chrome.offscreen` document — dApps never trigger a blank popup for reads |
 | **Real SHA-256** | `crypto.subtle.digest` in both `core.js` and SDK — no djb2 for security ops |
 | **Domain separation** | `OctraCapability:v2:` / `OctraInvocation:v2:` prefixes prevent cross-context replay |
 | **Signing mutex** | Serializes concurrent signing operations — prevents nonce races and double-send |
-| **Keyed pending registry** | Each popup request keyed by unique `pendingKey` — no single-slot race conditions |
+| **Keyed pending registry** | Each popup/offscreen request keyed by unique `pendingKey` — no single-slot race conditions |
 | **Origin binding** | Capabilities cryptographically bound to `appOrigin` |
-| **Nonce monotonicity** | Background enforces nonce > lastNonce on every invocation |
+| **Nonce monotonicity** | Background enforces `nonce > lastNonce` on every invocation |
 | **Content script whitelist** | `VALID_MESSAGE_TYPES` Set + requestId ≤ 128 chars — drops unknown messages |
 | **EIP-6963 analog** | `octra:announceProvider` CustomEvent — multiple wallets can coexist |
 
 ---
 
-## dApp Integration (window.octra)
+## dApp Integration
 
-The extension injects `window.octra` into every page. DApps communicate via the `@octwa/sdk`:
+The extension injects `window.octra` into every page. DApps communicate via [`@octwa/sdk`](https://www.npmjs.com/package/@octwa/sdk):
 
 ```bash
-npm install @octwa/sdk@1.2.0
+npm install @octwa/sdk@1.6.0
 ```
 
 ### Communication Flow
@@ -100,45 +114,40 @@ npm install @octwa/sdk@1.2.0
 ```
 DApp → @octwa/sdk → window.octra → content.js → background.js → Octra Node RPC
 DApp ← @octwa/sdk ← window.octra ← content.js ← background.js ← Octra Node RPC
+                                                    │
+                                                    └─ delegates silent PVAC → offscreen
 ```
 
-### Supported invoke() Methods
+### Method Surface (v1.6.0)
 
-| Method | Scope | Execution | Description |
-|--------|-------|-----------|-------------|
-| `get_balance` | `read` | Auto (no popup) | Fetch OCT balance → `{ octAddress, octBalance, network }` |
-| `send_transaction` | `write` | Popup approval | Send OCT transfer or contract call (`op_type: standard \| call`) |
-| `send_evm_transaction` | `write` | Popup approval | Send ETH/EVM transaction, wallet signs with derived secp256k1 key |
-| `send_erc20_transaction` | `write` | Popup approval | Send ERC-20 token transfer |
+**Connection & capabilities** — `connect`, `disconnect`, `requestCapability`, `renewCapability`, `revokeCapability`, `listCapabilities`, `getSessionState`
 
-### Contract Calls via send_transaction
+**Public reads** (auto-execute, no popup) — `getBalance`, `getEncryptedBalance`, `getEvmTokens`, `getEvmTokenBalance`, `getTransaction`, `waitForConfirmation`, `getEpoch`, `getRecommendedFee`, `getContractStorage`, `callContractView`, `getViewPubkey`
 
-For bridge/contract interactions, pass `op_type` and `encrypted_data` in the payload:
+**Silent PVAC reads** (offscreen, no popup) — `getCryptoIdentity`, `computeSharedSecret`, `decryptCipher`, `encryptValue`, `scanOutputs`, `stealthScan`, `stealthScanFull`, `getDecryptedBalance`
+
+**Writes** (popup approval) — `invoke`, `signMessage`, `signForZK`, `sendEvmTransaction`, `sendErc20Transaction`, `sendContractCall`, `encryptBalance`, `decryptBalance`, `stealthSend`, `stealthClaim`, `keySwitch`
+
+### Contract Calls
 
 ```typescript
-await sdk.invoke({
-  capabilityId: cap.id,
-  method: 'send_transaction',
-  payload: new TextEncoder().encode(JSON.stringify({
-    to:             'oct5MrNfji...',  // contract address
-    amount:         1.5,
-    message:        '["0xETH_ADDRESS"]',  // contract params
-    op_type:        'call',
-    encrypted_data: 'lock_to_eth',        // contract method name
-  })),
+const result = await sdk.sendContractCall(cap.id, {
+  contract: 'oct5MrNfji...',
+  method:   'lock_to_eth',
+  params:   ['0xETH_ADDRESS'],
+  amount:   1.5,     // OCT to attach (0 for pure calls)
+  ou:       1000,    // optional fee override
 });
 ```
 
-`DAppRequestHandler` reads `op_type` and `encrypted_data` from the payload and passes them to `createTransaction()` — the canonical JSON is built correctly for contract calls.
+SDK v1.6.0 forwards the optional `ou` override into the wire transaction so contract calls use the correct fee instead of the default 10 000 OU transfer rate.
 
 ### Gas Estimation
 
-Fee estimates are fetched live from the node via `octra_recommendedFee`:
-
 ```typescript
-const standard  = await sdk.estimatePlainTx({});    // op_type: 'standard'
-const encrypted = await sdk.estimateEncryptedTx({}); // op_type: 'encrypt'
-// Formula: OU ÷ 1,000,000 = fee in OCT
+const standard  = await sdk.estimatePlainTx({});
+const encrypted = await sdk.estimateEncryptedTx({ scheme: 'HFHE', data: new Uint8Array(8) });
+// 1 OU = 0.000001 OCT
 ```
 
 ---
@@ -148,8 +157,7 @@ const encrypted = await sdk.estimateEncryptedTx({}); // op_type: 'encrypt'
 ### Key Management
 - BIP39 mnemonic (12/24 words), HD wallet v1/v2
 - Import via mnemonic or private key
-- Multiple wallets with instant switching
-- Drag & drop reordering, custom labels
+- Multiple wallets with instant switching, drag & drop reordering, custom labels
 - Secure private key export (password re-verification)
 - Auto-lock on browser close / inactivity
 
@@ -158,7 +166,7 @@ const encrypted = await sdk.estimateEncryptedTx({}); // op_type: 'encrypt'
 - Multi-send (multiple recipients, batch submission via `octra_submitBatch`)
 - Bulk send via TXT/CSV file import
 - Transaction history (All / Sent / Received / Contract)
-- Real-time status tracking, pending monitoring
+- Real-time status tracking and pending monitoring
 
 ### Privacy Mode (PVAC / HFHE)
 - Public ↔ Private mode toggle
@@ -166,10 +174,10 @@ const encrypted = await sdk.estimateEncryptedTx({}); // op_type: 'encrypt'
 - Decrypt balance (private OCT → public)
 - Private transfers using Fully Homomorphic Encryption
 - Claim incoming private transfers
-- Stealth address scanning
+- Stealth address scanning (background-scheduled + dApp-triggered via `scanOutputs`)
 
 ### EVM Compatibility
-- EVM address derived from same Ed25519 key (secp256k1 derivation)
+- EVM address derived from the same Ed25519 key (secp256k1 derivation)
 - Multi-network: Ethereum, Polygon, BSC, Base, Sepolia
 - ERC-20 token management with custom token import
 - NFT viewing and transfers
@@ -182,57 +190,69 @@ const encrypted = await sdk.estimateEncryptedTx({}); // op_type: 'encrypt'
 - Connection approval flow with site info display
 - Keyed pending request registry (no race conditions)
 - Connected dApps manager with revocation
+- **Silent offscreen PVAC runner** — dApp reads no longer flash blank popups
 
 ### User Interface
 - Popup mode (400×600) and Expanded mode
-- Dark/Light theme
+- Dark / light theme
 - Onboarding flow for new users
 - RPC provider manager with live status indicator
 - Animated 3D background (Three.js)
+- DApp approval screens show full destination / to address (no truncation)
 
 ---
 
 ## @octwa/sdk
 
-The SDK package lives in `packages/sdk/` and is published to npm.
+The SDK package lives in `sdk/` and is published to npm: [`@octwa/sdk@1.6.0`](https://www.npmjs.com/package/@octwa/sdk).
 
 ```
-packages/sdk/
+sdk/
 ├── src/
 │   ├── sdk.ts              # OctraSDK class — main entry point
 │   ├── types.ts            # All TypeScript types
 │   ├── canonical.ts        # Deterministic serialization + real SHA-256
 │   ├── crypto.ts           # Ed25519 verify, capability validation
+│   ├── capability-manager.ts
 │   ├── capability-service.ts
 │   ├── nonce-manager.ts
+│   ├── session-manager.ts
 │   ├── gas-service.ts      # Fallback fee estimates
+│   ├── intents.ts          # Intent payload builders
 │   ├── response-utils.ts   # decodeResponseData, decodeBalanceResponse
-│   ├── errors.ts           # 15 typed error classes
+│   ├── errors.ts           # Typed error classes
 │   └── index.ts            # Public exports
-└── tests/
-    ├── sdk.test.ts         # 25 tests
-    └── crypto.test.ts      # 22 tests
+├── tests/
+│   ├── sdk.test.ts         # Unit
+│   ├── parity.test.ts      # SDK ↔ core.js / background.js parity
+│   ├── reads.test.ts       # Auto-execute / read flows
+│   ├── wire.test.ts        # Wire format (op_type, encrypted_data, message)
+│   └── harness/            # Integration harness (browser smoke + cli)
+├── AUDIT.md                # Security audit notes
+└── README.md               # SDK-specific docs (install, API, changelog)
 ```
 
 ### Build & Test
 
 ```bash
-cd packages/sdk
+cd sdk
 npm ci
 npm run build   # CJS + ESM + TypeScript declarations
-npm test        # 47 tests via vitest
+npm test        # Unit + parity + wire + reads
 ```
 
-### Key Changes in v1.2.0
+### Highlights of v1.6.0
 
-- `sha256Bytes` / `sha256String` — real SHA-256 via `crypto.subtle` (was djb2)
-- `hashCapabilityWithDomain` / `hashInvocationWithDomain` — now async
-- `Connection.epoch` and `branchId` — now required (not optional)
-- `BalanceResponse` — OCT-only: `{ octAddress, octBalance, network }`
-- `OctraProvider.disconnect()` — returns `Promise<{disconnected: boolean}>`
-- `detectProvider` — listens for `octra:announceProvider` (EIP-6963 analog)
-- Removed: `invokeCompute`, `estimateComputeCost`, `signMessage` from SDK
-- Removed: `ComputeRequest/Profile/Result`, `EVMNetworkId` types
+- `sendContractCall()` accepts optional `ou` and forwards it to the wallet
+- New crypto-identity surface: `getCryptoIdentity`, `computeSharedSecret`, `decryptCipher`, `encryptValue`, `scanOutputs`
+- New chain-read helpers without popups: `getTransaction`, `waitForConfirmation`, `getEpoch`, `getRecommendedFee`, `getContractStorage`, `callContractView`, `getViewPubkey`
+- `getDecryptedBalance` convenience — `getBalance` + `decryptCipher` in one call
+- `stealthScanFull` — wraps raw output fetch + `scanOutputs`
+- `keySwitch` — rotate PVAC pubkey on chain
+- `signForZK` — Ed25519 signing for Groth16 / ZK public inputs
+- AUDIT.md + harness (browser + CLI) added under `sdk/tests/harness/`
+
+See [sdk/README.md](sdk/README.md) for the full changelog.
 
 ---
 
@@ -275,6 +295,6 @@ MIT — see LICENSE file.
 ## Links
 
 - **GitHub**: https://github.com/m-tq/OctWa
-- **SDK npm**: https://www.npmjs.com/package/@octwa/sdk
+- **SDK on npm**: https://www.npmjs.com/package/@octwa/sdk
 - **dApp Starter**: https://starter.octwa.pw
 - **Security**: security@octwa.pw

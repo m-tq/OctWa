@@ -1,6 +1,10 @@
 # @octwa/sdk
 
+[![npm](https://img.shields.io/npm/v/@octwa/sdk.svg?label=npm)](https://www.npmjs.com/package/@octwa/sdk)
+
 TypeScript SDK for integrating dApps with the **OctWa Wallet** browser extension.
+
+**Current version: [`1.6.0`](https://www.npmjs.com/package/@octwa/sdk)**
 
 All signing, key operations, and proof generation happen inside the wallet extension — private keys never leave the extension context.
 
@@ -9,7 +13,7 @@ All signing, key operations, and proof generation happen inside the wallet exten
 ## Installation
 
 ```bash
-npm install @octwa/sdk
+npm install @octwa/sdk@1.6.0
 ```
 
 ---
@@ -631,6 +635,16 @@ The active network is read from the wallet's RPC provider settings — dApps do 
 ---
 
 ## Changelog
+
+### v1.6.0
+- **Silent offscreen PVAC runner (extension side)** — dApp reads that need WASM (decrypt cipher, encrypt value, identity, ECDH, scan outputs) now run inside a `chrome.offscreen` document instead of flashing the wallet popup. The SDK surface is unchanged; the UX regression where every `decryptCipher()` showed a blank popup is fixed on the wallet side.
+- **`sendContractCall()` forwards the optional `ou` override** — the wallet previously ignored it and charged the default 10 000 OU transfer rate. Contract calls now use the correct fee.
+- **Chain-read helpers (no popup)** — `getTransaction`, `waitForConfirmation(hash, opts)`, `getEpoch`, `getRecommendedFee(opType)`, `getContractStorage(addr, key)`, `callContractView({ contract, method, params })`, `getViewPubkey(addr)`.
+- **Convenience reads** — `getDecryptedBalance()` rolls `getBalance` + `decryptCipher` into one call; `stealthScanFull(fromEpoch?, onProgress?)` wraps `octra_stealthOutputs` fetch + `scanOutputs`.
+- **New write helper** — `keySwitch()` rotates the wallet's PVAC pubkey on chain.
+- **Audit + integration harness** — `AUDIT.md` documents the SDK's security model; `tests/harness/` adds a browser smoke test (`smoke.html`) and CLI harness (`tsx tests/harness/cli.ts`) that prove parity between the SDK's canonical layer and the extension's `core.js`.
+- **New types exported** — `TransactionInfo`, `WaitForConfirmationOptions`, `EpochInfo`, `RecommendedFee`, `ContractViewPayload`, `ContractViewResult`.
+- Internal — canonical/wire test coverage (`parity.test.ts`, `reads.test.ts`, `wire.test.ts`).
 
 ### v1.5.0
 - Publish to npm as `@octwa/sdk@1.5.0`

@@ -1,10 +1,11 @@
 # OctWa - Octra Wallet Extension
 
-**Version:** 1.2.4  
-**Manifest:** V3  
+**Extension version:** 1.3.7
+**SDK:** [`@octwa/sdk@1.6.0`](https://www.npmjs.com/package/@octwa/sdk)
+**Manifest:** V3 (permissions: `storage`, `offscreen`)
 **Status:** Production Ready ✅
 
-The official browser extension wallet for the Octra blockchain. Provides secure key management, capability-based authorization, and full support for HFHE (Homomorphic Fully Encrypted) transactions.
+The official browser extension wallet for the Octra blockchain. Provides secure key management, capability-based authorization, and full support for HFHE (Homomorphic Fully Encrypted) transactions — with silent offscreen PVAC delegation so dApp reads never flash a popup.
 
 ---
 
@@ -46,23 +47,29 @@ OctWa is a non-custodial browser wallet extension that serves as the **final cry
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                    Browser Extension                         │
-├─────────────────────────────────────────────────────────────┤
-│                                                               │
-│  ┌──────────────┐    ┌──────────────┐    ┌──────────────┐  │
-│  │   Content    │───▶│   Provider   │───▶│  Background  │  │
-│  │   Script     │◀───│   Script     │◀───│   Service    │  │
-│  │              │    │              │    │   Worker     │  │
-│  └──────────────┘    └──────────────┘    └──────────────┘  │
-│         │                    │                    │          │
-│         │                    │                    │          │
-│  ┌──────▼────────────────────▼────────────────────▼──────┐  │
-│  │              Chrome Extension APIs                     │  │
-│  │  (storage, runtime, tabs, windows, action)            │  │
-│  └────────────────────────────────────────────────────────┘  │
-│                                                               │
-└───────────────────────────────┬───────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────┐
+│                        Browser Extension                          │
+├──────────────────────────────────────────────────────────────────┤
+│                                                                    │
+│  ┌──────────────┐    ┌──────────────┐    ┌──────────────────┐   │
+│  │   Content    │───▶│   Provider   │───▶│   Background     │   │
+│  │   Script     │◀───│   Script     │◀───│   Service Worker │   │
+│  └──────────────┘    └──────────────┘    └────────┬─────────┘   │
+│                                                    │              │
+│                                        silent PVAC │ delegate    │
+│                                                    ▼              │
+│                                    ┌────────────────────────┐     │
+│                                    │  Offscreen Document    │     │
+│                                    │  (offscreen.html)      │     │
+│                                    │  Hosts pvac-worker.ts  │     │
+│                                    └────────────────────────┘     │
+│                                                                    │
+│  ┌─────────────────────────────────────────────────────────────┐  │
+│  │                Chrome Extension APIs                         │  │
+│  │  (storage, runtime, tabs, windows, action, offscreen)       │  │
+│  └─────────────────────────────────────────────────────────────┘  │
+│                                                                    │
+└───────────────────────────────┬──────────────────────────────────┘
                                 │
                     ┌───────────▼───────────┐
                     │   Web Page (dApp)     │
@@ -75,7 +82,7 @@ OctWa is a non-custodial browser wallet extension that serves as the **final cry
 1. **Content Script** (`content.js`)
    - Injected into all web pages
    - Bridges dApp ↔ Extension communication
-   - Validates message origins
+   - Validates message origins against `VALID_MESSAGE_TYPES` whitelist
    - Serializes/deserializes data
 
 2. **Provider Script** (`provider.js`)
@@ -90,8 +97,16 @@ OctWa is a non-custodial browser wallet extension that serves as the **final cry
    - Capability validation
    - Method execution
    - Network communication
+   - Delegates silent PVAC ops to the offscreen document
 
-4. **Popup UI** (`popup.html`)
+4. **Offscreen Document** (`../offscreen.html` + `../src/offscreen.ts`)
+   - Invisible extension page — no UI, no popup
+   - Hosts the PVAC WebAssembly worker (`pvac-worker.ts`)
+   - Decrypts the wallet using the session snapshot forwarded by `background.js`
+   - Handles `decrypt_cipher`, `encrypt_value`, `get_crypto_identity`, `compute_shared_secret`, and `scan_outputs` without ever triggering a popup
+   - Closes automatically after ~30 s idle
+
+5. **Popup UI** (`popup.html`)
    - User interface for wallet operations
    - Transaction approval
    - Capability management
@@ -400,19 +415,33 @@ async function validateCapability(capability, appOrigin) {
 
 ### Auto-Execute Methods (No Popup)
 
-These methods execute automatically without user approval:
+These methods execute automatically without user approval. Silent PVAC ops are routed to the offscreen document so they don't trigger a popup either.
 
-- `get_balance` - Get wallet balances
-- `get_quote` - Get swap quote
-- `create_intent` - Create swap intent
-- `submit_intent` - Submit intent to backend
-- `get_intent_status` - Check intent status
+**Background-handled (plain reads):**
+- `get_balance` — public balance + encrypted cipher
+- `get_encrypted_balance` — cipher + PVAC registration state
+- `get_evm_tokens` / `get_evm_token_balance`
+- `get_transaction` / `wait_for_confirmation` / `get_epoch` / `get_recommended_fee`
+- `get_contract_storage` / `contract_view` / `get_view_pubkey`
+
+**Offscreen-handled (PVAC WASM):**
+- `get_crypto_identity` — Ed25519 pubkey + Curve25519 view pubkey + PVAC status
+- `compute_shared_secret` — ECDH shared secret + stealth tag + claim secret
+- `decrypt_cipher` — decrypt `hfhe_v1|...` ciphers (used for encrypted balance display, contract storage reads)
+- `encrypt_value` — encrypt plaintext into an `hfhe_v1|...` cipher
+- `scan_outputs` — scan raw stealth outputs using the wallet's view key
 
 ```javascript
-const autoExecuteMethods = ['get_balance', 'get_quote', 'create_intent', 'submit_intent', 'get_intent_status'];
+const autoExecuteMethods = [
+  'get_balance', 'get_encrypted_balance', 'stealth_scan',
+  'get_evm_tokens', 'get_evm_token_balance',
+  'get_crypto_identity', 'compute_shared_secret', 'decrypt_cipher',
+  'encrypt_value', 'scan_outputs',
+  'get_transaction', 'get_epoch', 'get_recommended_fee',
+  'get_contract_storage', 'contract_view', 'get_view_pubkey',
+];
 
 if (autoExecuteMethods.includes(method)) {
-  // Execute immediately
   const result = await executeMethod(method, payload, connection, capability);
   return { success: true, result };
 }
