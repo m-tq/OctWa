@@ -31,6 +31,24 @@ import type {
   ContractCallResult,
   Erc20TokenBalance,
   GetEvmTokensResult,
+  // Phase 7 — PVAC / HFHE
+  CryptoIdentity,
+  CipherDecryptResult,
+  CipherEncryptResult,
+  RawStealthOutput,
+  ScannedOutput,
+  ScanOutputsResult,
+  SharedSecretResult,
+  ZkSignInput,
+  ZkSignResult,
+  PvacProgressCallback,
+  // Phase 9 — reads
+  TransactionInfo,
+  WaitForConfirmationOptions,
+  EpochInfo,
+  RecommendedFee,
+  ContractViewPayload,
+  ContractViewResult,
 } from './types';
 
 import { NotInstalledError, NotConnectedError, ValidationError, wrapProviderError } from './errors';
@@ -194,11 +212,16 @@ export class OctraSDK {
         nonce,
       });
 
-      const payloadHash = req.payload ? hashPayload(req.payload) : '';
+      const payloadHash = req.payload ? await hashPayload(req.payload) : '';
 
       let transportPayload: SignedInvocation['payload'];
-      if (req.payload instanceof Uint8Array) {
-        transportPayload = { _type: 'Uint8Array', data: Array.from(req.payload) };
+      const isByteArrayLike = (v: unknown): v is Uint8Array =>
+        !!v &&
+        typeof (v as { byteLength?: unknown }).byteLength === 'number' &&
+        typeof (v as { BYTES_PER_ELEMENT?: unknown }).BYTES_PER_ELEMENT === 'number';
+
+      if (isByteArrayLike(req.payload)) {
+        transportPayload = { _type: 'Uint8Array', data: Array.from(req.payload as Uint8Array) };
       } else if (req.payload && 'data' in req.payload) {
         transportPayload = {
           _type: 'Uint8Array',
@@ -474,6 +497,217 @@ export class OctraSDK {
     return data;
   }
 
+  // ── Phase 7: PVAC / HFHE Crypto Identity ──────────────────────────────────
+
+  /**
+   * Get wallet's crypto identity: Ed25519 pubkey, Curve25519 view pubkey,
+   * PVAC registration status, and current HFHE cipher.
+   *
+   * Auto-executes — no popup. Requires a capability with `get_crypto_identity`
+   * method and `read` scope.
+   *
+   * The view public key is safe to share with counterparties for stealth sends.
+   * It has no signing power — only used for ECDH key agreement.
+   */
+  async getCryptoIdentity(capabilityId: string): Promise<CryptoIdentity> {
+    this.ensureInstalled();
+    this.ensureConnected();
+
+    try {
+      const result = await this.provider!.getCryptoIdentity();
+      return result as CryptoIdentity;
+    } catch (error) {
+      throw wrapProviderError(error);
+    }
+  }
+
+  /**
+   * Compute ECDH shared secret with a counterparty's Curve25519 view pubkey.
+   * Returns the shared secret plus derived stealth tag and claim secret.
+   *
+   * Auto-executes — no popup. Requires a capability with `compute_shared_secret`
+   * method and `read` scope.
+   *
+   * Use case: dApp needs to verify a stealth output belongs to a specific
+   * recipient, or to derive encryption keys for private messaging.
+   *
+   * @param capabilityId - Active capability ID
+   * @param theirViewPubkey - Counterparty's Curve25519 view public key (base64)
+   */
+  async computeSharedSecret(
+    capabilityId: string,
+    theirViewPubkey: string,
+  ): Promise<SharedSecretResult> {
+    this.ensureInstalled();
+    this.ensureConnected();
+
+    if (!isNonEmptyString(theirViewPubkey)) {
+      throw new ValidationError('theirViewPubkey must be a non-empty string');
+    }
+
+    try {
+      const result = await this.provider!.computeSharedSecret(theirViewPubkey);
+      return result as SharedSecretResult;
+    } catch (error) {
+      throw wrapProviderError(error);
+    }
+  }
+
+  /**
+   * Decrypt an HFHE cipher client-side using the wallet's PVAC secret key.
+   * No transaction, no fee — pure read operation.
+   *
+   * Auto-executes — no popup. Requires a capability with `decrypt_cipher`
+   * method and `read` scope.
+   *
+   * Use case: dApp fetches an encrypted value from contract storage and
+   * decrypts it locally to display to the user.
+   *
+   * @param capabilityId - Active capability ID
+   * @param cipher - HFHE cipher string ("hfhe_v1|..." from contract storage)
+   */
+  async decryptCipher(
+    capabilityId: string,
+    cipher: string,
+  ): Promise<CipherDecryptResult> {
+    this.ensureInstalled();
+    this.ensureConnected();
+
+    if (!isNonEmptyString(cipher)) {
+      throw new ValidationError('cipher must be a non-empty string');
+    }
+
+    try {
+      const result = await this.provider!.decryptCipher(cipher);
+      // Deserialize bigint from string (postMessage transport)
+      const raw = result as { valueRaw: string | bigint; valueOct: number };
+      return {
+        valueRaw: typeof raw.valueRaw === 'bigint' ? raw.valueRaw : BigInt(raw.valueRaw ?? 0),
+        valueOct: raw.valueOct ?? 0,
+      };
+    } catch (error) {
+      throw wrapProviderError(error);
+    }
+  }
+
+  /**
+   * Encrypt a value client-side using the wallet's PVAC public key.
+   * Returns an hfhe_v1|... cipher ready for use in contract calls.
+   *
+   * Auto-executes — no popup. Requires a capability with `encrypt_value`
+   * method and `read` scope.
+   *
+   * Use case: dApp needs to pass an encrypted value to a contract method
+   * without revealing the plaintext on-chain.
+   *
+   * @param capabilityId - Active capability ID
+   * @param valueRaw - Value in raw units (1 OCT = 1_000_000)
+   */
+  async encryptValue(
+    capabilityId: string,
+    valueRaw: bigint,
+  ): Promise<CipherEncryptResult> {
+    this.ensureInstalled();
+    this.ensureConnected();
+
+    if (valueRaw < 0n) {
+      throw new ValidationError('valueRaw must be non-negative');
+    }
+
+    try {
+      const result = await this.provider!.encryptValue(valueRaw);
+      return result as CipherEncryptResult;
+    } catch (error) {
+      throw wrapProviderError(error);
+    }
+  }
+
+  /**
+   * Scan a list of raw stealth outputs and return ones belonging to this wallet.
+   * Performs ECDH inside the wallet context — private view key never leaves.
+   *
+   * Auto-executes — no popup. Requires a capability with `scan_outputs`
+   * method and `read` scope.
+   *
+   * Use case: dApp fetches all stealth outputs from the node and lets the
+   * wallet identify which ones belong to the current user.
+   *
+   * @param capabilityId - Active capability ID
+   * @param outputs - Raw stealth outputs from node RPC (octra_stealthOutputs)
+   * @param onProgress - Optional progress callback for large output sets
+   */
+  async scanOutputs(
+    capabilityId: string,
+    outputs: RawStealthOutput[],
+    onProgress?: PvacProgressCallback,
+  ): Promise<ScanOutputsResult> {
+    this.ensureInstalled();
+    this.ensureConnected();
+
+    if (!Array.isArray(outputs)) {
+      throw new ValidationError('outputs must be an array');
+    }
+
+    onProgress?.({ step: 'initializing', label: 'Preparing scan...', percent: 5 });
+
+    try {
+      onProgress?.({ step: 'scanning', label: `Scanning ${outputs.length} outputs...`, percent: 20 });
+
+      const result = await this.provider!.scanOutputs(outputs, onProgress);
+
+      onProgress?.({ step: 'done', label: 'Scan complete', percent: 100 });
+
+      // Deserialize bigint fields from string transport
+      const raw = result as {
+        outputs: Array<ScannedOutput & { amountRaw: string | bigint }>;
+        totalScanned: number;
+        matched: number;
+      };
+
+      return {
+        outputs: raw.outputs.map((o) => ({
+          ...o,
+          amountRaw: typeof o.amountRaw === 'bigint' ? o.amountRaw : BigInt(o.amountRaw ?? 0),
+        })),
+        totalScanned: raw.totalScanned,
+        matched: raw.matched,
+      };
+    } catch (error) {
+      throw wrapProviderError(error);
+    }
+  }
+
+  /**
+   * Sign data for use as a ZK proof public input.
+   * Uses the wallet's Ed25519 key. Always opens a popup for user approval.
+   *
+   * Requires a capability with `sign_for_zk` method and `write` scope.
+   *
+   * Use case: dApp needs to generate a ZK proof where the public input
+   * includes a wallet signature (e.g., proving ownership without revealing key).
+   *
+   * @param capabilityId - Active capability ID
+   * @param input - Data to sign and optional domain string
+   */
+  async signForZK(
+    capabilityId: string,
+    input: ZkSignInput,
+  ): Promise<ZkSignResult> {
+    this.ensureInstalled();
+    this.ensureConnected();
+
+    if (!input?.data || !(input.data instanceof Uint8Array) || input.data.length === 0) {
+      throw new ValidationError('input.data must be a non-empty Uint8Array');
+    }
+
+    try {
+      const result = await this.provider!.signForZK(input);
+      return result as ZkSignResult;
+    } catch (error) {
+      throw wrapProviderError(error);
+    }
+  }
+
   // ── Phase 6: Contract Interactions ────────────────────────────────────────
 
   /**
@@ -566,6 +800,233 @@ export class OctraSDK {
       epoch:              this.connection?.epoch,
       activeCapabilities: this.capabilityService.getActive(),
     };
+  }
+
+  // ── Phase 9: Reads — transactions, epoch, fees, contract views ────────────
+
+  /**
+   * Look up a single transaction by hash.
+   * Auto-executes — no popup.
+   * Requires a capability with method `get_transaction` and `read` scope.
+   */
+  async getTransaction(capabilityId: string, hash: string): Promise<TransactionInfo | null> {
+    if (!isNonEmptyString(hash)) throw new ValidationError('hash must be a non-empty string');
+    const result = await this.invoke({
+      capabilityId,
+      method: 'get_transaction',
+      payload: new TextEncoder().encode(JSON.stringify({ hash })),
+    });
+    const data = decodeResponseData<TransactionInfo | null>(result);
+    return data ?? null;
+  }
+
+  /**
+   * Poll until a transaction is either confirmed, rejected, or dropped.
+   * Resolves with the final status or rejects on timeout.
+   *
+   * Defaults: 120_000 ms budget (>= 12 epochs), 3_000 ms interval.
+   *
+   * @throws TimeoutError if the poll budget is exhausted without a terminal state.
+   */
+  async waitForConfirmation(
+    capabilityId: string,
+    hash: string,
+    options: WaitForConfirmationOptions = {},
+  ): Promise<TransactionInfo> {
+    const timeoutMs      = options.timeoutMs      ?? 120_000;
+    const pollIntervalMs = options.pollIntervalMs ?? 3_000;
+    const deadline       = Date.now() + timeoutMs;
+
+    let consecutiveErrors = 0;
+    const maxConsecutiveErrors = 5;
+
+    while (Date.now() < deadline) {
+      try {
+        const info = await this.getTransaction(capabilityId, hash);
+        options.onTick?.(info);
+        consecutiveErrors = 0;
+
+        if (info && (info.status === 'confirmed' || info.status === 'rejected' || info.status === 'dropped')) {
+          return info;
+        }
+      } catch (err) {
+        consecutiveErrors += 1;
+        if (consecutiveErrors >= maxConsecutiveErrors) {
+          const { TimeoutError } = await import('./errors');
+          throw new TimeoutError(
+            `waitForConfirmation(${hash}) after ${consecutiveErrors} consecutive lookup errors`,
+            err,
+          );
+        }
+      }
+
+      await new Promise((r) => setTimeout(r, pollIntervalMs));
+    }
+
+    const { TimeoutError } = await import('./errors');
+    throw new TimeoutError(`waitForConfirmation(${hash}) not confirmed within ${timeoutMs} ms`);
+  }
+
+  /**
+   * Current Octra epoch from the wallet's active RPC.
+   * Auto-executes — no popup.
+   * Requires a capability with method `get_epoch` and `read` scope.
+   */
+  async getEpoch(capabilityId: string): Promise<EpochInfo> {
+    const result = await this.invoke({ capabilityId, method: 'get_epoch' });
+    const data = decodeResponseData<EpochInfo>(result);
+    if (!data) throw new Error('Empty epoch response');
+    return data;
+  }
+
+  /**
+   * Recommended fee for an op_type, pulled from `octra_recommendedFee`.
+   * Auto-executes — no popup.
+   *
+   * @param opType - one of: standard | encrypt | decrypt | stealth | claim | call | deploy | key_switch
+   */
+  async getRecommendedFee(capabilityId: string, opType: string): Promise<RecommendedFee> {
+    if (!isNonEmptyString(opType)) throw new ValidationError('opType is required');
+    const result = await this.invoke({
+      capabilityId,
+      method: 'get_recommended_fee',
+      payload: new TextEncoder().encode(JSON.stringify({ opType })),
+    });
+    const data = decodeResponseData<RecommendedFee>(result);
+    if (!data) throw new Error('Empty recommendedFee response');
+    return data;
+  }
+
+  /**
+   * Read a single contract storage slot by raw key.
+   * No tx, no fee — view-only.
+   */
+  async getContractStorage(
+    capabilityId: string,
+    contract: string,
+    key: string,
+  ): Promise<unknown> {
+    if (!isNonEmptyString(contract)) throw new ValidationError('contract is required');
+    if (!isNonEmptyString(key))      throw new ValidationError('key is required');
+    const result = await this.invoke({
+      capabilityId,
+      method: 'get_contract_storage',
+      payload: new TextEncoder().encode(JSON.stringify({ contract, key })),
+    });
+    const data = decodeResponseData<{ value: unknown }>(result);
+    return data?.value ?? null;
+  }
+
+  /**
+   * Call a contract view method (read-only). No tx, no fee.
+   */
+  async callContractView(
+    capabilityId: string,
+    payload: ContractViewPayload,
+  ): Promise<ContractViewResult> {
+    if (!isNonEmptyString(payload.contract)) throw new ValidationError('contract is required');
+    if (!isNonEmptyString(payload.method))   throw new ValidationError('method is required');
+    const result = await this.invoke({
+      capabilityId,
+      method: 'contract_call_view',
+      payload: new TextEncoder().encode(JSON.stringify({
+        contract: payload.contract,
+        method:   payload.method,
+        params:   payload.params ?? [],
+      })),
+    });
+    const data = decodeResponseData<ContractViewResult>(result);
+    return data ?? { result: null };
+  }
+
+  /**
+   * Fetch the Curve25519 view pubkey registered for a given Octra address.
+   * Needed before sending a stealth transfer to them.
+   * Auto-executes — no popup.
+   */
+  async getViewPubkey(capabilityId: string, address: string): Promise<string | null> {
+    if (!isNonEmptyString(address)) throw new ValidationError('address is required');
+    const result = await this.invoke({
+      capabilityId,
+      method: 'get_view_pubkey',
+      payload: new TextEncoder().encode(JSON.stringify({ address })),
+    });
+    const data = decodeResponseData<{ viewPubkey: string | null }>(result);
+    return data?.viewPubkey ?? null;
+  }
+
+  /**
+   * Convenience: `getBalance` + `decryptCipher` in one call.
+   * Returns the decrypted encrypted balance (0 if no cipher).
+   *
+   * Auto-executes — no popup. Requires capability methods `get_balance` AND `decrypt_cipher`.
+   */
+  async getDecryptedBalance(
+    capabilityId: string,
+  ): Promise<BalanceResponse & { decryptedEncryptedBalance: number; decryptedEncryptedBalanceRaw: bigint }> {
+    const balance = await this.getBalance(capabilityId);
+
+    if (!balance.cipher || balance.cipher === '0') {
+      return { ...balance, decryptedEncryptedBalance: 0, decryptedEncryptedBalanceRaw: 0n };
+    }
+
+    const dec = await this.decryptCipher(capabilityId, balance.cipher);
+    return {
+      ...balance,
+      encryptedBalance:              dec.valueOct,
+      decryptedEncryptedBalance:     dec.valueOct,
+      decryptedEncryptedBalanceRaw:  dec.valueRaw,
+    };
+  }
+
+  /**
+   * Full stealth scan that fetches raw outputs from the wallet's active RPC
+   * and then runs wallet-side ECDH matching.
+   *
+   * Supersedes the legacy `stealthScan` (which cannot match outputs because
+   * the background service worker has no access to the private view key).
+   *
+   * Auto-executes — no popup. Requires `stealth_scan` (+ read) for the RPC fetch
+   * and `scan_outputs` (+ read) for the local match.
+   */
+  async stealthScanFull(
+    capabilityId: string,
+    fromEpoch = 0,
+    onProgress?: PvacProgressCallback,
+  ): Promise<ScanOutputsResult> {
+    let fetched: { outputs: RawStealthOutput[] } | null = null;
+    try {
+      const fetchResult = await this.invoke({
+        capabilityId,
+        method: 'get_stealth_outputs',
+        payload: new TextEncoder().encode(JSON.stringify({ fromEpoch })),
+      });
+      fetched = decodeResponseData<{ outputs: RawStealthOutput[] }>(fetchResult);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      throw new Error(`stealthScanFull failed during get_stealth_outputs RPC: ${msg}`);
+    }
+
+    const raw = fetched?.outputs ?? [];
+    try {
+      return await this.scanOutputs(capabilityId, raw, onProgress);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      throw new Error(`stealthScanFull failed during scanOutputs (${raw.length} outputs): ${msg}`);
+    }
+  }
+
+  /**
+   * Submit a `key_switch` transaction — replaces the wallet's PVAC pubkey
+   * on-chain. Used to recover from a PVAC foreign-key conflict.
+   *
+   * Always opens a popup. Requires capability method `key_switch` and `write` scope.
+   */
+  async keySwitch(capabilityId: string): Promise<{ txHash: string }> {
+    const result = await this.invoke({ capabilityId, method: 'key_switch' });
+    const data = decodeResponseData<{ txHash: string }>(result);
+    if (!data?.txHash) throw new Error('No transaction hash in key_switch response');
+    return { txHash: data.txHash };
   }
 
   on<E extends EventName>(event: E, callback: EventCallback<E>): () => void {

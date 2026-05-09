@@ -172,7 +172,18 @@ export function generateNonce(): string {
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20, 32)}`;
 }
 
-/** Synchronous djb2-based origin binding hash. Not for capability signing. */
+/**
+ * Client-side origin-binding token for invocations.
+ *
+ * This is NOT a cryptographic hash — it is a 32-bit djb2 fingerprint
+ * packed into a 64-char hex string. Its purpose is invocation deduplication
+ * on the client side (same method × same nonce → same token).
+ *
+ * Real origin binding for security is enforced at the extension boundary:
+ * `background.js` derives the origin from `sender.url` and rejects any
+ * mismatch against the capability's bound `appOrigin`. The token below is
+ * not consulted for authorization.
+ */
 export function domainSeparator(params: {
   circleId: string;
   origin: string;

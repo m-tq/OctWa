@@ -25,7 +25,14 @@
     'ESTIMATE_ENCRYPTED_TX',
     'LIST_CAPABILITIES_REQUEST',
     'RENEW_CAPABILITY_REQUEST',
-    'REVOKE_CAPABILITY_REQUEST'
+    'REVOKE_CAPABILITY_REQUEST',
+    // PVAC / HFHE Crypto (Phase 7)
+    'PVAC_GET_IDENTITY',
+    'PVAC_COMPUTE_SHARED_SECRET',
+    'PVAC_DECRYPT_CIPHER',
+    'PVAC_ENCRYPT_VALUE',
+    'PVAC_SCAN_OUTPUTS',
+    'PVAC_SIGN_FOR_ZK',
   ]);
 
   // Explicit field allowlist per message type.
@@ -42,6 +49,13 @@
     LIST_CAPABILITIES_REQUEST: [],
     RENEW_CAPABILITY_REQUEST:  ['capabilityId'],
     REVOKE_CAPABILITY_REQUEST: ['capabilityId'],
+    // PVAC / HFHE Crypto (Phase 7)
+    PVAC_GET_IDENTITY:          ['appOrigin'],
+    PVAC_COMPUTE_SHARED_SECRET: ['theirViewPubkey', 'appOrigin'],
+    PVAC_DECRYPT_CIPHER:        ['cipher', 'appOrigin'],
+    PVAC_ENCRYPT_VALUE:         ['valueRaw', 'appOrigin'],
+    PVAC_SCAN_OUTPUTS:          ['outputs', 'appOrigin'],
+    PVAC_SIGN_FOR_ZK:           ['data', 'domain', 'appOrigin', 'appName', 'appIcon'],
   };
 
   // Handle messages from provider
@@ -73,12 +87,38 @@
       }
     }
 
+    // Guarantee structured-clone + JSON compatibility by running a
+    // defensive JSON roundtrip. chrome.runtime.sendMessage uses JSON
+    // serialization and fails with "Could not serialize message." when
+    // the payload carries a BigInt, Uint8Array, Function, or similar.
+    let sanitizedData;
+    try {
+      sanitizedData = JSON.parse(JSON.stringify(safeData, (_k, v) => {
+        if (typeof v === 'bigint')        return v.toString();
+        if (v instanceof Uint8Array)      return Array.from(v);
+        if (ArrayBuffer.isView(v))        return Array.from(new Uint8Array(v.buffer));
+        if (typeof v === 'function')      return undefined;
+        if (typeof v === 'symbol')        return undefined;
+        return v;
+      }));
+    } catch (e) {
+      console.error('[Content] failed to sanitize outgoing request', e);
+      window.postMessage({
+        source: 'octra-content-script',
+        requestId: event.data.requestId,
+        type: 'ERROR_RESPONSE',
+        success: false,
+        error: `Outgoing request could not be serialized: ${e?.message || e}`,
+      }, getTargetOrigin());
+      return;
+    }
+
     // Forward to background
     chrome.runtime.sendMessage({
       source: 'octra-content-script',
       type: event.data.type,
       requestId: event.data.requestId,
-      data: safeData
+      data: sanitizedData
     }).then(response => {
       console.log('[Content] Response:', response);
       
@@ -95,13 +135,14 @@
         error: serializedResponse.error
       }, getTargetOrigin());
     }).catch(error => {
-      console.error('[Content] Error:', error);
+      const errMsg = error && error.message ? error.message : String(error);
+      console.error('[Content] Error forwarding', event.data.type, ':', errMsg);
       window.postMessage({
         source: 'octra-content-script',
         requestId: event.data.requestId,
         type: 'ERROR_RESPONSE',
         success: false,
-        error: error.message || 'Extension communication error'
+        error: `[${event.data.type}] ${errMsg || 'Extension communication error'}`,
       }, getTargetOrigin());
     });
   };

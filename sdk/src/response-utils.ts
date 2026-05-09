@@ -27,7 +27,7 @@ export function decodeResponseData<T = unknown>(result: InvocationResult): T | n
     responseData = resultAny.result.data;
   }
 
-  if (!responseData) return null;
+  if (responseData === undefined || responseData === null) return null;
 
   // Convert to Uint8Array if needed
   let bytes: Uint8Array;
@@ -40,8 +40,13 @@ export function decodeResponseData<T = unknown>(result: InvocationResult): T | n
     const obj = responseData as Record<string, unknown>;
     const keys = Object.keys(obj);
 
+    // Empty object -> treat as null (common when the wallet echoes back an approved-
+    // but-unhandled invocation with no payload; a stale extension build may do this
+    // for newer SDK method names the current wallet version does not yet handle).
+    if (keys.length === 0) return null;
+
     // Check if object has numeric keys (serialized Uint8Array)
-    if (keys.length > 0 && keys.every(k => /^\d+$/.test(k))) {
+    if (keys.every(k => /^\d+$/.test(k))) {
       const sortedKeys = keys.sort((a, b) => Number(a) - Number(b));
       const arr = sortedKeys.map(k => obj[k] as number);
       bytes = new Uint8Array(arr);
@@ -53,9 +58,21 @@ export function decodeResponseData<T = unknown>(result: InvocationResult): T | n
     return responseData as T;
   }
 
-  // Decode and parse JSON
+  // Decode and parse JSON — empty buffer means the wallet returned nothing.
+  if (bytes.length === 0) return null;
+
   const decoded = new TextDecoder().decode(bytes);
-  return JSON.parse(decoded) as T;
+  const trimmed = decoded.trim();
+  if (trimmed.length === 0) return null;
+
+  try {
+    return JSON.parse(decoded) as T;
+  } catch (err) {
+    throw new Error(
+      `Invocation returned non-JSON payload (first 40 chars: ${JSON.stringify(decoded.slice(0, 40))}): ` +
+      (err instanceof Error ? err.message : String(err))
+    );
+  }
 }
 
 /**

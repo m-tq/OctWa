@@ -26,6 +26,13 @@ function PopupApp() {
   const [capabilityRequest, setCapabilityRequest] = useState<unknown>(null);
   const [invokeRequest, setInvokeRequest] = useState<unknown>(null);
   const [signMessageRequest, setSignMessageRequest] = useState<unknown>(null);
+  /**
+   * True when the background service worker has a pending PVAC auto-execute
+   * request (identity / ECDH / decrypt / encrypt / scan). These never show a
+   * UI prompt — the DAppRequestHandler handles them silently — but the popup
+   * still needs to mount DAppRequestHandler so its storage listener fires.
+   */
+  const [hasPvacRequest, setHasPvacRequest] = useState(false);
   const { toast: _toast } = useToast();
 
   // ONLY load data once on mount - NO dependencies to prevent loops
@@ -132,6 +139,34 @@ function PopupApp() {
           if (signMessageReq) setSignMessageRequest(signMessageReq);
         } catch (error) {
           console.error('Failed to parse sign message request:', error);
+        }
+
+        // Check for pending PVAC auto-execute or ZK-sign requests. These do not
+        // carry their own UI — DAppRequestHandler runs them silently — but the
+        // handler must be mounted for its storage listeners to fire.
+        try {
+          const pvacKeyNames = [
+            'pendingPvacIdentityKey',
+            'pendingPvacEcdhKey',
+            'pendingPvacDecryptKey',
+            'pendingPvacEncryptKey',
+            'pendingPvacScanKey',
+            'pendingPvacZkSignKey',
+          ];
+          let anyPending = false;
+          if (typeof chrome !== 'undefined' && chrome.storage?.local) {
+            const raw = await chrome.storage.local.get(pvacKeyNames);
+            anyPending = pvacKeyNames.some(k => !!raw[k]);
+          } else {
+            for (const k of pvacKeyNames) {
+              // eslint-disable-next-line no-await-in-loop
+              const v = await ExtensionStorageManager.get(k);
+              if (v) { anyPending = true; break; }
+            }
+          }
+          if (anyPending) setHasPvacRequest(true);
+        } catch (error) {
+          console.error('Failed to probe pending PVAC requests:', error);
         }
         
         // Check if wallet exists (has password and encrypted wallets)
@@ -271,6 +306,25 @@ function PopupApp() {
     let chromeStorageListener: ((changes: Record<string, chrome.storage.StorageChange>, areaName: string) => void) | null = null;
     if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.onChanged) {
       chromeStorageListener = (changes: Record<string, chrome.storage.StorageChange>, areaName: string) => {
+
+        // Detect newly arriving PVAC auto-execute requests so we can switch
+        // the popup over to DAppRequestHandler and process them silently.
+        if (areaName === 'local' && !hasPvacRequest) {
+          const pvacKeyNames = [
+            'pendingPvacIdentityKey',
+            'pendingPvacEcdhKey',
+            'pendingPvacDecryptKey',
+            'pendingPvacEncryptKey',
+            'pendingPvacScanKey',
+            'pendingPvacZkSignKey',
+          ];
+          for (const k of pvacKeyNames) {
+            if (changes[k]?.newValue) {
+              setHasPvacRequest(true);
+              break;
+            }
+          }
+        }
 
         // Handle lock state change - ALWAYS respond to this
         if (changes.isWalletLocked) {
@@ -741,6 +795,22 @@ function PopupApp() {
         <div className="w-[400px] h-[600px] bg-background popup-view overflow-hidden">
           <div className="popup-container h-full overflow-hidden">
             <PageTransition variant="scale" className="h-full"><DAppRequestHandler wallets={wallets} /></PageTransition>
+          </div>
+          <Toaster />
+        </div>
+      </ThemeProvider>
+    );
+  }
+
+  // PVAC auto-execute / ZK-sign requests — DAppRequestHandler runs them silently.
+  // We render it without a splash so the user sees at most a brief blank popup
+  // while the PVAC worker does its job and background closes the flow.
+  if (hasPvacRequest) {
+    return (
+      <ThemeProvider defaultTheme="dark" storageKey="octra-wallet-theme">
+        <div className="w-[400px] h-[600px] bg-background popup-view overflow-hidden">
+          <div className="popup-container h-full overflow-hidden">
+            <DAppRequestHandler wallets={wallets} />
           </div>
           <Toaster />
         </div>

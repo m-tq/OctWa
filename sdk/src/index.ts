@@ -107,6 +107,27 @@ export type {
   // Contract Interactions (Phase 6)
   ContractCallPayload,
   ContractCallResult,
+  // Reads (Phase 9)
+  TransactionStatus,
+  TransactionInfo,
+  WaitForConfirmationOptions,
+  RecommendedFee,
+  EpochInfo,
+  ContractViewResult,
+  ContractViewPayload,
+  // PVAC / HFHE Crypto (Phase 7)
+  CryptoIdentity,
+  CipherDecryptResult,
+  CipherEncryptResult,
+  RawStealthOutput,
+  ScannedOutput,
+  ScanOutputsResult,
+  SharedSecretResult,
+  ZkSignInput,
+  ZkSignResult,
+  PvacProgress,
+  PvacOperationStep,
+  PvacProgressCallback,
   // EVM Token Balances (Phase 8)
   Erc20TokenBalance,
   GetEvmTokensResult,

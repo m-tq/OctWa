@@ -18,6 +18,24 @@
  */
 
 // =============================================================================
+// Popup liveness tracker
+// =============================================================================
+//
+// MV3 does not give background service workers a reliable way to check whether
+// the extension popup is currently rendered (`chrome.extension.getViews` can
+// return empty even when the popup view is live). The popup heartbeats here
+// so `delegateToPvacPopup` can tell fast whether to (re)open the popup vs.
+// relying on the popup that is already draining a prior PVAC op.
+
+let _lastPopupHeartbeatAt = 0;
+
+function isPopupLikelyAlive() {
+  // Treat the popup as alive if we heard from it in the last ~4 s.
+  // Heartbeats fire every 1.5 s from DAppRequestHandler.
+  return Date.now() - _lastPopupHeartbeatAt < 4_000;
+}
+
+// =============================================================================
 // Signing Mutex (Prevent Parallel Signing)
 // =============================================================================
 
@@ -119,34 +137,51 @@ chrome.runtime.onInstalled.addListener((details) => {
 // =============================================================================
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  // Popup heartbeat — lets background know the popup view is alive without
+  // relying on chrome.extension.getViews (which is unreliable in MV3 SWs).
+  if (message?.type === 'POPUP_HEARTBEAT') {
+    _lastPopupHeartbeatAt = Date.now();
+    // acknowledge so the popup does not keep retrying
+    try { sendResponse({ ok: true, at: _lastPopupHeartbeatAt }); } catch { /* noop */ }
+    return false;
+  }
+
   if (message.type === 'SYNC_STATE') {
     chrome.runtime.sendMessage(message).catch(() => {});
-    return true;
+    return false;
   }
 
   if (message.type === 'OPEN_EXPANDED') {
     chrome.tabs.create({ url: chrome.runtime.getURL('index.html') });
-    return true;
+    return false;
   }
 
   if (message.source === 'octra-content-script') {
     handleDAppRequest(message, sender)
-      .then(response => sendResponse(response))
+      .then(response => {
+        try { sendResponse(response); } catch { /* sender closed channel */ }
+      })
       .catch(error => {
         const normalized = normalizeError(error);
-        sendResponse({
-          type: 'ERROR_RESPONSE',
-          success: false,
-          error: normalized.message,
-          errorCode: normalized.code,
-          errorLayer: normalized.layer,
-          retryable: normalized.retryable
-        });
+        try {
+          sendResponse({
+            type: 'ERROR_RESPONSE',
+            success: false,
+            error: normalized.message,
+            errorCode: normalized.code,
+            errorLayer: normalized.layer,
+            retryable: normalized.retryable,
+          });
+        } catch { /* sender closed channel */ }
       });
     return true;
   }
 
-  return true;
+  // Everything else (PVAC result messages from the offscreen, internal
+  // broadcasts, etc.) is fire-and-forget. Returning `false` tells Chrome the
+  // channel can close immediately so it doesn't log
+  // "message channel closed before a response was received".
+  return false;
 });
 
 // =============================================================================
@@ -200,6 +235,25 @@ async function handleDAppRequest(message, sender) {
       case 'REVOKE_CAPABILITY_REQUEST':
         return await handleRevokeCapability(normalizedData, sender);
 
+      // ── PVAC / HFHE Crypto (Phase 7) ──────────────────────────────────────
+      case 'PVAC_GET_IDENTITY':
+        return await handlePvacGetIdentity(normalizedData, sender);
+
+      case 'PVAC_COMPUTE_SHARED_SECRET':
+        return await handlePvacComputeSharedSecret(normalizedData, sender);
+
+      case 'PVAC_DECRYPT_CIPHER':
+        return await handlePvacDecryptCipher(normalizedData, sender);
+
+      case 'PVAC_ENCRYPT_VALUE':
+        return await handlePvacEncryptValue(normalizedData, sender);
+
+      case 'PVAC_SCAN_OUTPUTS':
+        return await handlePvacScanOutputs(normalizedData, sender);
+
+      case 'PVAC_SIGN_FOR_ZK':
+        return await handlePvacSignForZK(normalizedData, sender);
+
       default:
         throw new Error(`Unknown request type: ${type}`);
     }
@@ -251,6 +305,7 @@ async function handleConnectionRequest(data, sender) {
           circle: existingConnection.circle,
           sessionId: `session-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
           walletPubKey: existingConnection.walletPubKey,
+          address: existingConnection.walletPubKey,
           evmAddress: existingConnection.evmAddress || '',
           network: existingConnection.network || 'mainnet',
           evmNetworkId: existingConnection.evmNetworkId || await (async () => {
@@ -349,6 +404,7 @@ async function handleConnectionRequest(data, sender) {
               circle,
               sessionId: `session-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
               walletPubKey: walletAddress,
+              address: walletAddress,
               evmAddress: evmAddress,
               network: network,
               evmNetworkId: evmNetworkId,
@@ -565,7 +621,21 @@ async function handleInvokeRequest(data, sender) {
   // send_transaction, send_evm_transaction, send_erc20_transaction ALWAYS
   // require popup approval as they transfer funds.
   // ==========================================================================
-  const autoExecuteMethods = ['get_balance', 'get_encrypted_balance', 'stealth_scan', 'get_evm_tokens', 'get_evm_token_balance'];
+  const autoExecuteMethods = [
+    'get_balance',
+    'get_encrypted_balance',
+    'stealth_scan',
+    'get_evm_tokens',
+    'get_evm_token_balance',
+    // Phase 9 — reads (RPC pass-through)
+    'get_transaction',
+    'get_epoch',
+    'get_recommended_fee',
+    'get_contract_storage',
+    'contract_call_view',
+    'get_view_pubkey',
+    'get_stealth_outputs',
+  ];
 
   console.log('[Background] Checking auto-execute for method:', method, 'scope:', capability.scope);
 
@@ -756,6 +826,31 @@ async function executeMethod(method, payload, connection, capability) {
 
     case 'send_erc20_transaction':
       throw new Error('send_erc20_transaction requires user approval');
+
+    case 'key_switch':
+      throw new Error('key_switch requires user approval');
+
+    // ── Phase 9: Read-only RPC pass-throughs ─────────────────────────────────
+    case 'get_transaction':
+      return await executeGetTransaction(payload);
+
+    case 'get_epoch':
+      return await executeGetEpoch();
+
+    case 'get_recommended_fee':
+      return await executeGetRecommendedFee(payload);
+
+    case 'get_contract_storage':
+      return await executeGetContractStorage(payload);
+
+    case 'contract_call_view':
+      return await executeContractCallView(connection, payload);
+
+    case 'get_view_pubkey':
+      return await executeGetViewPubkey(payload);
+
+    case 'get_stealth_outputs':
+      return await executeGetStealthOutputs(payload);
 
     default:
       throw new Error(`Unknown method: ${method}`);
@@ -1115,6 +1210,700 @@ async function executeStealthScan(connection) {
     console.error('[Background] Stealth scan error:', error);
     return new TextEncoder().encode(JSON.stringify({ outputs: [] }));
   }
+}
+
+// =============================================================================
+// Phase 9: Read-only RPC pass-throughs
+// =============================================================================
+//
+// All of these run in background.js — no private key access needed.
+// They wrap an Octra JSON-RPC call into a JSON response the SDK can decode.
+
+/** Read payload sent by the SDK as `new TextEncoder().encode(JSON.stringify(x))`. */
+function parseInvokePayload(payload) {
+  if (!payload) return null;
+  try {
+    if (payload instanceof Uint8Array) {
+      return JSON.parse(new TextDecoder().decode(payload));
+    }
+    if (payload._type === 'Uint8Array' && Array.isArray(payload.data)) {
+      return JSON.parse(new TextDecoder().decode(new Uint8Array(payload.data)));
+    }
+    if (typeof payload === 'object') {
+      return JSON.parse(new TextDecoder().decode(
+        new Uint8Array(Object.values(payload))
+      ));
+    }
+  } catch (e) {
+    console.warn('[Background] parseInvokePayload failed:', e);
+  }
+  return null;
+}
+
+async function callOctraRpc(method, params = []) {
+  const rpcUrl = await getActiveOctraRpcUrl();
+  const response = await fetch(rpcUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ jsonrpc: '2.0', id: Date.now(), method, params }),
+  });
+  if (!response.ok) throw new Error(`RPC ${method} HTTP ${response.status}`);
+  const data = await response.json();
+  if (data?.error) {
+    const msg = typeof data.error === 'object' ? (data.error.message || JSON.stringify(data.error)) : String(data.error);
+    throw new Error(`RPC ${method} failed: ${msg}`);
+  }
+  return data?.result ?? null;
+}
+
+function encodeJsonResult(obj) {
+  return new TextEncoder().encode(JSON.stringify(obj));
+}
+
+async function executeGetTransaction(payload) {
+  const params = parseInvokePayload(payload);
+  if (!params?.hash) throw new Error('hash required');
+  const t = await callOctraRpc('octra_transaction', [params.hash]);
+  if (!t) return encodeJsonResult(null);
+  // Normalize the node response to the SDK's TransactionInfo shape.
+  const info = {
+    hash:           t.tx_hash || t.hash || params.hash,
+    from:           t.from || '',
+    to:             t.to || t.to_ || '',
+    amountRaw:      String(t.amount_raw ?? t.amount ?? '0'),
+    opType:         t.op_type || 'standard',
+    nonce:          t.nonce ?? 0,
+    ou:             String(t.ou ?? ''),
+    timestamp:      t.timestamp ?? t.rejected_at ?? 0,
+    status:         t.status || 'pending',
+    epoch:          t.epoch ?? t.epoch_id,
+    blockHeight:    t.block_height,
+    message:        typeof t.message === 'string' ? t.message : undefined,
+    encryptedData:  typeof t.encrypted_data === 'string' ? t.encrypted_data : undefined,
+    signature:      t.signature,
+    publicKey:      t.public_key,
+    rejectReason:   t.error?.reason,
+    rejectType:     t.error?.type,
+  };
+  return encodeJsonResult(info);
+}
+
+async function executeGetEpoch() {
+  const r = await callOctraRpc('epoch_current', []);
+  return encodeJsonResult({
+    epochId:   r?.epoch_id ?? 0,
+    rootCount: r?.root_count,
+  });
+}
+
+async function executeGetRecommendedFee(payload) {
+  const params = parseInvokePayload(payload);
+  const opType = params?.opType || 'standard';
+  const r = await callOctraRpc('octra_recommendedFee', [opType]);
+  // Node may return strings or numbers — normalize to strings for the SDK.
+  const asString = (v, fallback) => (v === undefined || v === null ? fallback : String(v));
+  return encodeJsonResult({
+    minimum:     asString(r?.minimum,     asString(r?.min,  '1000')),
+    base:        asString(r?.base,        asString(r?.base_fee, '1000')),
+    recommended: asString(r?.recommended, '1000'),
+    fast:        asString(r?.fast,        asString(r?.priority, '2000')),
+  });
+}
+
+async function executeGetContractStorage(payload) {
+  const params = parseInvokePayload(payload);
+  if (!params?.contract) throw new Error('contract required');
+  if (!params?.key)      throw new Error('key required');
+  const r = await callOctraRpc('octra_contractStorage', [params.contract, params.key]);
+  return encodeJsonResult({ value: r?.value ?? null });
+}
+
+async function executeContractCallView(connection, payload) {
+  const params = parseInvokePayload(payload);
+  if (!params?.contract) throw new Error('contract required');
+  if (!params?.method)   throw new Error('method required');
+  const caller = connection?.walletPubKey || '';
+  const r = await callOctraRpc(
+    'contract_call',
+    [params.contract, params.method, params.params ?? [], caller],
+  );
+  return encodeJsonResult({ result: r?.result ?? r ?? null });
+}
+
+async function executeGetViewPubkey(payload) {
+  const params = parseInvokePayload(payload);
+  if (!params?.address) throw new Error('address required');
+  const r = await callOctraRpc('octra_viewPubkey', [params.address]);
+  return encodeJsonResult({ viewPubkey: r?.view_pubkey ?? null });
+}
+
+async function executeGetStealthOutputs(payload) {
+  const params = parseInvokePayload(payload);
+  const fromEpoch = Number.isFinite(params?.fromEpoch) ? params.fromEpoch : 0;
+  const r = await callOctraRpc('octra_stealthOutputs', [fromEpoch]);
+  return encodeJsonResult({ outputs: Array.isArray(r?.outputs) ? r.outputs : [] });
+}
+
+// =============================================================================
+// PVAC / HFHE Crypto Handlers (Phase 7)
+// =============================================================================
+// All PVAC operations that require private key access are delegated to the
+// wallet popup context (DAppRequestHandler) via chrome.storage.local.
+// Background acts as a relay only — private keys never touch background.js.
+//
+// Flow for each delegated operation:
+//   1. Background stores pendingPvac<Op>_${key} in chrome.storage.local
+//   2. Background broadcasts STORAGE_CHANGED so popup listener fires
+//   3. Popup reads the pending request, runs crypto with wallet private key
+//   4. Popup sends PVAC_<OP>_RESULT message back to background
+//   5. Background resolves the pending Promise and returns result to dApp
+// =============================================================================
+
+// =============================================================================
+// Offscreen PVAC runner (MV3 silent path)
+// =============================================================================
+//
+// chrome.offscreen.createDocument lets us open an invisible HTML document with
+// DOM + WASM access. We use it to host the same pvac-worker that the popup
+// uses, but WITHOUT ever flashing a popup window at the user. The offscreen
+// document stays open as long as at least one PVAC op is in flight and is
+// closed after the queue drains.
+
+const OFFSCREEN_URL = 'offscreen.html';
+
+// Reasons are required by the API. WORKERS is the most semantically accurate
+// for our use (we host a Web Worker that runs PVAC WASM). Older Chrome
+// builds rejected WORKERS; DOM_PARSER is a safe fallback that is always
+// accepted. If the platform rejects this set the helper falls back to the
+// popup path silently.
+const OFFSCREEN_REASONS = ['WORKERS'];
+
+/**
+ * Snapshot the session-storage bits the offscreen needs to decrypt the
+ * wallet. The service worker is a trusted extension context so it can read
+ * `chrome.storage.session` directly; the offscreen document can't in some
+ * Chrome builds. We bundle the snapshot into the PVAC request message.
+ */
+async function readSessionSnapshotForOffscreen() {
+  try {
+    if (!chrome.storage?.session) return null;
+    const snap = await chrome.storage.session.get([
+      'sessionKey',
+      'sessionEncKey',
+      'sessionWallets',
+    ]);
+    if (!snap?.sessionKey || !snap?.sessionEncKey) return null;
+    return snap;
+  } catch (err) {
+    console.warn('[Background] readSessionSnapshotForOffscreen failed:', err);
+    return null;
+  }
+}
+
+let _offscreenReady = false;
+let _offscreenInFlight = 0;
+let _offscreenReadyPromise = null;
+let _offscreenCloseTimer = null;
+const OFFSCREEN_IDLE_CLOSE_MS = 30_000;
+
+// The SDK operations that can run silently — no user approval is ever required.
+const OFFSCREEN_OP_KEYS = new Set([
+  'pendingPvacIdentity',
+  'pendingPvacEcdh',
+  'pendingPvacDecrypt',
+  'pendingPvacEncrypt',
+  'pendingPvacScan',
+]);
+
+// Map storage key → offscreen op shorthand + expected reply type.
+const OFFSCREEN_OP_MAP = {
+  pendingPvacIdentity: { op: 'identity', resultType: 'PVAC_IDENTITY_RESULT' },
+  pendingPvacEcdh:     { op: 'ecdh',     resultType: 'PVAC_ECDH_RESULT' },
+  pendingPvacDecrypt:  { op: 'decrypt',  resultType: 'PVAC_DECRYPT_RESULT' },
+  pendingPvacEncrypt:  { op: 'encrypt',  resultType: 'PVAC_ENCRYPT_RESULT' },
+  pendingPvacScan:     { op: 'scan',     resultType: 'PVAC_SCAN_RESULT' },
+};
+
+async function hasOffscreenDocument() {
+  try {
+    if (chrome.offscreen?.hasDocument) {
+      return await chrome.offscreen.hasDocument();
+    }
+    const contexts = await chrome.runtime.getContexts?.({ contextTypes: ['OFFSCREEN_DOCUMENT'] });
+    return Array.isArray(contexts) && contexts.length > 0;
+  } catch {
+    return false;
+  }
+}
+
+async function ensureOffscreenDocument() {
+  if (!chrome.offscreen?.createDocument) {
+    throw new Error('offscreen API not available');
+  }
+
+  if (await hasOffscreenDocument()) {
+    if (!_offscreenReadyPromise) _offscreenReadyPromise = Promise.resolve();
+    return _offscreenReadyPromise;
+  }
+
+  if (_offscreenReadyPromise) return _offscreenReadyPromise;
+
+  _offscreenReadyPromise = new Promise(async (resolve, reject) => {
+    const readyListener = (msg) => {
+      if (msg?.type === 'OFFSCREEN_READY') {
+        chrome.runtime.onMessage.removeListener(readyListener);
+        _offscreenReady = true;
+        resolve();
+      }
+    };
+    chrome.runtime.onMessage.addListener(readyListener);
+
+    try {
+      await chrome.offscreen.createDocument({
+        url: OFFSCREEN_URL,
+        reasons: OFFSCREEN_REASONS,
+        justification:
+          'Runs the PVAC WASM worker that decrypts encrypted balances, computes shared secrets, and scans stealth outputs. Kept invisible so dApp reads never flash a popup at the user.',
+      });
+    } catch (error) {
+      chrome.runtime.onMessage.removeListener(readyListener);
+      _offscreenReady = false;
+      _offscreenReadyPromise = null;
+      reject(error);
+      return;
+    }
+
+    // Final fallback — if OFFSCREEN_READY never arrives, still resolve after
+    // 2 s so the storage-driven path can proceed (the offscreen document
+    // subscribes to chrome.storage.onChanged before it ever posts the ready
+    // message, so the request is processed either way).
+    setTimeout(() => {
+      _offscreenReady = true;
+      resolve();
+    }, 2_000);
+  });
+
+  return _offscreenReadyPromise;
+}
+
+function scheduleOffscreenClose() {
+  if (_offscreenCloseTimer) clearTimeout(_offscreenCloseTimer);
+  _offscreenCloseTimer = setTimeout(async () => {
+    if (_offscreenInFlight > 0) return;
+    try {
+      if (await hasOffscreenDocument()) {
+        await chrome.offscreen.closeDocument();
+      }
+    } catch {
+      /* best effort */
+    }
+    _offscreenReady = false;
+    _offscreenReadyPromise = null;
+  }, OFFSCREEN_IDLE_CLOSE_MS);
+}
+
+/**
+ * Run a silent PVAC op inside the offscreen document. Falls back to the
+ * popup path if the offscreen API is unavailable or fails to start.
+ *
+ * Uses chrome.runtime.sendMessage for both directions because chrome.storage
+ * change events are not reliable across offscreen documents. The offscreen
+ * listens for `OFFSCREEN_PVAC_REQUEST` and replies asynchronously with the
+ * mapped `PVAC_*_RESULT` message type.
+ */
+function runInOffscreen(storageKey, pendingKey, requestData, resultType, timeoutMs = 120_000) {
+  return new Promise(async (resolve) => {
+    const map = OFFSCREEN_OP_MAP[storageKey];
+    if (!map) {
+      resolve({ success: false, error: 'offscreen unavailable: unknown storage key ' + storageKey });
+      return;
+    }
+
+    _offscreenInFlight += 1;
+    if (_offscreenCloseTimer) {
+      clearTimeout(_offscreenCloseTimer);
+      _offscreenCloseTimer = null;
+    }
+
+    try {
+      await ensureOffscreenDocument();
+    } catch (error) {
+      _offscreenInFlight = Math.max(0, _offscreenInFlight - 1);
+      resolve({ success: false, error: 'offscreen unavailable: ' + (error?.message || String(error)) });
+      return;
+    }
+
+    let settled = false;
+
+    const listener = (msg) => {
+      if (settled) return;
+      if (msg?.type === resultType && msg?.pendingKey === pendingKey) {
+        settled = true;
+        cleanup();
+        resolve(msg);
+      }
+    };
+
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      resolve({
+        success: false,
+        error:
+          `${resultType} timed out after ${Math.round(timeoutMs / 1000)} s ` +
+          `in the offscreen runner. Retry, or open the wallet popup to warm the PVAC WASM worker.`,
+      });
+    }, timeoutMs);
+
+    const cleanup = () => {
+      chrome.runtime.onMessage.removeListener(listener);
+      clearTimeout(timer);
+      _offscreenInFlight = Math.max(0, _offscreenInFlight - 1);
+      if (_offscreenInFlight === 0) scheduleOffscreenClose();
+    };
+
+    chrome.runtime.onMessage.addListener(listener);
+
+    // Read the session snapshot here in the trusted service-worker context
+    // and forward it to the offscreen. This removes the offscreen's need to
+    // access chrome.storage.session, which is gated in some Chrome builds.
+    const sessionSnapshot = await readSessionSnapshotForOffscreen();
+
+    // Push the request directly to the offscreen. We use sendMessage so we
+    // don't depend on storage-change events firing in the offscreen context.
+    const pvacMsg = {
+      type: 'OFFSCREEN_PVAC_REQUEST',
+      op: map.op,
+      pendingKey,
+      sessionSnapshot,
+      ...(requestData || {}),
+    };
+
+    const trySend = () => {
+      try {
+        // Fire-and-forget — the real reply arrives via chrome.runtime.sendMessage
+        // from the offscreen with type `PVAC_*_RESULT`. Using no callback here
+        // avoids "message channel closed" noise in the console.
+        const p = chrome.runtime.sendMessage(pvacMsg);
+        if (p && typeof p.catch === 'function') p.catch(() => { /* ignore */ });
+      } catch {
+        /* ignore — retry below if still pending */
+      }
+    };
+
+    trySend();
+
+    // Small retry in case the very first sendMessage races with the
+    // offscreen's onMessage registration.
+    setTimeout(() => {
+      if (!settled) trySend();
+    }, 250);
+  });
+}
+
+// =============================================================================
+// delegateToPvacPopup — single entry point used by every PVAC silent op
+// =============================================================================
+//
+// Now smart: prefers the silent offscreen runner when possible. Only falls
+// back to opening the real popup if the offscreen path is unavailable (e.g.
+// browser doesn't expose chrome.offscreen, or wallet is locked and we
+// genuinely need the user to unlock it through the popup UI).
+
+/**
+ * Shared helper: store a pending PVAC request and wait for the first runner
+ * (offscreen preferred, popup fallback) to resolve it.
+ *
+ * @param {string} storageKey  - base key name, e.g. "pendingPvacDecrypt"
+ * @param {string} pendingKey  - unique request ID
+ * @param {object} requestData - data to store for runner
+ * @param {string} resultType  - message type the runner sends back
+ * @param {number} timeoutMs   - how long to wait before failing
+ */
+async function delegateToPvacPopup(storageKey, pendingKey, requestData, resultType, timeoutMs = 120_000) {
+  const canUseOffscreen =
+    typeof chrome !== 'undefined' &&
+    !!chrome.offscreen?.createDocument &&
+    OFFSCREEN_OP_KEYS.has(storageKey);
+
+  if (canUseOffscreen) {
+    const offscreenResult = await runInOffscreen(storageKey, pendingKey, requestData, resultType, timeoutMs);
+    // Only fall back to the popup path when the offscreen runner itself
+    // failed to start or the wallet is locked. Real PVAC errors (bad
+    // cipher, decrypt failure, user data issue) surface directly.
+    const shouldFallBack =
+      offscreenResult?.success === false &&
+      typeof offscreenResult.error === 'string' &&
+      (offscreenResult.error.includes('offscreen unavailable') ||
+        offscreenResult.error === 'Wallet locked');
+    if (!shouldFallBack) return offscreenResult;
+  }
+
+  return delegateToPvacPopupLegacy(storageKey, pendingKey, requestData, resultType, timeoutMs);
+}
+
+/**
+ * Original popup-delegated path, kept as a fallback. Opens the real popup
+ * so the user can unlock the wallet or approve explicitly. Used when the
+ * offscreen runner isn't available.
+ */
+function delegateToPvacPopupLegacy(storageKey, pendingKey, requestData, resultType, timeoutMs = 120_000) {
+  return new Promise(async (resolve) => {
+    await setStorageData(`${storageKey}_${pendingKey}`, { ...requestData, pendingKey, timestamp: Date.now() });
+    await setStorageData(`${storageKey}Key`, pendingKey);
+
+    // If the popup is already live (heartbeat within the last ~4 s) it will
+    // pick up the new request via its chrome.storage.onChanged listener.
+    // No need to call openPopup() again — which can fail silently and would
+    // also race with the existing popup's own rendering.
+    const popupAlive = isPopupLikelyAlive();
+    let popupOpenedNow = false;
+
+    if (!popupAlive) {
+      try {
+        await chrome.action.openPopup();
+        popupOpenedNow = true;
+        // openPopup() resolved, assume popup will heartbeat momentarily.
+        _lastPopupHeartbeatAt = Date.now();
+      } catch {
+        popupOpenedNow = false;
+      }
+    }
+
+    // Final fallback: when openPopup() failed and no heartbeat is active,
+    // give the user 3 s to click the extension icon manually. If a heartbeat
+    // arrives in that window, we keep waiting for the real result.
+    let fastFailTimer = null;
+    if (!popupAlive && !popupOpenedNow) {
+      fastFailTimer = setTimeout(() => {
+        if (isPopupLikelyAlive()) return; // user opened the popup manually
+        cleanup();
+        resolve({
+          success: false,
+          error:
+            'Popup not open. Click the OctWa extension icon to unlock the popup, ' +
+            'then retry. (PVAC delegation needs the popup to run the wallet private-key ops.)',
+        });
+      }, 3000);
+    }
+
+    const cleanup = () => {
+      chrome.runtime.onMessage.removeListener(listener);
+      clearTimeout(timer);
+      if (fastFailTimer) clearTimeout(fastFailTimer);
+      chrome.storage.local.remove([`${storageKey}_${pendingKey}`, `${storageKey}Key`]);
+    };
+
+    const listener = (msg) => {
+      if (msg.type === resultType && msg.pendingKey === pendingKey) {
+        cleanup();
+        resolve(msg);
+      }
+    };
+
+    const timer = setTimeout(() => {
+      cleanup();
+      resolve({
+        success: false,
+        error:
+          `${resultType} timed out after ${Math.round(timeoutMs / 1000)} s. ` +
+          `If this persists, click the OctWa extension icon to unlock the popup and retry. ` +
+          `Some PVAC ops (first-call WASM boot, range proofs, scan of many outputs) can be slow.`,
+      });
+    }, timeoutMs);
+
+    chrome.runtime.onMessage.addListener(listener);
+  });
+}
+
+/**
+ * PVAC_GET_IDENTITY — return wallet crypto identity to dApp.
+ * Delegates to popup (needs private key to derive Curve25519 view keypair).
+ * Auto-executes — no popup approval needed.
+ */
+async function handlePvacGetIdentity(data, sender) {
+  const { appOrigin } = data;
+  const connection = await getConnection(appOrigin);
+  if (!connection) throw new Error('Not connected to wallet');
+
+  const pendingKey = `pvac_identity_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+  const result = await delegateToPvacPopup(
+    'pendingPvacIdentity', pendingKey,
+    { appOrigin, walletAddress: connection.walletPubKey },
+    'PVAC_IDENTITY_RESULT'
+  );
+
+  if (!result.success) {
+    return { type: 'PVAC_GET_IDENTITY_RESPONSE', success: false, error: result.error };
+  }
+  return { type: 'PVAC_GET_IDENTITY_RESPONSE', success: true, result: result.identity };
+}
+
+/**
+ * PVAC_COMPUTE_SHARED_SECRET — ECDH with counterparty view pubkey.
+ * Delegates to popup (needs private key for view keypair derivation).
+ * Auto-executes — no popup approval needed.
+ */
+async function handlePvacComputeSharedSecret(data, sender) {
+  const { theirViewPubkey, appOrigin } = data;
+  const connection = await getConnection(appOrigin);
+  if (!connection) throw new Error('Not connected to wallet');
+
+  const pendingKey = `pvac_ecdh_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+  const result = await delegateToPvacPopup(
+    'pendingPvacEcdh', pendingKey,
+    { appOrigin, theirViewPubkey, walletAddress: connection.walletPubKey },
+    'PVAC_ECDH_RESULT'
+  );
+
+  if (!result.success) {
+    return { type: 'PVAC_COMPUTE_SHARED_SECRET_RESPONSE', success: false, error: result.error };
+  }
+  return { type: 'PVAC_COMPUTE_SHARED_SECRET_RESPONSE', success: true, result: result.sharedSecretResult };
+}
+
+/**
+ * PVAC_DECRYPT_CIPHER — decrypt an hfhe_v1|... cipher using wallet PVAC key.
+ * Delegates to popup WASM context.
+ * Auto-executes — no popup approval needed.
+ */
+async function handlePvacDecryptCipher(data, sender) {
+  const { cipher, appOrigin } = data;
+  const connection = await getConnection(appOrigin);
+  if (!connection) throw new Error('Not connected to wallet');
+
+  if (!cipher || cipher === '0') {
+    return { type: 'PVAC_DECRYPT_CIPHER_RESPONSE', success: true, result: { valueRaw: '0', valueOct: 0 } };
+  }
+
+  const pendingKey = `pvac_decrypt_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+  const result = await delegateToPvacPopup(
+    'pendingPvacDecrypt', pendingKey,
+    { appOrigin, cipher, walletAddress: connection.walletPubKey },
+    'PVAC_DECRYPT_RESULT'
+  );
+
+  if (!result.success) {
+    return { type: 'PVAC_DECRYPT_CIPHER_RESPONSE', success: false, error: result.error };
+  }
+  return {
+    type: 'PVAC_DECRYPT_CIPHER_RESPONSE', success: true,
+    result: { valueRaw: result.valueRaw, valueOct: result.valueOct },
+  };
+}
+
+/**
+ * PVAC_ENCRYPT_VALUE — encrypt a value using wallet PVAC public key.
+ * Delegates to popup WASM context.
+ * Auto-executes — no popup approval needed.
+ */
+async function handlePvacEncryptValue(data, sender) {
+  const { valueRaw, appOrigin } = data;
+  const connection = await getConnection(appOrigin);
+  if (!connection) throw new Error('Not connected to wallet');
+
+  const pendingKey = `pvac_encrypt_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+  const result = await delegateToPvacPopup(
+    'pendingPvacEncrypt', pendingKey,
+    { appOrigin, valueRaw, walletAddress: connection.walletPubKey },
+    'PVAC_ENCRYPT_RESULT'
+  );
+
+  if (!result.success) {
+    return { type: 'PVAC_ENCRYPT_VALUE_RESPONSE', success: false, error: result.error };
+  }
+  return { type: 'PVAC_ENCRYPT_VALUE_RESPONSE', success: true, result: { cipher: result.cipher } };
+}
+
+/**
+ * PVAC_SCAN_OUTPUTS — scan stealth outputs using wallet private view key.
+ * Delegates to popup (needs private key for ECDH per output).
+ * Auto-executes — no popup approval needed. 5 min timeout for large sets.
+ */
+async function handlePvacScanOutputs(data, sender) {
+  const { outputs, appOrigin } = data;
+  const connection = await getConnection(appOrigin);
+  if (!connection) throw new Error('Not connected to wallet');
+
+  if (!Array.isArray(outputs) || outputs.length === 0) {
+    return {
+      type: 'PVAC_SCAN_OUTPUTS_RESPONSE', success: true,
+      result: { outputs: [], totalScanned: 0, matched: 0 },
+    };
+  }
+
+  const pendingKey = `pvac_scan_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+  const result = await delegateToPvacPopup(
+    'pendingPvacScan', pendingKey,
+    { appOrigin, outputs, walletAddress: connection.walletPubKey },
+    'PVAC_SCAN_RESULT',
+    300_000  // 5 min — large output sets can take time
+  );
+
+  if (!result.success) {
+    return { type: 'PVAC_SCAN_OUTPUTS_RESPONSE', success: false, error: result.error };
+  }
+  return { type: 'PVAC_SCAN_OUTPUTS_RESPONSE', success: true, result: result.scanResult };
+}
+
+/**
+ * PVAC_SIGN_FOR_ZK — sign data for use as ZK proof public input.
+ * Always opens a popup for user approval (write operation).
+ */
+async function handlePvacSignForZK(data, sender) {
+  const { data: dataArray, domain, appOrigin, appName, appIcon } = data;
+  const connection = await getConnection(appOrigin);
+  if (!connection) throw new Error('Not connected to wallet');
+
+  const pendingKey = `pvac_zk_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+  await setStorageData(`pendingPvacZkSign_${pendingKey}`, {
+    pendingKey, data: dataArray, domain, appOrigin, appName, appIcon,
+    walletAddress: connection.walletPubKey, timestamp: Date.now(),
+  });
+  await setStorageData('pendingPvacZkSignKey', pendingKey);
+
+  // ZK sign requires user approval — open popup
+  try {
+    await chrome.action.openPopup();
+  } catch {
+    await chrome.tabs.create({
+      url: chrome.runtime.getURL(`index.html?action=zkSign&pendingKey=${pendingKey}`),
+      active: true,
+    });
+  }
+
+  return new Promise((resolve) => {
+    const cleanup = () => {
+      chrome.runtime.onMessage.removeListener(listener);
+      clearTimeout(timer);
+      chrome.storage.local.remove([`pendingPvacZkSign_${pendingKey}`, 'pendingPvacZkSignKey']);
+    };
+
+    const listener = (msg) => {
+      if (msg.type === 'PVAC_ZK_SIGN_RESULT' && msg.pendingKey === pendingKey) {
+        cleanup();
+        if (msg.approved) {
+          resolve({
+            type: 'PVAC_SIGN_FOR_ZK_RESPONSE', success: true,
+            result: { signature: msg.signature, publicKey: msg.publicKey, dataHash: msg.dataHash },
+          });
+        } else {
+          resolve({
+            type: 'PVAC_SIGN_FOR_ZK_RESPONSE', success: false,
+            error: msg.error || 'User rejected ZK sign request',
+          });
+        }
+      }
+    };
+
+    const timer = setTimeout(() => {
+      cleanup();
+      resolve({ type: 'PVAC_SIGN_FOR_ZK_RESPONSE', success: false, error: 'ZK sign request timeout' });
+    }, 60_000);
+
+    chrome.runtime.onMessage.addListener(listener);
+  });
 }
 
 // =============================================================================

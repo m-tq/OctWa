@@ -60,7 +60,8 @@ export default defineConfig({
       input: {
         main: path.resolve(__dirname, 'index.html'),
         popup: path.resolve(__dirname, 'src/popup.tsx'),
-        expanded: path.resolve(__dirname, 'src/expanded.tsx')
+        expanded: path.resolve(__dirname, 'src/expanded.tsx'),
+        offscreen: path.resolve(__dirname, 'offscreen.html')
       },
       output: {
         entryFileNames: 'assets/[name].js',

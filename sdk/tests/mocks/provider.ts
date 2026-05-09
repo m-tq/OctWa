@@ -8,6 +8,15 @@ import type {
   InvocationResult,
   GasEstimate,
   EncryptedPayload,
+  CryptoIdentity,
+  SharedSecretResult,
+  CipherDecryptResult,
+  CipherEncryptResult,
+  RawStealthOutput,
+  ScanOutputsResult,
+  ZkSignInput,
+  ZkSignResult,
+  PvacProgressCallback,
 } from '../../src/types';
 
 type EventCallback = (...args: unknown[]) => void;
@@ -47,13 +56,17 @@ export function createMockProvider(
     async connect(request: ConnectRequest): Promise<Connection> {
       if (shouldRejectConnect) throw new Error(rejectMessage);
       return {
-        circle:       request.circle,
-        sessionId:    `session-${Date.now()}`,
-        walletPubKey: 'mock-pub-key-' + Math.random().toString(36).slice(2),
-        evmAddress:   '0x' + '0'.repeat(40),
-        network:      'devnet',
-        epoch:        0,
-        branchId:     'main',
+        circle:         request.circle,
+        sessionId:      `session-${Date.now()}`,
+        walletPubKey:   'mock-pub-key-' + Math.random().toString(36).slice(2),
+        address:        'oct' + 'mock'.padEnd(48, '0'),
+        evmAddress:     '0x' + '0'.repeat(40),
+        evmNetworkId:   'eth-mainnet',
+        network:        'devnet',
+        epoch:          0,
+        branchId:       'main',
+        viewPublicKey:  btoa('mock-curve25519-view-pubkey-32b'),
+        pvacRegistered: false,
       };
     },
 
@@ -119,7 +132,59 @@ export function createMockProvider(
 
     async invoke(_call: SignedInvocation): Promise<InvocationResult> {
       if (shouldRejectInvoke) throw new Error('Invocation failed');
-      return { success: true, data: new Uint8Array([1, 2, 3]) };
+
+      const m = _call.body.method;
+      const payload = _call.payload as { _type?: string; data?: number[] } | undefined;
+      const parsed = payload && payload._type === 'Uint8Array' && Array.isArray(payload.data)
+        ? (() => {
+            try { return JSON.parse(new TextDecoder().decode(new Uint8Array(payload.data!))); }
+            catch { return null; }
+          })()
+        : null;
+
+      const jsonResult = (obj: unknown): InvocationResult => ({
+        success: true,
+        data:    new TextEncoder().encode(JSON.stringify(obj)),
+      });
+
+      switch (m) {
+        case 'get_transaction':
+          return jsonResult({
+            hash:       parsed?.hash ?? 'mockhash',
+            from:       'oct_sender',
+            to:         'oct_recipient',
+            amountRaw:  '1000000',
+            opType:     'standard',
+            nonce:      1,
+            ou:         '10000',
+            timestamp:  Date.now() / 1000,
+            status:     'confirmed',
+            epoch:      42,
+          });
+        case 'get_epoch':
+          return jsonResult({ epochId: 42, rootCount: 7 });
+        case 'get_recommended_fee':
+          return jsonResult({ minimum: '1000', base: '1000', recommended: '10000', fast: '30000' });
+        case 'get_contract_storage':
+          return jsonResult({ value: 'mock-stored-value' });
+        case 'contract_call_view':
+          return jsonResult({ result: 'mock-view-result' });
+        case 'get_view_pubkey':
+          return jsonResult({ viewPubkey: btoa('mock-view-pubkey-for-counterparty-32') });
+        case 'get_stealth_outputs':
+          return jsonResult({ outputs: [] });
+        case 'get_balance':
+          return jsonResult({
+            octAddress:       'oct_mock_addr',
+            octBalance:       12.5,
+            encryptedBalance: 0,
+            cipher:           'hfhe_v1|mock-cipher',
+            hasPvacPubkey:    true,
+            network:          'devnet',
+          });
+        default:
+          return { success: true, data: new Uint8Array([1, 2, 3]) };
+      }
     },
 
     async estimatePlainTx(_payload: unknown): Promise<GasEstimate> {
@@ -132,6 +197,60 @@ export function createMockProvider(
 
     async signMessage(message: string): Promise<string> {
       return `mock-sig-${message.slice(0, 8)}`;
+    },
+
+    // ── PVAC / HFHE Crypto (Phase 7) ──────────────────────────────────────────
+
+    async getCryptoIdentity(): Promise<CryptoIdentity> {
+      return {
+        ed25519PublicKey: 'mock-ed25519-pubkey-hex-64chars00000000000000000000000000000000',
+        viewPublicKey:    btoa('mock-curve25519-view-pubkey-32b'),
+        pvacRegistered:   false,
+        currentCipher:    '0',
+      };
+    },
+
+    async computeSharedSecret(theirViewPubkey: string): Promise<SharedSecretResult> {
+      return {
+        sharedSecret: btoa('mock-shared-secret-32bytes000000'),
+        stealthTag:   'deadbeefcafebabe0102030405060708',
+        claimSecret:  btoa('mock-claim-secret-32bytes0000000'),
+      };
+    },
+
+    async decryptCipher(cipher: string): Promise<CipherDecryptResult> {
+      return {
+        valueRaw: 1_000_000n,
+        valueOct: 1.0,
+      };
+    },
+
+    async encryptValue(valueRaw: bigint): Promise<CipherEncryptResult> {
+      return {
+        cipher: `hfhe_v1|mock-cipher-${valueRaw.toString()}`,
+      };
+    },
+
+    async scanOutputs(
+      outputs: RawStealthOutput[],
+      _onProgress?: PvacProgressCallback,
+    ): Promise<ScanOutputsResult> {
+      return {
+        outputs:      [],
+        totalScanned: outputs.length,
+        matched:      0,
+      };
+    },
+
+    async signForZK(input: ZkSignInput): Promise<ZkSignResult> {
+      const dataHex = Array.from(input.data)
+        .map((b) => b.toString(16).padStart(2, '0'))
+        .join('');
+      return {
+        signature: 'mock-zk-signature-' + dataHex.slice(0, 16),
+        publicKey: 'mock-ed25519-pubkey-hex-64chars00000000000000000000000000000000',
+        dataHash:  'mock-sha256-' + dataHex.slice(0, 20),
+      };
     },
 
     on(event: string, callback: EventCallback): void {

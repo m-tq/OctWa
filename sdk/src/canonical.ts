@@ -141,12 +141,24 @@ export function canonicalizeInvocation(invocation: {
 /**
  * Hash payload for invocation.
  *
- * CRITICAL: Encrypted payloads must remain opaque —
+ * Real SHA-256 via Web Crypto API — same digest as the extension's
+ * `core.js`, the CLI signer, and the webcli reference implementation.
+ *
+ * Encrypted payloads must remain opaque —
  * do NOT inspect ciphertext, do NOT coerce numeric values.
  */
-export function hashPayload(payload: Uint8Array | { scheme: string; data: Uint8Array }): string {
-  const data = payload instanceof Uint8Array ? payload : payload.data;
-  return sha256Sync(data);
+export async function hashPayload(
+  payload: Uint8Array | { scheme: string; data: Uint8Array }
+): Promise<string> {
+  // Duck-type check to survive jsdom/vitest cross-realm `instanceof` quirks
+  // where `TextEncoder().encode()` may return a Uint8Array from a different
+  // realm than the one the SDK was compiled against.
+  const isByteArray = (v: unknown): v is Uint8Array =>
+    !!v && typeof (v as { byteLength?: unknown }).byteLength === 'number' &&
+    typeof (v as { BYTES_PER_ELEMENT?: unknown }).BYTES_PER_ELEMENT === 'number';
+
+  const data = isByteArray(payload) ? payload : (payload as { data: Uint8Array }).data;
+  return sha256Bytes(data);
 }
 
 // =============================================================================
@@ -196,9 +208,18 @@ export function bytesToHex(bytes: Uint8Array): string {
 /**
  * SHA-256 of a Uint8Array via Web Crypto API.
  * Available in browsers, service workers (MV3), and Node ≥ 19.
+ *
+ * Accepts any byte-array-like (cross-realm Uint8Array, Buffer, etc.) and
+ * always passes a fresh ArrayBuffer to `crypto.subtle.digest` to avoid
+ * SharedArrayBuffer / subview edge cases.
  */
 export async function sha256Bytes(data: Uint8Array): Promise<string> {
-  const buf = await crypto.subtle.digest('SHA-256', data.buffer as ArrayBuffer);
+  const arr = data && typeof (data as { byteLength?: unknown }).byteLength === 'number'
+    ? new Uint8Array(data as unknown as ArrayLike<number>)
+    : new Uint8Array(0);
+  const fresh = new ArrayBuffer(arr.byteLength);
+  new Uint8Array(fresh).set(arr);
+  const buf = await crypto.subtle.digest('SHA-256', fresh);
   return bytesToHex(new Uint8Array(buf));
 }
 
@@ -209,15 +230,3 @@ export async function sha256String(str: string): Promise<string> {
   return sha256Bytes(new TextEncoder().encode(str));
 }
 
-/**
- * Synchronous djb2-based hash — used ONLY for non-security-critical
- * payload fingerprinting (hashPayload). Do NOT use for capability signing.
- */
-function sha256Sync(data: Uint8Array): string {
-  let hash = 0;
-  for (let i = 0; i < data.length; i++) {
-    hash = ((hash << 5) - hash) + data[i];
-    hash = hash & hash;
-  }
-  return Math.abs(hash).toString(16).padStart(64, '0');
-}

@@ -423,15 +423,15 @@ describe('OctraSDK', () => {
     });
   });
 
-  describe('no signMessage API', () => {
-    it('should NOT expose signMessage on the SDK (only on provider)', async () => {
+  describe('signMessage API', () => {
+    it('should expose signMessage on the SDK', async () => {
       const mockProvider = createMockProvider();
       injectMockProvider(mockProvider);
 
       const sdk = await OctraSDK.init({ timeout: 100, skipSignatureVerification: true });
 
-      // signMessage is on the provider (window.octra), not on the SDK itself
-      expect((sdk as unknown as Record<string, unknown>).signMessage).toBeUndefined();
+      // signMessage is exposed on the SDK for convenience (delegates to provider)
+      expect(typeof (sdk as unknown as Record<string, unknown>).signMessage).toBe('function');
     });
   });
 });

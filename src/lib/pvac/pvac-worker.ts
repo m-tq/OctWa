@@ -21,6 +21,12 @@ export type WorkerOp =
   | 'stealthSend'
   | 'stealthScan'
   | 'claimStealth'
+  // Phase 7 — PVAC SDK ops (delegated from background via DAppRequestHandler)
+  | 'pvacGetIdentity'
+  | 'pvacComputeSharedSecret'
+  | 'pvacDecryptCipher'
+  | 'pvacEncryptValue'
+  | 'pvacScanOutputs'
 
 export interface WorkerRequest {
   id: string
@@ -115,6 +121,181 @@ async function handleRequest(req: WorkerRequest): Promise<void> {
         const { claimStealth } = await import('./stealth-ops')
         const input = payload as Parameters<typeof claimStealth>[0]
         result = await claimStealth(input, onProgress)
+        break
+      }
+
+      // ── Phase 7: PVAC SDK ops ──────────────────────────────────────────────
+
+      case 'pvacGetIdentity': {
+        // Only need deriveViewKeypair, encodeBase64, resolveSecretKey64 for view key derivation
+        const { deriveViewKeypair, encodeBase64, resolveSecretKey64 } = await import('./crypto-utils')
+        const { makeRpcCall } = await import('@/services/rpcHelper')
+        const raw = payload as { privateKey: string; walletAddress: string }
+
+        const sk64 = resolveSecretKey64(raw.privateKey)
+        const { viewPk } = await deriveViewKeypair(sk64)
+        const viewPublicKey = encodeBase64(viewPk)
+
+        // Check PVAC registration + current cipher from node
+        let pvacRegistered = false
+        let currentCipher = '0'
+        try {
+          const [pvacRes, cipherRes] = await Promise.all([
+            makeRpcCall('octra_pvacPubkey', [raw.walletAddress]),
+            makeRpcCall('octra_encryptedCipher', [raw.walletAddress]),
+          ])
+          pvacRegistered = !!(pvacRes as Record<string, unknown>)?.pvac_pubkey
+          currentCipher = (cipherRes as Record<string, unknown>)?.cipher as string ?? '0'
+        } catch { /* non-critical */ }
+
+        result = {
+          success: true,
+          data: {
+            identity: {
+              ed25519PublicKey: raw.walletAddress,
+              viewPublicKey,
+              pvacRegistered,
+              currentCipher,
+            },
+          },
+        }
+        break
+      }
+
+      case 'pvacComputeSharedSecret': {
+        const { deriveViewKeypair, ecdhSharedSecret, computeStealthTag, computeClaimSecret, encodeBase64, encodeHex, resolveSecretKey64, decodeBase64 } = await import('./crypto-utils')
+        const raw = payload as { privateKey: string; theirViewPubkey: string }
+
+        const sk64 = resolveSecretKey64(raw.privateKey)
+        const { viewSk } = await deriveViewKeypair(sk64)
+        const theirPk = decodeBase64(raw.theirViewPubkey)
+
+        const shared = await ecdhSharedSecret(viewSk, theirPk)
+        const stealthTagBytes = await computeStealthTag(shared)
+        const claimSecretBytes = await computeClaimSecret(shared)
+
+        result = {
+          success: true,
+          data: {
+            sharedSecretResult: {
+              sharedSecret: encodeBase64(shared),
+              stealthTag: encodeHex(stealthTagBytes),
+              claimSecret: encodeBase64(claimSecretBytes),
+            },
+          },
+        }
+        break
+      }
+
+      case 'pvacDecryptCipher': {
+        const { getPvacWasm } = await import('./wasm-loader')
+        const raw = payload as { privateKey: string; cipher: string }
+
+        if (!raw.cipher || raw.cipher === '0') {
+          result = { success: true, data: { valueRaw: '0', valueOct: 0 } }
+          break
+        }
+
+        onProgress({ step: 'keygen', label: 'Deriving PVAC keys...', percent: 20 })
+        const pvac = await getPvacWasm(raw.privateKey)
+
+        onProgress({ step: 'decrypting', label: 'Decrypting cipher...', percent: 60 })
+        const valueRaw = pvac.decryptValue(raw.cipher)
+        const valueOct = Number(valueRaw) / 1_000_000
+
+        onProgress({ step: 'done', label: 'Done', percent: 100 })
+        result = { success: true, data: { valueRaw: valueRaw.toString(), valueOct } }
+        break
+      }
+
+      case 'pvacEncryptValue': {
+        const { getPvacWasm } = await import('./wasm-loader')
+        const { ensurePvacRegisteredOnNode } = await import('./node-registration')
+        const { resolveSecretKey64, hexPubkeyToBase64 } = await import('./crypto-utils')
+        const raw = payload as { privateKey: string; publicKey: string; address: string; valueRaw: string }
+
+        onProgress({ step: 'keygen', label: 'Deriving PVAC keys...', percent: 15 })
+        const sk64 = resolveSecretKey64(raw.privateKey)
+        const publicKeyB64 = hexPubkeyToBase64(raw.publicKey)
+        const pvac = await getPvacWasm(raw.privateKey)
+
+        onProgress({ step: 'registering_pubkey', label: 'Checking PVAC registration...', percent: 25 })
+        await ensurePvacRegisteredOnNode(pvac, raw.address, sk64, publicKeyB64)
+
+        onProgress({ step: 'encrypting', label: 'Encrypting value...', percent: 60 })
+        const seed = pvac.randomBytesPublic(32)
+        const cipher = pvac.encryptValue(BigInt(raw.valueRaw), seed)
+
+        onProgress({ step: 'done', label: 'Done', percent: 100 })
+        result = { success: true, data: { cipher } }
+        break
+      }
+
+      case 'pvacScanOutputs': {
+        const { deriveViewKeypair, ecdhSharedSecret, computeStealthTag, computeClaimSecret, decryptStealthAmount, encodeBase64, encodeHex, resolveSecretKey64, decodeBase64 } = await import('./crypto-utils')
+        const raw = payload as { privateKey: string; outputs: unknown[] }
+
+        const sk64 = resolveSecretKey64(raw.privateKey)
+        const { viewSk } = await deriveViewKeypair(sk64)
+
+        const matched: unknown[] = []
+        const total = raw.outputs.length
+
+        for (let i = 0; i < total; i++) {
+          const output = raw.outputs[i] as Record<string, unknown>
+          try {
+            if (!output.eph_pub || !output.stealth_tag || !output.enc_amount) continue
+
+            const ephPk = decodeBase64(output.eph_pub as string)
+            const shared = await ecdhSharedSecret(viewSk, ephPk)
+            const computedTagBytes = await computeStealthTag(shared)
+            const computedTag = encodeHex(computedTagBytes)
+            const outputTag = (output.stealth_tag as string).replace(/^0x/, '').toLowerCase()
+
+            if (computedTag !== outputTag) continue
+
+            // Tag matches — decrypt amount
+            const decrypted = await decryptStealthAmount(shared, output.enc_amount as string)
+            const amountRaw = decrypted?.amountRaw ?? 0n
+            const blinding = decrypted?.blinding ? encodeBase64(decrypted.blinding) : ''
+
+            const claimSecretBytes = await computeClaimSecret(shared)
+            const claimSecret = encodeBase64(claimSecretBytes)
+
+            matched.push({
+              id: String(output.id ?? ''),
+              amountRaw: amountRaw.toString(),
+              amountOct: Number(amountRaw) / 1_000_000,
+              epochId: output.epoch_id ?? 0,
+              senderAddress: output.sender_addr ?? '',
+              txHash: output.tx_hash ?? '',
+              claimSecret,
+              blinding,
+              rawOutput: output,
+            })
+          } catch { /* skip malformed output */ }
+
+          // Emit progress every 50 outputs
+          if (i % 50 === 0) {
+            onProgress({
+              step: 'scanning',
+              label: `Scanning outputs... (${i + 1}/${total})`,
+              percent: Math.round(10 + (i / total) * 85),
+            })
+          }
+        }
+
+        onProgress({ step: 'done', label: 'Scan complete', percent: 100 })
+        result = {
+          success: true,
+          data: {
+            scanResult: {
+              outputs: matched,
+              totalScanned: total,
+              matched: matched.length,
+            },
+          },
+        }
         break
       }
       default:

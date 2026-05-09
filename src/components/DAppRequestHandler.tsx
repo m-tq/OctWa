@@ -96,6 +96,7 @@ interface TransactionPayload {
   message?: string;
   op_type?: string;        // e.g. 'call' for contract calls, defaults to 'standard'
   encrypted_data?: string; // e.g. 'lock_to_eth' for bridge contract method
+  ou?: number;             // optional fee override in raw OU (dApps can request e.g. 1000 for contract calls)
 }
 
 interface EVMTransactionPayload {
@@ -145,11 +146,22 @@ interface SignMessageRequest {
   pendingKey?: string;
 }
 
+interface PvacZkSignRequest {
+  data: number[];
+  domain?: string;
+  appOrigin: string;
+  appName?: string;
+  appIcon?: string;
+  walletAddress: string;
+  pendingKey: string;
+  timestamp: number;
+}
+
 interface DAppRequestHandlerProps {
   wallets: Wallet[];
 }
 
-type RequestType = 'connection' | 'capability' | 'invoke' | 'signMessage' | null;
+type RequestType = 'connection' | 'capability' | 'invoke' | 'signMessage' | 'pvacZkSign' | null;
 
 export function DAppRequestHandler({ wallets }: DAppRequestHandlerProps) {
   logger.debug('DAppRequestHandler: Component mounted/rendered');
@@ -163,6 +175,7 @@ export function DAppRequestHandler({ wallets }: DAppRequestHandlerProps) {
   const [capabilityRequest, setCapabilityRequest] = useState<CapabilityRequest | null>(null);
   const [invokeRequest, setInvokeRequest] = useState<InvokeRequest | null>(null);
   const [signMessageRequest, setSignMessageRequest] = useState<SignMessageRequest | null>(null);
+  const [pvacZkSignRequest, setPvacZkSignRequest] = useState<PvacZkSignRequest | null>(null);
   const [parsedTxPayload, setParsedTxPayload] = useState<TransactionPayload | null>(null);
   const [parsedEvmTxPayload, setParsedEvmTxPayload] = useState<EVMTransactionPayload | null>(null);
   const [parsedErc20TxPayload, setParsedErc20TxPayload] = useState<ERC20TransactionPayload | null>(null);
@@ -171,6 +184,12 @@ export function DAppRequestHandler({ wallets }: DAppRequestHandlerProps) {
   // Custom gas settings for EVM transactions — defaults from successful bridge tx
   const [customGasLimit, setCustomGasLimit] = useState('150000');
   const [customMaxFeeGwei, setCustomMaxFeeGwei] = useState('2');
+  /**
+   * True when this popup was opened purely to service PVAC auto-execute
+   * requests (no approval UI). We show a minimal "processing" screen so the
+   * user sees something is happening instead of a blank popup.
+   */
+  const [processingPvac, setProcessingPvac] = useState(false);
   const { toast } = useToast();
 
   // Sync selectedWallet when wallets prop changes
@@ -185,6 +204,24 @@ export function DAppRequestHandler({ wallets }: DAppRequestHandlerProps) {
       }
     }
   }, [wallets, selectedWallet]);
+
+  /**
+   * Heartbeat the background service worker while this popup is alive so
+   * delegateToPvacPopup knows whether to open a fresh popup or route a new
+   * request into this one. chrome.extension.getViews() is unreliable in MV3
+   * service workers, so we ack-ourselves via a cheap message every 1.5 s.
+   */
+  useEffect(() => {
+    if (typeof chrome === 'undefined' || !chrome.runtime?.sendMessage) return;
+
+    const send = () => {
+      try { chrome.runtime.sendMessage({ type: 'POPUP_HEARTBEAT' }).catch(() => { /* SW may be spinning up */ }); }
+      catch { /* noop */ }
+    };
+    send(); // fire immediately on mount
+    const interval = setInterval(send, 1500);
+    return () => clearInterval(interval);
+  }, []);
 
   // IMPORTANT: Select the correct wallet based on invoke request's connection
   // This ensures we use the wallet that was originally connected to the dApp
@@ -267,6 +304,31 @@ export function DAppRequestHandler({ wallets }: DAppRequestHandlerProps) {
           setIsProcessing(false);
           setTimeout(() => loadPendingRequest(), 50);
         }
+        // PVAC auto-execute ops — handle silently without UI
+        if (area === 'local' && changes.pendingPvacDecryptKey?.newValue) {
+          setProcessingPvac(true);
+          handlePvacDecryptRequest(changes.pendingPvacDecryptKey.newValue);
+        }
+        if (area === 'local' && changes.pendingPvacEncryptKey?.newValue) {
+          setProcessingPvac(true);
+          handlePvacEncryptRequest(changes.pendingPvacEncryptKey.newValue);
+        }
+        if (area === 'local' && changes.pendingPvacIdentityKey?.newValue) {
+          setProcessingPvac(true);
+          handlePvacIdentityRequest(changes.pendingPvacIdentityKey.newValue);
+        }
+        if (area === 'local' && changes.pendingPvacEcdhKey?.newValue) {
+          setProcessingPvac(true);
+          handlePvacEcdhRequest(changes.pendingPvacEcdhKey.newValue);
+        }
+        if (area === 'local' && changes.pendingPvacScanKey?.newValue) {
+          setProcessingPvac(true);
+          handlePvacScanRequest(changes.pendingPvacScanKey.newValue);
+        }
+        // ZK sign requires user approval — show UI
+        if (area === 'local' && changes.pendingPvacZkSignKey?.newValue) {
+          loadPvacZkSignRequest(changes.pendingPvacZkSignKey.newValue);
+        }
       };
       chrome.storage.onChanged.addListener(listener);
       return () => chrome.storage.onChanged.removeListener(listener);
@@ -277,6 +339,14 @@ export function DAppRequestHandler({ wallets }: DAppRequestHandlerProps) {
     // Check for pending requests in order of priority
     const urlParams = new URLSearchParams(window.location.search);
     const action = urlParams.get('action');
+
+    if (action === 'zkSign') {
+      const pendingKey = urlParams.get('pendingKey');
+      if (pendingKey) {
+        loadPvacZkSignRequest(pendingKey);
+        return;
+      }
+    }
 
     if (action === 'connect') {
       const circle = urlParams.get('circle');
@@ -338,6 +408,13 @@ export function DAppRequestHandler({ wallets }: DAppRequestHandlerProps) {
         'pendingCapabilityRequestKey',
         'pendingInvokeRequestKey',
         'pendingSignMessageRequestKey',
+        'pendingPvacZkSignKey',
+        // PVAC auto-execute keys — checked on mount in case popup was opened for them
+        'pendingPvacIdentityKey',
+        'pendingPvacEcdhKey',
+        'pendingPvacDecryptKey',
+        'pendingPvacEncryptKey',
+        'pendingPvacScanKey',
         // Legacy fallback keys (old single-slot format)
         'pendingConnectionRequest',
         'pendingCapabilityRequest',
@@ -350,6 +427,28 @@ export function DAppRequestHandler({ wallets }: DAppRequestHandlerProps) {
       const capKey   = keys.pendingCapabilityRequestKey;
       const invKey   = keys.pendingInvokeRequestKey;
       const signKey  = keys.pendingSignMessageRequestKey;
+      const zkKey    = keys.pendingPvacZkSignKey;
+
+      // Dispatch PVAC auto-execute ops immediately on mount (no UI needed)
+      if (keys.pendingPvacIdentityKey) handlePvacIdentityRequest(keys.pendingPvacIdentityKey);
+      if (keys.pendingPvacEcdhKey)     handlePvacEcdhRequest(keys.pendingPvacEcdhKey);
+      if (keys.pendingPvacDecryptKey)  handlePvacDecryptRequest(keys.pendingPvacDecryptKey);
+      if (keys.pendingPvacEncryptKey)  handlePvacEncryptRequest(keys.pendingPvacEncryptKey);
+      if (keys.pendingPvacScanKey)     handlePvacScanRequest(keys.pendingPvacScanKey);
+
+      // If any PVAC key is pending and no UI request is queued, show the
+      // "processing wallet request" splash so the user knows why the popup
+      // is open.
+      if (
+        (keys.pendingPvacIdentityKey || keys.pendingPvacEcdhKey ||
+         keys.pendingPvacDecryptKey  || keys.pendingPvacEncryptKey ||
+         keys.pendingPvacScanKey) &&
+        !keys.pendingConnectionRequestKey && !keys.pendingCapabilityRequestKey &&
+        !keys.pendingInvokeRequestKey && !keys.pendingSignMessageRequestKey &&
+        !keys.pendingPvacZkSignKey
+      ) {
+        setProcessingPvac(true);
+      }
 
       // Load the actual request objects by their keyed storage entries
       const keyedEntries = await chrome.storage.local.get([
@@ -357,12 +456,14 @@ export function DAppRequestHandler({ wallets }: DAppRequestHandlerProps) {
         capKey   ? `pendingCapabilityRequest_${capKey}`   : '__none__',
         invKey   ? `pendingInvokeRequest_${invKey}`       : '__none__',
         signKey  ? `pendingSignMessageRequest_${signKey}` : '__none__',
+        zkKey    ? `pendingPvacZkSign_${zkKey}`           : '__none__',
       ]);
 
       const pendingConnection  = (connKey  && keyedEntries[`pendingConnectionRequest_${connKey}`])  || keys.pendingConnectionRequest;
       const pendingCapability  = (capKey   && keyedEntries[`pendingCapabilityRequest_${capKey}`])   || keys.pendingCapabilityRequest;
       const pendingSignMessage = (signKey  && keyedEntries[`pendingSignMessageRequest_${signKey}`]) || keys.pendingSignMessageRequest;
       const pendingInvoke      = (invKey   && keyedEntries[`pendingInvokeRequest_${invKey}`])       || keys.pendingInvokeRequest;
+      const pendingZkSign      = zkKey ? keyedEntries[`pendingPvacZkSign_${zkKey}`] : null;
 
       logger.debug('DAppRequestHandler: Pending requests:', {
         connection:  !!pendingConnection,
@@ -383,6 +484,10 @@ export function DAppRequestHandler({ wallets }: DAppRequestHandlerProps) {
         logger.debug('DAppRequestHandler: Loading sign message request:', pendingSignMessage);
         setRequestType('signMessage');
         setSignMessageRequest(pendingSignMessage);
+      } else if (pendingZkSign) {
+        logger.debug('DAppRequestHandler: Loading ZK sign request');
+        setRequestType('pvacZkSign');
+        setPvacZkSignRequest(pendingZkSign);
       } else if (pendingInvoke) {
         logger.debug('DAppRequestHandler: Loading invoke request');
         setRequestType('invoke');
@@ -822,11 +927,17 @@ export function DAppRequestHandler({ wallets }: DAppRequestHandlerProps) {
         logger.debug('DAppRequestHandler:   amount:', txParams.amount);
         logger.debug('DAppRequestHandler:   message:', txParams.message ? '(present)' : '(empty)');
         
-        // Validate transaction parameters
+        // Validate transaction parameters.
+        // Contract calls (op_type: 'call') and some non-standard ops legitimately
+        // pass amount = 0. Only plain transfers require a positive amount.
         if (!txParams.to || typeof txParams.to !== 'string') {
           throw new Error('Invalid recipient address');
         }
-        if (typeof txParams.amount !== 'number' || !Number.isFinite(txParams.amount) || txParams.amount <= 0) {
+        if (typeof txParams.amount !== 'number' || !Number.isFinite(txParams.amount) || txParams.amount < 0) {
+          throw new Error('Invalid transaction amount');
+        }
+        const isStandardTransfer = !txParams.op_type || txParams.op_type === 'standard';
+        if (isStandardTransfer && txParams.amount <= 0) {
           throw new Error('Invalid transaction amount');
         }
         
@@ -851,8 +962,10 @@ export function DAppRequestHandler({ wallets }: DAppRequestHandlerProps) {
         logger.debug('DAppRequestHandler:   currentNonce:', currentNonce);
         logger.debug('DAppRequestHandler:   txNonce (current+1):', txNonce);
         
-        // Create and sign transaction — pass op_type and encrypted_data
-        // from payload so contract calls (e.g. bridge lock_to_eth) work correctly.
+        // Create and sign transaction — pass op_type, encrypted_data and the
+        // optional ou from payload so contract calls (e.g. bridge lock_to_eth
+        // or any ONS/pONS / AML call) use the correct fee instead of the
+        // default transfer OU.
         const transaction = createTransaction(
           selectedWallet.address,
           txParams.to,
@@ -861,7 +974,9 @@ export function DAppRequestHandler({ wallets }: DAppRequestHandlerProps) {
           selectedWallet.privateKey,
           publicKeyHex,
           txParams.message,
-          undefined,              // customOu — use default
+          typeof txParams.ou === 'number' && Number.isFinite(txParams.ou) && txParams.ou > 0
+            ? txParams.ou
+            : undefined,         // customOu — fall back to default if not supplied
           txParams.op_type,       // e.g. 'call' for contract calls
           txParams.encrypted_data // e.g. 'lock_to_eth'
         );
@@ -1251,8 +1366,283 @@ export function DAppRequestHandler({ wallets }: DAppRequestHandlerProps) {
     }
   };
 
-  const handleReject = () => {
+  // ── PVAC auto-execute handlers (no UI, run silently in background) ──────────
+
+  /** Load a ZK sign request from storage and show approval UI. */
+  const loadPvacZkSignRequest = async (pendingKey: string) => {
+    if (typeof chrome === 'undefined' || !chrome.storage) return;
+    const data = await chrome.storage.local.get([`pendingPvacZkSign_${pendingKey}`]);
+    const req = data[`pendingPvacZkSign_${pendingKey}`];
+    if (!req) return;
+    setPvacZkSignRequest(req);
+    setRequestType('pvacZkSign');
+  };
+
+  /** Send a PVAC result message back to background and clean up storage. */
+  const sendPvacResult = (type: string, pendingKey: string, storageKey: string, payload: Record<string, unknown>) => {
+    if (typeof chrome === 'undefined' || !chrome.runtime) return;
+
+    // Deep-sanitize the payload so chrome.runtime.sendMessage's structured-
+    // clone step cannot choke on BigInt, Uint8Array, Functions, Dates,
+    // Symbols, or cross-realm objects. We go via JSON round-trip as the
+    // ultimate fallback because chrome.runtime.sendMessage always ends up
+    // re-serializing anyway.
+    const safeJsonClone = (v: unknown): unknown => {
+      try {
+        const s = JSON.stringify(v, (_k, val) => {
+          if (typeof val === 'bigint')       return val.toString();
+          if (val instanceof Uint8Array)     return Array.from(val);
+          if (ArrayBuffer.isView(val))       return Array.from(new Uint8Array((val as ArrayBufferView).buffer));
+          if (val instanceof Date)           return val.toISOString();
+          if (typeof val === 'function')     return undefined;
+          if (typeof val === 'symbol')       return undefined;
+          return val;
+        });
+        return s === undefined ? null : JSON.parse(s);
+      } catch (err) {
+        return { _sanitizeError: err instanceof Error ? err.message : String(err) };
+      }
+    };
+
+    const safePayload = safeJsonClone(payload) as Record<string, unknown>;
+
+    try {
+      chrome.runtime.sendMessage({ type, pendingKey, ...safePayload });
+    } catch (err) {
+      // Last-resort: report the serialization failure back so the SDK
+      // surfaces a readable error instead of a silent timeout.
+      try {
+        chrome.runtime.sendMessage({
+          type,
+          pendingKey,
+          success: false,
+          error: `pvac result serialize failed: ${err instanceof Error ? err.message : String(err)}`,
+        });
+      } catch { /* give up */ }
+    }
+
+    chrome.storage.local.remove([`${storageKey}_${pendingKey}`, `${storageKey}Key`]);
+
+    // Keep the popup alive long enough that a follow-up SDK call can land in
+    // the same popup view. The heartbeat + storage listener do the actual
+    // routing; the idle window here just decides when to close if no more
+    // requests arrive.
+    //
+    // PVAC WASM ops can take several seconds each (first-call WASM boot,
+    // range proof generation, etc). Use a generous idle window so batches
+    // keep draining through one popup.
+    const IDLE_MS = 6000;
+    setTimeout(async () => {
+      if (requestType !== null) return; // UI request is being shown
+
+      try {
+        const keys = await chrome.storage.local.get([
+          'pendingPvacIdentityKey',
+          'pendingPvacEcdhKey',
+          'pendingPvacDecryptKey',
+          'pendingPvacEncryptKey',
+          'pendingPvacScanKey',
+          'pendingPvacZkSignKey',
+          'pendingConnectionRequestKey',
+          'pendingCapabilityRequestKey',
+          'pendingInvokeRequestKey',
+          'pendingSignMessageRequestKey',
+        ]);
+        const hasPending = Object.values(keys).some(v => !!v);
+        if (!hasPending) window.close();
+      } catch {
+        window.close();
+      }
+    }, IDLE_MS);
+  };
+
+  /** Handle PVAC_GET_IDENTITY — derive view keypair from wallet private key. */
+  const handlePvacIdentityRequest = async (pendingKey: string) => {
+    if (typeof chrome === 'undefined' || !chrome.storage) return;
+    const data = await chrome.storage.local.get([`pendingPvacIdentity_${pendingKey}`]);
+    const req = data[`pendingPvacIdentity_${pendingKey}`];
+    if (!req) return;
+    const wallet = wallets.find(w => w.address === req.walletAddress) || selectedWallet;
+    if (!wallet?.privateKey) {
+      sendPvacResult('PVAC_IDENTITY_RESULT', pendingKey, 'pendingPvacIdentity', { success: false, error: 'Wallet locked' });
+      return;
+    }
+    try {
+      const { runInWorker } = await import('@/lib/pvac/pvac-worker-client');
+      const result = await runInWorker<{ identity: unknown }>('pvacGetIdentity', {
+        privateKey: wallet.privateKey, walletAddress: wallet.address,
+      });
+      if (result.success && result.data) {
+        sendPvacResult('PVAC_IDENTITY_RESULT', pendingKey, 'pendingPvacIdentity', { success: true, identity: result.data.identity });
+      } else {
+        sendPvacResult('PVAC_IDENTITY_RESULT', pendingKey, 'pendingPvacIdentity', { success: false, error: result.error });
+      }
+    } catch (e) {
+      sendPvacResult('PVAC_IDENTITY_RESULT', pendingKey, 'pendingPvacIdentity', { success: false, error: String(e) });
+    }
+  };
+
+  /** Handle PVAC_COMPUTE_SHARED_SECRET — ECDH with counterparty view pubkey. */
+  const handlePvacEcdhRequest = async (pendingKey: string) => {
+    if (typeof chrome === 'undefined' || !chrome.storage) return;
+    const data = await chrome.storage.local.get([`pendingPvacEcdh_${pendingKey}`]);
+    const req = data[`pendingPvacEcdh_${pendingKey}`];
+    if (!req) return;
+    const wallet = wallets.find(w => w.address === req.walletAddress) || selectedWallet;
+    if (!wallet?.privateKey) {
+      sendPvacResult('PVAC_ECDH_RESULT', pendingKey, 'pendingPvacEcdh', { success: false, error: 'Wallet locked' });
+      return;
+    }
+    try {
+      const { runInWorker } = await import('@/lib/pvac/pvac-worker-client');
+      const result = await runInWorker<{ sharedSecretResult: unknown }>('pvacComputeSharedSecret', {
+        privateKey: wallet.privateKey, theirViewPubkey: req.theirViewPubkey,
+      });
+      if (result.success && result.data) {
+        sendPvacResult('PVAC_ECDH_RESULT', pendingKey, 'pendingPvacEcdh', { success: true, sharedSecretResult: result.data.sharedSecretResult });
+      } else {
+        sendPvacResult('PVAC_ECDH_RESULT', pendingKey, 'pendingPvacEcdh', { success: false, error: result.error });
+      }
+    } catch (e) {
+      sendPvacResult('PVAC_ECDH_RESULT', pendingKey, 'pendingPvacEcdh', { success: false, error: String(e) });
+    }
+  };
+
+  /** Handle PVAC_DECRYPT_CIPHER — decrypt hfhe_v1|... cipher via WASM. */
+  const handlePvacDecryptRequest = async (pendingKey: string) => {
+    if (typeof chrome === 'undefined' || !chrome.storage) return;
+    const data = await chrome.storage.local.get([`pendingPvacDecrypt_${pendingKey}`]);
+    const req = data[`pendingPvacDecrypt_${pendingKey}`];
+    if (!req) return;
+    const wallet = wallets.find(w => w.address === req.walletAddress) || selectedWallet;
+    if (!wallet?.privateKey) {
+      sendPvacResult('PVAC_DECRYPT_RESULT', pendingKey, 'pendingPvacDecrypt', { success: false, error: 'Wallet locked' });
+      return;
+    }
+    try {
+      const { runInWorker } = await import('@/lib/pvac/pvac-worker-client');
+      const result = await runInWorker<{ valueRaw: string; valueOct: number }>('pvacDecryptCipher', {
+        privateKey: wallet.privateKey, cipher: req.cipher,
+      });
+      if (result.success && result.data) {
+        sendPvacResult('PVAC_DECRYPT_RESULT', pendingKey, 'pendingPvacDecrypt', {
+          success: true, valueRaw: result.data.valueRaw, valueOct: result.data.valueOct,
+        });
+      } else {
+        sendPvacResult('PVAC_DECRYPT_RESULT', pendingKey, 'pendingPvacDecrypt', { success: false, error: result.error });
+      }
+    } catch (e) {
+      sendPvacResult('PVAC_DECRYPT_RESULT', pendingKey, 'pendingPvacDecrypt', { success: false, error: String(e) });
+    }
+  };
+
+  /** Handle PVAC_ENCRYPT_VALUE — encrypt a value via WASM. */
+  const handlePvacEncryptRequest = async (pendingKey: string) => {
+    if (typeof chrome === 'undefined' || !chrome.storage) return;
+    const data = await chrome.storage.local.get([`pendingPvacEncrypt_${pendingKey}`]);
+    const req = data[`pendingPvacEncrypt_${pendingKey}`];
+    if (!req) return;
+    const wallet = wallets.find(w => w.address === req.walletAddress) || selectedWallet;
+    if (!wallet?.privateKey || !wallet?.publicKey) {
+      sendPvacResult('PVAC_ENCRYPT_RESULT', pendingKey, 'pendingPvacEncrypt', { success: false, error: 'Wallet locked' });
+      return;
+    }
+    try {
+      const { runInWorker } = await import('@/lib/pvac/pvac-worker-client');
+      const result = await runInWorker<{ cipher: string }>('pvacEncryptValue', {
+        privateKey: wallet.privateKey, publicKey: wallet.publicKey,
+        address: wallet.address, valueRaw: String(req.valueRaw),
+      });
+      if (result.success && result.data) {
+        sendPvacResult('PVAC_ENCRYPT_RESULT', pendingKey, 'pendingPvacEncrypt', { success: true, cipher: result.data.cipher });
+      } else {
+        sendPvacResult('PVAC_ENCRYPT_RESULT', pendingKey, 'pendingPvacEncrypt', { success: false, error: result.error });
+      }
+    } catch (e) {
+      sendPvacResult('PVAC_ENCRYPT_RESULT', pendingKey, 'pendingPvacEncrypt', { success: false, error: String(e) });
+    }
+  };
+
+  /** Handle PVAC_SCAN_OUTPUTS — scan stealth outputs via WASM. */
+  const handlePvacScanRequest = async (pendingKey: string) => {
+    if (typeof chrome === 'undefined' || !chrome.storage) return;
+    const data = await chrome.storage.local.get([`pendingPvacScan_${pendingKey}`]);
+    const req = data[`pendingPvacScan_${pendingKey}`];
+    if (!req) return;
+    const wallet = wallets.find(w => w.address === req.walletAddress) || selectedWallet;
+    if (!wallet?.privateKey) {
+      sendPvacResult('PVAC_SCAN_RESULT', pendingKey, 'pendingPvacScan', { success: false, error: 'Wallet locked' });
+      return;
+    }
+    try {
+      const { runInWorker } = await import('@/lib/pvac/pvac-worker-client');
+      const result = await runInWorker<{ scanResult: unknown }>('pvacScanOutputs', {
+        privateKey: wallet.privateKey, outputs: req.outputs,
+      });
+      if (result.success && result.data) {
+        sendPvacResult('PVAC_SCAN_RESULT', pendingKey, 'pendingPvacScan', { success: true, scanResult: result.data.scanResult });
+      } else {
+        sendPvacResult('PVAC_SCAN_RESULT', pendingKey, 'pendingPvacScan', { success: false, error: result.error });
+      }
+    } catch (e) {
+      sendPvacResult('PVAC_SCAN_RESULT', pendingKey, 'pendingPvacScan', { success: false, error: String(e) });
+    }
+  };
+
+  // ── ZK Sign approval handler ──────────────────────────────────────────────
+
+  const handleZkSignApprove = async () => {
+    if (!pvacZkSignRequest || !selectedWallet?.privateKey) return;
     setIsProcessing(true);
+    try {
+      const dataBytes = new Uint8Array(pvacZkSignRequest.data);
+
+      // SHA-256 hash of the raw data (used as ZK public input)
+      const hashBuf = await crypto.subtle.digest('SHA-256', dataBytes);
+      const dataHash = Array.from(new Uint8Array(hashBuf))
+        .map(b => b.toString(16).padStart(2, '0')).join('');
+
+      // Domain-separate if domain provided: sign(data || domain)
+      let toSign = dataBytes;
+      if (pvacZkSignRequest.domain) {
+        const domainBytes = new TextEncoder().encode(pvacZkSignRequest.domain);
+        toSign = new Uint8Array(dataBytes.length + domainBytes.length);
+        toSign.set(dataBytes);
+        toSign.set(domainBytes, dataBytes.length);
+      }
+
+      // Ed25519 sign
+      const privateKeyBytes = Buffer.from(selectedWallet.privateKey, 'base64');
+      const keyPair = nacl.sign.keyPair.fromSeed(privateKeyBytes.slice(0, 32));
+      const signature = nacl.sign.detached(toSign, keyPair.secretKey);
+      const signatureHex = Array.from(signature).map(b => b.toString(16).padStart(2, '0')).join('');
+      const publicKeyHex = Array.from(keyPair.publicKey).map(b => b.toString(16).padStart(2, '0')).join('');
+
+      if (typeof chrome !== 'undefined' && chrome.runtime) {
+        const pk = pvacZkSignRequest.pendingKey;
+        chrome.runtime.sendMessage({
+          type: 'PVAC_ZK_SIGN_RESULT',
+          pendingKey: pk,
+          approved: true,
+          signature: signatureHex,
+          publicKey: publicKeyHex,
+          dataHash,
+        });
+        chrome.storage.local.remove([`pendingPvacZkSign_${pk}`, 'pendingPvacZkSignKey']);
+      }
+      window.close();
+    } catch (error) {
+      logger.error('DAppRequestHandler: ZK sign error:', error);
+      toast({
+        title: 'Signing Failed',
+        description: error instanceof Error ? error.message : 'Unknown error',
+        variant: 'destructive',
+      });
+      setIsProcessing(false);
+    }
+  };
+
+  const handleReject = () => {
 
     if (typeof chrome !== 'undefined' && chrome.runtime) {
       if (requestType === 'connection' && connectionRequest) {
@@ -1294,6 +1684,15 @@ export function DAppRequestHandler({ wallets }: DAppRequestHandlerProps) {
           'pendingSignMessageRequest',
           ...(pk ? [`pendingSignMessageRequest_${pk}`, 'pendingSignMessageRequestKey'] : []),
         ]);
+      } else if (requestType === 'pvacZkSign' && pvacZkSignRequest) {
+        const pk = pvacZkSignRequest.pendingKey;
+        chrome.runtime.sendMessage({
+          type: 'PVAC_ZK_SIGN_RESULT',
+          pendingKey: pk,
+          approved: false,
+          error: 'User rejected ZK sign request',
+        });
+        chrome.storage.local.remove([`pendingPvacZkSign_${pk}`, 'pendingPvacZkSignKey']);
       } else if (requestType === 'invoke' && invokeRequest) {
         sendInvokeResult(false, undefined, 'User rejected request');
       }
@@ -1385,6 +1784,32 @@ export function DAppRequestHandler({ wallets }: DAppRequestHandlerProps) {
   if (!requestType) return null;
 
   // Render based on request type - optimized for popup size (400x600)
+
+  // When the popup is open only to service PVAC auto-execute requests, render
+  // a friendly "processing wallet request" splash instead of the empty
+  // approval skeleton. Keeps the user informed that something is happening.
+  if (requestType === null && processingPvac) {
+    return (
+      <div className="h-full flex flex-col items-center justify-center bg-background px-6 text-center">
+        <div className="flex items-center gap-2 mb-4">
+          <Shield className="h-5 w-5 text-primary" />
+          <span className="text-sm font-semibold">OctWa</span>
+        </div>
+        <div
+          className="w-10 h-10 rounded-full border-2 border-transparent animate-spin mb-3"
+          style={{ borderTopColor: '#a9c4ee', borderRightColor: '#a9c4ee' }}
+        />
+        <p className="text-sm font-medium mb-1">processing wallet request</p>
+        <p className="text-[11px] text-muted-foreground">
+          running PVAC / HFHE operation — this may take a few seconds the first time.
+        </p>
+        <p className="text-[10px] text-muted-foreground mt-3">
+          popup closes automatically when done.
+        </p>
+      </div>
+    );
+  }
+
   return (
     <div className="h-full flex flex-col overflow-hidden bg-background">
 
@@ -1422,7 +1847,7 @@ export function DAppRequestHandler({ wallets }: DAppRequestHandlerProps) {
       {/* ── ACTIVE ADDRESS (below header) ── */}
       {selectedWallet && (
         <div className="flex-shrink-0 px-4 py-1.5 border-b border-border bg-muted/30">
-          <p className="text-[10px] text-muted-foreground font-mono truncate text-center">{selectedWallet.address}</p>
+          <p className="text-[10px] text-muted-foreground font-mono break-all text-center leading-snug">{selectedWallet.address}</p>
         </div>
       )}
 
@@ -1520,7 +1945,10 @@ export function DAppRequestHandler({ wallets }: DAppRequestHandlerProps) {
               <div className="p-2.5 bg-amber-500/10 border border-amber-500/30 rounded space-y-2 text-xs">
                 <h4 className="font-medium text-amber-600 dark:text-amber-400">OCT Transaction</h4>
                 <div className="space-y-1.5">
-                  <div className="flex items-center justify-between"><span className="text-muted-foreground">To</span><span className="font-mono truncate max-w-[200px]">{parsedTxPayload.to}</span></div>
+                  <div className="flex flex-col gap-0.5">
+                    <span className="text-muted-foreground text-[10px] uppercase tracking-wider">To</span>
+                    <span className="font-mono text-[11px] break-all leading-snug">{parsedTxPayload.to}</span>
+                  </div>
                   <div className="flex items-center justify-between"><span className="text-muted-foreground">Amount</span><span className="font-bold text-sm">{parsedTxPayload.amount} OCT</span></div>
                   {parsedTxPayload.message && (
                     <details className="pt-1 border-t border-amber-500/20">
@@ -1540,7 +1968,10 @@ export function DAppRequestHandler({ wallets }: DAppRequestHandlerProps) {
                     <span className="text-muted-foreground">Network</span>
                     <span className="font-medium">{parsedEvmTxPayload.network === 'eth-mainnet' ? 'Ethereum Mainnet' : parsedEvmTxPayload.network === 'eth-sepolia' ? 'Sepolia' : parsedEvmTxPayload.network || 'Ethereum Mainnet'}</span>
                   </div>
-                  <div className="flex items-center justify-between"><span className="text-muted-foreground">To</span><span className="font-mono truncate max-w-[200px]">{parsedEvmTxPayload.to}</span></div>
+                  <div className="flex flex-col gap-0.5">
+                    <span className="text-muted-foreground text-[10px] uppercase tracking-wider">To</span>
+                    <span className="font-mono text-[11px] break-all leading-snug">{parsedEvmTxPayload.to}</span>
+                  </div>
                   <div className="flex items-center justify-between">
                     <span className="text-muted-foreground">Amount</span>
                     <span className="font-bold text-sm">{parsedEvmTxPayload.amount ? `${parsedEvmTxPayload.amount} ETH` : parsedEvmTxPayload.value ? `${(Number(parsedEvmTxPayload.value) / 1e18).toFixed(8)} ETH` : '0 ETH'}</span>
@@ -1576,7 +2007,10 @@ export function DAppRequestHandler({ wallets }: DAppRequestHandlerProps) {
                 <h4 className="font-medium text-green-600 dark:text-green-400">{parsedErc20TxPayload.symbol} Transfer</h4>
                 <div className="space-y-1.5">
                   <div className="flex items-center justify-between"><span className="text-muted-foreground">Token</span><span className="font-mono">{parsedErc20TxPayload.symbol}</span></div>
-                  <div className="flex items-center justify-between"><span className="text-muted-foreground">To</span><span className="font-mono truncate max-w-[200px]">{parsedErc20TxPayload.to}</span></div>
+                  <div className="flex flex-col gap-0.5">
+                    <span className="text-muted-foreground text-[10px] uppercase tracking-wider">To</span>
+                    <span className="font-mono text-[11px] break-all leading-snug">{parsedErc20TxPayload.to}</span>
+                  </div>
                   <div className="flex items-center justify-between">
                     <span className="text-muted-foreground">Amount</span>
                     <span className="font-bold text-sm">{(Number(parsedErc20TxPayload.amount) / (10 ** parsedErc20TxPayload.decimals)).toFixed(2)} {parsedErc20TxPayload.symbol}</span>
@@ -1623,7 +2057,10 @@ export function DAppRequestHandler({ wallets }: DAppRequestHandlerProps) {
                     <Shield className="h-3.5 w-3.5" />Stealth Transfer
                   </h4>
                   <div className="space-y-1.5">
-                    <div className="flex items-center justify-between"><span className="text-muted-foreground">To</span><span className="font-mono truncate max-w-[200px]">{p.to}</span></div>
+                    <div className="flex flex-col gap-0.5">
+                      <span className="text-muted-foreground text-[10px] uppercase tracking-wider">To</span>
+                      <span className="font-mono text-[11px] break-all leading-snug">{p.to}</span>
+                    </div>
                     <div className="flex items-center justify-between"><span className="text-muted-foreground">Amount</span><span className="font-bold">{p.amount} OCT</span></div>
                     <p className="text-muted-foreground text-[10px]">Private transfer from encrypted balance. Recipient must scan to claim.</p>
                   </div>
@@ -1639,7 +2076,10 @@ export function DAppRequestHandler({ wallets }: DAppRequestHandlerProps) {
                     <Gift className="h-3.5 w-3.5" />Claim Stealth Output
                   </h4>
                   <div className="space-y-1.5">
-                    <div className="flex items-center justify-between"><span className="text-muted-foreground">Output ID</span><span className="font-mono truncate max-w-[200px]">{p.outputId}</span></div>
+                    <div className="flex flex-col gap-0.5">
+                      <span className="text-muted-foreground text-[10px] uppercase tracking-wider">Output ID</span>
+                      <span className="font-mono text-[11px] break-all leading-snug">{p.outputId}</span>
+                    </div>
                     <p className="text-muted-foreground text-[10px]">Claims a stealth output into your encrypted balance.</p>
                   </div>
                 </div>
@@ -1673,6 +2113,39 @@ export function DAppRequestHandler({ wallets }: DAppRequestHandlerProps) {
             </Alert>
           </>
         )}
+
+        {/* ZK Proof Sign */}
+        {requestType === 'pvacZkSign' && pvacZkSignRequest && (
+          <>
+            <div className="p-2.5 bg-blue-500/10 border border-blue-500/30 rounded space-y-2">
+              <h4 className="text-xs font-medium text-blue-600 dark:text-blue-400 flex items-center gap-1.5">
+                <Lock className="h-3.5 w-3.5" />ZK Proof Signing
+              </h4>
+              <div className="space-y-1.5 text-xs">
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Data size</span>
+                  <span className="font-mono">{pvacZkSignRequest.data.length} bytes</span>
+                </div>
+                {pvacZkSignRequest.domain && (
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Domain</span>
+                    <span className="font-mono truncate max-w-[180px]">{pvacZkSignRequest.domain}</span>
+                  </div>
+                )}
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Purpose</span>
+                  <span className="text-blue-500">ZK circuit public input</span>
+                </div>
+              </div>
+            </div>
+            <Alert className="py-2 border-blue-500/30 bg-blue-500/10">
+              <AlertTriangle className="h-3 w-3 text-blue-500" />
+              <AlertDescription className="text-xs text-blue-600 dark:text-blue-400">
+                This signature will be used as a public input in a zero-knowledge proof. Only approve if you trust this dApp.
+              </AlertDescription>
+            </Alert>
+          </>
+        )}
       </div>
 
       {/* ── FOOTER ── */}
@@ -1688,6 +2161,7 @@ export function DAppRequestHandler({ wallets }: DAppRequestHandlerProps) {
               if (requestType === 'connection') handleConnectionApprove();
               else if (requestType === 'capability') handleCapabilityApprove();
               else if (requestType === 'signMessage') handleSignMessageApprove();
+              else if (requestType === 'pvacZkSign') handleZkSignApprove();
               else if (requestType === 'invoke') handleInvokeApprove();
             }}
             disabled={isProcessing || !selectedWallet}

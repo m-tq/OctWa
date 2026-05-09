@@ -73,8 +73,8 @@ jobs:
 
             | Platform | File | Status |
             |----------|------|--------|
-            | Linux x64   | `pvac_server-linux-x64-${{ steps.ver.outputs.version }}.tar.gz` | ✅ Auto-built |
-            | Windows x64 | `pvac_server-windows-x64-${{ steps.ver.outputs.version }}.zip` | ⬆️ Uploaded manually |
+            | Linux x64   | `pvac_server-linux-x64-${{ steps.ver.outputs.version }}.tar.gz` | Auto-built |
+            | Windows x64 | `pvac_server-windows-x64-${{ steps.ver.outputs.version }}.zip` | Uploaded manually |
 
             ### Linux
             ```bash

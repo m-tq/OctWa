@@ -10,6 +10,8 @@
     INVOKE:      300_000,  // 5 min  — user must approve write ops
     SIGN:        60_000,   // 1 min  — user must approve in popup
     QUICK:       15_000,   // 15 s   — instant ops (list, renew, revoke, disconnect)
+    PVAC_FAST:   60_000,   // 1 min  — PVAC ops that don't run WASM compute (identity, ECDH)
+    PVAC_HEAVY:  300_000,  // 5 min  — PVAC WASM ops (encrypt/decrypt/scan — first call boots WASM)
   };
 
   class OctraProvider {
@@ -158,6 +160,94 @@
     /** Revoke a capability immediately. */
     async revokeCapability(capabilityId) {
       return this._sendRequest('REVOKE_CAPABILITY_REQUEST', { capabilityId }, TIMEOUT.QUICK);
+    }
+
+    // ── PVAC / HFHE Crypto (Phase 7) ──────────────────────────────────────────
+
+    /**
+     * Get wallet's crypto identity: Ed25519 pubkey, Curve25519 view pubkey,
+     * PVAC registration status, and current cipher.
+     * Auto-executes — no popup needed.
+     */
+    async getCryptoIdentity() {
+      return this._sendRequest('PVAC_GET_IDENTITY', {
+        appOrigin: window.location.origin,
+      }, TIMEOUT.PVAC_FAST);
+    }
+
+    /**
+     * Compute ECDH shared secret with a counterparty's Curve25519 view pubkey.
+     * Returns shared secret + derived stealth tag + claim secret.
+     * Runs inside wallet context — private key never leaves.
+     * Auto-executes — no popup needed.
+     */
+    async computeSharedSecret(theirViewPubkey) {
+      if (!theirViewPubkey || typeof theirViewPubkey !== 'string')
+        throw new Error('theirViewPubkey must be a non-empty string');
+      return this._sendRequest('PVAC_COMPUTE_SHARED_SECRET', {
+        theirViewPubkey,
+        appOrigin: window.location.origin,
+      }, TIMEOUT.PVAC_FAST);
+    }
+
+    /**
+     * Decrypt an HFHE cipher client-side using the wallet's PVAC secret key.
+     * No transaction, no fee — pure read operation.
+     * Auto-executes — no popup needed.
+     */
+    async decryptCipher(cipher) {
+      if (!cipher || typeof cipher !== 'string')
+        throw new Error('cipher must be a non-empty string');
+      return this._sendRequest('PVAC_DECRYPT_CIPHER', {
+        cipher,
+        appOrigin: window.location.origin,
+      }, TIMEOUT.PVAC_HEAVY);
+    }
+
+    /**
+     * Encrypt a value client-side using the wallet's PVAC public key.
+     * Returns an hfhe_v1|... cipher ready for use in contract calls.
+     * Auto-executes — no popup needed.
+     */
+    async encryptValue(valueRaw) {
+      if (typeof valueRaw !== 'bigint' && typeof valueRaw !== 'number' && typeof valueRaw !== 'string')
+        throw new Error('valueRaw must be a bigint, number, or string');
+      return this._sendRequest('PVAC_ENCRYPT_VALUE', {
+        valueRaw: valueRaw.toString(),
+        appOrigin: window.location.origin,
+      }, TIMEOUT.PVAC_HEAVY);
+    }
+
+    /**
+     * Scan a list of raw stealth outputs and return ones belonging to this wallet.
+     * Performs ECDH inside wallet context — private view key never leaves.
+     * Auto-executes — no popup needed.
+     * Timeout: 5 min (large output sets can take time).
+     */
+    async scanOutputs(outputs, onProgress) {
+      if (!Array.isArray(outputs)) throw new Error('outputs must be an array');
+      return this._sendRequest('PVAC_SCAN_OUTPUTS', {
+        outputs,
+        appOrigin: window.location.origin,
+      }, TIMEOUT.PVAC_HEAVY);
+    }
+
+    /**
+     * Sign data for use as a ZK proof public input.
+     * Uses wallet's Ed25519 key. Always opens a popup for user approval.
+     */
+    async signForZK(input) {
+      if (!input?.data) throw new Error('input.data is required');
+      const dataArray = input.data instanceof Uint8Array
+        ? Array.from(input.data)
+        : Array.from(new TextEncoder().encode(String(input.data)));
+      return this._sendRequest('PVAC_SIGN_FOR_ZK', {
+        data: dataArray,
+        domain: input.domain || '',
+        appOrigin: window.location.origin,
+        appName: document.title || window.location.hostname,
+        appIcon: this._getAppIcon(),
+      }, TIMEOUT.SIGN);
     }
 
     // ── Response handler ─────────────────────────────────────────────────────
