@@ -159,6 +159,17 @@ export function SendTransaction({
     );
   };
 
+  // Hide the external contacts button once the user has committed to a
+  // recipient (valid oct address or a well-formed ONS label). Keeps parity
+  // with AddressInput's internal contacts button.
+  const recipientHasCommitted = (() => {
+    const v = recipientAddress.trim();
+    if (!v) return false;
+    if (isOctAddress(v)) return true;
+    const label = normalizeLabel(v);
+    return isValidLabel(label);
+  })();
+
   // Get OU value based on selection
   const getOuValue = (): number => {
     if (ouOption === 'recommended') return recommendedFee;
@@ -456,16 +467,21 @@ export function SendTransaction({
                   <Plus className="h-3 w-3" />
                 </Button>
               )}
-              <Button
-                type="button"
-                variant="outline"
-                size="icon"
-                onClick={() => setShowAddressBookDropdown(!showAddressBookDropdown)}
-                className="h-7 w-7 flex-shrink-0"
-                title="Select from contacts"
-              >
-                <BookUser className="h-3 w-3" />
-              </Button>
+              {/* Contacts button hides once the user has committed to a
+                   recipient (valid oct address or a well-formed ONS label).
+                   The clear X inside the input or resolved card is enough. */}
+              {!recipientHasCommitted && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  onClick={() => setShowAddressBookDropdown(!showAddressBookDropdown)}
+                  className="h-7 w-7 flex-shrink-0"
+                  title="Select from contacts"
+                >
+                  <BookUser className="h-3 w-3" />
+                </Button>
+              )}
             </div>
           </div>
           <AddressInput

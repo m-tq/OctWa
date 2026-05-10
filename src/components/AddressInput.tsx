@@ -195,6 +195,15 @@ export function AddressInput({
     onChange('');
   };
 
+  // Hide the address-book button once the user has committed to a recipient
+  // (valid oct address OR a well-formed ONS label that will resolve). The
+  // clear X inside the input or resolved card is enough — showing another
+  // button next to it just adds visual noise.
+  const inputHasRecipient =
+    !!value.trim() &&
+    (isOctAddress(value.trim()) || isValidLabel(normalizeLabel(value.trim())));
+  const shouldShowContactsButton = !inputHasRecipient;
+
   // Call onOpenContacts callback when dropdown opens (for external control)
   useEffect(() => {
     if (onOpenContacts && showDropdown) {
@@ -327,19 +336,6 @@ export function AddressInput({
               </button>
             )}
           </div>
-          {!hideButtons && (
-            <Button
-              type="button"
-              variant="outline"
-              size="icon"
-              onClick={() => setShowDropdown(!showDropdown)}
-              disabled={disabled}
-              className={`${isCompact ? 'h-8 w-8' : 'h-8 w-8'} flex-shrink-0`}
-              title="Select from contacts"
-            >
-              <BookUser className={isCompact ? 'h-3.5 w-3.5' : 'h-4 w-4'} />
-            </Button>
-          )}
         </div>
       ) : (
       <div className="flex gap-1 items-center">
@@ -378,17 +374,19 @@ export function AddressInput({
                 <Plus className={isCompact ? 'h-3.5 w-3.5' : 'h-4 w-4'} />
               </Button>
             )}
-            <Button
-              type="button"
-              variant="outline"
-              size="icon"
-              onClick={() => setShowDropdown(!showDropdown)}
-              disabled={disabled}
-              className={isCompact ? 'h-8 w-8 flex-shrink-0' : 'h-8 w-8 flex-shrink-0'}
-              title="Select from contacts"
-            >
-              <BookUser className={isCompact ? 'h-3.5 w-3.5' : 'h-4 w-4'} />
-            </Button>
+            {shouldShowContactsButton && (
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                onClick={() => setShowDropdown(!showDropdown)}
+                disabled={disabled}
+                className={isCompact ? 'h-8 w-8 flex-shrink-0' : 'h-8 w-8 flex-shrink-0'}
+                title="Select from contacts"
+              >
+                <BookUser className={isCompact ? 'h-3.5 w-3.5' : 'h-4 w-4'} />
+              </Button>
+            )}
           </>
         )}
       </div>

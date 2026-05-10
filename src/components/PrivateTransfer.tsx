@@ -20,6 +20,7 @@ import { FeeSelector, FeeOption, getEffectiveFee } from './FeeSelector';
 import { usePvacOperation } from '@/hooks/usePvacOperation';
 import { RangeServerSetup } from './RangeServerSetup';
 import { isRangeServerAvailable } from '@/services/rangeProofServer';
+import { isOctAddress, isValidLabel, normalizeLabel } from '@/integrations/ons';
 
 interface PrivateTransferProps {
   wallet: Wallet | null;
@@ -176,6 +177,16 @@ export function PrivateTransfer({
       walletLabels.some((w) => w.address.toLowerCase() === lowerAddr)
     );
   };
+
+  // Hide the external contacts button once the user has committed to a
+  // recipient (valid oct address or a well-formed ONS label). The clear X
+  // inside the input or resolved card is enough to reset the field.
+  const recipientHasCommitted = (() => {
+    const v = recipientAddress.trim();
+    if (!v) return false;
+    if (isOctAddress(v)) return true;
+    return isValidLabel(normalizeLabel(v));
+  })();
 
   // Only fetch encrypted balance if not provided via props (uses cache)
   useEffect(() => {
@@ -511,16 +522,18 @@ export function PrivateTransfer({
                       <Plus className="h-3 w-3" />
                     </Button>
                   )}
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="icon"
-                    onClick={() => setShowAddressBookDropdown(!showAddressBookDropdown)}
-                    className="h-7 w-7 flex-shrink-0"
-                    title="Select from contacts"
-                  >
-                    <BookUser className="h-3 w-3" />
-                  </Button>
+                  {!recipientHasCommitted && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon"
+                      onClick={() => setShowAddressBookDropdown(!showAddressBookDropdown)}
+                      className="h-7 w-7 flex-shrink-0"
+                      title="Select from contacts"
+                    >
+                      <BookUser className="h-3 w-3" />
+                    </Button>
+                  )}
                 </div>
               </div>
               <AddressInput
