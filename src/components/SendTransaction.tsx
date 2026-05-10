@@ -42,12 +42,7 @@ interface SendTransactionProps {
   onAddToAddressBook?: (address: string) => void; // Callback to add address to address book
 }
 
-// Simple address validation function
-function isOctraAddress(input: string): boolean {
-  // Check if it's a valid Octra address: exactly 47 characters starting with "oct"
-  const addressRegex = /^oct[123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz]{44}$/;
-  return addressRegex.test(input);
-}
+import { isOctAddress, isValidLabel, normalizeLabel } from '@/integrations/ons';
 
 function validateRecipientInput(input: string): { isValid: boolean; error?: string } {
   if (!input || input.trim().length === 0) {
@@ -56,14 +51,20 @@ function validateRecipientInput(input: string): { isValid: boolean; error?: stri
 
   const trimmedInput = input.trim();
 
-  // Check if it's a valid Octra address
-  if (isOctraAddress(trimmedInput)) {
+  // Accept a resolved oct address as-is.
+  if (isOctAddress(trimmedInput)) {
     return { isValid: true };
   }
 
-  return { 
-    isValid: false, 
-    error: 'Invalid address format. Must be exactly 47 characters starting with "oct"'
+  // Accept a well-formed ONS label — the resolver chip will swap it with the
+  // actual address before submission.
+  if (isValidLabel(normalizeLabel(trimmedInput))) {
+    return { isValid: true };
+  }
+
+  return {
+    isValid: false,
+    error: 'Enter a valid Octra address (oct...) or an ONS name (alice.oct).',
   };
 }
 
@@ -205,6 +206,18 @@ export function SendTransaction({
       toast({
         title: "Error",
         description: validation.error || "Invalid recipient address",
+        variant: "destructive",
+      });
+      return false;
+    }
+
+    // The input accepts ONS labels (the resolver card auto-swaps them for the
+    // oct address). If the user tried to send before resolution finished,
+    // block with a clear message instead of pushing a label to the tx builder.
+    if (!isOctAddress(recipientAddress.trim())) {
+      toast({
+        title: "Still resolving",
+        description: `"${recipientAddress.trim()}" is a name — wait for it to resolve or clear and paste the address.`,
         variant: "destructive",
       });
       return false;

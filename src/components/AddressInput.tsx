@@ -2,9 +2,16 @@ import { useState, useEffect, useRef } from 'react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { BookUser, Search, X, Plus, AlertTriangle, Shield, Globe } from 'lucide-react';
+import { BookUser, Search, X, Plus, AlertTriangle, Shield, Globe, Loader2 } from 'lucide-react';
 import { useAddressBook } from '../hooks/useAddressBook';
 import { OperationMode } from '../utils/modeStorage';
+import {
+  useOnsResolver,
+  reverseOnsLookup,
+  isOctAddress,
+  isValidLabel,
+  normalizeLabel,
+} from '@/integrations/ons';
 
 interface AddressInputProps {
   value: string;
@@ -118,6 +125,76 @@ export function AddressInput({
   const containerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
+  // ─── ONS resolver integration ──────────────────────────────────────────
+  //
+  // When the user types a label like `alice` or `alice.oct`, resolve it to
+  // an address in the background. Once resolved we render an ENS-style
+  // "resolved card" over the input showing the name + truncated address,
+  // and silently commit the resolved address back to `value` so every
+  // downstream validator (which expects /oct…/ regex) sees a proper address.
+  //
+  // A separate chip shows the primary ONS name when the user pastes a raw
+  // oct address that has `primary_of` set on chain.
+
+  // `pendingLabel` is the label the user typed but that we haven't committed
+  // yet. It's what the resolver card displays while the user sees an address
+  // in `value` (we substituted it silently once resolution succeeded).
+  const [pendingLabel, setPendingLabel] = useState<string>('');
+
+  const ons = useOnsResolver(value, { enabled: !disabled });
+  const [reverseName, setReverseName] = useState<string>('');
+
+  // Reverse lookup for raw oct addresses → primary name (enriches display).
+  useEffect(() => {
+    if (!value || !isOctAddress(value.trim())) {
+      setReverseName('');
+      return;
+    }
+    let cancelled = false;
+    reverseOnsLookup(value.trim())
+      .then((name) => { if (!cancelled) setReverseName(name); })
+      .catch(() => { if (!cancelled) setReverseName(''); });
+    return () => { cancelled = true; };
+  }, [value]);
+
+  // Auto-commit a resolved label → address substitution so parent validators
+  // always see a valid oct address when the resolver finishes.
+  useEffect(() => {
+    if (ons.state !== 'resolved') return;
+    if (!ons.address) return;
+    const current = value.trim();
+    if (isOctAddress(current)) return;                    // already an address
+    if (current.toLowerCase() === ons.address.toLowerCase()) return;
+    const label = normalizeLabel(current);
+    setPendingLabel(label);
+    onChange(ons.address);
+  }, [ons.state, ons.address]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Clear the remembered label whenever the input empties or diverges from
+  // the resolved address (e.g. user pasted a different address).
+  useEffect(() => {
+    if (!value) { setPendingLabel(''); return; }
+    if (!isOctAddress(value.trim())) return;   // still a label, keep showing
+    if (pendingLabel && ons.state === 'resolved' && value.trim() === ons.address) return;
+    // Address replaced externally by something other than our resolver.
+    if (pendingLabel && value.trim() !== ons.address) setPendingLabel('');
+  }, [value, pendingLabel, ons.state, ons.address]);
+
+  // Is the current `value` a label the user is actively typing (not yet
+  // resolved to an address)?
+  const inputIsLabel = !!value.trim() && !isOctAddress(value.trim()) && isValidLabel(normalizeLabel(value.trim()));
+
+  // Display an ENS-style resolved card when the input holds an address that
+  // maps to an ONS name we resolved locally (pendingLabel) or that the chain
+  // has a primary-name for (reverseName).
+  const showResolvedCard = !!value.trim() && isOctAddress(value.trim()) && (!!pendingLabel || !!reverseName);
+  const displayName = pendingLabel || reverseName;
+
+  const handleClearResolved = () => {
+    setPendingLabel('');
+    onChange('');
+  };
+
   // Call onOpenContacts callback when dropdown opens (for external control)
   useEffect(() => {
     if (onOpenContacts && showDropdown) {
@@ -211,6 +288,60 @@ export function AddressInput({
 
   return (
     <div ref={containerRef} className="relative">
+      {showResolvedCard ? (
+        // ENS-style resolved card replaces the input when a name has been
+        // resolved to an oct address. The underlying `value` stays the
+        // resolved address so downstream validators and tx builders see a
+        // real oct... string.
+        <div className="flex gap-1 items-center">
+          <div
+            className={`flex-1 flex items-center gap-2 border rounded-md bg-muted/30 ${
+              isCompact ? 'px-2 py-1.5' : 'px-3 py-2'
+            }`}
+            role="status"
+            aria-label={`Resolved ${displayName}.oct to ${value}`}
+          >
+            <div className={`flex-shrink-0 flex items-center justify-center bg-[#3B567F] text-white rounded-md ${
+              isCompact ? 'h-7 w-7' : 'h-9 w-9'
+            }`}>
+              <Globe className={isCompact ? 'h-3.5 w-3.5' : 'h-4 w-4'} />
+            </div>
+            <div className="flex-1 min-w-0 leading-tight">
+              <div className={`font-semibold truncate ${isCompact ? 'text-xs' : 'text-sm'}`}>
+                {displayName}<span className="text-muted-foreground">.oct</span>
+              </div>
+              <div className={`font-mono text-muted-foreground truncate ${isCompact ? 'text-[10px]' : 'text-xs'}`}>
+                {truncateAddress(value)}
+              </div>
+            </div>
+            {!disabled && (
+              <button
+                type="button"
+                onClick={handleClearResolved}
+                className={`flex-shrink-0 text-muted-foreground hover:text-foreground ${
+                  isCompact ? 'h-6 w-6' : 'h-7 w-7'
+                } flex items-center justify-center`}
+                title="Clear"
+              >
+                <X className={isCompact ? 'h-3.5 w-3.5' : 'h-4 w-4'} />
+              </button>
+            )}
+          </div>
+          {!hideButtons && (
+            <Button
+              type="button"
+              variant="outline"
+              size="icon"
+              onClick={() => setShowDropdown(!showDropdown)}
+              disabled={disabled}
+              className={`${isCompact ? 'h-8 w-8' : 'h-8 w-8'} flex-shrink-0`}
+              title="Select from contacts"
+            >
+              <BookUser className={isCompact ? 'h-3.5 w-3.5' : 'h-4 w-4'} />
+            </Button>
+          )}
+        </div>
+      ) : (
       <div className="flex gap-1 items-center">
         <div className="relative flex-1">
           <Input
@@ -261,6 +392,37 @@ export function AddressInput({
           </>
         )}
       </div>
+      )}
+
+      {/* Inline status while a label is being resolved */}
+      {inputIsLabel && ons.state === 'pending' && (
+        <div className={`mt-1.5 flex items-center gap-1.5 border rounded-md px-2 py-1 border-muted bg-muted/20 ${
+          isPopupMode ? 'text-[10px]' : 'text-xs'
+        }`}>
+          <Loader2 className="h-3 w-3 animate-spin text-muted-foreground flex-shrink-0" />
+          <span className="font-mono truncate">
+            <span className="text-muted-foreground">{normalizeLabel(value.trim())}.oct → resolving…</span>
+          </span>
+        </div>
+      )}
+      {inputIsLabel && ons.state === 'not-found' && (
+        <div className={`mt-1.5 flex items-center gap-1.5 border rounded-md px-2 py-1 border-yellow-500/40 bg-yellow-500/5 ${
+          isPopupMode ? 'text-[10px]' : 'text-xs'
+        }`}>
+          <AlertTriangle className="h-3 w-3 text-yellow-600 flex-shrink-0" />
+          <span className="font-mono truncate">
+            <span className="text-yellow-700 dark:text-yellow-400">{normalizeLabel(value.trim())}.oct not registered on this network</span>
+          </span>
+        </div>
+      )}
+      {inputIsLabel && ons.state === 'error' && (
+        <div className={`mt-1.5 flex items-center gap-1.5 border rounded-md px-2 py-1 border-destructive/40 bg-destructive/5 ${
+          isPopupMode ? 'text-[10px]' : 'text-xs'
+        }`}>
+          <AlertTriangle className="h-3 w-3 text-destructive flex-shrink-0" />
+          <span className="font-mono truncate text-destructive">{ons.error || 'lookup failed'}</span>
+        </div>
+      )}
 
       {/* Dropdown */}
       {showDropdown && (

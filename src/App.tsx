@@ -8,6 +8,7 @@ import { SplashScreen } from './components/SplashScreen';
 import { PageTransition } from './components/PageTransition';
 import { WalletManager } from './utils/walletManager';
 import { ExtensionStorageManager } from './utils/extensionStorage';
+import { syncOnsConfigFromActiveProvider } from './utils/onsBootstrap';
 import { Wallet } from './types/wallet';
 import { Toaster } from '@/components/ui/toaster';
 
@@ -99,6 +100,9 @@ function App() {
 
       try {
         await ExtensionStorageManager.init();
+
+        // Keep the ONS resolver pointed at the user's active RPC provider.
+        syncOnsConfigFromActiveProvider();
 
         // Clear legacy sessionStorage to prevent stale data from persisting
         // This ensures auto-lock works properly when browser is restarted
@@ -238,6 +242,12 @@ function App() {
           WalletManager.clearSessionPassword();
         }
         return;
+      }
+
+      // When the user swaps RPC providers, repoint the ONS resolver so
+      // subsequent name lookups use the new network.
+      if (e.key === 'rpcProviders' || e.key === 'activeRpcProvider') {
+        syncOnsConfigFromActiveProvider();
       }
       
       if (isLocked) return;

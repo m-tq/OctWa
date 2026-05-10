@@ -59,10 +59,22 @@ function validateRecipientInput(input: string): { isValid: boolean; error?: stri
     return { isValid: true };
   }
 
-  return { 
-    isValid: false, 
-    error: 'Invalid address format. Must be exactly 47 characters starting with "oct"'
+  // Accept a well-formed ONS label — the resolver chip will swap it with the
+  // actual address before submission.
+  if (isValidOnsLabel(trimmedInput)) {
+    return { isValid: true };
+  }
+
+  return {
+    isValid: false,
+    error: 'Enter a valid Octra address (oct...) or an ONS name (alice.oct).',
   };
+}
+
+function isValidOnsLabel(raw: string): boolean {
+  const label = raw.trim().toLowerCase().replace(/\.oct$/i, '');
+  if (label.length < 3 || label.length > 63) return false;
+  return /^[a-z0-9][a-z0-9-]*[a-z0-9]$/.test(label);
 }
 
 export function PrivateTransfer({
@@ -238,6 +250,17 @@ export function PrivateTransfer({
       toast({
         title: "Error",
         description: addressValidation?.error || "Invalid recipient address",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Inputs now accept ONS labels (the resolver card auto-swaps them for the
+    // oct address). Block submission if the label hasn't finished resolving.
+    if (!isOctraAddress(finalRecipientAddress)) {
+      toast({
+        title: "Still resolving",
+        description: `"${finalRecipientAddress}" is a name — wait for it to resolve or clear and paste the address.`,
         variant: "destructive",
       });
       return;

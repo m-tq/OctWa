@@ -121,10 +121,24 @@
       data: sanitizedData
     }).then(response => {
       console.log('[Content] Response:', response);
-      
+
+      // Background returns null/undefined when the approval popup was closed
+      // without a reply (e.g. user closed the wallet window). Surface this
+      // as a clean error rather than crashing the content-script bridge.
+      if (!response) {
+        window.postMessage({
+          source: 'octra-content-script',
+          requestId: event.data.requestId,
+          type: 'ERROR_RESPONSE',
+          success: false,
+          error: `[${event.data.type}] Wallet closed the approval popup before replying.`,
+        }, getTargetOrigin());
+        return;
+      }
+
       // Properly serialize Uint8Array in response for postMessage
       const serializedResponse = serializeResponse(response);
-      
+
       // Forward back to provider
       window.postMessage({
         source: 'octra-content-script',

@@ -61,9 +61,15 @@ function validateRecipientInput(input: string): { isValid: boolean; error?: stri
   if (isOctraAddress(trimmedInput)) {
     return { isValid: true };
   }
-  return { 
-    isValid: false, 
-    error: 'Invalid address format'
+  // Accept a well-formed ONS label — AddressInput swaps it with the real
+  // address via on-chain resolution before the tx is built.
+  const label = trimmedInput.toLowerCase().replace(/\.oct$/i, '');
+  if (label.length >= 3 && label.length <= 63 && /^[a-z0-9][a-z0-9-]*[a-z0-9]$/.test(label)) {
+    return { isValid: true };
+  }
+  return {
+    isValid: false,
+    error: 'Enter a valid Octra address (oct...) or an ONS name (alice.oct).',
   };
 }
 
