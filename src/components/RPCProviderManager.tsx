@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Wifi, Plus, MoreVertical, Trash2, Star, Settings } from 'lucide-react';
 import { RPCProvider } from '../types/wallet';
 import { useToast } from '@/hooks/use-toast';
+import { syncOnsConfigFromActiveProvider } from '@/utils/onsBootstrap';
 
 interface RPCProviderManagerProps {
   onClose?: () => void;
@@ -216,6 +217,8 @@ export function RPCProviderManager({ onRPCChange, isPopupMode = false }: RPCProv
       // If editing the active provider, update selectedNetwork
       if (editingProvider.isActive) {
         syncSelectedNetwork(formData.network);
+        // URL or network of the active provider changed — repoint ONS.
+        syncOnsConfigFromActiveProvider();
       }
       
       toast({
@@ -379,6 +382,10 @@ export function RPCProviderManager({ onRPCChange, isPopupMode = false }: RPCProv
     // Sync selected network to chrome.storage.local for SDK/dApp access
     const selectedNetwork = newActiveProvider?.network || 'mainnet';
     syncSelectedNetwork(selectedNetwork);
+
+    // Repoint the ONS resolver at the new network. The `storage` event only
+    // fires in other tabs, so same-tab switches need an explicit push.
+    syncOnsConfigFromActiveProvider();
     
     toast({
       title: "Primary Provider Set",
