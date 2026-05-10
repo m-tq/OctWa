@@ -120,7 +120,6 @@ export default defineConfig({
             ) return 'react-vendor';
 
             if (id.includes('/node_modules/ethers/')) return 'ethers';
-            if (id.includes('/node_modules/three/')) return 'three';
             if (id.includes('/node_modules/@radix-ui/')) return 'ui-vendor';
             return 'vendor';
           }

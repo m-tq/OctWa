@@ -73,9 +73,11 @@ export function usePvacOperation(): UsePvacOperationReturn {
 
   const startTimer = useCallback(() => {
     startTimeRef.current = Date.now()
+    // Tick 4×/s instead of 10×/s — still feels live but dramatically reduces
+    // React re-renders during long-running PVAC ops.
     timerRef.current = setInterval(() => {
       setState(prev => ({ ...prev, elapsedMs: Date.now() - startTimeRef.current }))
-    }, 100)
+    }, 250)
   }, [])
 
   const stopTimer = useCallback(() => {

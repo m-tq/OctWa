@@ -161,6 +161,58 @@ export async function scanStealthOutputs(seedOrSkB64: string, address?: string):
   const outputs = (result as Record<string, unknown[]>).outputs ?? [];
   if (!Array.isArray(outputs) || outputs.length === 0) return [];
 
+  // Delegate heavy per-output ECDH + AES-GCM loops to the PVAC worker when
+  // we're on the main thread. The worker's `pvacScanOutputs` op returns
+  // matches in the same shape we need after a small field rename.
+  const runningInWorker = typeof window === 'undefined';
+  if (!runningInWorker) {
+    try {
+      const [{ runInWorker, isWorkerAvailable }] = await Promise.all([
+        import('@/lib/pvac/pvac-worker-client'),
+      ]);
+      if (isWorkerAvailable()) {
+        const workerResult = await runInWorker<{
+          scanResult: {
+            outputs: Array<{
+              id: string;
+              amountRaw: string;
+              epochId: number;
+              senderAddress: string;
+              txHash: string;
+              claimSecret: string;
+              blinding: string;
+              rawOutput: unknown;
+            }>;
+          };
+        }>('pvacScanOutputs', {
+          privateKey: seedOrSkB64,
+          outputs,
+        });
+
+        if (workerResult.success && workerResult.data) {
+          const claimable: ClaimableTransfer[] = workerResult.data.scanResult.outputs.map((m) => {
+            const amountRaw = BigInt(m.amountRaw);
+            return {
+              id: m.id,
+              amount: Number(amountRaw) / 1_000_000,
+              amountRaw,
+              epoch: m.epochId,
+              sender: m.senderAddress,
+              txHash: m.txHash,
+              claimSecret: m.claimSecret,
+              blinding: m.blinding,
+              rawOutput: m.rawOutput,
+            };
+          });
+          if (address) setCachedScanResults(address, claimable);
+          return claimable;
+        }
+      }
+    } catch {
+      // Worker route failed — fall through to inline scan below.
+    }
+  }
+
   const edSk64 = resolveEd25519Sk64(seedOrSkB64);
   const { viewSk } = await deriveViewKeypair(edSk64);
 

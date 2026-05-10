@@ -371,20 +371,24 @@ export class WalletManager {
 
           let walletsWereUpgraded = false;
 
-          for (const encryptedWallet of parsedEncrypted) {
+          // Decrypt all wallets in parallel so browser crypto pool runs PBKDF2
+          // concurrently. Previously this was a serial `for await` loop, which
+          // stretched unlock to ~N × single-wallet latency on multi-wallet setups.
+          const decryptTasks = parsedEncrypted.map(async (encryptedWallet) => {
             try {
               let wallet: Wallet;
+              let needsRewrite = false;
 
               if (encryptedWallet.needsEncryption) {
                 try {
                   wallet = JSON.parse(encryptedWallet.encryptedData);
                 } catch (parseError) {
                   console.error('WalletManager: Failed to parse needsEncryption wallet data:', parseError);
-                  continue;
+                  return null;
                 }
                 encryptedWallet.encryptedData = await encryptWalletData(JSON.stringify(wallet), password);
                 delete encryptedWallet.needsEncryption;
-                walletsWereUpgraded = true;
+                needsRewrite = true;
               } else {
                 const decryptedData = await decryptWalletData(encryptedWallet.encryptedData, password);
                 wallet = JSON.parse(decryptedData);
@@ -394,10 +398,19 @@ export class WalletManager {
                 wallet.type = wallet.mnemonic ? 'generated' : 'imported-private-key';
               }
 
-              decryptedWallets.push(wallet);
+              return { wallet, needsRewrite };
             } catch (error) {
               console.error('WalletManager: Failed to decrypt wallet:', encryptedWallet.address, error);
+              return null;
             }
+          });
+
+          const decryptResults = await Promise.all(decryptTasks);
+
+          for (const entry of decryptResults) {
+            if (!entry) continue;
+            decryptedWallets.push(entry.wallet);
+            if (entry.needsRewrite) walletsWereUpgraded = true;
           }
 
           if (walletsWereUpgraded) {
@@ -606,6 +619,12 @@ export class WalletManager {
         localStorage.getItem('activeWalletId');
 
       this.clearSessionPassword();
+
+      // Tear down the PVAC worker so the 536 kB WASM heap is released while locked.
+      try {
+        const { terminatePvacWorker } = await import('../lib/pvac/pvac-worker-client');
+        terminatePvacWorker();
+      } catch { /* optional — worker may not be initialized */ }
 
       await ExtensionStorageManager.set('isWalletLocked', 'true');
       localStorage.setItem('isWalletLocked', 'true');

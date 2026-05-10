@@ -4,7 +4,6 @@ import { GenerateWallet } from './GenerateWallet';
 import { ImportWallet } from './ImportWallet';
 import { PasswordSetup } from './PasswordSetup';
 import { PageTransition } from './PageTransition';
-import { OctraBackground } from './OctraBackground';
 import { Plus, FileText, Key, ArrowLeft } from 'lucide-react';
 import { Wallet } from '../types/wallet';
 
@@ -38,7 +37,6 @@ export function WelcomeScreen({ onWalletCreated }: WelcomeScreenProps) {
 
   const screenWrapper = (children: React.ReactNode) => (
     <div className="min-h-screen flex items-center justify-center p-4 overflow-hidden relative">
-      <OctraBackground />
       <div className="w-full max-w-md relative z-10">
         {children}
       </div>
@@ -60,7 +58,6 @@ export function WelcomeScreen({ onWalletCreated }: WelcomeScreenProps) {
   if (screen === 'create') {
     return (
       <div className="min-h-screen flex items-center justify-center p-4 overflow-hidden relative">
-        <OctraBackground />
         <div className="w-full max-w-md sm:max-w-lg relative z-10">
           <PageTransition key={`create-${transitionKey}`} variant="slide-left" duration={250}>
             <Button variant="ghost" size="sm" onClick={handleBack} className="mb-4">
@@ -101,7 +98,6 @@ export function WelcomeScreen({ onWalletCreated }: WelcomeScreenProps) {
   // Main menu — scanner-first, no hero decoration
   return (
     <div className="min-h-screen flex items-center justify-center p-4 overflow-hidden relative">
-      <OctraBackground />
       <PageTransition key={`menu-${transitionKey}`} variant="fade-slide" duration={300}>
         <div className="w-full max-w-sm relative" style={{ zIndex: 10 }}>
 

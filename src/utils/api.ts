@@ -1507,25 +1507,19 @@ export async function fetchEncryptedBalance(address: string, privateKey?: string
         
         cipher = result.cipher;
         
-        // Try to decrypt using WASM worker (non-blocking) if cipher exists
+        // Decrypt using PVAC worker only. The worker is always available in
+        // extension/web contexts; falling back to the main thread pulls the
+        // 536 kB WASM module onto the UI thread and blocks rendering.
         if (cipher && cipher !== '0' && cipher.startsWith('hfhe_v1|')) {
           try {
             const { runInWorker, isWorkerAvailable } = await import('../lib/pvac/pvac-worker-client');
-            if (isWorkerAvailable()) {
+            if (!isWorkerAvailable()) {
+              console.warn('[EncryptedBalance] Web Workers unavailable; skipping decrypt to keep UI responsive.');
+            } else {
               const decryptResult = await runInWorker<{ balanceRaw: bigint }>(
                 'decryptBalance',
                 { cipher, privateKey }
               );
-              if (decryptResult.success && decryptResult.data) {
-                const amount = Number(decryptResult.data.balanceRaw);
-                if (amount >= 0 && isFinite(amount)) {
-                  encryptedRaw = amount;
-                }
-              }
-            } else {
-              // Worker unavailable — fall back to main thread
-              const { decryptBalance } = await import('../lib/pvac/balance-ops');
-              const decryptResult = await decryptBalance({ cipher, privateKey });
               if (decryptResult.success && decryptResult.data) {
                 const amount = Number(decryptResult.data.balanceRaw);
                 if (amount >= 0 && isFinite(amount)) {

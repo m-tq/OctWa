@@ -2,6 +2,17 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Respect the OS "reduce motion" preference globally — disables both CSS
+   keyframes animations and transitions for users who opt out of motion. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
 /* ============================================
    OCTRASCAN DESIGN SYSTEM
    Dense · exact · scanner-first · zero decoration
