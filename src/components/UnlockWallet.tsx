@@ -5,6 +5,7 @@ import { AlertTriangle, Clock, Eye, EyeOff } from 'lucide-react';
 import { ExtensionStorageManager } from '../utils/extensionStorage';
 import { resetModeSwitchReminder } from './ModeSwitchConfirmDialog';
 import { resetOnboardingState } from './OnboardingOverlay';
+import { startMinDuration } from '../utils/minLoading';
 
 interface UnlockWalletProps {
   onUnlock: (wallets: Wallet[]) => void;
@@ -75,8 +76,10 @@ export function UnlockWallet({ onUnlock, isPopupMode = false }: UnlockWalletProp
     }
     setIsLoading(true);
     setError('');
+    const done = startMinDuration(300);
     try {
       const wallets = await WalletManager.unlockWallets(password);
+      await done();
       onUnlock(wallets);
     } catch (err) {
       const message = err instanceof Error ? err.message : '';

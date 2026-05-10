@@ -137,6 +137,7 @@ import { useAddressBook } from '../hooks/useAddressBook';
 import { useOctPrice, formatUsd } from '../hooks/useOctPrice';
 import { addressBook } from '../utils/addressBook';
 import { getTxExplorerUrl, getAddressExplorerUrl, getExplorerName } from '../utils/explorer';
+import { startMinDuration } from '../utils/minLoading';
 
 interface Transaction {
   hash: string;
@@ -987,6 +988,10 @@ export function WalletDashboard({
     setIsRefreshingData(true);
     setBalanceError(false);
 
+    // Keep the spinner visible for at least a beat so users see the refresh
+    // happened, even when every fetch hits a warm cache.
+    const done = startMinDuration();
+
     const addr = wallet.address;
     const pk = wallet.privateKey;
 
@@ -1047,6 +1052,7 @@ export function WalletDashboard({
       console.error('Failed to refresh wallet data:', error);
       toast({ title: "Refresh Failed", description: "Failed to refresh data.", variant: "destructive" });
     } finally {
+      await done();
       setIsRefreshingData(false);
     }
   };
@@ -1796,6 +1802,7 @@ export function WalletDashboard({
     if (!wallet || isRefreshingOctraHistory) return;
     
     setIsRefreshingOctraHistory(true);
+    const done = startMinDuration();
     
     try {
       // 1. Fetch transaction history FIRST (priority)
@@ -1838,6 +1845,7 @@ export function WalletDashboard({
         variant: "destructive",
       });
     } finally {
+      await done();
       setIsRefreshingOctraHistory(false);
     }
   };

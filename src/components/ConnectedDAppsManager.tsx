@@ -26,6 +26,7 @@ import {
 } from 'lucide-react';
 import { Wallet } from '../types/wallet';
 import { useToast } from '@/hooks/use-toast';
+import { startMinDuration } from '@/utils/minLoading';
 
 // Connection stored in localStorage/chrome.storage
 interface StoredConnection {
@@ -214,7 +215,9 @@ export function ConnectedDAppsManager({
   };
 
   const handleRefresh = async () => {
+    const done = startMinDuration();
     await loadData();
+    await done();
     toast({
       title: 'Refreshed',
       description: 'dApp connections list updated',

@@ -22,6 +22,7 @@ import { FeeSelector, FeeOption, getEffectiveFee } from './FeeSelector';
 import { scanStealthOutputs, getCachedScanResults, invalidateScanCache, ClaimableTransfer } from '@/services/stealthScanService';
 import { usePvacOperation } from '@/hooks/usePvacOperation';
 import { logger } from '@/utils/logger';
+import { startMinDuration } from '@/utils/minLoading';
 import type { StealthOutput } from '@/lib/pvac/types';
 
 interface ClaimTransfersProps {
@@ -88,6 +89,7 @@ export function ClaimTransfers({
       setTransfers([]);
     }
     setIsLoading(true);
+    const done = forceRefresh ? startMinDuration() : null;
     try {
       const claimable = await scanStealthOutputs(wallet.privateKey, wallet.address);
       setTransfers(claimable);
@@ -97,7 +99,10 @@ export function ClaimTransfers({
       toast({ title: 'Error', description: 'Failed to scan for claimable transfers', variant: 'destructive' });
     } finally {
       setIsLoading(false);
-      if (forceRefresh) setTimeout(() => setIsRefreshing(false), 500);
+      if (forceRefresh && done) {
+        await done();
+        setIsRefreshing(false);
+      }
     }
   };
 

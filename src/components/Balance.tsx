@@ -14,6 +14,7 @@ import { ExportPrivateKeys } from './ExportPrivateKeys';
 import { InfoTooltip } from './InfoTooltip';
 import { SensitiveActionButton } from './SensitiveActionButton';
 import { logger } from '@/utils/logger';
+import { startMinDuration, useMinDurationFlag } from '@/utils/minLoading';
 
 interface BalanceProps {
   wallet: WalletType | null;
@@ -44,9 +45,14 @@ export function Balance({
   const encryptedBalance = propEncryptedBalance || localEncryptedBalance;
   const setEncryptedBalance = onEncryptedBalanceUpdate || setLocalEncryptedBalance;
 
+  // Keep skeletons visible for a short floor so they don't flash on warm caches.
+  const showPublicSkeleton = useMinDurationFlag(isLoading, 250);
+  const showEncryptedSkeleton = useMinDurationFlag(isLoadingEncrypted, 250);
+
   const fetchWalletBalance = async () => {
     if (!wallet) return;
     setRefreshing(true);
+    const done = startMinDuration();
     try {
       const balanceData = await fetchBalance(wallet.address);
       onBalanceUpdate(balanceData.balance);
@@ -84,6 +90,7 @@ export function Balance({
       });
       logger.error('Balance fetch error', error);
     } finally {
+      await done();
       setRefreshing(false);
     }
   };
@@ -167,7 +174,7 @@ export function Balance({
                   public balance
                 </span>
               </div>
-              {isLoading ? (
+              {showPublicSkeleton ? (
                 <Skeleton className="h-5 w-28" />
               ) : (
                 <div className="flex items-baseline gap-1.5">
@@ -194,7 +201,7 @@ export function Balance({
                   side="top"
                 />
               </div>
-              {isLoadingEncrypted ? (
+              {showEncryptedSkeleton ? (
                 <Skeleton className="h-5 w-28" />
               ) : (
                 <div className="flex items-baseline gap-1.5">
