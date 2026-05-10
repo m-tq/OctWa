@@ -107,7 +107,7 @@ async function runPvac(req: PvacRequest): Promise<void> {
       case 'identity': {
         const result = await runInWorker<{ identity: unknown }>('pvacGetIdentity', {
           privateKey: wallet.privateKey,
-          address: wallet.address,
+          walletAddress: wallet.address,
         })
         if (result.success && result.data) {
           return sendReply('identity', req.pendingKey, { success: true, identity: result.data.identity })
