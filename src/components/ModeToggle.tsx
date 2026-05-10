@@ -135,14 +135,6 @@ export function ModeToggle({
                       }`}
                     />
 
-                    {/* Rotating ring */}
-                    <div 
-                      className={`absolute inset-0 rounded-full border-2 border-transparent animate-spin ${
-                        isPrivate ? 'border-t-[#00E5C0]/60' : 'border-t-foreground/40'
-                      }`}
-                      style={{ animationDuration: '3s' }}
-                    />
-
                     {/* Inner circle background */}
                     <div 
                       className={`absolute inset-2 rounded-full transition-all duration-300 ${
