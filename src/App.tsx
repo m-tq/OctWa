@@ -4,7 +4,6 @@ import { WalletDashboard } from './components/WalletDashboard';
 import { UnlockWallet } from './components/UnlockWallet';
 import { DAppRequestHandler } from './components/DAppRequestHandler';
 import { ThemeProvider } from './components/ThemeProvider';
-import { SplashScreen } from './components/SplashScreen';
 import { PageTransition } from './components/PageTransition';
 import { WalletManager } from './utils/walletManager';
 import { ExtensionStorageManager } from './utils/extensionStorage';
@@ -17,7 +16,6 @@ function App() {
   const [wallets, setWallets] = useState<Wallet[]>([]);
   const [isLocked, setIsLocked] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
-  const [showSplash, setShowSplash] = useState(false);
   const [connectionRequest, setConnectionRequest] = useState<unknown>(null);
   const [capabilityRequest, setCapabilityRequest] = useState<unknown>(null);
   const [invokeRequest, setInvokeRequest] = useState<unknown>(null);
@@ -161,14 +159,10 @@ function App() {
           }
         }
 
-        // If no wallet setup, show welcome screen
-        // Only show splash on true fresh install (no password, no wallets, no pending dApp request)
+        // If no wallet setup, jump straight to welcome screen.
+        // The splash was a 1.5 s intro that only ran on fresh install; we
+        // trade it for instant render.
         if (!hasPassword || !hasEncryptedWallets) {
-          const urlParams = new URLSearchParams(window.location.search);
-          const hasPendingRequest = !!urlParams.get('action');
-          if (!hasPendingRequest) {
-            setShowSplash(true);
-          }
           setIsLocked(false);
           setIsLoading(false);
           return;
@@ -532,15 +526,6 @@ function App() {
     setWallets([]);
     setIsLocked(true);
   };
-
-  // Show splash screen � hanya saat fresh install (belum ada wallet)
-  if (showSplash) {
-    return (
-      <ThemeProvider defaultTheme="dark" storageKey="octra-wallet-theme">
-        <SplashScreen onComplete={() => setShowSplash(false)} isPopupMode={false} />
-      </ThemeProvider>
-    );
-  }
 
   // Show loading state
   if (isLoading) {

@@ -4,7 +4,6 @@ import { WalletDashboard } from './components/WalletDashboard';
 import { UnlockWallet } from './components/UnlockWallet';
 import { DAppRequestHandler } from './components/DAppRequestHandler';
 import { ThemeProvider } from './components/ThemeProvider';
-import { SplashScreen } from './components/SplashScreen';
 import { PageTransition } from './components/PageTransition';
 import { Wallet, DAppConnectionRequest } from './types/wallet';
 import { Toaster } from '@/components/ui/toaster';
@@ -19,7 +18,6 @@ function PopupApp() {
   const [isLoading, setIsLoading] = useState(true);
   // Only show splash on very first open (no stored wallet data) to avoid
   // a 1.5 s delay every time the popup is opened.
-  const [showSplash, setShowSplash] = useState(false);
   const [isPopupMode, setIsPopupMode] = useState(true);
   const [connectionRequest, setConnectionRequest] = useState<DAppConnectionRequest | null>(null);
   const [contractRequest, setContractRequest] = useState<unknown>(null);
@@ -182,10 +180,8 @@ function PopupApp() {
           }
         }
 
-        // If no wallet setup, show welcome screen
+        // If no wallet setup, go straight to welcome screen — no splash.
         if (!hasPassword || !hasEncryptedWallets) {
-          // Show splash only on fresh install (no existing wallet data)
-          setShowSplash(true);
           setIsLocked(false);
           setIsLoading(false);
           return;
@@ -690,16 +686,6 @@ function PopupApp() {
   };
 
   // Show splash screen first (shorter duration for popup)
-  if (showSplash) {
-    return (
-      <ThemeProvider defaultTheme="dark" storageKey="octra-wallet-theme">
-        <div className="w-[400px] h-[600px] overflow-hidden">
-          <SplashScreen onComplete={() => setShowSplash(false)} isPopupMode={true} />
-        </div>
-      </ThemeProvider>
-    );
-  }
-
   if (isLoading) {
     return (
       <ThemeProvider defaultTheme="dark" storageKey="octra-wallet-theme">

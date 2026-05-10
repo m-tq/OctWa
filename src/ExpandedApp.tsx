@@ -4,7 +4,6 @@ import { WalletDashboard } from './components/WalletDashboard';
 import { UnlockWallet } from './components/UnlockWallet';
 import { DAppRequestHandler } from './components/DAppRequestHandler';
 import { ThemeProvider } from './components/ThemeProvider';
-import { SplashScreen } from './components/SplashScreen';
 import { PageTransition } from './components/PageTransition';
 import { Wallet } from './types/wallet';
 import { Toaster } from '@/components/ui/toaster';
@@ -19,9 +18,6 @@ function ExpandedApp() {
   const [isLoading, setIsLoading] = useState(true);
   // Only show splash on fresh install (no stored wallet) to avoid
   // a 1.5 s delay every time the expanded view is opened.
-  const [showSplash, setShowSplash] = useState(false);
-  const [showSetupSplash, setShowSetupSplash] = useState(false);
-  const [pendingSetupWallet, setPendingSetupWallet] = useState<Wallet | null>(null);
   const [isDAppRequest, setIsDAppRequest] = useState(false);
   const { toast: _toast } = useToast();
 
@@ -90,8 +86,7 @@ function ExpandedApp() {
 
         // If no wallet setup, show welcome screen
         if (!hasPassword || !hasEncryptedWallets) {
-          // Show splash only on fresh install (no existing wallet data)
-          setShowSplash(true);
+          // Fresh install — go straight to welcome screen with no splash.
           setIsLocked(false);
           setIsLoading(false);
           return;
@@ -475,39 +470,6 @@ function ExpandedApp() {
     }
   };
 
-  // Show splash screen first
-  if (showSplash) {
-    return (
-      <ThemeProvider defaultTheme="dark" storageKey="octra-wallet-theme">
-        <SplashScreen onComplete={() => setShowSplash(false)} isPopupMode={false} />
-      </ThemeProvider>
-    );
-  }
-
-  // Show splash screen after wallet setup
-  if (showSetupSplash && pendingSetupWallet) {
-    return (
-      <ThemeProvider defaultTheme="dark" storageKey="octra-wallet-theme">
-        <SplashScreen 
-          onComplete={async () => {
-            
-            setShowSetupSplash(false);
-            
-            // Read wallets from session storage
-            const sessionWallets = await WalletManager.getSessionWallets();
-            const walletsFromStorage: Wallet[] = sessionWallets.length > 0 ? sessionWallets : [pendingSetupWallet];
-            
-            setWallets(walletsFromStorage);
-            setWallet(pendingSetupWallet);
-            setPendingSetupWallet(null);
-          }} 
-          duration={3500}
-          isPopupMode={false}
-        />
-      </ThemeProvider>
-    );
-  }
-
   if (isLoading) {
     return (
       <ThemeProvider defaultTheme="dark" storageKey="octra-wallet-theme">
@@ -555,13 +517,7 @@ function ExpandedApp() {
     <ThemeProvider defaultTheme="dark" storageKey="octra-wallet-theme">
       <div className="min-h-screen bg-background expanded-view">
         {!wallet ? (
-          <WelcomeScreen 
-            onWalletCreated={(w) => {
-              
-              setPendingSetupWallet(w);
-              setShowSetupSplash(true);
-            }} 
-          />
+          <WelcomeScreen onWalletCreated={addWallet} />
         ) : (
           <WalletDashboard 
             wallet={wallet} 
