@@ -629,13 +629,16 @@ export function PrivateTransfer({
                   <button
                     type="button"
                     onClick={() => {
-                      const maxAmount = (encryptedBalance?.encrypted ?? 0);
+                      const feeOct = getEffectiveFee(recommendedFee, feeOption, customFee) / 1_000_000;
+                      const maxAmount = (encryptedBalance?.encrypted ?? 0) - feeOct;
                       if (maxAmount > 0) {
                         setAmount(maxAmount.toFixed(8));
                       } else {
                         toast({
-                          title: "No Balance",
-                          description: "No encrypted balance available",
+                          title: "Insufficient Balance",
+                          description: maxAmount <= 0 && (encryptedBalance?.encrypted ?? 0) > 0
+                            ? `Need more than ${feeOct.toFixed(7)} OCT to cover the network fee`
+                            : "No encrypted balance available",
                           variant: "destructive",
                         });
                       }
@@ -770,13 +773,16 @@ export function PrivateTransfer({
                 <button
                   type="button"
                   onClick={() => {
-                    const maxAmount = (encryptedBalance?.encrypted ?? 0);
+                    const feeOct = getEffectiveFee(recommendedFee, feeOption, customFee) / 1_000_000;
+                    const maxAmount = (encryptedBalance?.encrypted ?? 0) - feeOct;
                     if (maxAmount > 0) {
                       setAmount(maxAmount.toFixed(8));
                     } else {
                       toast({
-                        title: "No Balance",
-                        description: "No encrypted balance available",
+                        title: "Insufficient Balance",
+                        description: maxAmount <= 0 && (encryptedBalance?.encrypted ?? 0) > 0
+                          ? `Need more than ${feeOct.toFixed(7)} OCT to cover the network fee`
+                          : "No encrypted balance available",
                         variant: "destructive",
                       });
                     }

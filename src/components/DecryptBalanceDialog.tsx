@@ -246,7 +246,21 @@ export function DecryptBalanceDialog({
             </span>
             <button
               type="button"
-              onClick={() => setAmount(encryptedBalance.toFixed(8))}
+              onClick={() => {
+                const feeOct = effectiveFee / 1_000_000;
+                const maxAmount = encryptedBalance - feeOct;
+                if (maxAmount > 0) {
+                  setAmount(maxAmount.toFixed(8));
+                } else {
+                  toast({
+                    title: "Insufficient Balance",
+                    description: encryptedBalance > 0
+                      ? `Need more than ${feeOct.toFixed(7)} OCT to cover the network fee`
+                      : "No encrypted balance available",
+                    variant: "destructive",
+                  });
+                }
+              }}
               className="text-[#00E5C0] hover:text-[#6C63FF]/80 font-medium hover:underline"
               disabled={isDecrypting || encryptedBalance <= 0}
             >
