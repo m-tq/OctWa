@@ -106,7 +106,7 @@ export function AddressActionButtons({
 export function AddressInput({
   value,
   onChange,
-  placeholder = 'oct...',
+  placeholder = 'domain name or octra address',
   disabled = false,
   className = '',
   isPopupMode = false,
@@ -496,11 +496,13 @@ export function AddressInput({
                           )}
                         </div>
                         <div
-                          className={`font-mono text-muted-foreground ${
+                          className={`font-mono text-muted-foreground truncate ${
                             isPopupMode ? 'text-[10px]' : 'text-xs'
                           }`}
                         >
-                          {truncateAddress(contact.address)}
+                          {contact.domain
+                            ? `${contact.domain}.oct`
+                            : truncateAddress(contact.address)}
                         </div>
                         {hasModeWarning && (
                           <div className={`flex items-center gap-1 mt-0.5 text-yellow-700 ${isPopupMode ? 'text-[9px]' : 'text-[10px]'}`}>

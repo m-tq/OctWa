@@ -30,6 +30,13 @@ import {
 import { Contact, ContactTag, CONTACT_TAGS } from '../types/addressBook';
 import { addressBook } from '../utils/addressBook';
 import { useToast } from '@/hooks/use-toast';
+import {
+  isOctAddress,
+  isValidLabel,
+  normalizeLabel,
+  resolveOnsName,
+  reverseOnsLookup,
+} from '@/integrations/ons';
 
 interface AddressBookProps {
   isPopupMode?: boolean;
@@ -55,6 +62,11 @@ export function AddressBook({
   // Form state
   const [formLabel, setFormLabel] = useState('');
   const [formAddress, setFormAddress] = useState('');
+  const [formDomain, setFormDomain] = useState<string>('');
+  const [formResolvedAddress, setFormResolvedAddress] = useState<string>('');
+  const [formResolveState, setFormResolveState] = useState<
+    'idle' | 'resolving' | 'resolved' | 'not-found' | 'error'
+  >('idle');
   const [formTags, setFormTags] = useState<ContactTag[]>([]);
   const [formNote, setFormNote] = useState('');
   const [formPreferredMode, setFormPreferredMode] = useState<
@@ -87,6 +99,9 @@ export function AddressBook({
   const resetForm = () => {
     setFormLabel('');
     setFormAddress('');
+    setFormDomain('');
+    setFormResolvedAddress('');
+    setFormResolveState('idle');
     setFormTags([]);
     setFormNote('');
     setFormPreferredMode(undefined);
@@ -97,13 +112,83 @@ export function AddressBook({
   const openEditDialog = (contact: Contact) => {
     setEditingContact(contact);
     setFormLabel(contact.label);
-    setFormAddress(contact.address);
+    // When editing, seed the address field with whatever the user originally
+    // entered (domain if present, otherwise the raw address) so it's obvious
+    // what they are editing.
+    setFormAddress(contact.domain ? `${contact.domain}.oct` : contact.address);
+    setFormDomain(contact.domain ?? '');
+    setFormResolvedAddress(contact.address);
+    setFormResolveState(contact.domain ? 'resolved' : 'idle');
     setFormTags(contact.tags);
     setFormNote(contact.note || '');
     setFormPreferredMode(contact.preferredMode);
     setFormError(null);
     setShowAddDialog(true);
   };
+
+  // Resolve the address field whenever the user types. Accepts either a raw
+  // oct address (passthrough) or a domain name (resolved via ONS).
+  useEffect(() => {
+    const trimmed = formAddress.trim();
+
+    if (!trimmed) {
+      setFormDomain('');
+      setFormResolvedAddress('');
+      setFormResolveState('idle');
+      return;
+    }
+
+    if (isOctAddress(trimmed)) {
+      setFormDomain('');
+      setFormResolvedAddress(trimmed);
+      setFormResolveState('idle');
+      // Enrich with the primary name (if any) so the user sees the same
+      // ENS-style association the send screens show.
+      let cancelled = false;
+      reverseOnsLookup(trimmed)
+        .then((name) => {
+          if (!cancelled && name) setFormDomain(name);
+        })
+        .catch(() => { /* swallow */ });
+      return () => { cancelled = true; };
+    }
+
+    const label = normalizeLabel(trimmed);
+    if (!isValidLabel(label)) {
+      setFormResolvedAddress('');
+      setFormDomain('');
+      setFormResolveState('error');
+      return;
+    }
+
+    setFormResolveState('resolving');
+    setFormDomain(label);
+
+    let cancelled = false;
+    const timer = window.setTimeout(async () => {
+      try {
+        const address = await resolveOnsName(label);
+        if (cancelled) return;
+        if (address && isOctAddress(address)) {
+          setFormResolvedAddress(address);
+          setFormResolveState('resolved');
+        } else {
+          setFormResolvedAddress('');
+          setFormResolveState('not-found');
+        }
+      } catch {
+        if (!cancelled) {
+          setFormResolvedAddress('');
+          setFormResolveState('error');
+        }
+      }
+    }, 300);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [formAddress]);
 
   const handleSave = async () => {
     setFormError(null);
@@ -113,17 +198,38 @@ export function AddressBook({
       return;
     }
 
-    // Validate address format (OCT address check)
-    if (!formAddress.startsWith('oct') || formAddress.length !== 47) {
-      setFormError('Invalid address format (must be oct... with 47 characters)');
-      return;
+    const trimmedInput = formAddress.trim();
+    let finalAddress = '';
+    let finalDomain: string | undefined;
+
+    if (isOctAddress(trimmedInput)) {
+      finalAddress = trimmedInput;
+      finalDomain = formDomain || undefined;
+    } else {
+      // Treat input as a domain name; it must have resolved to a real address.
+      const label = normalizeLabel(trimmedInput);
+      if (!isValidLabel(label)) {
+        setFormError('Enter a valid Octra address or ONS name (e.g. alice.oct).');
+        return;
+      }
+      if (formResolveState === 'resolving') {
+        setFormError('Still resolving the domain — please wait a moment.');
+        return;
+      }
+      if (formResolveState !== 'resolved' || !formResolvedAddress) {
+        setFormError(`'${label}.oct' could not be resolved on this network.`);
+        return;
+      }
+      finalAddress = formResolvedAddress;
+      finalDomain = label;
     }
 
     try {
       if (editingContact) {
         await addressBook.updateContact(editingContact.id, {
           label: formLabel.trim(),
-          address: formAddress.trim(),
+          address: finalAddress,
+          domain: finalDomain,
           tags: formTags,
           note: formNote.trim() || undefined,
           preferredMode: formPreferredMode,
@@ -132,7 +238,8 @@ export function AddressBook({
       } else {
         await addressBook.addContact({
           label: formLabel.trim(),
-          address: formAddress.trim(),
+          address: finalAddress,
+          domain: finalDomain,
           tags: formTags,
           note: formNote.trim() || undefined,
           preferredMode: formPreferredMode,
@@ -206,6 +313,7 @@ export function AddressBook({
               await addressBook.addContact({
                 label: contact.label,
                 address: contact.address,
+                domain: contact.domain,
                 tags: contact.tags || [],
                 note: contact.note,
                 preferredMode: contact.preferredMode,
@@ -387,18 +495,39 @@ export function AddressBook({
                 />
               </div>
 
-              {/* Address */}
+              {/* Address or ONS name */}
               <div className={isPopupMode ? 'space-y-1' : 'space-y-1.5'}>
                 <Label className={isPopupMode ? 'text-[11px]' : 'text-sm'}>
-                  Address *
+                  Address or Domain *
                 </Label>
                 <Input
-                  placeholder="oct..."
+                  placeholder="oct... or alice.oct"
                   value={formAddress}
                   onChange={(e) => setFormAddress(e.target.value)}
                   className={`font-mono ${isPopupMode ? 'h-7 text-[11px]' : ''}`}
-                  disabled={!!editingContact}
                 />
+                {/* Resolver status chip */}
+                {formResolveState === 'resolving' && (
+                  <p className={`flex items-center gap-1 text-muted-foreground ${isPopupMode ? 'text-[9px]' : 'text-xs'}`}>
+                    <Globe className={isPopupMode ? 'h-2.5 w-2.5 animate-pulse' : 'h-3 w-3 animate-pulse'} />
+                    Resolving {normalizeLabel(formAddress.trim())}.oct…
+                  </p>
+                )}
+                {formResolveState === 'resolved' && formResolvedAddress && (
+                  <p className={`font-mono text-muted-foreground truncate ${isPopupMode ? 'text-[9px]' : 'text-xs'}`}>
+                    → {formResolvedAddress.slice(0, 10)}…{formResolvedAddress.slice(-8)}
+                  </p>
+                )}
+                {formResolveState === 'not-found' && (
+                  <p className={`text-yellow-700 dark:text-yellow-400 ${isPopupMode ? 'text-[9px]' : 'text-xs'}`}>
+                    Domain not registered on this network.
+                  </p>
+                )}
+                {formResolveState === 'idle' && formDomain && isOctAddress(formAddress.trim()) && (
+                  <p className={`text-muted-foreground ${isPopupMode ? 'text-[9px]' : 'text-xs'}`}>
+                    Primary name: <span className="font-mono">{formDomain}.oct</span>
+                  </p>
+                )}
               </div>
 
               {/* Tags */}
@@ -558,11 +687,23 @@ function ContactCard({
           <p
             className={`font-mono text-muted-foreground truncate ${isPopupMode ? 'text-[9px]' : 'text-xs'}`}
           >
-            {isPopupMode 
-              ? `${contact.address.slice(0, 8)}...${contact.address.slice(-6)}`
-              : `${contact.address.slice(0, 10)}...${contact.address.slice(-8)}`
+            {contact.domain
+              ? `${contact.domain}.oct`
+              : isPopupMode 
+                ? `${contact.address.slice(0, 8)}...${contact.address.slice(-6)}`
+                : `${contact.address.slice(0, 10)}...${contact.address.slice(-8)}`
             }
           </p>
+          {contact.domain && (
+            <p
+              className={`font-mono text-muted-foreground/70 truncate ${isPopupMode ? 'text-[9px]' : 'text-[11px]'}`}
+            >
+              {isPopupMode 
+                ? `${contact.address.slice(0, 8)}...${contact.address.slice(-6)}`
+                : `${contact.address.slice(0, 10)}...${contact.address.slice(-8)}`
+              }
+            </p>
+          )}
         </div>
         <div className={`flex items-center flex-shrink-0 ${isPopupMode ? 'gap-0' : 'gap-0.5'}`}>
           {onSelect && (

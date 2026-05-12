@@ -217,7 +217,7 @@ export function ModeToggle({
             </div>
             {/* Helper text */}
             <span className={`${isCompact ? 'text-[10px]' : 'text-xs'} text-muted-foreground/60`}>
-              ← click here to change mode
+              ← change mode
             </span>
           </div>
         </div>
@@ -235,7 +235,7 @@ export function ModeToggle({
                   className={`flex items-center gap-1.5 ${isCompact ? 'h-7 px-2 text-[10px]' : 'h-8 px-2.5 text-xs'} text-muted-foreground hover:text-foreground`}
                 >
                   <RefreshCw className={`${isCompact ? 'h-3 w-3' : 'h-3.5 w-3.5'} ${isRefreshing ? 'animate-spin' : ''}`} />
-                  <span>Refresh Data</span>
+                  <span>Refresh</span>
                 </Button>
               </TooltipTrigger>
               <TooltipContent side="bottom" className={isCompact ? 'px-2 py-1' : ''}>

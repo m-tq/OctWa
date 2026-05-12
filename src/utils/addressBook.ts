@@ -148,6 +148,7 @@ class AddressBookManager {
       (c) =>
         c.label.toLowerCase().includes(q) ||
         c.address.toLowerCase().includes(q) ||
+        c.domain?.toLowerCase().includes(q) ||
         c.note?.toLowerCase().includes(q),
     );
   }

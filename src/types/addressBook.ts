@@ -12,6 +12,8 @@ export type ContactTag =
 export interface Contact {
   id: string;
   address: string;
+  /** Optional ONS domain name (e.g. `alice`). Stored without `.oct`. */
+  domain?: string;
   label: string;
   tags: ContactTag[];
   note?: string;

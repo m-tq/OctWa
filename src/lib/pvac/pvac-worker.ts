@@ -244,6 +244,12 @@ async function handleRequest(req: WorkerRequest): Promise<void> {
         for (let i = 0; i < total; i++) {
           const output = raw.outputs[i] as Record<string, unknown>
           try {
+            // Skip already-claimed outputs — matches webcli main.cpp behavior.
+            // The RPC returns all historical outputs with a `claimed` flag;
+            // any non-zero value means this output has already been claimed
+            // on-chain and should not be surfaced as claimable again.
+            if (output.claimed !== undefined && output.claimed !== 0 && output.claimed !== false) continue
+
             if (!output.eph_pub || !output.stealth_tag || !output.enc_amount) continue
 
             const ephPk = decodeBase64(output.eph_pub as string)

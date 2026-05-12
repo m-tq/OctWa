@@ -3672,6 +3672,7 @@ export function WalletDashboard({
               </div>
 
               {/* Recent Activity - Unified (same as expanded mode) */}
+              <div className="border-t border-border mt-1" />
               <div className="flex items-center justify-between pt-1 pb-1">
                 <h3 className={`text-sm font-semibold ${operationMode === 'private' ? 'text-[#00E5C0]' : ''}`}>
                   Recent Activity
@@ -3974,29 +3975,10 @@ export function WalletDashboard({
                 {/* EVM Assets Section - Only in Public Mode */}
                 {operationMode === 'public' && (
                   <div className="w-full max-w-lg">
-                    <div className="border-t border-dashed border-border mt-2" />
-                    <Button
-                      variant="outline"
-                      className="group w-full flex items-center justify-center gap-2 h-11 mt-2 mb-2 rounded-none bg-transparent border-0 shadow-none text-orange-600 dark:text-orange-400 hover:bg-transparent transition-colors"
-                      onClick={() => {
-                        if (isPopupMode) {
-                          onExpandedView?.('evm');
-                        } else {
-                          enterEvmMode();
-                        }
-                      }}
-                    >
-                      <Coins className="h-5 w-5 transition-colors group-hover:text-orange-600 dark:group-hover:text-orange-300 group-hover:drop-shadow-[0_0_6px_rgba(249,115,22,0.6)]" />
-                      <div className="flex flex-col items-start">
-                        <span className="text-sm font-medium transition-colors group-hover:text-orange-600 dark:group-hover:text-orange-300 group-hover:drop-shadow-[0_0_6px_rgba(249,115,22,0.6)]">EVM Assets</span>
-                        <span className="text-[10px] text-muted-foreground">Manage Ethereum VM Assets</span>
-                      </div>
-                    </Button>
-
                     {/* Balance Pie Chart - shows immediately with public balance, encrypted loads progressively */}
                     {balance !== null && balance > 0 && (
                       <>
-                        <div className="border-t border-dashed border-border mt-1" />
+                        <div className="border-t border-dashed border-border mt-2" />
                         <div className="mt-2">
                           <BalancePieChart 
                             publicBalance={balance || 0}
@@ -4008,6 +3990,27 @@ export function WalletDashboard({
                         </div>
                       </>
                     )}
+
+                    {/* EVM Assets — placed after pie chart / total balance so it
+                         sits at the bottom of the public dashboard. */}
+                    <div className="border-t border-dashed border-border mt-2" />
+                    <Button
+                      variant="outline"
+                      className="group w-full flex items-center justify-center gap-2 h-14 mt-2 mb-2 rounded-none bg-transparent border-0 shadow-none text-orange-600 dark:text-orange-400 hover:bg-transparent transition-colors"
+                      onClick={() => {
+                        if (isPopupMode) {
+                          onExpandedView?.('evm');
+                        } else {
+                          enterEvmMode();
+                        }
+                      }}
+                    >
+                      <Coins className="h-5 w-5 transition-colors group-hover:text-orange-600 dark:group-hover:text-orange-300 group-hover:drop-shadow-[0_0_6px_rgba(249,115,22,0.6)]" />
+                      <div className="flex flex-col items-start">
+                        <span className="text-[16px] leading-tight font-medium transition-colors group-hover:text-orange-600 dark:group-hover:text-orange-300 group-hover:drop-shadow-[0_0_6px_rgba(249,115,22,0.6)]">EVM Assets</span>
+                        <span className="text-[12px] leading-tight text-muted-foreground">Manage Ethereum VM Assets</span>
+                      </div>
+                    </Button>
                   </div>
                 )}
               </>

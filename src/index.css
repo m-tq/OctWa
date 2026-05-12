@@ -3,13 +3,27 @@
 @tailwind utilities;
 
 /* Respect the OS "reduce motion" preference globally — disables both CSS
-   keyframes animations and transitions for users who opt out of motion. */
+   keyframes animations and transitions for users who opt out of motion.
+   Exception: loading spinners must keep rotating, otherwise async feedback
+   freezes and users can't tell whether the app is still working. */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: 0.001ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.001ms !important;
     scroll-behavior: auto !important;
+  }
+
+  .animate-spin,
+  [class*="animate-spin"],
+  .animate-spin-slow,
+  .loading-spinner {
+    animation-duration: 1s !important;
+    animation-iteration-count: infinite !important;
+  }
+
+  .animate-spin-slow {
+    animation-duration: 1.5s !important;
   }
 }
 

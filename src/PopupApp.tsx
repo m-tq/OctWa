@@ -10,6 +10,7 @@ import { Toaster } from '@/components/ui/toaster';
 import { useToast } from '@/hooks/use-toast';
 import { ExtensionStorageManager } from './utils/extensionStorage';
 import { WalletManager } from './utils/walletManager';
+import { syncOnsConfigFromActiveProvider } from './utils/onsBootstrap';
 
 function PopupApp() {
   const [wallet, setWallet] = useState<Wallet | null>(null);
@@ -43,6 +44,11 @@ function PopupApp() {
         setIsPopupMode(isPopup);
 
         await ExtensionStorageManager.init();
+
+        // Keep the ONS resolver pointed at the user's active RPC provider.
+        // Without this, domain-name inputs in popup mode stay unresolved
+        // because the resolver is still pointed at its default config.
+        syncOnsConfigFromActiveProvider();
         
         // Clear legacy sessionStorage to prevent stale data from persisting
         // This ensures auto-lock works properly when browser is restarted
@@ -275,6 +281,12 @@ function PopupApp() {
           WalletManager.clearSessionPassword();
         }
         return;
+      }
+
+      // When the user swaps RPC providers, repoint the ONS resolver so
+      // subsequent name lookups use the new network.
+      if (e.key === 'rpcProviders' || e.key === 'activeRpcProvider') {
+        syncOnsConfigFromActiveProvider();
       }
       
       if (isLocked) return;
