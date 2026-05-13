@@ -3717,8 +3717,7 @@ export function WalletDashboard({
               </div>
 
               {/* Recent Activity - Unified (same as expanded mode) */}
-              <div className="border-t border-border mt-1" />
-              <div className="flex items-center justify-between pt-1 pb-1">
+              <div className="flex items-center justify-between pt-3 pb-1">
                 <h3 className={`text-sm font-semibold ${operationMode === 'private' ? 'text-[#00E5C0]' : ''}`}>
                   Recent Activity
                 </h3>
