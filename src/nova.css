@@ -245,7 +245,7 @@ html.ui-nova *::after {
 
 /* Re-apply specific Tailwind radii */
 html.ui-nova .rounded,
-html.ui-nova .rounded-sm    { border-radius: 4px !important; }
+html.ui-nova .rounded-sm    { border-radius: 8px !important; }
 html.ui-nova .rounded-md    { border-radius: 6px !important; }
 html.ui-nova .rounded-lg    { border-radius: 8px !important; }
 html.ui-nova .rounded-xl    { border-radius: 10px !important; }
@@ -376,6 +376,7 @@ html.ui-nova [class*="cursor-pointer"][class*="hover:bg-"],
 html.ui-nova aside .group:hover,
 html.ui-nova aside [class*="hover:bg-"]:hover {
   border-radius: 8px !important;
+  overflow: hidden;
 }
 
 /* Shape defaults for form elements and buttons */
