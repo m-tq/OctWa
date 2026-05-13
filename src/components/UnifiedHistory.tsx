@@ -6,6 +6,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { ScrollArea, ScrollAreaContent } from '@/components/ui/scroll-area';
+import { getUIStyle } from './UIStyleProvider';
 import {
   History,
   ExternalLink,
@@ -716,6 +717,7 @@ function TransferItem({
     return (
       <div 
         className="cursor-pointer hover:bg-muted/50 transition-colors -mx-2 px-2 py-1 rounded-lg"
+        ref={(el) => { if (el && getUIStyle() === 'nova') el.style.setProperty('border-radius', '8px', 'important'); }}
         onClick={() => onViewDetails(tx.hash, tx.status === 'pending')}
       >
         <div className="flex items-center justify-between gap-2">
@@ -790,7 +792,8 @@ function TransferItem({
     
     return (
       <div 
-        className="cursor-pointer hover:bg-muted/50 transition-colors -m-2 p-2 rounded-lg"
+        className="cursor-pointer hover:bg-muted/50 transition-colors -mx-2 px-2 py-2 rounded-lg"
+        ref={(el) => { if (el && getUIStyle() === 'nova') el.style.setProperty('border-radius', '8px', 'important'); }}
         onClick={handleItemClick}
       >
         <div className="flex items-center justify-between gap-2">

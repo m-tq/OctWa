@@ -28,6 +28,7 @@ import { Copy, Check, Trash2, GripVertical } from 'lucide-react';
 import { Wallet } from '../types/wallet';
 import { WalletLabelEditor, WalletDisplayName } from './WalletLabelEditor';
 import { fetchBalance } from '../utils/api';
+import { getUIStyle } from './UIStyleProvider';
 
 interface SortableWalletItemProps {
   wallet: Wallet;
@@ -101,7 +102,12 @@ function SortableWalletItem({
 
   return (
     <div
-      ref={setNodeRef}
+      ref={(el) => {
+        // DnD kit ref
+        setNodeRef(el);
+        // Nova rounded hover
+        if (el && getUIStyle() === 'nova') el.style.setProperty('border-radius', '8px', 'important');
+      }}
       style={style}
       className={`group relative ${isPopupMode ? 'py-2.5 pl-4 pr-4' : 'py-3 pl-4 pr-3'} cursor-pointer transition-all duration-200 ${
         isActive ? '' : 'hover:bg-accent/50'
