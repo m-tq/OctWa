@@ -2503,7 +2503,7 @@ export function WalletDashboard({
                     viewBox="0 0 50 50"
                     fill="none"
                     xmlns="http://www.w3.org/2000/svg"
-                    className="h-full w-full"
+                    className={`h-full w-full ${evmMode ? '' : operationMode === 'private' ? 'text-[#00E5C0]' : 'text-[#3B567F]'}`}
                     style={evmMode ? { filter: 'sepia(1) saturate(2) hue-rotate(-5deg) brightness(1.1)' } : undefined}
                     role="img"
                     aria-label="OctWa Logo"
@@ -2512,11 +2512,11 @@ export function WalletDashboard({
                       cx="25"
                       cy="25"
                       r="21"
-                      stroke="#3B567F"
+                      stroke={evmMode ? '#3B567F' : 'currentColor'}
                       strokeWidth="8"
                       fill="none"
                     />
-                    <circle cx="25" cy="25" r="9" fill="#3B567F" />
+                    <circle cx="25" cy="25" r="9" fill={evmMode ? '#3B567F' : 'currentColor'} />
                   </svg>
                 </Avatar>
                 <div className={`flex flex-col ${!isPopupMode && showWalletSidebar ? 'justify-center' : ''}`}>
@@ -2739,7 +2739,7 @@ export function WalletDashboard({
                           className="group w-full justify-start gap-1.5 text-xs h-10 hover:bg-transparent"
                         >
                           <Palette className="h-3.5 w-3.5 transition group-hover:drop-shadow-[0_0_6px_currentColor]" />
-                          <span className="transition group-hover:drop-shadow-[0_0_6px_currentColor]">Style UI</span>
+                          <span className="transition group-hover:drop-shadow-[0_0_6px_currentColor]">UI Style</span>
                         </Button>
 
                         {/* Connected dApps */}
@@ -2885,6 +2885,15 @@ export function WalletDashboard({
                           <Code2 className="h-4 w-4 transition group-hover:drop-shadow-[0_0_6px_currentColor]" />
                           <span className="transition group-hover:drop-shadow-[0_0_6px_currentColor]">Dev Tools</span>
                         </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setShowUIStyleDialog(true)}
+                          className="group flex items-center gap-2 hover:bg-transparent"
+                        >
+                          <Palette className="h-4 w-4 transition group-hover:drop-shadow-[0_0_6px_currentColor]" />
+                          <span className="transition group-hover:drop-shadow-[0_0_6px_currentColor]">UI Style</span>
+                        </Button>
                         {/* Dashed separator */}
                         <div className="h-5 border-l border-dashed border-border mx-1" />
                         <Button
@@ -2913,15 +2922,6 @@ export function WalletDashboard({
                         >
                           <BookUser className="h-4 w-4 transition group-hover:drop-shadow-[0_0_6px_currentColor]" />
                           <span className="transition group-hover:drop-shadow-[0_0_6px_currentColor]">Address Book</span>
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => setShowUIStyleDialog(true)}
-                          className="group flex items-center gap-2 hover:bg-transparent"
-                        >
-                          <Palette className="h-4 w-4 transition group-hover:drop-shadow-[0_0_6px_currentColor]" />
-                          <span className="transition group-hover:drop-shadow-[0_0_6px_currentColor]">Style UI</span>
                         </Button>
                         
                         {/* Text buttons: Export Private Keys, Lock Wallet, Reset All */}

@@ -367,12 +367,15 @@ html.ui-nova aside[class*="bg-background"] .group {
 }
 
 /*
- * Wallet list / activity list rows use `group hover:bg-muted` style.
- * The hover surface itself must also be rounded — without a class
- * override the hover fills a sharp rectangle. */
-html.ui-nova aside [class*="hover\\:bg-"]:hover,
-html.ui-nova aside [class*="group-hover\\:bg-"]:hover {
-  border-radius: 8px;
+ * Activity / wallet list rows use `hover:bg-muted/50` or `hover:bg-muted`.
+ * The hover surface must also be rounded. Target any element with a
+ * `cursor-pointer` + `hover:bg-*` pattern inside the app.
+ */
+html.ui-nova .cursor-pointer[class*="hover:bg-"],
+html.ui-nova [class*="cursor-pointer"][class*="hover:bg-"],
+html.ui-nova aside .group:hover,
+html.ui-nova aside [class*="hover:bg-"]:hover {
+  border-radius: 8px !important;
 }
 
 /* Shape defaults for form elements and buttons */
