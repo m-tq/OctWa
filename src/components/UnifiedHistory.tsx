@@ -715,7 +715,7 @@ function TransferItem({
     
     return (
       <div 
-        className="cursor-pointer hover:bg-muted/50 transition-colors -mx-2 px-2 py-1 rounded"
+        className="cursor-pointer hover:bg-muted/50 transition-colors -mx-2 px-2 py-1 rounded-lg"
         onClick={() => onViewDetails(tx.hash, tx.status === 'pending')}
       >
         <div className="flex items-center justify-between gap-2">
@@ -790,7 +790,7 @@ function TransferItem({
     
     return (
       <div 
-        className="cursor-pointer hover:bg-muted/50 transition-colors -m-2 p-2 rounded"
+        className="cursor-pointer hover:bg-muted/50 transition-colors -m-2 p-2 rounded-lg"
         onClick={handleItemClick}
       >
         <div className="flex items-center justify-between gap-2">
