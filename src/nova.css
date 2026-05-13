@@ -240,7 +240,7 @@ html.ui-nova [data-section-title] {
 html.ui-nova *,
 html.ui-nova *::before,
 html.ui-nova *::after {
-  border-radius: revert !important;
+  border-radius: 0 !important;
 }
 
 /* Re-apply specific Tailwind radii — doubled specificity to beat
