@@ -243,15 +243,16 @@ html.ui-nova *::after {
   border-radius: revert !important;
 }
 
-/* Re-apply specific Tailwind radii */
-html.ui-nova .rounded,
-html.ui-nova .rounded-sm    { border-radius: 8px !important; }
-html.ui-nova .rounded-md    { border-radius: 6px !important; }
-html.ui-nova .rounded-lg    { border-radius: 8px !important; }
-html.ui-nova .rounded-xl    { border-radius: 10px !important; }
-html.ui-nova .rounded-2xl   { border-radius: 14px !important; }
-html.ui-nova .rounded-3xl   { border-radius: 18px !important; }
-html.ui-nova .rounded-none  { border-radius: 0 !important; }
+/* Re-apply specific Tailwind radii — doubled specificity to beat
+   index.css `@layer base { .rounded-lg { border-radius: 0 !important } }` */
+html.ui-nova .rounded.rounded,
+html.ui-nova .rounded-sm.rounded-sm    { border-radius: 8px !important; }
+html.ui-nova .rounded-md.rounded-md    { border-radius: 6px !important; }
+html.ui-nova .rounded-lg.rounded-lg    { border-radius: 8px !important; }
+html.ui-nova .rounded-xl.rounded-xl    { border-radius: 10px !important; }
+html.ui-nova .rounded-2xl.rounded-2xl  { border-radius: 14px !important; }
+html.ui-nova .rounded-3xl.rounded-3xl  { border-radius: 18px !important; }
+html.ui-nova .rounded-none.rounded-none { border-radius: 0 !important; }
 
 /*
  * Catch-all for any panel / card / surface that ships with a `border`

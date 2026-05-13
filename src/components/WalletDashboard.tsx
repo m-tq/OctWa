@@ -2494,7 +2494,7 @@ export function WalletDashboard({
 
       {/* Header - Fixed position for expanded mode */}
       <header className={`octra-header w-full ${isPopupMode ? 'sticky top-0' : 'fixed top-0 left-0 right-0'} z-50`}>
-        <div className={`w-full ${isPopupMode ? 'px-3' : 'px-6'}`}>
+        <div className={`w-full ${isPopupMode ? 'px-3' : 'px-2'}`}>
           <div className={`flex items-center justify-between ${isPopupMode ? 'py-1' : 'py-2'}`}>
             <div className="flex items-center space-x-4">
               <div className={`flex ${isPopupMode ? 'items-center space-x-2' : 'items-center space-x-3'}`}>
