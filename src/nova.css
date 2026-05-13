@@ -261,7 +261,7 @@ html.ui-nova .rounded-none  { border-radius: 0 !important; }
  */
 html.ui-nova .border:not(.rounded-none):not(.rounded-full):not(.rounded),
 html.ui-nova [class*="border-"]:not(.rounded-none):not(.rounded-full):not([class*="rounded-"]) {
-  border-radius: 8px;
+  border-radius: 8px !important;
 }
 
 /*
@@ -272,7 +272,7 @@ html.ui-nova [class*="border-"]:not(.rounded-none):not(.rounded-full):not([class
 html.ui-nova .bg-muted:not(.rounded-none):not(.rounded-full):not([class*="rounded-"]),
 html.ui-nova .bg-accent:not(.rounded-none):not(.rounded-full):not([class*="rounded-"]),
 html.ui-nova .bg-secondary:not(.rounded-none):not(.rounded-full):not([class*="rounded-"]) {
-  border-radius: 8px;
+  border-radius: 8px !important;
 }
 
 /*
@@ -283,7 +283,7 @@ html.ui-nova .bg-secondary:not(.rounded-none):not(.rounded-full):not([class*="ro
  */
 html.ui-nova .expanded-view [class*="border"]:not(.rounded-none):not([class*="rounded-"]):not([class*="border-t"]):not([class*="border-b"]):not([class*="border-l"]):not([class*="border-r"]),
 html.ui-nova .popup-view [class*="border"]:not(.rounded-none):not([class*="rounded-"]):not([class*="border-t"]):not([class*="border-b"]):not([class*="border-l"]):not([class*="border-r"]) {
-  border-radius: 8px;
+  border-radius: 8px !important;
 }
 
 /* Cards specifically — softer, more rounded */
