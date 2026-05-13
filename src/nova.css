@@ -368,16 +368,19 @@ html.ui-nova aside[class*="bg-background"] .group {
 }
 
 /*
- * Activity / wallet list rows use `hover:bg-muted/50` or `hover:bg-muted`.
- * The hover surface must also be rounded. Target any element with a
- * `cursor-pointer` + `hover:bg-*` pattern inside the app.
+ * Activity / wallet list rows — force rounded hover with maximum
+ * specificity to beat every @layer base override in index.css.
+ *
+ * Selector `html.ui-nova body .cursor-pointer[class*="hover:bg-"]`
+ * has specificity `0,3,2` (3 classes + 2 tag elements) which is
+ * higher than `.rounded-lg { border-radius: 0 !important }` which
+ * is `0,1,0`. With matching `!important` the higher specificity wins.
  */
-html.ui-nova .cursor-pointer[class*="hover:bg-"],
-html.ui-nova [class*="cursor-pointer"][class*="hover:bg-"],
-html.ui-nova aside .group:hover,
-html.ui-nova aside [class*="hover:bg-"]:hover {
+html.ui-nova body .cursor-pointer[class*="hover:bg-"],
+html.ui-nova body div.cursor-pointer[class*="rounded-"],
+html.ui-nova body aside .group {
   border-radius: 8px !important;
-  overflow: hidden;
+  overflow: hidden !important;
 }
 
 /* Shape defaults for form elements and buttons */
