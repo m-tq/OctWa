@@ -116,7 +116,7 @@ function getTxMessage(tx: TxDetails): string | null {
   return isTransactionDetails(tx) ? tx.message : tx.message ?? null;
 }
 import { WalletManager } from '../utils/walletManager';
-import { fetchBalance, getTransactionHistory, fetchEncryptedBalance, fetchTransactionDetails, fetchPendingTransactionByHash, getPendingPrivateTransfers, apiCache, TxCountPoller } from '../utils/api';
+import { fetchBalance, getTransactionHistory, fetchEncryptedBalance, fetchTransactionDetails, fetchPendingTransactionByHash, getPendingPrivateTransfers, apiCache, TxCountPoller, invalidateCacheForNetworkSwitch } from '../utils/api';
 import { cacheService } from '../services/cacheService';
 import { getEVMWalletData, EVMWalletData } from '../utils/evmDerive';
 import {
@@ -219,10 +219,10 @@ export function WalletDashboard({
   const AUTO_HIDE_THRESHOLD = 200; // Auto hide when dragged below this width
   
   // History sidebar state (right side)
-  const [historySidebarWidth, setHistorySidebarWidth] = useState(350);
+  const [historySidebarWidth, setHistorySidebarWidth] = useState(360);
   const [isResizingHistory, setIsResizingHistory] = useState(false);
-  const MIN_HISTORY_WIDTH = 350;
-  const MAX_HISTORY_WIDTH = 350;
+  const MIN_HISTORY_WIDTH = 360;
+  const MAX_HISTORY_WIDTH = 360;
   const AUTO_HIDE_HISTORY_THRESHOLD = 200;
   
   // Computed sidebar left position for all fixed elements
@@ -1066,7 +1066,6 @@ export function WalletDashboard({
 
     // Invalidate the API-level cache (network-keyed) so next fetch goes to new RPC
     // But keep the fast wallet cache so UI shows data instantly while syncing
-    const { invalidateCacheForNetworkSwitch } = await import('../utils/api');
     await invalidateCacheForNetworkSwitch();
 
     // Force fresh RPC status check — updates activeNetwork + rpcStatus in footer
@@ -2885,6 +2884,8 @@ export function WalletDashboard({
                           <Code2 className="h-4 w-4 transition group-hover:drop-shadow-[0_0_6px_currentColor]" />
                           <span className="transition group-hover:drop-shadow-[0_0_6px_currentColor]">Dev Tools</span>
                         </Button>
+                        {/* Dashed separator between Dev Tools and UI Style */}
+                        <div className="h-5 border-l border-dashed border-border mx-1" />
                         <Button
                           variant="ghost"
                           size="sm"
@@ -3433,7 +3434,7 @@ export function WalletDashboard({
               top: showWalletSidebar ? '49px' : '69px'
             }}
           >
-            <div className="h-full flex flex-col pt-4 pb-4 pl-4 pr-3" style={{ width: `${sidebarWidth - 8}px` }}>
+            <div className="h-full flex flex-col pt-4 pb-4 pl-2 pr-3" style={{ width: `${sidebarWidth - 8}px` }}>
               {/* EVM Mode Sidebar Content */}
               {evmMode ? (
                 <>
@@ -4120,7 +4121,7 @@ export function WalletDashboard({
               top: showWalletSidebar ? '49px' : '69px'
             }}
           >
-            <div className="h-full flex flex-col pt-4 pb-4 pl-4 pr-3" style={{ width: `${historySidebarWidth}px` }}>
+            <div className="h-full flex flex-col pt-4 pb-4 pl-2 pr-3" style={{ width: `${historySidebarWidth}px` }}>
               {/* Transaction Details View */}
               {showExpandedTxDetails ? (
                 <div className={`h-full flex flex-col transition-all duration-200 ${
@@ -4327,7 +4328,7 @@ export function WalletDashboard({
                 </div>
               ) : (
                 /* History List View */
-                <div className={`h-full flex flex-col p-3 pl-5 pb-6 transition-all duration-200 ${
+                <div className={`h-full flex flex-col p-2 pl-3 pb-6 transition-all duration-200 ${
                   txDetailsClosing ? 'animate-in slide-in-from-left-4 fade-in' : ''
                 }`}>
                   {/* EVM Mode History */}
