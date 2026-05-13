@@ -2,6 +2,10 @@
  * Balance Pie Chart Component
  * Shows percentage comparison between public and encrypted balance.
  * Supports isDecrypting spinner while PVAC is fetching encrypted balance.
+ *
+ * Colours are read from CSS variables so alternate UI styles (Nova, etc.)
+ * can retheme via `html.ui-nova`. Variables default to OctWa's Octrascan
+ * blue/teal in `index.css`.
  */
 
 import { useMemo } from 'react';
@@ -35,11 +39,11 @@ export function BalancePieChart({
   }, [publicBalance, encryptedBalance]);
 
   const pieGradient = useMemo(() => {
-    if (total === 0) return 'conic-gradient(#e5e7eb 0deg 360deg)';
+    if (total === 0) return 'conic-gradient(var(--pie-empty, #e5e7eb) 0deg 360deg)';
     const publicDeg = (publicPercent / 100) * 360;
     return `conic-gradient(
-      #3B567F 0deg ${publicDeg}deg,
-      #00E5C0 ${publicDeg}deg 360deg
+      var(--pie-public, #3B567F) 0deg ${publicDeg}deg,
+      var(--pie-encrypted, #00E5C0) ${publicDeg}deg 360deg
     )`;
   }, [publicPercent, total]);
 

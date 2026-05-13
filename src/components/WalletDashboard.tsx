@@ -47,6 +47,7 @@ import {
   Image,
   Settings,
   Code2,
+  Palette,
 } from 'lucide-react';
 import { ExtensionStorageManager } from '../utils/extensionStorage';
 import { MultiSend } from './MultiSend';
@@ -58,6 +59,7 @@ import { UnifiedHistory } from './UnifiedHistory';
 import { ModeToggle } from './ModeToggle';
 import { resetModeSwitchReminder } from './ModeSwitchConfirmDialog';
 import { ThemeToggle } from './ThemeToggle';
+import { UIStyleDialog } from './UIStyleDialog';
 import { AddWalletPopup } from './AddWalletPopup';
 import { RPCProviderManager } from './RPCProviderManager';
 import { ConnectedDAppsManager } from './ConnectedDAppsManager';
@@ -202,6 +204,7 @@ export function WalletDashboard({
   const [showAddWalletDialog, setShowAddWalletDialog] = useState(false);
   const [showRPCManager, setShowRPCManager] = useState(false);
   const [showDAppsManager, setShowDAppsManager] = useState(false);
+  const [showUIStyleDialog, setShowUIStyleDialog] = useState(false);
   const [walletToDelete, setWalletToDelete] = useState<Wallet | null>(null);
   const [showLockConfirm, setShowLockConfirm] = useState(false);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
@@ -2725,6 +2728,20 @@ export function WalletDashboard({
                           <span className="transition group-hover:drop-shadow-[0_0_6px_currentColor]">RPC Provider</span>
                         </Button>
 
+                        {/* Style UI */}
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => {
+                            setShowUIStyleDialog(true);
+                            setShowMobileMenu(false);
+                          }}
+                          className="group w-full justify-start gap-1.5 text-xs h-10 hover:bg-transparent"
+                        >
+                          <Palette className="h-3.5 w-3.5 transition group-hover:drop-shadow-[0_0_6px_currentColor]" />
+                          <span className="transition group-hover:drop-shadow-[0_0_6px_currentColor]">Style UI</span>
+                        </Button>
+
                         {/* Connected dApps */}
                         <Button
                           variant="ghost"
@@ -2897,6 +2914,15 @@ export function WalletDashboard({
                           <BookUser className="h-4 w-4 transition group-hover:drop-shadow-[0_0_6px_currentColor]" />
                           <span className="transition group-hover:drop-shadow-[0_0_6px_currentColor]">Address Book</span>
                         </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setShowUIStyleDialog(true)}
+                          className="group flex items-center gap-2 hover:bg-transparent"
+                        >
+                          <Palette className="h-4 w-4 transition group-hover:drop-shadow-[0_0_6px_currentColor]" />
+                          <span className="transition group-hover:drop-shadow-[0_0_6px_currentColor]">Style UI</span>
+                        </Button>
                         
                         {/* Text buttons: Export Private Keys, Lock Wallet, Reset All */}
                         <Button 
@@ -2979,6 +3005,19 @@ export function WalletDashboard({
                           >
                             <BookUser className="h-4 w-4" />
                             Address Book
+                          </Button>
+
+                          {/* Style UI */}
+                          <Button
+                            variant="outline"
+                            onClick={() => {
+                              setShowUIStyleDialog(true);
+                              setShowMobileMenu(false);
+                            }}
+                            className="w-full justify-start gap-2"
+                          >
+                            <Palette className="h-4 w-4" />
+                            Style UI
                           </Button>
 
                           {/* Export Private Keys */}
@@ -3067,6 +3106,12 @@ export function WalletDashboard({
                 open={showAddWalletDialog}
                 onOpenChange={setShowAddWalletDialog}
                 onWalletCreated={handleImportSuccess}
+                isPopupMode={isPopupMode}
+              />
+
+              <UIStyleDialog
+                open={showUIStyleDialog}
+                onOpenChange={setShowUIStyleDialog}
                 isPopupMode={isPopupMode}
               />
               

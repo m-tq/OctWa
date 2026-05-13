@@ -1,0 +1,842 @@
+/* ============================================================
+   Nova UI Style — modeled after app.nova.markets
+   ============================================================
+
+   Scope: every rule gated behind `html.ui-nova`. Default
+   Octrascan styling stays untouched.
+
+   Design reproduced:
+     - Near-black #0a0a0a dark canvas (or near-white #fcfcfc
+       light) with faint concentric grid circles emanating from
+       the top corners.
+     - Inter primary UI typeface, 13px base.
+     - Semantic colour split matching the Default theme:
+         #3B567F (Public / primary)   → Nova Blue  #3b82f6
+         #00E5C0 (Private / encrypted) → Nova Green #22c55e
+     - Flat cards / menus / popovers with hairline borders and
+       10px radius. Inputs 6px. Spinners/avatars stay round.
+
+   Common gotchas this file defends against:
+     - index.css ships `* { border-radius: 0 !important }` — we
+       revert and re-apply per element.
+     - index.css ships `body { font-family: 'Fira Code' … }`
+       with normal specificity but early position — we use
+       `!important` on body.
+     - shadcn Radix primitives do NOT emit `data-slot` attrs.
+       Dialog/Sheet/Alert content elements have `role="dialog"`
+       and `data-state="open"` instead. We target those.
+     - `#root`, `.popup-view`, `.expanded-view` paint their own
+       `bg-background` which covers the body orbital grid.
+       We force those transparent AND paint the grid on them
+       as a fallback.
+     - cva-based shadcn Button has no `data-variant` attr.
+       We use Tailwind class fragments (`hover:bg-accent`,
+       `hover:text-[#...]`) to override.
+*/
+
+/* ────────────── 1 · Fonts ────────────── */
+
+/*
+ * Nova keeps Fira Code (already loaded by index.html) — so no extra
+ * @import needed. Only the look-and-feel, spacing and palette shift
+ * under this style.
+ */
+
+/* ────────────── 2 · Dark palette ────────────── */
+
+html.ui-nova,
+html.ui-nova.dark {
+  --background:          0 0% 4%;               /* #0a0a0a */
+  --foreground:          0 0% 94%;
+  --card:                0 0% 7%;               /* #121212 */
+  --card-foreground:     0 0% 94%;
+  --popover:             0 0% 8%;
+  --popover-foreground:  0 0% 94%;
+
+  --primary:             217 91% 60%;           /* #3b82f6 */
+  --primary-foreground:  0 0% 100%;
+  --secondary:           0 0% 12%;
+  --secondary-foreground: 0 0% 94%;
+  --muted:               0 0% 10%;
+  --muted-foreground:    0 0% 62%;
+  --accent:              0 0% 14%;
+  --accent-foreground:   0 0% 94%;
+  --destructive:         0 72% 56%;
+  --destructive-foreground: 0 0% 100%;
+
+  --border:              0 0% 14%;
+  --input:               0 0% 10%;
+  --ring:                217 91% 60%;
+
+  --chart-1: 217 91% 60%;
+  --chart-2: 142 71% 45%;
+  --chart-3: 199 89% 62%;
+  --chart-4: 37 92% 58%;
+  --chart-5: 0 72% 58%;
+
+  --radius: 0.5rem;
+
+  --oc-surface:          0 0% 9%;
+  --oc-surface-muted:    0 0% 7%;
+  --oc-header:           0 0% 10%;
+  --oc-border:           0 0% 14%;
+  --oc-border-dark:      0 0% 18%;
+  --oc-primary:          217 91% 62%;
+  --oc-secondary-btn:    0 0% 22%;
+  --oc-muted-text:       0 0% 62%;
+  --oc-label:            0 0% 72%;
+  --oc-success:          142 71% 45%;
+  --oc-warning:          37 92% 58%;
+  --oc-danger:           0 72% 58%;
+  --oc-teal:             142 71% 45%;
+
+  --oct-color-bg:            #0a0a0a;
+  --oct-color-text:          #f0f0f0;
+  --oct-color-surface:       #121212;
+  --oct-color-surface-soft:  #0d0d0d;
+  --oct-color-header:        #171717;
+  --oct-color-border:        #232323;
+  --oct-color-border-strong: #2d2d2d;
+  --oct-color-primary:       #3b82f6;
+  --oct-color-primary-soft:  #60a5fa;
+  --oct-color-muted:         #949494;
+  --oct-color-warning-bg:    #2a1d0a;
+  --oct-color-danger-bg:     #2a1212;
+
+  --oct-type-ui:   'Fira Code', Tahoma, 'Segoe UI', Arial, sans-serif;
+  --oct-type-mono: 'Fira Code', 'SF Mono', Consolas, Monaco, monospace;
+  --oct-type-size-01: 11px;
+  --oct-type-size-02: 13px;
+  --oct-type-size-03: 14px;
+  --oct-type-size-04: 16px;
+  --oct-letter-space: 0.2px;
+
+  --nova-accent-primary:        #3b82f6;
+  --nova-accent-primary-soft:   rgba(59, 130, 246, 0.14);
+  --nova-accent-primary-hover:  #60a5fa;
+  --nova-accent-private:        #22c55e;
+  --nova-accent-private-soft:   rgba(34, 197, 94, 0.14);
+  --nova-accent-private-hover:  #4ade80;
+  --nova-neutral-fg:            #d4d4d8;
+
+  --pie-public:    #3b82f6;
+  --pie-encrypted: #22c55e;
+  --pie-empty:     #1f1f22;
+}
+
+/* ────────────── 3 · Light palette ────────────── */
+
+html.ui-nova.light {
+  --background:          0 0% 99%;
+  --foreground:          0 0% 8%;
+  --card:                0 0% 100%;
+  --card-foreground:     0 0% 8%;
+  --popover:             0 0% 100%;
+  --popover-foreground:  0 0% 8%;
+
+  --primary:             217 91% 48%;
+  --primary-foreground:  0 0% 100%;
+  --secondary:           0 0% 96%;
+  --secondary-foreground: 0 0% 8%;
+  --muted:               0 0% 96%;
+  --muted-foreground:    0 0% 42%;
+  --accent:              0 0% 93%;
+  --accent-foreground:   0 0% 8%;
+  --destructive:         0 72% 48%;
+  --destructive-foreground: 0 0% 100%;
+
+  --border:              0 0% 90%;
+  --input:               0 0% 93%;
+  --ring:                217 91% 48%;
+
+  --chart-1: 217 91% 48%;
+  --chart-2: 142 71% 36%;
+  --chart-3: 199 89% 48%;
+  --chart-4: 37 92% 48%;
+  --chart-5: 0 72% 48%;
+
+  --oc-surface:          0 0% 98%;
+  --oc-surface-muted:    0 0% 96%;
+  --oc-header:           0 0% 94%;
+  --oc-border:           0 0% 90%;
+  --oc-border-dark:      0 0% 82%;
+  --oc-primary:          217 91% 42%;
+  --oc-secondary-btn:    0 0% 40%;
+  --oc-muted-text:       0 0% 42%;
+  --oc-label:            0 0% 26%;
+  --oc-success:          142 71% 36%;
+  --oc-warning:          37 92% 40%;
+  --oc-danger:           0 72% 48%;
+  --oc-teal:             142 71% 36%;
+
+  --oct-color-bg:            #fcfcfc;
+  --oct-color-text:          #0a0a0a;
+  --oct-color-surface:       #ffffff;
+  --oct-color-surface-soft:  #f7f7f7;
+  --oct-color-header:        #f0f0f0;
+  --oct-color-border:        #e5e5e5;
+  --oct-color-border-strong: #d4d4d4;
+  --oct-color-primary:       #2563eb;
+  --oct-color-primary-soft:  #3b82f6;
+  --oct-color-muted:         #555555;
+  --oct-color-warning-bg:    #fffbeb;
+  --oct-color-danger-bg:     #fef2f2;
+
+  --nova-accent-primary:        #2563eb;
+  --nova-accent-primary-soft:   rgba(37, 99, 235, 0.1);
+  --nova-accent-primary-hover:  #1d4ed8;
+  --nova-accent-private:        #16a34a;
+  --nova-accent-private-soft:   rgba(22, 163, 74, 0.1);
+  --nova-accent-private-hover:  #15803d;
+  --nova-neutral-fg:            #27272a;
+
+  --pie-public:    #2563eb;
+  --pie-encrypted: #16a34a;
+  --pie-empty:     #e5e7eb;
+}
+
+/* ────────────── 4 · Typography ────────────── */
+
+html.ui-nova body {
+  font-family: var(--oct-type-ui) !important;
+  font-size: var(--oct-type-size-02);
+  letter-spacing: var(--oct-letter-space);
+  color: hsl(var(--foreground));
+  font-feature-settings: 'ss01', 'cv11';
+}
+
+html.ui-nova h1,
+html.ui-nova h2,
+html.ui-nova h3,
+html.ui-nova h4 {
+  font-family: var(--oct-type-ui) !important;
+  letter-spacing: -0.015em;
+  font-weight: 600;
+}
+
+html.ui-nova .mono,
+html.ui-nova code,
+html.ui-nova pre,
+html.ui-nova [data-mono],
+html.ui-nova .font-mono {
+  font-family: var(--oct-type-mono) !important;
+}
+
+html.ui-nova .octra-section-title,
+html.ui-nova [data-section-title] {
+  text-transform: uppercase !important;
+  letter-spacing: 0.14em !important;
+  font-weight: 600 !important;
+  font-size: 10.5px !important;
+  color: hsl(var(--oc-muted-text)) !important;
+  background: transparent !important;
+  border-top: none !important;
+  border-bottom: 1px solid hsl(var(--oc-border)) !important;
+  padding: 10px 12px !important;
+}
+
+/* ────────────── 5 · Radii — override `* { border-radius: 0 !important }` ────────────── */
+
+html.ui-nova *,
+html.ui-nova *::before,
+html.ui-nova *::after {
+  border-radius: revert !important;
+}
+
+/* Re-apply specific Tailwind radii */
+html.ui-nova .rounded,
+html.ui-nova .rounded-sm    { border-radius: 4px !important; }
+html.ui-nova .rounded-md    { border-radius: 6px !important; }
+html.ui-nova .rounded-lg    { border-radius: 8px !important; }
+html.ui-nova .rounded-xl    { border-radius: 10px !important; }
+html.ui-nova .rounded-2xl   { border-radius: 14px !important; }
+html.ui-nova .rounded-3xl   { border-radius: 18px !important; }
+html.ui-nova .rounded-none  { border-radius: 0 !important; }
+
+/*
+ * Catch-all for any panel / card / surface that ships with a `border`
+ * class but no explicit radius. Without this, components like shadcn
+ * Card (plain `border`) look sharp. Anything explicitly set to
+ * `rounded-none` is respected via the rule above.
+ */
+html.ui-nova .border:not(.rounded-none):not(.rounded-full):not(.rounded),
+html.ui-nova [class*="border-"]:not(.rounded-none):not(.rounded-full):not([class*="rounded-"]) {
+  border-radius: 8px;
+}
+
+/*
+ * Also round surfaces that use only `bg-muted` / `bg-card` / `bg-accent`
+ * / `bg-secondary` (no border) — e.g. Bulk Send's Active Address chip
+ * or read-only field wrappers.
+ */
+html.ui-nova .bg-muted:not(.rounded-none):not(.rounded-full):not([class*="rounded-"]),
+html.ui-nova .bg-accent:not(.rounded-none):not(.rounded-full):not([class*="rounded-"]),
+html.ui-nova .bg-secondary:not(.rounded-none):not(.rounded-full):not([class*="rounded-"]) {
+  border-radius: 8px;
+}
+
+/*
+ * Aggressive Nova catch: any direct child of `.expanded-view` or
+ * `.popup-view` that has a `border-*` class and no explicit radius
+ * gets rounded. Covers OctWa's ad-hoc side panels, tx details pills,
+ * activity rows, etc.
+ */
+html.ui-nova .expanded-view [class*="border"]:not(.rounded-none):not([class*="rounded-"]):not([class*="border-t"]):not([class*="border-b"]):not([class*="border-l"]):not([class*="border-r"]),
+html.ui-nova .popup-view [class*="border"]:not(.rounded-none):not([class*="rounded-"]):not([class*="border-t"]):not([class*="border-b"]):not([class*="border-l"]):not([class*="border-r"]) {
+  border-radius: 8px;
+}
+
+/* Cards specifically — softer, more rounded */
+html.ui-nova .octra-card,
+html.ui-nova [class*="octra-card"],
+html.ui-nova .bg-card,
+html.ui-nova [class*="bg-card"]:not(.rounded-none):not([class*="rounded-"]) {
+  border-radius: 10px !important;
+}
+
+/*
+ * Shadcn Badge — has `inline-flex items-center border px-1.5 py-0
+ * text-[10px] font-bold tracking-wide`. We detect by combining
+ * text size + font weight + inline-flex which no other component
+ * ships simultaneously.
+ *
+ * NB: index.css uses `@apply inline-flex items-center …` inside
+ * `.octra-header` / `.octra-button`, so selectors that only use
+ * `inline-flex` + `items-center` + `border` match those too. We
+ * add `text-[10px]` to disambiguate — only Badge ships that size.
+ */
+html.ui-nova div.inline-flex.items-center.border[class*="text-[10px]"] {
+  border-radius: 9999px !important;
+  padding-left: 8px !important;
+  padding-right: 8px !important;
+}
+
+/* Also catch Badge with text-xs (used in some tx-details status pills) */
+html.ui-nova div.inline-flex.items-center.border.font-bold[class*="text-xs"] {
+  border-radius: 9999px !important;
+  padding-left: 8px !important;
+  padding-right: 8px !important;
+}
+
+/*
+ * Catch Badge regardless of size when `h-5` / `h-6` is paired with
+ * `inline-flex items-center`. Those tiny flex containers are always
+ * badges in OctWa.
+ */
+html.ui-nova div.inline-flex.items-center[class*="h-5"],
+html.ui-nova div.inline-flex.items-center[class*="h-6"],
+html.ui-nova span.inline-flex.items-center[class*="h-5"] {
+  border-radius: 9999px !important;
+}
+
+/*
+ * Ghost / asChild buttons rendered as <a> or <button> that wrap a
+ * rounded tappable row (e.g. the "View on Octrascan" button at the
+ * bottom of tx details). These use Button variant="ghost" which has
+ * no explicit rounded class — the shadcn base just does `transition-colors`.
+ *
+ * We round every button AND anchor in Nova scope.
+ */
+/*
+ * Every clickable surface rounds. Shadcn Button uses `asChild` with
+ * <a> for `View on Octrascan` / explorer links — the anchor
+ * inherits font-bold but NOT `role="button"`. Target both so the
+ * hover fill reads as a rounded pill instead of a rectangle.
+ */
+html.ui-nova button,
+html.ui-nova a[role="button"],
+html.ui-nova a.font-bold.tracking-wide,
+html.ui-nova a[class*="text-[11px]"][class*="font-bold"],
+html.ui-nova a[class*="hover:bg-"],
+html.ui-nova a.rounded,
+html.ui-nova [data-radix-collection-item] a,
+html.ui-nova [data-radix-collection-item] button {
+  border-radius: 6px !important;
+  overflow: hidden;
+}
+
+/*
+ * Asides / side panels (Wallets list on left, Activity list on right)
+ * are `fixed` full-height columns with `bg-background`. They stay
+ * edge-to-edge (no outer radius) but their inner cards / list rows
+ * should still round.
+ */
+html.ui-nova aside[class*="bg-background"] > *,
+html.ui-nova aside[class*="bg-background"] .group {
+  border-radius: 8px !important;
+}
+
+/*
+ * Wallet list / activity list rows use `group hover:bg-muted` style.
+ * The hover surface itself must also be rounded — without a class
+ * override the hover fills a sharp rectangle. */
+html.ui-nova aside [class*="hover\\:bg-"]:hover,
+html.ui-nova aside [class*="group-hover\\:bg-"]:hover {
+  border-radius: 8px;
+}
+
+/* Shape defaults for form elements and buttons */
+html.ui-nova button:not(.rounded-none):not([class*="rounded-full"]),
+html.ui-nova input:not(.rounded-none),
+html.ui-nova textarea:not(.rounded-none),
+html.ui-nova select:not(.rounded-none) {
+  border-radius: 6px !important;
+}
+
+/* Cards + every shadcn portal surface (Dialog / Sheet / Popover / Menu)
+   shadcn uses Radix primitives which expose `role="dialog"`, `role="menu"`,
+   `data-state="open"` — no `data-slot`. We target those. */
+html.ui-nova .octra-card,
+html.ui-nova [class*="octra-card"],
+html.ui-nova [role="dialog"],
+html.ui-nova [role="alertdialog"],
+html.ui-nova [role="menu"],
+html.ui-nova [role="listbox"],
+html.ui-nova [role="tooltip"] {
+  border-radius: 10px !important;
+  background: hsl(var(--popover));
+  border-color: hsl(var(--oc-border));
+}
+
+/* Popover / dropdown panels (Radix mounts them as [data-state="open"]
+   elements without role but with these animation data attrs). */
+html.ui-nova [data-radix-popper-content-wrapper] > *,
+html.ui-nova [data-state="open"][data-side],
+html.ui-nova [data-state="closed"][data-side] {
+  border-radius: 10px !important;
+}
+
+/* Sub-card surfaces and sheet panels */
+html.ui-nova .popup-view .card,
+html.ui-nova .octra-input,
+html.ui-nova .octra-tag-success,
+html.ui-nova .docs-nav-item,
+html.ui-nova [class*="docs-card"] {
+  border-radius: 6px !important;
+}
+
+/* Round elements always stay perfectly round */
+html.ui-nova .rounded-full,
+html.ui-nova .animate-spin,
+html.ui-nova [class*="animate-spin"],
+html.ui-nova .logo-circle,
+html.ui-nova .loading-spinner,
+html.ui-nova .avatar,
+html.ui-nova [data-radix-avatar-root] {
+  border-radius: 9999px !important;
+}
+
+/* Badge — Nova pill with uppercase tracking */
+html.ui-nova [class*="inline-flex"][class*="border"][class*="font-semibold"] {
+  /* shadcn Badge signature — match without needing data-slot */
+  border-radius: 9999px !important;
+}
+
+/* ────────────── 6 · Canvas background — grid + dot pattern ────────────── */
+
+/*
+ * Nova reference canvas: a fine grid of thin light lines (every ~140px),
+ * with small bright dots at each line intersection, plus a soft central
+ * radial glow for depth. Painted on <html> so nothing covers it.
+ *
+ *   - Layer 1: horizontal grid lines   (linear-gradient repeating)
+ *   - Layer 2: vertical grid lines     (linear-gradient repeating)
+ *   - Layer 3: intersection dots       (radial-gradient tile)
+ *   - Layer 4: soft centre glow        (huge radial, very low alpha)
+ *   - Layer 5: solid background colour
+ */
+
+html.ui-nova,
+html.ui-nova.dark,
+html.ui-nova:not(.light) {
+  background-color: #0a0a0a !important;
+  background-image:
+    /* intersection dots — 3px bright dot tiled at 140×140 */
+    radial-gradient(circle 1.5px at 1px 1px, rgba(255, 255, 255, 0.28), transparent 1.6px),
+    /* horizontal grid lines */
+    linear-gradient(to bottom, rgba(255, 255, 255, 0.045) 1px, transparent 1px),
+    /* vertical grid lines */
+    linear-gradient(to right, rgba(255, 255, 255, 0.045) 1px, transparent 1px),
+    /* soft centre glow */
+    radial-gradient(ellipse 80% 70% at 50% 45%, rgba(255, 255, 255, 0.03), transparent 70%) !important;
+  background-size:
+    140px 140px,
+    140px 140px,
+    140px 140px,
+    100% 100% !important;
+  background-position:
+    -1px -1px,
+    0 0,
+    0 0,
+    0 0 !important;
+  background-attachment: fixed !important;
+  background-repeat: repeat, repeat, repeat, no-repeat !important;
+  min-height: 100vh;
+}
+
+html.ui-nova.light {
+  background-color: #fafafa !important;
+  background-image:
+    radial-gradient(circle 1.5px at 1px 1px, rgba(0, 0, 0, 0.22), transparent 1.6px),
+    linear-gradient(to bottom, rgba(0, 0, 0, 0.05) 1px, transparent 1px),
+    linear-gradient(to right, rgba(0, 0, 0, 0.05) 1px, transparent 1px),
+    radial-gradient(ellipse 80% 70% at 50% 45%, rgba(0, 0, 0, 0.025), transparent 70%) !important;
+  background-size:
+    140px 140px,
+    140px 140px,
+    140px 140px,
+    100% 100% !important;
+  background-position:
+    -1px -1px,
+    0 0,
+    0 0,
+    0 0 !important;
+  background-attachment: fixed !important;
+  background-repeat: repeat, repeat, repeat, no-repeat !important;
+}
+
+/*
+ * Force every wrapper that would normally paint a solid `bg-background`
+ * to transparent. The html-level paint shows through to the content.
+ *
+ * This covers:
+ *   - root-level shells (`#root > div.min-h-screen`)
+ *   - popup / expanded view inner wrappers
+ *   - UnlockWallet / DAppRequestHandler / any standalone screen that
+ *     uses `<div class="min-h-screen bg-background">` at the top
+ */
+html.ui-nova body,
+html.ui-nova #root,
+html.ui-nova .popup-view,
+html.ui-nova .expanded-view,
+html.ui-nova #root > div,
+html.ui-nova .popup-view > div,
+html.ui-nova .expanded-view > div,
+html.ui-nova .min-h-screen.bg-background,
+html.ui-nova div.min-h-screen[class*="bg-background"] {
+  background-color: transparent !important;
+  background-image: none !important;
+}
+
+/* Any wrapper that's a direct child of #root and uses bg-background:
+   force transparent so the #root-level grid shows through. */
+html.ui-nova #root > div.min-h-screen,
+html.ui-nova .popup-view > div,
+html.ui-nova .expanded-view > div {
+  background-color: transparent !important;
+  background-image: none !important;
+}
+
+/*
+ * Sticky / fixed overlays inside the expanded view paint their own
+ * `bg-background` (or `bg-background/95` with blur). For Nova we want
+ * the main canvas grid pattern to read through THE STICKY MODE TOGGLE
+ * BAR only — every modal (Claim / Send / Private / EVM / fullscreen)
+ * must stay fully opaque so its content doesn't bleed onto the grid.
+ *
+ * Key disambiguator:
+ *   - Sticky mode-toggle bar: `fixed z-40 bg-background/95 …`
+ *   - Modal overlays:         `fixed z-[45] bg-background/95 …`
+ *   - Fullscreen popup flow:  `fixed inset-[1px] z-[100] bg-background`
+ *
+ * So we scope the transparent rule to `z-40` only.
+ */
+
+/* Expanded sticky mode-toggle bar (z-40) — fully transparent */
+html.ui-nova .fixed.z-40.bg-background\/95,
+html.ui-nova .fixed.z-40[class*="bg-background\/"] {
+  background-color: transparent !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+/* Popup-mode sticky mode-toggle row (non-fixed, `flex-shrink-0 bg-background`) */
+html.ui-nova .popup-view .flex-shrink-0.bg-background {
+  background-color: transparent !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+/* Every full-screen modal (Claim / Send / Private / EVM) — keep them
+   opaque so their content is readable on its own canvas. They use
+   z-[45] or z-[100]. We re-assert the solid bg in case an earlier rule
+   caught them. */
+html.ui-nova .fixed.z-\[45\][class*="bg-background"],
+html.ui-nova .fixed.z-\[45\].bg-background\/95,
+html.ui-nova .fixed.z-\[100\][class*="bg-background"],
+html.ui-nova .fixed.inset-\[1px\].bg-background {
+  background-color: #0a0a0a !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+html.ui-nova.light .fixed.z-\[45\][class*="bg-background"],
+html.ui-nova.light .fixed.z-\[45\].bg-background\/95,
+html.ui-nova.light .fixed.z-\[100\][class*="bg-background"],
+html.ui-nova.light .fixed.inset-\[1px\].bg-background {
+  background-color: #fafafa !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+/* Sidebars — slight tint so content is readable, grid still bleeds through */
+html.ui-nova aside.bg-background {
+  background-color: rgba(10, 10, 10, 0.4) !important;
+  backdrop-filter: blur(12px) saturate(130%) !important;
+  -webkit-backdrop-filter: blur(12px) saturate(130%) !important;
+}
+
+html.ui-nova.light aside.bg-background {
+  background-color: rgba(250, 250, 250, 0.55) !important;
+  backdrop-filter: blur(12px) saturate(130%) !important;
+  -webkit-backdrop-filter: blur(12px) saturate(130%) !important;
+}
+
+/* Bottom footer — minimal tint + blur for separation */
+html.ui-nova footer[class*="bg-background"],
+html.ui-nova .fixed.bottom-\[1px\].bg-background {
+  background-color: rgba(10, 10, 10, 0.5) !important;
+  backdrop-filter: blur(10px) saturate(140%) !important;
+  -webkit-backdrop-filter: blur(10px) saturate(140%) !important;
+}
+
+html.ui-nova.light footer[class*="bg-background"],
+html.ui-nova.light .fixed.bottom-\[1px\].bg-background {
+  background-color: rgba(250, 250, 250, 0.6) !important;
+  backdrop-filter: blur(10px) saturate(140%) !important;
+  -webkit-backdrop-filter: blur(10px) saturate(140%) !important;
+}
+
+/* ────────────── 7 · Logo + SVG remap ────────────── */
+
+html.ui-nova svg circle[stroke="#3B567F"] { stroke: var(--nova-accent-primary) !important; }
+html.ui-nova svg circle[fill="#3B567F"],
+html.ui-nova svg path[fill="#3B567F"],
+html.ui-nova svg rect[fill="#3B567F"]     { fill:   var(--nova-accent-primary) !important; }
+
+html.ui-nova svg circle[stroke="#a9c4ee"] { stroke: var(--nova-accent-primary) !important; }
+html.ui-nova svg circle[fill="#a9c4ee"]   { fill:   var(--nova-accent-primary) !important; }
+
+/* ────────────── 8 · Hex remap (Tailwind arbitrary + inline styles) ────────────── */
+
+/* Primary (blue) family — map to Nova blue */
+html.ui-nova .text-\[\#3B567F\]           { color: var(--nova-accent-primary) !important; }
+html.ui-nova .text-\[\#6C63FF\]           { color: var(--nova-accent-primary) !important; }
+html.ui-nova .bg-\[\#3B567F\]             { background-color: var(--nova-accent-primary) !important; color: #ffffff !important; }
+html.ui-nova .bg-\[\#6C63FF\]             { background-color: var(--nova-accent-primary) !important; color: #ffffff !important; }
+html.ui-nova .bg-\[\#3B567F\]\/10         { background-color: var(--nova-accent-primary-soft) !important; }
+html.ui-nova .bg-\[\#3B567F\]\/20         { background-color: var(--nova-accent-primary-soft) !important; }
+html.ui-nova .bg-\[\#3B567F\]\/30         { background-color: var(--nova-accent-primary-soft) !important; }
+html.ui-nova .bg-\[\#6C63FF\]\/10         { background-color: var(--nova-accent-primary-soft) !important; }
+html.ui-nova .bg-\[\#6C63FF\]\/90         { background-color: var(--nova-accent-primary) !important; }
+html.ui-nova .border-\[\#3B567F\]         { border-color: var(--nova-accent-primary) !important; }
+html.ui-nova .border-\[\#3B567F\]\/30     { border-color: var(--nova-accent-primary-soft) !important; }
+html.ui-nova .hover\:text-\[\#6C63FF\]:hover     { color: var(--nova-accent-primary-hover) !important; }
+html.ui-nova .hover\:bg-\[\#6C63FF\]\/10:hover   { background-color: var(--nova-accent-primary-soft) !important; }
+html.ui-nova .hover\:bg-\[\#6C63FF\]\/90:hover   { background-color: var(--nova-accent-primary-hover) !important; }
+
+/* Private (teal) family — map to Nova green */
+html.ui-nova .text-\[\#00E5C0\]           { color: var(--nova-accent-private) !important; }
+html.ui-nova .bg-\[\#00E5C0\]             { background-color: var(--nova-accent-private) !important; color: #ffffff !important; }
+html.ui-nova .bg-\[\#00E5C0\]\/10         { background-color: var(--nova-accent-private-soft) !important; }
+html.ui-nova .bg-\[\#00E5C0\]\/20         { background-color: var(--nova-accent-private-soft) !important; }
+html.ui-nova .border-\[\#00E5C0\]         { border-color: var(--nova-accent-private) !important; }
+html.ui-nova .border-\[\#00E5C0\]\/30     { border-color: var(--nova-accent-private-soft) !important; }
+html.ui-nova .border-\[\#00E5C0\]\/50     { border-color: var(--nova-accent-private) !important; }
+html.ui-nova .hover\:text-\[\#00E5C0\]:hover { color: var(--nova-accent-private-hover) !important; }
+
+/* Drop-shadow glow literals — precise escaped versions */
+html.ui-nova .group:hover .group-hover\:drop-shadow-\[0_0_6px_rgba\(0\,229\,192\,0\.5\)\],
+html.ui-nova .group:hover .group-hover\:drop-shadow-\[0_0_6px_rgba\(0\,229\,192\,0\.6\)\],
+html.ui-nova .group:hover .group-hover\:drop-shadow-\[0_0_8px_rgba\(0\,229\,192\,0\.5\)\],
+html.ui-nova .group:hover .group-hover\:drop-shadow-\[0_0_12px_rgba\(0\,229\,192\,0\.7\)\] {
+  filter: drop-shadow(0 0 6px rgba(34, 197, 94, 0.6)) !important;
+}
+
+html.ui-nova .group:hover .group-hover\:drop-shadow-\[0_0_6px_rgba\(58\,77\,255\,0\.5\)\],
+html.ui-nova .group:hover .group-hover\:drop-shadow-\[0_0_6px_rgba\(58\,77\,255\,0\.6\)\],
+html.ui-nova .group:hover .group-hover\:drop-shadow-\[0_0_12px_rgba\(58\,77\,255\,0\.7\)\] {
+  filter: drop-shadow(0 0 6px rgba(59, 130, 246, 0.6)) !important;
+}
+
+html.ui-nova .group:hover .group-hover\:drop-shadow-\[0_0_6px_rgba\(249\,115\,22\,0\.6\)\] {
+  filter: drop-shadow(0 0 6px rgba(245, 158, 11, 0.6)) !important;
+}
+
+/* Inline style spinners */
+html.ui-nova [style*="#3B567F"] {
+  border-top-color: var(--nova-accent-primary) !important;
+  border-right-color: var(--nova-accent-primary) !important;
+}
+html.ui-nova [style*="#00E5C0"] {
+  border-top-color: var(--nova-accent-private) !important;
+  border-right-color: var(--nova-accent-private) !important;
+}
+html.ui-nova [style*="#a9c4ee"] {
+  border-top-color: var(--nova-accent-primary) !important;
+  border-right-color: var(--nova-accent-primary) !important;
+}
+html.ui-nova [style*="#f97316"] {
+  border-top-color: #f59e0b !important;
+  border-right-color: #f59e0b !important;
+}
+
+/* ────────────── 9 · EVM orange → Nova amber ────────────── */
+
+html.ui-nova .text-orange-600,
+html.ui-nova .dark\:text-orange-400,
+html.ui-nova .dark .dark\:text-orange-400 {
+  color: #f59e0b !important;
+}
+
+html.ui-nova .hover\:text-orange-700:hover,
+html.ui-nova .dark\:hover\:text-orange-300:hover,
+html.ui-nova .hover\:text-orange-600:hover {
+  color: #fbbf24 !important;
+}
+
+html.ui-nova .bg-orange-500,
+html.ui-nova .bg-orange-500\/15,
+html.ui-nova .bg-orange-500\/20,
+html.ui-nova .bg-orange-500\/5 {
+  background-color: rgba(245, 158, 11, 0.15) !important;
+}
+
+html.ui-nova .bg-orange-500:not([class*="/"]) {
+  background-color: #f59e0b !important;
+}
+
+html.ui-nova .border-orange-500,
+html.ui-nova .border-orange-500\/30,
+html.ui-nova .border-orange-500\/50,
+html.ui-nova .hover\:border-orange-500\/50:hover,
+html.ui-nova .hover\:bg-orange-500\/5:hover {
+  border-color: rgba(245, 158, 11, 0.5) !important;
+}
+
+html.ui-nova .hover\:bg-orange-500\/5:hover {
+  background-color: rgba(245, 158, 11, 0.08) !important;
+}
+
+html.ui-nova .hover\:bg-orange-600:hover {
+  background-color: #d97706 !important;
+}
+
+html.ui-nova .focus\:ring-orange-500\/50:focus {
+  --tw-ring-color: rgba(245, 158, 11, 0.5);
+}
+
+/* ────────────── 10 · Inputs ────────────── */
+
+html.ui-nova input,
+html.ui-nova textarea,
+html.ui-nova select {
+  background: hsl(var(--oc-surface-muted)) !important;
+  border: 1px solid hsl(var(--oc-border)) !important;
+  color: hsl(var(--foreground)) !important;
+}
+
+html.ui-nova input::placeholder,
+html.ui-nova textarea::placeholder {
+  color: hsl(var(--oc-muted-text)) !important;
+}
+
+html.ui-nova input:focus-visible,
+html.ui-nova textarea:focus-visible,
+html.ui-nova select:focus-visible {
+  outline: none !important;
+  border-color: var(--nova-accent-primary) !important;
+  box-shadow: 0 0 0 3px var(--nova-accent-primary-soft) !important;
+}
+
+/* ────────────── 11 · Hover stability — no disappearing text ────────────── */
+
+/*
+ * Core rule: never let button backgrounds overlap button text colour.
+ * Since `--accent` is now neutral grey `0 0% 14%`, `hover:bg-accent`
+ * is safely contrastive with text colour.
+ *
+ * Text-link style buttons (the ones using `hover:text-[#...]` + a
+ * `hover:bg-transparent` hint) must keep transparent background.
+ */
+
+html.ui-nova button {
+  transition: background-color 140ms ease, color 140ms ease, border-color 140ms ease;
+}
+
+html.ui-nova button.hover\:bg-transparent:hover,
+html.ui-nova button[class*="hover:bg-transparent"]:hover {
+  background-color: transparent !important;
+}
+
+/* When hover only changes color, preserve it */
+html.ui-nova button[class*="hover:text-"]:hover {
+  /* text colour resolves via Tailwind — only make sure bg doesn't fill */
+}
+
+/* ────────────── 12 · Tables / Badges / Tabs ────────────── */
+
+html.ui-nova table tbody tr {
+  border-bottom: 1px solid hsl(var(--oc-border));
+}
+html.ui-nova table tbody tr:hover {
+  background: hsl(var(--oc-surface-muted));
+}
+
+/* Every Badge rendered via shadcn cva — detect by its class signature.
+   badgeVariants emits:
+     inline-flex items-center border px-2.5 py-0.5 text-xs font-semibold
+   Grab them uniformly. */
+html.ui-nova .inline-flex.items-center.border.font-semibold,
+html.ui-nova div[class*="inline-flex"][class*="font-semibold"][class*="border"] {
+  border-radius: 9999px !important;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 10px;
+  font-weight: 600;
+}
+
+html.ui-nova [role="tab"][data-state="active"] {
+  color: var(--nova-accent-primary) !important;
+  border-bottom-color: var(--nova-accent-primary) !important;
+}
+
+html.ui-nova hr {
+  border-color: hsl(var(--oc-border)) !important;
+  border-width: 0 0 1px 0 !important;
+}
+
+html.ui-nova code:not(pre code) {
+  background: hsl(var(--oc-surface-muted));
+  border: 1px solid hsl(var(--oc-border));
+  padding: 1px 5px;
+  border-radius: 4px !important;
+  font-size: 11px;
+}
+
+/* ────────────── 13 · Font size bumps ────────────── */
+
+html.ui-nova .text-xs        { font-size: 12px !important; }
+html.ui-nova .text-sm        { font-size: 13px !important; }
+html.ui-nova .text-base      { font-size: 14px !important; }
+html.ui-nova .text-\[10px\]  { font-size: 11px !important; }
+html.ui-nova .text-\[11px\]  { font-size: 12px !important; }
+
+/* ────────────── 14 · Dialog overlays ────────────── */
+
+html.ui-nova [role="dialog"] + *,
+html.ui-nova .bg-black\/80,
+html.ui-nova [class*="bg-black/80"] {
+  backdrop-filter: blur(6px) !important;
+}
+
+/* ────────────── 15 · Borders ────────────── */
+
+html.ui-nova .border,
+html.ui-nova [class*="border-"] {
+  border-color: hsl(var(--oc-border));
+}
+
+html.ui-nova .border-primary {
+  border-color: var(--nova-accent-primary);
+}

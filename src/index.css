@@ -1,3 +1,9 @@
+/* Nova alternate UI style — scoped under `html.ui-nova` so the default
+   Octrascan aesthetic is untouched. Must appear BEFORE any other CSS
+   rules so PostCSS's postcss-import plugin inlines it correctly;
+   otherwise bundlers silently drop the @import. */
+@import './nova.css';
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -137,6 +143,12 @@
     --oct-component-header-height: 38px;
     --oct-component-sidebar-width: 220px;
     --oct-component-table-row-height: 28px;
+
+    /* Pie chart tokens — consumed by BalancePieChart's conic-gradient
+       and legend swatches. Alternate UI styles override these. */
+    --pie-public:    #3B567F;
+    --pie-encrypted: #00E5C0;
+    --pie-empty:     #e5e7eb;
   }
 
   .dark {
