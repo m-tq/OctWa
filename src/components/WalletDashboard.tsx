@@ -4120,7 +4120,7 @@ export function WalletDashboard({
               top: showWalletSidebar ? '49px' : '69px'
             }}
           >
-            <div className="h-full flex flex-col" style={{ width: `${historySidebarWidth}px` }}>
+            <div className="h-full flex flex-col pt-4 pb-4 pl-4 pr-3" style={{ width: `${historySidebarWidth}px` }}>
               {/* Transaction Details View */}
               {showExpandedTxDetails ? (
                 <div className={`h-full flex flex-col transition-all duration-200 ${
