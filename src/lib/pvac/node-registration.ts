@@ -134,6 +134,22 @@ export function isPvacRegistered(address: string, networkUrl: string): boolean {
   return false
 }
 
+/**
+ * Persist a successful registration from the main thread.
+ * Used when the worker confirms registration via the `ensureRegistered` op —
+ * the worker itself only has an in-memory cache, so the main thread is
+ * responsible for writing the shared localStorage entry.
+ */
+export function markPvacRegistered(address: string, networkUrl: string): void {
+  const key = `${address}:${networkUrl}`
+  memoryCache.set(key, true)
+  try {
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem(STORAGE_KEY_PREFIX + key, '1')
+    }
+  } catch { /* ignore */ }
+}
+
 /** Clear registration cache (call on wallet switch or network switch). */
 export function clearRegistrationCache(): void {
   memoryCache.clear()

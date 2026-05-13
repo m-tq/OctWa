@@ -1,11 +1,28 @@
-import { useState } from 'react';
+import { lazy, Suspense, useState } from 'react';
 import { Button } from '@/components/ui/button';
-import { GenerateWallet } from './GenerateWallet';
-import { ImportWallet } from './ImportWallet';
 import { PasswordSetup } from './PasswordSetup';
 import { PageTransition } from './PageTransition';
-import { Plus, FileText, Key, ArrowLeft } from 'lucide-react';
+import { Loader2, Plus, FileText, Key, ArrowLeft } from 'lucide-react';
 import { Wallet } from '../types/wallet';
+
+// Lazy-load the wallet creation/import surfaces. They pull bip39 + crypto
+// primitives (≈ 273 KB raw / 94 KB gzip) which are only needed during
+// onboarding and the "add wallet" flow. Splitting them into their own
+// chunk keeps the welcome screen itself tiny.
+const GenerateWallet = lazy(() =>
+  import('./GenerateWallet').then((m) => ({ default: m.GenerateWallet })),
+);
+const ImportWallet = lazy(() =>
+  import('./ImportWallet').then((m) => ({ default: m.ImportWallet })),
+);
+
+function OnboardingFallback() {
+  return (
+    <div className="flex items-center justify-center min-h-[240px]">
+      <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+    </div>
+  );
+}
 
 interface WelcomeScreenProps {
   onWalletCreated: (wallet: Wallet) => void;
@@ -64,7 +81,9 @@ export function WelcomeScreen({ onWalletCreated }: WelcomeScreenProps) {
               <ArrowLeft className="h-3.5 w-3.5 mr-1.5" />
               back
             </Button>
-            <GenerateWallet onWalletGenerated={handleWalletGenerated} />
+            <Suspense fallback={<OnboardingFallback />}>
+              <GenerateWallet onWalletGenerated={handleWalletGenerated} />
+            </Suspense>
           </PageTransition>
         </div>
       </div>
@@ -78,7 +97,9 @@ export function WelcomeScreen({ onWalletCreated }: WelcomeScreenProps) {
           <ArrowLeft className="h-3.5 w-3.5 mr-1.5" />
           back
         </Button>
-        <ImportWallet onWalletImported={handleWalletGenerated} defaultTab="mnemonic" />
+        <Suspense fallback={<OnboardingFallback />}>
+          <ImportWallet onWalletImported={handleWalletGenerated} defaultTab="mnemonic" />
+        </Suspense>
       </PageTransition>
     );
   }
@@ -90,7 +111,9 @@ export function WelcomeScreen({ onWalletCreated }: WelcomeScreenProps) {
           <ArrowLeft className="h-3.5 w-3.5 mr-1.5" />
           back
         </Button>
-        <ImportWallet onWalletImported={handleWalletGenerated} defaultTab="private-key" />
+        <Suspense fallback={<OnboardingFallback />}>
+          <ImportWallet onWalletImported={handleWalletGenerated} defaultTab="private-key" />
+        </Suspense>
       </PageTransition>
     );
   }

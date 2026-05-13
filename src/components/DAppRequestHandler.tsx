@@ -28,7 +28,7 @@ import {
   type CapabilityPayload
 } from '../utils/capability';
 import { WalletManager } from '../utils/walletManager';
-import { createTransaction, sendTransaction, fetchBalance, fetchRecommendedFee } from '../utils/api';
+import { createTransaction, sendTransaction, fetchBalance, fetchRecommendedFee, fetchEncryptedBalance, getViewPubkey } from '../utils/api';
 import { sendEVMTransaction, sendERC20Transaction } from '../utils/evmRpc';
 import { deriveEvmFromOctraKey } from '../utils/evmDerive';
 import { logger } from '@/utils/logger';
@@ -1258,17 +1258,16 @@ export function DAppRequestHandler({ wallets }: DAppRequestHandlerProps) {
         const params = parseInvokePayload<{ amount: number }>(invokeRequest.payload);
         if (!params?.amount || params.amount <= 0) throw new Error('Invalid amount for decrypt_balance');
 
-        const { fetchEncryptedBalance } = await import('../utils/api');
+        const { runInWorker } = await import('@/lib/pvac/pvac-worker-client');
         const encData = await fetchEncryptedBalance(selectedWallet.address, selectedWallet.privateKey);
         if (!encData?.cipher || encData.cipher === '0') throw new Error('No encrypted balance found');
         const balanceData = await fetchBalance(selectedWallet.address);
         const ou = String(await fetchRecommendedFee('decrypt'));
-        const { decryptToPublic } = await import('@/lib/pvac/balance-ops');
-        const result = await decryptToPublic({
+        const result = await runInWorker<{ tx: import('../types/wallet').Transaction }>('decryptToPublic', {
           privateKey: selectedWallet.privateKey!,
           publicKey: selectedWallet.publicKey!,
           address: selectedWallet.address,
-          amountRaw: BigInt(params.amount),
+          amountRaw: BigInt(params.amount).toString(),
           currentCipher: encData.cipher,
           nonce: balanceData.nonce + 1,
           ou,
@@ -1287,20 +1286,19 @@ export function DAppRequestHandler({ wallets }: DAppRequestHandlerProps) {
         if (!params?.to) throw new Error('Recipient address required for stealth_send');
         if (!params?.amount || params.amount <= 0) throw new Error('Invalid amount for stealth_send');
 
-        const { getViewPubkey, fetchBalance: fetchBal, fetchEncryptedBalance } = await import('../utils/api');
+        const { runInWorker } = await import('@/lib/pvac/pvac-worker-client');
         const viewPubkey = await getViewPubkey(params.to);
         if (!viewPubkey) throw new Error('Recipient has no view public key registered');
         const encData = await fetchEncryptedBalance(selectedWallet.address, selectedWallet.privateKey);
         if (!encData?.cipher || encData.cipher === '0') throw new Error('No encrypted balance for stealth send');
-        const balanceData = await fetchBal(selectedWallet.address);
+        const balanceData = await fetchBalance(selectedWallet.address);
         const ou = String(await fetchRecommendedFee('stealth'));
-        const { stealthSend } = await import('@/lib/pvac/stealth-ops');
-        const result = await stealthSend({
+        const result = await runInWorker<{ tx: import('../types/wallet').Transaction }>('stealthSend', {
           privateKey: selectedWallet.privateKey!,
           publicKey: selectedWallet.publicKey!,
           address: selectedWallet.address,
           toAddress: params.to,
-          amountRaw: BigInt(params.amount),
+          amountRaw: BigInt(params.amount).toString(),
           currentCipher: encData.cipher,
           recipientViewPubkey: viewPubkey,
           nonce: balanceData.nonce + 1,
@@ -1321,11 +1319,10 @@ export function DAppRequestHandler({ wallets }: DAppRequestHandlerProps) {
 
         const { runInWorker } = await import('@/lib/pvac/pvac-worker-client');
         const { scanStealthOutputs } = await import('@/services/stealthScanService');
-        const { fetchBalance: fetchBal } = await import('../utils/api');
         const claimable = await scanStealthOutputs(selectedWallet.privateKey!);
         const output = claimable.find(o => o.id === params.outputId);
         if (!output) throw new Error(`Stealth output ${params.outputId} not found or already claimed`);
-        const balanceData = await fetchBal(selectedWallet.address);
+        const balanceData = await fetchBalance(selectedWallet.address);
         const ou = String(await fetchRecommendedFee('stealth'));
         const result = await runInWorker<{ tx: import('../types/wallet').Transaction }>('claimStealth', {
           privateKey: selectedWallet.privateKey!,

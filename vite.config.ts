@@ -1,6 +1,7 @@
 import { defineConfig, Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
 import { NodeGlobalsPolyfillPlugin } from '@esbuild-plugins/node-globals-polyfill';
+import { visualizer } from 'rollup-plugin-visualizer';
 import path from 'path';
 import fs from 'fs';
 
@@ -37,7 +38,30 @@ function injectAppTitlePlugin(): Plugin {
 
 // https://vitejs.dev/config/
 export default defineConfig({
-  plugins: [react(), excludeScreenshotPlugin(), injectAppTitlePlugin()],
+  plugins: [
+    react(),
+    excludeScreenshotPlugin(),
+    injectAppTitlePlugin(),
+    // Opt-in bundle audit (Rule 8). Enable with ANALYZE=1 npm run build.
+    // Writes dist/bundle-stats.html + dist/bundle-stats.json.
+    ...(process.env.ANALYZE
+      ? [
+          visualizer({
+            filename: 'dist/bundle-stats.html',
+            template: 'treemap',
+            gzipSize: true,
+            brotliSize: true,
+            emitFile: false,
+          }) as Plugin,
+          visualizer({
+            filename: 'dist/bundle-stats.json',
+            template: 'raw-data',
+            gzipSize: true,
+            emitFile: false,
+          }) as Plugin,
+        ]
+      : []),
+  ],
   base: './',
   define: {
     __APP_VERSION__: JSON.stringify(APP_VERSION),
@@ -121,6 +145,32 @@ export default defineConfig({
 
             if (id.includes('/node_modules/ethers/')) return 'ethers';
             if (id.includes('/node_modules/@radix-ui/')) return 'ui-vendor';
+
+            // Split the big generic vendor chunk into coherent groups so a
+            // single library change doesn't invalidate the whole vendor.
+            //
+            // bip39 owns a ~160 KB English wordlist and is only ever pulled
+            // in through GenerateWallet / ImportWallet (now React.lazy'd),
+            // so put it in its own chunk that the onboarding code can lazy
+            // load without dragging tweetnacl/buffer off the critical path.
+            if (id.includes('/node_modules/bip39/')) return 'bip39-vendor';
+
+            if (
+              id.includes('/node_modules/tweetnacl/') ||
+              id.includes('/node_modules/buffer/')
+            ) return 'crypto-vendor';
+
+            if (
+              id.includes('/node_modules/date-fns/') ||
+              id.includes('/node_modules/zod/') ||
+              id.includes('/node_modules/idb/') ||
+              id.includes('/node_modules/@hookform/') ||
+              id.includes('/node_modules/clsx/') ||
+              id.includes('/node_modules/class-variance-authority/') ||
+              id.includes('/node_modules/tailwind-merge/') ||
+              id.includes('/node_modules/tailwindcss-animate/')
+            ) return 'utils-vendor';
+
             return 'vendor';
           }
         }

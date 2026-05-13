@@ -27,6 +27,9 @@ export type WorkerOp =
   | 'pvacDecryptCipher'
   | 'pvacEncryptValue'
   | 'pvacScanOutputs'
+  // Lifecycle helpers — let the main thread keep WASM inside the worker only
+  | 'warmup'
+  | 'ensureRegistered'
 
 export interface WorkerRequest {
   id: string
@@ -304,6 +307,44 @@ async function handleRequest(req: WorkerRequest): Promise<void> {
         }
         break
       }
+      // ── Lifecycle helpers ─────────────────────────────────────────────────
+      // These keep WASM inside the worker so main-thread callers never need to
+      // import wasm-loader. Same singleton is reused for all subsequent ops.
+
+      case 'warmup': {
+        const { getPvacWasm } = await import('./wasm-loader')
+        const raw = payload as { privateKey: string }
+        onProgress({ step: 'keygen', label: 'Warming up PVAC engine...', percent: 50 })
+        await getPvacWasm(raw.privateKey)
+        onProgress({ step: 'done', label: 'Ready', percent: 100 })
+        result = { success: true, data: { warmed: true } }
+        break
+      }
+
+      case 'ensureRegistered': {
+        const { getPvacWasm } = await import('./wasm-loader')
+        const { ensurePvacRegisteredOnNode } = await import('./node-registration')
+        const { resolveSecretKey64, hexPubkeyToBase64 } = await import('./crypto-utils')
+        const raw = payload as {
+          privateKey: string
+          publicKey: string
+          address: string
+        }
+        onProgress({ step: 'keygen', label: 'Deriving PVAC keys...', percent: 20 })
+        const pvac = await getPvacWasm(raw.privateKey)
+        const sk64 = resolveSecretKey64(raw.privateKey)
+        const publicKeyB64 = hexPubkeyToBase64(raw.publicKey)
+        onProgress({ step: 'registering_pubkey', label: 'Checking PVAC registration...', percent: 60 })
+        const regResult = await ensurePvacRegisteredOnNode(pvac, raw.address, sk64, publicKeyB64)
+        onProgress({ step: 'done', label: 'Done', percent: 100 })
+        result = {
+          success: regResult.success,
+          data: regResult.success ? { alreadyRegistered: !!regResult.alreadyRegistered } : undefined,
+          error: regResult.error,
+        }
+        break
+      }
+
       default:
         throw new Error(`Unknown op: ${op}`)
     }

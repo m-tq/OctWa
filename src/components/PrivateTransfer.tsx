@@ -8,7 +8,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Shield, AlertTriangle, Wallet as WalletIcon, Loader2, Plus, BookUser, Search, Globe } from 'lucide-react';
 import { Wallet, EncryptedBalanceResponse } from '../types/wallet';
 import { fetchEncryptedBalance, getAddressInfo, getViewPubkey, invalidateCacheAfterPrivateSend, fetchBalance, sendTransaction, fetchRecommendedFee } from '../utils/api';
-import { getPvacWasm } from '@/lib/pvac/wasm-loader';
+import { runInWorker } from '@/lib/pvac/pvac-worker-client';
 import { useToast } from '@/hooks/use-toast';
 import { useAddressBook } from '@/hooks/useAddressBook';
 import { TransactionModal, TransactionStatus, TransactionResult } from './TransactionModal';
@@ -118,9 +118,11 @@ export function PrivateTransfer({
   useEffect(() => {
     fetchRecommendedFee('stealth').then(fee => setRecommendedFee(fee)).catch(() => {});
     isRangeServerAvailable().then(setRangeServerReady);
-    // Pre-warm: load WASM module in background so keygen is cached before user clicks Send
+    // Pre-warm: delegate WASM load to the worker so the main thread never
+    // pulls in the PVAC crypto engine. Subsequent sends reuse the cached
+    // keypair inside the worker.
     if (wallet?.privateKey) {
-      getPvacWasm(wallet.privateKey).catch(() => { /* best-effort */ });
+      runInWorker('warmup', { privateKey: wallet.privateKey }).catch(() => { /* best-effort */ });
     }
   }, [wallet?.privateKey]);
   

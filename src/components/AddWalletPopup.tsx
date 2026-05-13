@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { lazy, Suspense, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -7,11 +7,26 @@ import {
   DialogTitle,
   DialogDescription,
 } from '@/components/ui/dialog';
-import { GenerateWallet } from './GenerateWallet';
-import { ImportWallet } from './ImportWallet';
 import { PageTransition } from './PageTransition';
-import { Plus, FileText, Key, ArrowLeft } from 'lucide-react';
+import { Loader2, Plus, FileText, Key, ArrowLeft } from 'lucide-react';
 import { Wallet } from '../types/wallet';
+
+// Lazy-load the heavy wallet generation / import surface. These pull
+// bip39 + crypto primitives, which should not block the dashboard render.
+const GenerateWallet = lazy(() =>
+  import('./GenerateWallet').then((m) => ({ default: m.GenerateWallet })),
+);
+const ImportWallet = lazy(() =>
+  import('./ImportWallet').then((m) => ({ default: m.ImportWallet })),
+);
+
+function AddWalletFallback() {
+  return (
+    <div className="flex items-center justify-center min-h-[200px]">
+      <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+    </div>
+  );
+}
 
 interface AddWalletPopupProps {
   open: boolean;
@@ -111,7 +126,9 @@ export function AddWalletPopup({
                   <DialogTitle className="text-sm">Generate Wallet</DialogTitle>
                 </div>
                 <div className="flex-1 overflow-y-auto p-3">
-                  <GenerateWallet onWalletGenerated={handleWalletGenerated} isCompact />
+                  <Suspense fallback={<AddWalletFallback />}>
+                    <GenerateWallet onWalletGenerated={handleWalletGenerated} isCompact />
+                  </Suspense>
                 </div>
               </div>
             </PageTransition>
@@ -127,7 +144,9 @@ export function AddWalletPopup({
                   <DialogTitle className="text-sm">Import Mnemonic</DialogTitle>
                 </div>
                 <div className="flex-1 overflow-y-auto p-3">
-                  <ImportWallet onWalletImported={handleWalletGenerated} defaultTab="mnemonic" isCompact />
+                  <Suspense fallback={<AddWalletFallback />}>
+                    <ImportWallet onWalletImported={handleWalletGenerated} defaultTab="mnemonic" isCompact />
+                  </Suspense>
                 </div>
               </div>
             </PageTransition>
@@ -143,7 +162,9 @@ export function AddWalletPopup({
                   <DialogTitle className="text-sm">Import Private Key</DialogTitle>
                 </div>
                 <div className="flex-1 overflow-y-auto p-3">
-                  <ImportWallet onWalletImported={handleWalletGenerated} defaultTab="private-key" isCompact />
+                  <Suspense fallback={<AddWalletFallback />}>
+                    <ImportWallet onWalletImported={handleWalletGenerated} defaultTab="private-key" isCompact />
+                  </Suspense>
                 </div>
               </div>
             </PageTransition>
@@ -208,7 +229,9 @@ export function AddWalletPopup({
                 <DialogTitle className="text-lg">Generate Wallet</DialogTitle>
               </div>
               <div className="flex-1 overflow-y-auto p-4">
-                <GenerateWallet onWalletGenerated={handleWalletGenerated} hideBorder />
+                <Suspense fallback={<AddWalletFallback />}>
+                  <GenerateWallet onWalletGenerated={handleWalletGenerated} hideBorder />
+                </Suspense>
               </div>
             </div>
           </PageTransition>
@@ -224,7 +247,9 @@ export function AddWalletPopup({
                 <DialogTitle className="text-lg">Import from Mnemonic</DialogTitle>
               </div>
               <div className="flex-1 overflow-y-auto p-4">
-                <ImportWallet onWalletImported={handleWalletGenerated} defaultTab="mnemonic" hideBorder />
+                <Suspense fallback={<AddWalletFallback />}>
+                  <ImportWallet onWalletImported={handleWalletGenerated} defaultTab="mnemonic" hideBorder />
+                </Suspense>
               </div>
             </div>
           </PageTransition>
@@ -240,7 +265,9 @@ export function AddWalletPopup({
                 <DialogTitle className="text-lg">Import from Private Key</DialogTitle>
               </div>
               <div className="flex-1 overflow-y-auto p-4">
-                <ImportWallet onWalletImported={handleWalletGenerated} defaultTab="private-key" hideBorder />
+                <Suspense fallback={<AddWalletFallback />}>
+                  <ImportWallet onWalletImported={handleWalletGenerated} defaultTab="private-key" hideBorder />
+                </Suspense>
               </div>
             </div>
           </PageTransition>
