@@ -55,6 +55,93 @@ interface StoredCapability {
   signature: string;
 }
 
+/**
+ * Canonicalize an `appOrigin` so that two stored entries that came in
+ * with cosmetic differences ("https://ons.octra.org" vs
+ * "https://ons.octra.org/", or differing host casing) collapse to the
+ * same key.
+ *
+ * Falls back to the raw value if the input cannot be parsed as a URL.
+ */
+function canonicalizeOrigin(origin: string | undefined | null): string {
+  if (!origin) return '';
+  const trimmed = origin.trim().replace(/\/+$/, '');
+  try {
+    const url = new URL(trimmed);
+    // URL.origin already lowercases the hostname and strips path/query.
+    return url.origin;
+  } catch {
+    return trimmed.toLowerCase();
+  }
+}
+
+/**
+ * Defensive dedup of stored connections.
+ *
+ * background.js' `saveConnection` already filters by `appOrigin` before
+ * persisting, but earlier extension builds did not — and a few existing
+ * installs still carry duplicate rows from that period. Older code paths
+ * that wrote directly to chrome.storage.local (capability flows, manual
+ * imports) can also leave stragglers, sometimes with cosmetically
+ * different origins (trailing slash, casing) that bypass the existing
+ * exact-match filter.
+ *
+ * Rule: keep the most recent entry per canonicalized `appOrigin`. The
+ * surviving row's stored `appOrigin` is rewritten to the canonical form
+ * so subsequent writes from background.js continue to match it. If a
+ * user has the same dApp connected from two different origins (e.g.
+ * localhost dev vs production), both rows survive — that's intentional,
+ * those are separate authorizations.
+ */
+function dedupeConnections(list: StoredConnection[]): StoredConnection[] {
+  const byOrigin = new Map<string, StoredConnection>();
+  for (const conn of list) {
+    if (!conn?.appOrigin) continue;
+    const key = canonicalizeOrigin(conn.appOrigin);
+    if (!key) continue;
+    const existing = byOrigin.get(key);
+    if (!existing || (conn.connectedAt ?? 0) > (existing.connectedAt ?? 0)) {
+      byOrigin.set(key, { ...conn, appOrigin: key });
+    }
+  }
+  return [...byOrigin.values()].sort(
+    (a, b) => (b.connectedAt ?? 0) - (a.connectedAt ?? 0),
+  );
+}
+
+/**
+ * Defensive dedup of capabilities per origin.
+ * Same idea — older builds could record duplicate capability records
+ * for the same (origin, scope) pair. Keep the freshest by `issuedAt`.
+ * Capability map keys are also canonicalized so they line up with the
+ * deduped connections list.
+ */
+function dedupeCapabilityMap(
+  raw: Record<string, StoredCapability[]>,
+): Record<string, StoredCapability[]> {
+  const cleaned: Record<string, StoredCapability[]> = {};
+  for (const [origin, caps] of Object.entries(raw)) {
+    if (!Array.isArray(caps)) continue;
+    const key = canonicalizeOrigin(origin);
+    if (!key) continue;
+    const byScope = new Map<string, StoredCapability>();
+    // Seed with anything we already collected under the canonical key,
+    // so two raw keys that canonicalize to the same value merge.
+    for (const cap of cleaned[key] ?? []) {
+      byScope.set(cap.scope, cap);
+    }
+    for (const cap of caps) {
+      if (!cap?.scope) continue;
+      const existing = byScope.get(cap.scope);
+      if (!existing || (cap.issuedAt ?? 0) > (existing.issuedAt ?? 0)) {
+        byScope.set(cap.scope, { ...cap, appOrigin: key });
+      }
+    }
+    if (byScope.size) cleaned[key] = [...byScope.values()];
+  }
+  return cleaned;
+}
+
 interface ConnectedDAppsManagerProps {
   wallets: Wallet[];
   onClose?: () => void;
@@ -85,25 +172,48 @@ export function ConnectedDAppsManager({
         const result = await chrome.storage.local.get(['connectedDApps', 'capabilities']);
         storedConnections = result.connectedDApps || [];
         storedCapabilities = result.capabilities || {};
-        
-        // Also sync to localStorage for consistency
-        localStorage.setItem('connectedDApps', JSON.stringify(storedConnections));
-        localStorage.setItem('capabilities', JSON.stringify(storedCapabilities));
       } else {
         // Load from localStorage (web)
         storedConnections = JSON.parse(localStorage.getItem('connectedDApps') || '[]');
         storedCapabilities = JSON.parse(localStorage.getItem('capabilities') || '{}');
       }
 
-      setConnections(storedConnections);
-      setCapabilities(storedCapabilities);
+      // Defensive dedup. If anything was duplicated, write the cleaned
+      // list back so the duplicates stop coming back on next refresh.
+      const dedupedConnections = dedupeConnections(storedConnections);
+      const dedupedCapabilities = dedupeCapabilityMap(storedCapabilities);
+
+      const connectionsChanged = dedupedConnections.length !== storedConnections.length;
+      const capabilitiesChanged =
+        Object.keys(dedupedCapabilities).length !== Object.keys(storedCapabilities).length ||
+        Object.entries(dedupedCapabilities).some(
+          ([origin, caps]) => (storedCapabilities[origin]?.length ?? 0) !== caps.length,
+        );
+
+      if (connectionsChanged || capabilitiesChanged) {
+        localStorage.setItem('connectedDApps', JSON.stringify(dedupedConnections));
+        localStorage.setItem('capabilities', JSON.stringify(dedupedCapabilities));
+        if (isExtension) {
+          await chrome.storage.local.set({
+            connectedDApps: dedupedConnections,
+            capabilities: dedupedCapabilities,
+          });
+        }
+      } else if (isExtension) {
+        // Mirror chrome.storage to localStorage for cross-context consistency
+        localStorage.setItem('connectedDApps', JSON.stringify(dedupedConnections));
+        localStorage.setItem('capabilities', JSON.stringify(dedupedCapabilities));
+      }
+
+      setConnections(dedupedConnections);
+      setCapabilities(dedupedCapabilities);
     } catch (error) {
       console.error('[ConnectedDAppsManager] Failed to load data:', error);
       // Fallback to localStorage
       const storedConnections = JSON.parse(localStorage.getItem('connectedDApps') || '[]');
       const storedCapabilities = JSON.parse(localStorage.getItem('capabilities') || '{}');
-      setConnections(storedConnections);
-      setCapabilities(storedCapabilities);
+      setConnections(dedupeConnections(storedConnections));
+      setCapabilities(dedupeCapabilityMap(storedCapabilities));
     } finally {
       setIsRefreshing(false);
     }
@@ -117,12 +227,14 @@ export function ConnectedDAppsManager({
       const handleStorageChange = (changes: { [key: string]: chrome.storage.StorageChange }, namespace: string) => {
         if (namespace === 'local') {
           if (changes.connectedDApps) {
-            setConnections(changes.connectedDApps.newValue || []);
-            localStorage.setItem('connectedDApps', JSON.stringify(changes.connectedDApps.newValue || []));
+            const fresh = dedupeConnections(changes.connectedDApps.newValue || []);
+            setConnections(fresh);
+            localStorage.setItem('connectedDApps', JSON.stringify(fresh));
           }
           if (changes.capabilities) {
-            setCapabilities(changes.capabilities.newValue || {});
-            localStorage.setItem('capabilities', JSON.stringify(changes.capabilities.newValue || {}));
+            const fresh = dedupeCapabilityMap(changes.capabilities.newValue || {});
+            setCapabilities(fresh);
+            localStorage.setItem('capabilities', JSON.stringify(fresh));
           }
         }
       };
@@ -134,10 +246,10 @@ export function ConnectedDAppsManager({
     // Listen for localStorage changes (web - cross-tab sync)
     const handleStorageEvent = (e: StorageEvent) => {
       if (e.key === 'connectedDApps' && e.newValue) {
-        setConnections(JSON.parse(e.newValue));
+        setConnections(dedupeConnections(JSON.parse(e.newValue)));
       }
       if (e.key === 'capabilities' && e.newValue) {
-        setCapabilities(JSON.parse(e.newValue));
+        setCapabilities(dedupeCapabilityMap(JSON.parse(e.newValue)));
       }
     };
     
