@@ -272,6 +272,22 @@ function getSenderOrigin(sender) {
   }
 }
 
+/**
+ * Canonicalize an appOrigin so cosmetic differences like a trailing
+ * slash, mixed casing, or an embedded path collapse to the same key.
+ * Used by getConnection / saveConnection / removeConnection so the
+ * connectedDApps list stops growing duplicate rows for one dApp.
+ */
+function canonicalizeAppOrigin(origin) {
+  if (!origin || typeof origin !== 'string') return '';
+  const trimmed = origin.trim().replace(/\/+$/, '');
+  try {
+    return new URL(trimmed).origin;
+  } catch {
+    return trimmed.toLowerCase();
+  }
+}
+
 // =============================================================================
 // Connection Request Handler
 // =============================================================================
@@ -2226,24 +2242,33 @@ async function setStorageData(key, value) {
 
 async function getConnection(appOrigin) {
   const connections = await getStorageData('connectedDApps') || [];
-  return connections.find(c => c.appOrigin === appOrigin);
+  const target = canonicalizeAppOrigin(appOrigin);
+  return connections.find(c => canonicalizeAppOrigin(c.appOrigin) === target);
 }
 
 async function saveConnection(connection) {
   const connections = await getStorageData('connectedDApps') || [];
-  const filtered = connections.filter(c => c.appOrigin !== connection.appOrigin);
-  filtered.push(connection);
+  // Canonicalize so cosmetic origin differences ("https://x.com" vs
+  // "https://x.com/") collapse to one entry instead of stacking.
+  const canonical = canonicalizeAppOrigin(connection.appOrigin);
+  const filtered = connections.filter(c => canonicalizeAppOrigin(c.appOrigin) !== canonical);
+  filtered.push({ ...connection, appOrigin: canonical });
   await setStorageData('connectedDApps', filtered);
 }
 
 async function removeConnection(appOrigin) {
   const connections = await getStorageData('connectedDApps') || [];
-  const filtered = connections.filter(c => c.appOrigin !== appOrigin);
+  const target = canonicalizeAppOrigin(appOrigin);
+  const filtered = connections.filter(c => canonicalizeAppOrigin(c.appOrigin) !== target);
   await setStorageData('connectedDApps', filtered);
 
-  // Also remove capabilities for this origin
+  // Also remove capabilities for this origin (across any cosmetic variants)
   const capabilities = await getStorageData('capabilities') || {};
-  delete capabilities[appOrigin];
+  for (const key of Object.keys(capabilities)) {
+    if (canonicalizeAppOrigin(key) === target) {
+      delete capabilities[key];
+    }
+  }
   await setStorageData('capabilities', capabilities);
 
   // Notify all tabs that connection was removed
@@ -2264,8 +2289,15 @@ async function removeConnection(appOrigin) {
 
 async function getCapability(appOrigin, capabilityId) {
   const capabilities = await getStorageData('capabilities') || {};
-  console.log('[Background] getCapability - looking for:', appOrigin, capabilityId);
-  const originCaps = capabilities[appOrigin] || [];
+  const target = canonicalizeAppOrigin(appOrigin);
+  console.log('[Background] getCapability - looking for:', target, capabilityId);
+  // Search across any cosmetic origin variants that share the canonical key.
+  let originCaps = [];
+  for (const [key, caps] of Object.entries(capabilities)) {
+    if (canonicalizeAppOrigin(key) === target && Array.isArray(caps)) {
+      originCaps = originCaps.concat(caps);
+    }
+  }
   console.log('[Background] getCapability - origin caps:', originCaps.length);
   const found = originCaps.find(c => c.id === capabilityId);
   console.log('[Background] getCapability - found:', found ? 'yes' : 'no');
@@ -2273,14 +2305,27 @@ async function getCapability(appOrigin, capabilityId) {
 }
 
 async function saveCapability(appOrigin, capability) {
-  console.log('[Background] saveCapability - saving for:', appOrigin, capability.id);
+  const target = canonicalizeAppOrigin(appOrigin);
+  console.log('[Background] saveCapability - saving for:', target, capability.id);
   const capabilities = await getStorageData('capabilities') || {};
-  if (!capabilities[appOrigin]) {
-    capabilities[appOrigin] = [];
+  // Collapse any cosmetic origin variants into the canonical key first
+  // so the list does not split across "https://x.com" and "https://x.com/".
+  const merged = [];
+  for (const key of Object.keys(capabilities)) {
+    if (canonicalizeAppOrigin(key) === target) {
+      const list = capabilities[key];
+      if (Array.isArray(list)) merged.push(...list);
+      delete capabilities[key];
+    }
   }
-  capabilities[appOrigin].push(capability);
+  // Drop any prior record with the same id (idempotent re-save) but keep
+  // older capabilities of different scopes — a dApp may legitimately hold
+  // both a read and a write capability at the same time.
+  const filteredById = merged.filter(c => c.id !== capability.id);
+  filteredById.push({ ...capability, appOrigin: target });
+  capabilities[target] = filteredById;
   await setStorageData('capabilities', capabilities);
-  console.log('[Background] saveCapability - total for origin:', capabilities[appOrigin].length);
+  console.log('[Background] saveCapability - total for origin:', capabilities[target].length);
 }
 
 // =============================================================================
