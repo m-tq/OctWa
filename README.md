@@ -226,7 +226,7 @@ The full SDK reference lives in [`sdk/README.md`](sdk/README.md).
 
 ## @octwa/sdk
 
-The SDK is a sibling package inside this repository, published to npm as [`@octwa/sdk@2.0.0`](https://www.npmjs.com/package/@octwa/sdk).
+The SDK is a sibling package inside this repository, published to npm as [`@octwa/sdk@2.1.0`](https://www.npmjs.com/package/@octwa/sdk).
 
 ```
 sdk/
