@@ -46,7 +46,6 @@ import {
   AlertCircle,
   Image,
   Settings,
-  Code2,
   Palette,
 } from 'lucide-react';
 import { ExtensionStorageManager } from '../utils/extensionStorage';
@@ -71,7 +70,6 @@ import { AddressBook } from './AddressBook';
 import { DraggableWalletList } from './DraggableWalletList';
 import { WalletDisplayName } from './WalletLabelEditor';
 import { BalancePieChart } from './BalancePieChart';
-import { DevTools } from './DevTools';
 import { Wallet, TransactionDetails, EncryptedBalanceResponse, PendingTransaction } from '../types/wallet';
 
 type TxDetails = TransactionDetails | PendingTransaction;
@@ -118,7 +116,7 @@ function getTxMessage(tx: TxDetails): string | null {
 import { WalletManager } from '../utils/walletManager';
 import { fetchBalance, getTransactionHistory, fetchEncryptedBalance, fetchTransactionDetails, fetchPendingTransactionByHash, getPendingPrivateTransfers, apiCache, TxCountPoller, invalidateCacheForNetworkSwitch } from '../utils/api';
 import { cacheService } from '../services/cacheService';
-import { getEVMWalletData, EVMWalletData } from '../utils/evmDerive';
+import { getEVMWalletData, EVMWalletData, deriveEvmFromOctraKey } from '../utils/evmDerive';
 import {
   getEVMBalance, DEFAULT_EVM_NETWORKS, EVMNetwork, getActiveEVMNetwork,
   setActiveEVMNetwork, checkEVMRpcStatus, getEVMRpcUrl, saveEVMProvider,
@@ -266,6 +264,7 @@ export function WalletDashboard({
   const [showEvmExportKey, setShowEvmExportKey] = useState(false);
   const [evmExportKeyVisible, setEvmExportKeyVisible] = useState(false);
   const [evmExportKeyCopied, setEvmExportKeyCopied] = useState(false);
+  const [evmExportKeyHex, setEvmExportKeyHex] = useState('');
   // Expanded mode send modal states
   const [expandedSendModal, setExpandedSendModal] = useState<'standard' | 'multi' | 'bulk' | null>(null);
   const [sendModalAnimating, setSendModalAnimating] = useState(false);
@@ -290,8 +289,6 @@ export function WalletDashboard({
   const [addressBookPrefilledAddress, setAddressBookPrefilledAddress] = useState<string>('');
   // EVM Mode state (integrated mode, not popup)
   const [evmMode, setEvmMode] = useState(initialEvmMode);
-  // Dev Tools Mode state
-  const [devToolsMode, setDevToolsMode] = useState(false);
   const [evmWallets, setEvmWallets] = useState<(EVMWalletData & { balance: string | null; isLoading: boolean })[]>([]);
   const [selectedEVMWallet, setSelectedEVMWallet] = useState<(EVMWalletData & { balance: string | null; isLoading: boolean }) | null>(null);
   const [evmNetwork, setEvmNetwork] = useState<EVMNetwork>(getActiveEVMNetwork());
@@ -999,9 +996,13 @@ export function WalletDashboard({
     const pk = wallet.privateKey;
 
     try {
-      // Run balance + history in parallel — these are fast
+      // Run balance + history in parallel — these are fast.
+      // Force-refresh ALL three calls (balance / history / encrypted) so the
+      // refresh button truly bypasses the cache. Without this, repeated taps
+      // re-show the same numbers from apiCache and the user thinks the
+      // refresh is broken.
       const [balanceData] = await Promise.all([
-        fetchBalance(addr).then(data => {
+        fetchBalance(addr, true).then(data => {
           setBalance(data.balance);
           setNonce(data.nonce);
           setBalanceError(false);
@@ -1013,7 +1014,7 @@ export function WalletDashboard({
           return null;
         }),
 
-        getTransactionHistory(addr, {}, false, (progressTxs) => {
+        getTransactionHistory(addr, {}, true, (progressTxs) => {
           const withType = progressTxs.map(tx => ({
             ...tx,
             type: tx.from?.toLowerCase() === addr.toLowerCase() ? 'sent' : 'received'
@@ -1030,9 +1031,11 @@ export function WalletDashboard({
         }).catch(err => console.error('History fetch failed:', err)),
       ]);
 
-      // Encrypted balance runs independently (can be slow due to PVAC)
+      // Encrypted balance runs independently (can be slow due to PVAC).
+      // Pass forceRefresh=true so the refresh button actually re-decrypts
+      // the cipher instead of returning the in-memory cache.
       setIsLoadingEncryptedBalance(true);
-      fetchEncryptedBalance(addr, pk).then(encData => {
+      fetchEncryptedBalance(addr, pk, true).then(encData => {
         if (encData) {
           setEncryptedBalance(encData);
         } else if (balanceData) {
@@ -1105,8 +1108,19 @@ export function WalletDashboard({
   // Initialize EVM wallets when entering EVM mode
   const initializeEvmMode = async () => {
     const derived = wallets.map((w) => {
+      // Only derive the EVM address — private key is NOT stored in state.
+      // Use the address-only derivation path via the existing evmAddressMap
+      // or compute the address (not the private key) from the wallet.
       const evmData = getEVMWalletData(w.address, w.privateKey, w.type);
-      return { ...evmData, balance: null, isLoading: false };
+      // Strip the private key from what we store in component state
+      return {
+        octraAddress: evmData.octraAddress,
+        evmAddress: evmData.evmAddress,
+        privateKeyHex: '', // Intentionally empty — derived on-demand only
+        type: evmData.type,
+        balance: null as string | null,
+        isLoading: false,
+      };
     });
     setEvmWallets(derived);
     setAllEvmNetworks(getAllNetworks());
@@ -1154,6 +1168,42 @@ export function WalletDashboard({
       });
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Listen for external EVM network changes (from dApp switchChain via background)
+  useEffect(() => {
+    if (!evmMode) return;
+
+    const handleStorageEvent = (e: StorageEvent) => {
+      if (e.key === 'active_evm_network' && e.newValue) {
+        const all = getAllNetworks();
+        const net = all.find(n => n.id === e.newValue);
+        if (net) {
+          setEvmNetwork(net);
+          if (selectedEVMWallet) setSelectedEVMWallet({ ...selectedEVMWallet, balance: null, isLoading: false });
+        }
+      }
+    };
+
+    // Listen for same-tab synthetic events from useBackgroundSyncResponder
+    const handleSyncMessage = (msg: Record<string, unknown>) => {
+      if (msg?.type === 'SYNC_EVM_NETWORK' && msg.activeEvmNetwork) {
+        const all = getAllNetworks();
+        const net = all.find(n => n.id === (msg.activeEvmNetwork as string));
+        if (net) {
+          setEvmNetwork(net);
+          if (selectedEVMWallet) setSelectedEVMWallet(prev => prev ? { ...prev, balance: null, isLoading: false } : null);
+        }
+      }
+    };
+
+    window.addEventListener('storage', handleStorageEvent);
+    chrome.runtime?.onMessage?.addListener(handleSyncMessage as Parameters<typeof chrome.runtime.onMessage.addListener>[0]);
+
+    return () => {
+      window.removeEventListener('storage', handleStorageEvent);
+      chrome.runtime?.onMessage?.removeListener(handleSyncMessage as Parameters<typeof chrome.runtime.onMessage.removeListener>[0]);
+    };
+  }, [evmMode, selectedEVMWallet]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Exit EVM mode
   const exitEvmMode = () => {
@@ -1284,17 +1334,23 @@ export function WalletDashboard({
     setIsEvmSending(true);
     setEvmTxHash(null);
     try {
+      // Derive EVM private key on-demand from the Octra wallet key in session.
+      // The key only exists in this local scope and is garbage-collected after.
+      const octraWallet = wallets.find(w => w.address === selectedEVMWallet.octraAddress);
+      if (!octraWallet?.privateKey) throw new Error('Wallet key not available — session may have expired');
+      const { privateKeyHex: pkHex } = deriveEvmFromOctraKey(octraWallet.privateKey);
+
       let hash: string;
       if (evmSendType === 'native') {
         if (!evmSendAmount) { setEvmSendError('Please enter amount'); setIsEvmSending(false); return; }
-        hash = await sendEVMTransaction(selectedEVMWallet.privateKeyHex, evmSendTo, evmSendAmount, evmNetwork.id);
+        hash = await sendEVMTransaction(pkHex, evmSendTo, evmSendAmount, evmNetwork.id);
       } else if (evmSendType === 'token' && selectedEvmToken) {
         if (!evmSendAmount) { setEvmSendError('Please enter amount'); setIsEvmSending(false); return; }
         // Convert amount to smallest units using token decimals
         const amountInSmallestUnits = (parseFloat(evmSendAmount) * Math.pow(10, selectedEvmToken.decimals)).toString();
-        hash = await sendERC20Transaction(selectedEVMWallet.privateKeyHex, selectedEvmToken.address, evmSendTo, amountInSmallestUnits, evmNetwork.id);
+        hash = await sendERC20Transaction(pkHex, selectedEvmToken.address, evmSendTo, amountInSmallestUnits, evmNetwork.id);
       } else if (evmSendType === 'nft' && selectedEvmNFT) {
-        hash = await sendNFTTransaction(selectedEVMWallet.privateKeyHex, selectedEvmNFT.contractAddress, evmSendTo, selectedEvmNFT.tokenId, evmNetwork.id);
+        hash = await sendNFTTransaction(pkHex, selectedEvmNFT.contractAddress, evmSendTo, selectedEvmNFT.tokenId, evmNetwork.id);
       } else {
         setEvmSendError('Invalid send type');
         setIsEvmSending(false);
@@ -2131,14 +2187,7 @@ export function WalletDashboard({
 
   return (
     <div className="h-screen overflow-hidden transition-all duration-300">
-      {/* Dev Tools — true fullscreen, rendered at root level to cover everything */}
-      {devToolsMode && !isPopupMode && (
-        <DevTools
-          wallet={wallet}
-          onExit={() => setDevToolsMode(false)}
-          activeNetwork={activeNetwork}
-        />
-      )}
+
 
       {/* ============================================ */}
       {/* POPUP MODE - NEW FULLSCREEN UI */}
@@ -2525,7 +2574,7 @@ export function WalletDashboard({
                     </h1>
                     {/* EVM Mode Badge */}
                     {!isPopupMode && evmMode && (
-                      <Badge className="text-xs px-2 py-0.5 bg-orange-500 text-white">
+                      <Badge className="text-xs px-2 py-0.5 border-transparent bg-orange-600 text-white hover:bg-orange-600 dark:bg-orange-500 dark:hover:bg-orange-500">
                         EVM Mode
                       </Badge>
                     )}
@@ -2874,18 +2923,7 @@ export function WalletDashboard({
                       <div className="h-5 border-l border-dashed border-border mx-1" />
                       {/* Desktop Menu Items - Hidden in EVM mode */}
                       <div className="hidden lg:flex items-center space-x-2">
-                        {/* Dev Tools + PVAC group */}
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => setDevToolsMode(true)}
-                          className="group flex items-center gap-2 hover:bg-transparent"
-                        >
-                          <Code2 className="h-4 w-4 transition group-hover:drop-shadow-[0_0_6px_currentColor]" />
-                          <span className="transition group-hover:drop-shadow-[0_0_6px_currentColor]">Dev Tools</span>
-                        </Button>
-                        {/* Dashed separator between Dev Tools and UI Style */}
-                        <div className="h-5 border-l border-dashed border-border mx-1" />
+
                         <Button
                           variant="ghost"
                           size="sm"
@@ -3190,7 +3228,7 @@ export function WalletDashboard({
               />
 
               {/* EVM Export Key Dialog — MetaMask-compatible hex private key */}
-              <Dialog open={showEvmExportKey} onOpenChange={(o) => { setShowEvmExportKey(o); if (!o) { setEvmExportKeyVisible(false); setEvmExportKeyCopied(false); } }}>
+              <Dialog open={showEvmExportKey} onOpenChange={(o) => { setShowEvmExportKey(o); if (!o) { setEvmExportKeyVisible(false); setEvmExportKeyCopied(false); setEvmExportKeyHex(''); } }}>
                 <DialogContent className="max-w-sm">
                   <DialogHeader>
                     <DialogTitle className="flex items-center gap-2 text-orange-600 dark:text-orange-400">
@@ -3215,24 +3253,37 @@ export function WalletDashboard({
                           <p className="text-xs text-muted-foreground">Private Key (hex)</p>
                           <div className="relative">
                             <p className="text-xs font-mono bg-muted px-2 py-1.5 rounded break-all pr-16">
-                              {evmExportKeyVisible
-                                ? `0x${selectedEVMWallet.privateKeyHex}`
+                              {evmExportKeyVisible && evmExportKeyHex
+                                ? `0x${evmExportKeyHex}`
                                 : '•'.repeat(64)}
                             </p>
                             <div className="absolute right-1 top-1 flex gap-1">
                               <Button
                                 variant="ghost" size="sm"
                                 className="h-6 w-6 p-0 hover:bg-transparent"
-                                onClick={() => setEvmExportKeyVisible(v => !v)}
+                                onClick={() => {
+                                  if (!evmExportKeyVisible) {
+                                    // Derive key on-demand only when user clicks show
+                                    const octraW = wallets.find(w => w.address === selectedEVMWallet!.octraAddress);
+                                    if (octraW?.privateKey) {
+                                      const { privateKeyHex } = deriveEvmFromOctraKey(octraW.privateKey);
+                                      setEvmExportKeyHex(privateKeyHex);
+                                    }
+                                  } else {
+                                    // Clear from memory when hiding
+                                    setEvmExportKeyHex('');
+                                  }
+                                  setEvmExportKeyVisible(v => !v);
+                                }}
                               >
                                 {evmExportKeyVisible ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
                               </Button>
-                              {evmExportKeyVisible && (
+                              {evmExportKeyVisible && evmExportKeyHex && (
                                 <Button
                                   variant="ghost" size="sm"
                                   className="h-6 w-6 p-0 hover:bg-transparent"
                                   onClick={() => {
-                                    navigator.clipboard.writeText(`0x${selectedEVMWallet.privateKeyHex}`)
+                                    navigator.clipboard.writeText(`0x${evmExportKeyHex}`)
                                     setEvmExportKeyCopied(true)
                                     setTimeout(() => setEvmExportKeyCopied(false), 1500)
                                   }}

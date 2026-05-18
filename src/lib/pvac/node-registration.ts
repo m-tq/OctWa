@@ -14,7 +14,7 @@
 import { makeRpcCall } from '@/services/rpcHelper'
 import { getActiveRPCProvider } from '@/utils/rpc'
 import { signRegisterRequest, decodeBase64 } from './crypto-utils'
-import type { PvacWasm } from '../../../pvac_server/wasm/pvac-wasm'
+import type { PvacWasm } from './wasm-runtime/pvac-wasm'
 
 // ─── Direct registration (bypasses proxy size limits) ────────────────────────
 

@@ -1,12 +1,20 @@
 /**
- * Octra Wallet Content Script
- * 
- * Bridge between web pages and extension.
+ * Octra Wallet Content Script — RFC-O-1 Compliant
+ *
+ * Bridge between web page (provider.js) and extension (background.js).
+ * Relays RFC-O-1 request() calls as PROVIDER_REQUEST messages.
  */
 (function() {
   'use strict';
 
-  // Inject provider script
+  // Whitelist of inbound message types we forward to the background.
+  // Anything else is silently dropped — content scripts run in an isolated
+  // world but still need defence-in-depth against malicious page scripts
+  // that try to impersonate the provider.
+  const VALID_MESSAGE_TYPES = new Set(['PROVIDER_REQUEST']);
+  const MAX_REQUEST_ID_LENGTH = 128;
+
+  // Inject provider script into page context
   const injectProvider = () => {
     const script = document.createElement('script');
     script.src = chrome.runtime.getURL('provider.js');
@@ -14,168 +22,129 @@
     (document.head || document.documentElement).appendChild(script);
   };
 
-  // Whitelist of valid message types (must stay in sync with background.js switch)
-  const VALID_MESSAGE_TYPES = new Set([
-    'CONNECTION_REQUEST',
-    'CAPABILITY_REQUEST',
-    'INVOKE_REQUEST',
-    'SIGN_MESSAGE_REQUEST',
-    'DISCONNECT_REQUEST',
-    'ESTIMATE_PLAIN_TX',
-    'ESTIMATE_ENCRYPTED_TX',
-    'LIST_CAPABILITIES_REQUEST',
-    'RENEW_CAPABILITY_REQUEST',
-    'REVOKE_CAPABILITY_REQUEST',
-    // PVAC / HFHE Crypto (Phase 7)
-    'PVAC_GET_IDENTITY',
-    'PVAC_COMPUTE_SHARED_SECRET',
-    'PVAC_DECRYPT_CIPHER',
-    'PVAC_ENCRYPT_VALUE',
-    'PVAC_SCAN_OUTPUTS',
-    'PVAC_SIGN_FOR_ZK',
-  ]);
+  // ── Message handling: page → background ────────────────────────────────────
 
-  // Explicit field allowlist per message type.
-  // Only known fields are forwarded to background — prevents prototype pollution
-  // and field injection from a malicious DApp spreading arbitrary data.
-  const MESSAGE_FIELDS = {
-    CONNECTION_REQUEST:        ['circle', 'appOrigin', 'appName', 'appIcon', 'requestedCapabilities'],
-    CAPABILITY_REQUEST:        ['circle', 'methods', 'scope', 'encrypted', 'ttlSeconds', 'branchId', 'appOrigin', 'appName', 'appIcon'],
-    INVOKE_REQUEST:            ['capabilityId', 'method', 'payload', 'nonce', 'timestamp', 'appOrigin', 'appName'],
-    SIGN_MESSAGE_REQUEST:      ['message', 'appOrigin', 'appName', 'appIcon'],
-    DISCONNECT_REQUEST:        ['appOrigin'],
-    ESTIMATE_PLAIN_TX:         ['payload'],
-    ESTIMATE_ENCRYPTED_TX:     ['payload'],
-    LIST_CAPABILITIES_REQUEST: [],
-    RENEW_CAPABILITY_REQUEST:  ['capabilityId'],
-    REVOKE_CAPABILITY_REQUEST: ['capabilityId'],
-    // PVAC / HFHE Crypto (Phase 7)
-    PVAC_GET_IDENTITY:          ['appOrigin'],
-    PVAC_COMPUTE_SHARED_SECRET: ['theirViewPubkey', 'appOrigin'],
-    PVAC_DECRYPT_CIPHER:        ['cipher', 'appOrigin'],
-    PVAC_ENCRYPT_VALUE:         ['valueRaw', 'appOrigin'],
-    PVAC_SCAN_OUTPUTS:          ['outputs', 'appOrigin'],
-    PVAC_SIGN_FOR_ZK:           ['data', 'domain', 'appOrigin', 'appName', 'appIcon'],
-  };
-
-  // Handle messages from provider
-  const handleMessage = (event) => {
+  const handlePageMessage = (event) => {
     if (event.source !== window) return;
     if (!isSameOrigin(event)) return;
     if (event.data.source !== 'octra-provider') return;
+    if (!VALID_MESSAGE_TYPES.has(event.data.type)) return;
 
-    // Validate message type (security: prevent unknown message types)
-    if (!VALID_MESSAGE_TYPES.has(event.data.type)) {
-      console.warn('[Content] Rejected unknown message type:', event.data.type);
-      return;
-    }
+    const { requestId, data } = event.data;
 
-    // Validate requestId (security: prevent oversized IDs)
-    if (typeof event.data.requestId !== 'string' || event.data.requestId.length > 128) {
+    // Validate requestId
+    if (typeof requestId !== 'string' || requestId.length > MAX_REQUEST_ID_LENGTH) {
       console.warn('[Content] Rejected invalid requestId');
       return;
     }
 
-    console.log('[Content] Received:', event.data.type);
-
-    // Extract only the known fields for this message type — never spread raw data
-    const allowedFields = MESSAGE_FIELDS[event.data.type] || [];
-    const safeData = { appOrigin: window.location.origin };
-    for (const field of allowedFields) {
-      if (field !== 'appOrigin' && Object.prototype.hasOwnProperty.call(event.data.data || {}, field)) {
-        safeData[field] = (event.data.data)[field];
-      }
+    // Validate method
+    if (!data || typeof data.method !== 'string') {
+      sendErrorToPage(requestId, 4200, 'Invalid request: method is required');
+      return;
     }
 
-    // Guarantee structured-clone + JSON compatibility by running a
-    // defensive JSON roundtrip. chrome.runtime.sendMessage uses JSON
-    // serialization and fails with "Could not serialize message." when
-    // the payload carries a BigInt, Uint8Array, Function, or similar.
+    // Sanitize params for structured clone (BigInt, Uint8Array, etc.)
     let sanitizedData;
     try {
-      sanitizedData = JSON.parse(JSON.stringify(safeData, (_k, v) => {
-        if (typeof v === 'bigint')        return v.toString();
-        if (v instanceof Uint8Array)      return Array.from(v);
-        if (ArrayBuffer.isView(v))        return Array.from(new Uint8Array(v.buffer));
-        if (typeof v === 'function')      return undefined;
-        if (typeof v === 'symbol')        return undefined;
+      sanitizedData = JSON.parse(JSON.stringify(data, (_k, v) => {
+        if (typeof v === 'bigint') return v.toString();
+        if (v instanceof Uint8Array) return { _type: 'Uint8Array', data: Array.from(v) };
+        if (ArrayBuffer.isView(v)) return { _type: 'Uint8Array', data: Array.from(new Uint8Array(v.buffer)) };
+        if (typeof v === 'function') return undefined;
+        if (typeof v === 'symbol') return undefined;
         return v;
       }));
     } catch (e) {
-      console.error('[Content] failed to sanitize outgoing request', e);
-      window.postMessage({
-        source: 'octra-content-script',
-        requestId: event.data.requestId,
-        type: 'ERROR_RESPONSE',
-        success: false,
-        error: `Outgoing request could not be serialized: ${e?.message || e}`,
-      }, getTargetOrigin());
+      sendErrorToPage(requestId, 4200, `Request could not be serialized: ${e?.message || e}`);
       return;
     }
 
     // Forward to background
     chrome.runtime.sendMessage({
       source: 'octra-content-script',
-      type: event.data.type,
-      requestId: event.data.requestId,
-      data: sanitizedData
+      type: 'PROVIDER_REQUEST',
+      requestId,
+      appOrigin: window.location.origin,
+      data: sanitizedData,
     }).then(response => {
-      console.log('[Content] Response:', response);
-
-      // Background returns null/undefined when the approval popup was closed
-      // without a reply (e.g. user closed the wallet window). Surface this
-      // as a clean error rather than crashing the content-script bridge.
       if (!response) {
-        window.postMessage({
-          source: 'octra-content-script',
-          requestId: event.data.requestId,
-          type: 'ERROR_RESPONSE',
-          success: false,
-          error: `[${event.data.type}] Wallet closed the approval popup before replying.`,
-        }, getTargetOrigin());
+        sendErrorToPage(requestId, 4001, 'Wallet closed before responding');
         return;
       }
 
-      // Properly serialize Uint8Array in response for postMessage
-      const serializedResponse = serializeResponse(response);
-
-      // Forward back to provider
+      // Forward response back to provider
       window.postMessage({
         source: 'octra-content-script',
-        requestId: event.data.requestId,
-        type: serializedResponse.type,
-        success: serializedResponse.success,
-        result: serializedResponse.result,
-        error: serializedResponse.error
+        requestId,
+        type: 'PROVIDER_RESPONSE',
+        success: response.success,
+        result: response.result,
+        error: response.error,
+        errorCode: response.errorCode,
+        errorData: response.errorData,
       }, getTargetOrigin());
     }).catch(error => {
-      const errMsg = error && error.message ? error.message : String(error);
-      console.error('[Content] Error forwarding', event.data.type, ':', errMsg);
-      window.postMessage({
-        source: 'octra-content-script',
-        requestId: event.data.requestId,
-        type: 'ERROR_RESPONSE',
-        success: false,
-        error: `[${event.data.type}] ${errMsg || 'Extension communication error'}`,
-      }, getTargetOrigin());
+      const msg = error?.message || String(error);
+      sendErrorToPage(requestId, 4900, msg);
     });
   };
 
-  // Handle messages from background (e.g., disconnect notifications)
+  // ── Message handling: background → page (push events) ──────────────────────
+
   const handleBackgroundMessage = (message) => {
+    // Provider events (accountsChanged, networkChanged, etc.)
+    if (message.type === 'PROVIDER_EVENT') {
+      window.postMessage({
+        source: 'octra-content-script',
+        type: 'PROVIDER_EVENT',
+        event: message.event,
+        payload: message.payload,
+      }, getTargetOrigin());
+      return;
+    }
+
+    // Legacy disconnect notification
     if (message.type === 'WALLET_DISCONNECTED') {
-      console.log('[Content] Wallet disconnected for origin:', message.appOrigin);
-      // Forward disconnect event to provider
       window.postMessage({
         source: 'octra-content-script',
         type: 'WALLET_DISCONNECTED',
-        appOrigin: message.appOrigin
+        appOrigin: message.appOrigin,
       }, getTargetOrigin());
     }
   };
 
-  // Setup
-  window.addEventListener('message', handleMessage);
+  // ── Helpers ────────────────────────────────────────────────────────────────
+
+  function sendErrorToPage(requestId, code, message) {
+    window.postMessage({
+      source: 'octra-content-script',
+      requestId,
+      type: 'PROVIDER_RESPONSE',
+      success: false,
+      error: message,
+      errorCode: code,
+    }, getTargetOrigin());
+  }
+
+  function getTargetOrigin() {
+    const origin = window.location.origin;
+    if (origin === 'null') {
+      console.warn('[Content] Using wildcard origin for file:// protocol');
+      return '*';
+    }
+    return origin;
+  }
+
+  function isSameOrigin(event) {
+    const origin = window.location.origin;
+    if (origin === 'null') return true;
+    return event.origin === origin;
+  }
+
+  // ── Setup ──────────────────────────────────────────────────────────────────
+
+  window.addEventListener('message', handlePageMessage);
   chrome.runtime.onMessage.addListener(handleBackgroundMessage);
 
   if (document.readyState === 'loading') {
@@ -184,73 +153,7 @@
     injectProvider();
   }
 
-  const getTargetOrigin = () => {
-    // Security: Only use '*' for null origins (file:// protocol), otherwise use actual origin
-    const origin = window.location.origin;
-    if (origin === 'null') {
-      // For file:// protocol, we must use '*' but log a warning
-      console.warn('[Content] Using wildcard origin for file:// protocol');
-      return '*';
-    }
-    return origin;
-  };
-
-  const isSameOrigin = (event) => {
-    const origin = window.location.origin;
-    // For null origins (file://), accept any origin but log warning
-    if (origin === 'null') {
-      console.warn('[Content] Accepting message in null origin context');
-      return true;
-    }
-    return event.origin === origin;
-  };
-
-  // Cleanup
   window.addEventListener('beforeunload', () => {
-    window.removeEventListener('message', handleMessage);
+    window.removeEventListener('message', handlePageMessage);
   });
-
-  /**
-   * Serialize response to properly handle Uint8Array through postMessage
-   * Chrome extension messaging converts Uint8Array to plain objects with numeric keys
-   */
-  function serializeResponse(response) {
-    if (!response || typeof response !== 'object') return response;
-    
-    const result = { ...response };
-    
-    // Handle nested result.data (Uint8Array from background.js)
-    if (result.result && result.result.data) {
-      result.result = {
-        ...result.result,
-        data: convertToArray(result.result.data)
-      };
-    }
-    
-    return result;
-  }
-
-  /**
-   * Convert object with numeric keys or Uint8Array to regular array
-   */
-  function convertToArray(data) {
-    if (!data) return data;
-    
-    // Already an array
-    if (Array.isArray(data)) return data;
-    
-    // Uint8Array (unlikely after chrome messaging, but handle it)
-    if (data instanceof Uint8Array) return Array.from(data);
-    
-    // Object with numeric keys: {0: 123, 1: 34, ...}
-    if (typeof data === 'object') {
-      const keys = Object.keys(data);
-      if (keys.length > 0 && keys.every(k => /^\d+$/.test(k))) {
-        const sortedKeys = keys.sort((a, b) => Number(a) - Number(b));
-        return sortedKeys.map(k => data[k]);
-      }
-    }
-    
-    return data;
-  }
 })();

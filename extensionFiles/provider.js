@@ -1,350 +1,348 @@
+/**
+ * Octra Provider — RFC-O-1 Compliant
+ *
+ * Implements the standard Octra Provider JavaScript API as defined in RFC-O-1.
+ * Exposes window.octra with request(), on(), removeListener().
+ *
+ * Standard error codes:
+ *   4001 — User rejected
+ *   4100 — Unauthorized
+ *   4200 — Unsupported method
+ *   4900 — Disconnected from all networks
+ *   4901 — Network unavailable
+ */
 (() => {
   'use strict';
 
-  const PROVIDER_VERSION = '2.0.0';
+  const PROVIDER_VERSION = '3.0.0';
 
-  // Per-request timeout values (ms)
+  // ── Timeouts per method category (ms) ──────────────────────────────────────
+
   const TIMEOUT = {
-    CONNECTION:  60_000,   // 1 min  — user must approve in popup
-    CAPABILITY:  300_000,  // 5 min  — user must approve in popup
-    INVOKE:      300_000,  // 5 min  — user must approve write ops
-    SIGN:        60_000,   // 1 min  — user must approve in popup
-    QUICK:       15_000,   // 15 s   — instant ops (list, renew, revoke, disconnect)
-    PVAC_FAST:   60_000,   // 1 min  — PVAC ops that don't run WASM compute (identity, ECDH)
-    PVAC_HEAVY:  300_000,  // 5 min  — PVAC WASM ops (encrypt/decrypt/scan — first call boots WASM)
+    USER_APPROVAL: 300_000,  // 5 min — methods requiring popup confirmation
+    READ:          30_000,   // 30 s  — read-only RPC pass-through
+    QUICK:         15_000,   // 15 s  — instant ops (accounts, networkId)
+    PRIVACY_HEAVY: 300_000,  // 5 min — PVAC/HFHE ops (encrypt, decrypt, scan)
   };
+
+  // ── Method classification ──────────────────────────────────────────────────
+
+  const PROVIDER_NATIVE_METHODS = new Set([
+    'octra_requestAccounts',
+    'octra_accounts',
+    'octra_disconnect',
+    'octra_networkId',
+    'octra_networkInfo',
+    'octra_permissions',
+    'octra_switchNetwork',
+    'octra_signMessage',
+    'octra_sendTransaction',
+    'octra_signTransaction',
+    'octra_submitTransaction',
+    'octra_callContract',
+    'octra_sendContractTransaction',
+    'octra_getContractReceipt',
+    'octra_getEncryptedBalance',
+    'octra_encryptBalance',
+    'octra_decryptBalance',
+    'octra_sendPrivateTransfer',
+    'octra_scanStealth',
+    'octra_claimStealth',
+    // EVM methods
+    'evm_getDerivedAddress',
+    'evm_getChainId',
+    'evm_getNetworkInfo',
+    'evm_getBalance',
+    'evm_switchChain',
+    'evm_sendTransaction',
+    'evm_signMessage',
+    'evm_signTypedData',
+    'evm_getTokenBalance',
+    'evm_getTokenInfo',
+    'evm_transferToken',
+    'evm_approveToken',
+    'evm_getAllowance',
+    'evm_call',
+    'evm_estimateGas',
+    'evm_getGasPrice',
+  ]);
+
+  const CONFIRMATION_REQUIRED = new Set([
+    'octra_requestAccounts',
+    'octra_switchNetwork',
+    'octra_signMessage',
+    'octra_sendTransaction',
+    'octra_signTransaction',
+    'octra_submitTransaction',
+    'octra_sendContractTransaction',
+    'octra_encryptBalance',
+    'octra_decryptBalance',
+    'octra_sendPrivateTransfer',
+    'octra_claimStealth',
+    // EVM write methods
+    'evm_sendTransaction',
+    'evm_signMessage',
+    'evm_signTypedData',
+    'evm_transferToken',
+    'evm_approveToken',
+    'evm_switchChain',
+  ]);
+
+  const PRIVACY_HEAVY_METHODS = new Set([
+    'octra_encryptBalance',
+    'octra_decryptBalance',
+    'octra_sendPrivateTransfer',
+    'octra_scanStealth',
+    'octra_claimStealth',
+    'octra_getEncryptedBalance',
+  ]);
+
+  // Read-only RPC pass-through methods (from RFC-O-1 table)
+  const RPC_PASSTHROUGH_METHODS = new Set([
+    // Node
+    'node_version', 'node_status', 'node_stats', 'node_metrics',
+    // Accounts
+    'octra_balance', 'octra_account', 'octra_nonce', 'octra_publicKey',
+    'octra_validateAddress', 'octra_supply',
+    // Transactions
+    'octra_transaction', 'octra_recentTransactions', 'octra_transactions',
+    'octra_transactionsByAddress', 'octra_transactionsByEpoch',
+    'octra_totalTransactions', 'octra_search',
+    // Epochs
+    'epoch_current', 'epoch_get', 'epoch_list', 'epoch_summaries',
+    // Fees and staging
+    'octra_recommendedFee', 'staging_view', 'staging_stats', 'staging_estimateOu',
+    // Contracts
+    'vm_contract', 'octra_contractAbi', 'octra_contractStorage',
+    'octra_listContracts', 'contract_receipt', 'contract_call',
+    'octra_computeContractAddress',
+    // Compilation
+    'octra_compileAssembly', 'octra_compileAml', 'octra_compileAmlMulti',
+    // Privacy (read)
+    'octra_encryptedCipher', 'octra_encryptedBalance', 'octra_pvacPubkey',
+    'octra_viewPubkey', 'octra_stealthOutputs',
+    // Contract source
+    'contract_source',
+  ]);
+
+  // Sensitive write methods that need confirmation when passed through
+  const SENSITIVE_WRITE_METHODS = new Set([
+    'octra_submit', 'octra_submitBatch', 'octra_privateTransfer',
+    'octra_registerPublicKey', 'octra_registerPvacPubkey',
+    'staging_remove', 'contract_verify', 'contract_saveAbi',
+  ]);
+
+  // ── Error factory ──────────────────────────────────────────────────────────
+
+  class OctraProviderError extends Error {
+    constructor(code, message, data) {
+      super(message);
+      this.name = 'OctraProviderError';
+      this.code = code;
+      this.data = data;
+    }
+  }
+
+  function providerError(code, message, reason) {
+    return new OctraProviderError(code, message, reason ? { reason } : undefined);
+  }
+
+  // ── Provider class ─────────────────────────────────────────────────────────
 
   class OctraProvider {
     constructor() {
-      this.isOctra  = true;
-      this.version  = PROVIDER_VERSION;
+      Object.defineProperty(this, 'isOctra', { value: true, writable: false, configurable: false });
+      this.providerId = 'octwa';
+      this.version = PROVIDER_VERSION;
 
-      this._eventListeners  = {};
+      this._listeners = {};
       this._pendingRequests = new Map();
-      this._nonceControllers = new Map();
-      this._state = { state: 'DISCONNECTED' };
+      this._connected = false;
+      this._networkId = null;
 
       window.addEventListener('message', (event) => {
         if (event.source !== window) return;
         if (!this._isSameOrigin(event)) return;
         if (event.data.source !== 'octra-content-script') return;
-        this._handleResponse(event.data);
+        this._handleMessage(event.data);
       });
     }
 
-    // ── Event emitter ────────────────────────────────────────────────────────
+    // ── RFC-O-1 Core Interface ─────────────────────────────────────────────
 
-    on(event, callback) {
-      if (!this._eventListeners[event]) this._eventListeners[event] = [];
-      this._eventListeners[event].push(callback);
-    }
-
-    off(event, callback) {
-      if (!this._eventListeners[event]) return;
-      const idx = this._eventListeners[event].indexOf(callback);
-      if (idx > -1) this._eventListeners[event].splice(idx, 1);
-    }
-
-    _emit(event, data) {
-      (this._eventListeners[event] || []).forEach(cb => {
-        try { cb(data); } catch (_) { /* never let listener errors bubble */ }
-      });
-    }
-
-    // ── Public API ───────────────────────────────────────────────────────────
-
-    /** Connect to wallet. Returns session info. */
-    async connect(request) {
-      if (!request?.circle) throw new Error('Circle ID is required');
-
-      return this._sendRequest('CONNECTION_REQUEST', {
-        circle:                 request.circle,
-        appOrigin:              request.appOrigin || window.location.origin,
-        appName:                request.appName   || document.title || window.location.hostname,
-        appIcon:                request.appIcon   || this._getAppIcon(),
-        requestedCapabilities:  request.requestedCapabilities || [],
-      }, TIMEOUT.CONNECTION);
-    }
-
-    /** Disconnect from wallet. Confirmed by background. */
-    async disconnect() {
-      this._state = { state: 'DISCONNECTED' };
-      this._emit('disconnect');
-      return this._sendRequest('DISCONNECT_REQUEST', {
-        appOrigin: window.location.origin,
-      }, TIMEOUT.QUICK);
-    }
-
-    /** Request a capability (permission token) from the wallet. */
-    async requestCapability(request) {
-      if (!request?.circle)                          throw new Error('Circle ID is required');
-      if (!request.methods || !request.methods.length) throw new Error('At least one method is required');
-      if (!['read', 'write', 'compute'].includes(request.scope))
-        throw new Error("Scope must be 'read', 'write', or 'compute'");
-
-      return this._sendRequest('CAPABILITY_REQUEST', {
-        circle:    request.circle,
-        methods:   request.methods,
-        scope:     request.scope,
-        encrypted: request.encrypted || false,
-        ttlSeconds: request.ttlSeconds,
-        branchId:  request.branchId,
-        appOrigin: window.location.origin,
-        appName:   document.title || window.location.hostname,
-        appIcon:   this._getAppIcon(),
-      }, TIMEOUT.CAPABILITY);
-    }
-
-    /** Invoke a method using a previously granted capability. */
-    async invoke(call) {
-      if (!call?.header || !call?.body) throw new Error('Invalid invocation structure');
-
-      // Serialize Uint8Array for postMessage transport
-      let payload = call.payload;
-      if (payload instanceof Uint8Array) {
-        payload = { _type: 'Uint8Array', data: Array.from(payload) };
-      } else if (payload?.data instanceof Uint8Array) {
-        payload = {
-          ...payload,
-          data:     { _type: 'Uint8Array', data: Array.from(payload.data) },
-          metadata: payload.metadata instanceof Uint8Array
-            ? { _type: 'Uint8Array', data: Array.from(payload.metadata) }
-            : payload.metadata,
-        };
+    /**
+     * Single entry point for all provider requests.
+     * @param {OctraRequestArguments} args - { method, params? }
+     * @returns {Promise<unknown>}
+     */
+    async request(args) {
+      if (!args || typeof args.method !== 'string') {
+        throw providerError(4200, 'Invalid request: method is required');
       }
 
-      return this._sendRequest('INVOKE_REQUEST', {
-        capabilityId: call.body.capabilityId,
-        method:       call.body.method,
-        payload,
-        nonce:        call.header.nonce,
-        timestamp:    call.header.timestamp,
-        appOrigin:    window.location.origin,
-        appName:      document.title || window.location.hostname,
-      }, TIMEOUT.INVOKE);
-    }
+      const { method, params } = args;
 
-    /** Sign an arbitrary UTF-8 message with the wallet key. */
-    async signMessage(message) {
-      if (!message || typeof message !== 'string')
-        throw new Error('Message must be a non-empty string');
+      // Determine timeout based on method type
+      let timeout = TIMEOUT.READ;
+      if (CONFIRMATION_REQUIRED.has(method)) timeout = TIMEOUT.USER_APPROVAL;
+      else if (PRIVACY_HEAVY_METHODS.has(method)) timeout = TIMEOUT.PRIVACY_HEAVY;
+      else if (method === 'octra_accounts' || method === 'octra_networkId' ||
+               method === 'octra_networkInfo' || method === 'octra_permissions' ||
+               method === 'octra_disconnect' ||
+               method === 'evm_getDerivedAddress' || method === 'evm_getChainId' ||
+               method === 'evm_getNetworkInfo') {
+        timeout = TIMEOUT.QUICK;
+      }
 
-      return this._sendRequest('SIGN_MESSAGE_REQUEST', {
-        message,
-        appOrigin: window.location.origin,
-        appName:   document.title || window.location.hostname,
-        appIcon:   this._getAppIcon(),
-      }, TIMEOUT.SIGN);
-    }
+      // Check if method is supported
+      const isSupported = PROVIDER_NATIVE_METHODS.has(method) ||
+                          RPC_PASSTHROUGH_METHODS.has(method) ||
+                          SENSITIVE_WRITE_METHODS.has(method);
 
-    /** Estimate fee for a plain (unencrypted) transaction. */
-    async estimatePlainTx(payload) {
-      return this._sendRequest('ESTIMATE_PLAIN_TX', { payload }, TIMEOUT.QUICK);
-    }
+      if (!isSupported) {
+        throw providerError(4200, `Unsupported method: ${method}`);
+      }
 
-    /** Estimate fee for an encrypted transaction. */
-    async estimateEncryptedTx(payload) {
-      return this._sendRequest('ESTIMATE_ENCRYPTED_TX', { payload }, TIMEOUT.QUICK);
-    }
-
-    /** List all active capabilities for this origin. */
-    async listCapabilities() {
-      return this._sendRequest('LIST_CAPABILITIES_REQUEST', {}, TIMEOUT.QUICK);
-    }
-
-    /** Renew an existing capability before it expires. */
-    async renewCapability(capabilityId) {
-      return this._sendRequest('RENEW_CAPABILITY_REQUEST', { capabilityId }, TIMEOUT.QUICK);
-    }
-
-    /** Revoke a capability immediately. */
-    async revokeCapability(capabilityId) {
-      return this._sendRequest('REVOKE_CAPABILITY_REQUEST', { capabilityId }, TIMEOUT.QUICK);
-    }
-
-    // ── PVAC / HFHE Crypto (Phase 7) ──────────────────────────────────────────
-
-    /**
-     * Get wallet's crypto identity: Ed25519 pubkey, Curve25519 view pubkey,
-     * PVAC registration status, and current cipher.
-     * Auto-executes — no popup needed.
-     */
-    async getCryptoIdentity() {
-      return this._sendRequest('PVAC_GET_IDENTITY', {
-        appOrigin: window.location.origin,
-      }, TIMEOUT.PVAC_FAST);
+      // Send to background via content script
+      return this._sendRequest(method, params, timeout);
     }
 
     /**
-     * Compute ECDH shared secret with a counterparty's Curve25519 view pubkey.
-     * Returns shared secret + derived stealth tag + claim secret.
-     * Runs inside wallet context — private key never leaves.
-     * Auto-executes — no popup needed.
+     * Subscribe to provider events.
+     * @param {string} event
+     * @param {Function} listener
+     * @returns {this}
      */
-    async computeSharedSecret(theirViewPubkey) {
-      if (!theirViewPubkey || typeof theirViewPubkey !== 'string')
-        throw new Error('theirViewPubkey must be a non-empty string');
-      return this._sendRequest('PVAC_COMPUTE_SHARED_SECRET', {
-        theirViewPubkey,
-        appOrigin: window.location.origin,
-      }, TIMEOUT.PVAC_FAST);
+    on(event, listener) {
+      if (typeof listener !== 'function') return this;
+      if (!this._listeners[event]) this._listeners[event] = [];
+      this._listeners[event].push(listener);
+      return this;
     }
 
     /**
-     * Decrypt an HFHE cipher client-side using the wallet's PVAC secret key.
-     * No transaction, no fee — pure read operation.
-     * Auto-executes — no popup needed.
+     * Unsubscribe from provider events.
+     * @param {string} event
+     * @param {Function} listener
+     * @returns {this}
      */
-    async decryptCipher(cipher) {
-      if (!cipher || typeof cipher !== 'string')
-        throw new Error('cipher must be a non-empty string');
-      return this._sendRequest('PVAC_DECRYPT_CIPHER', {
-        cipher,
-        appOrigin: window.location.origin,
-      }, TIMEOUT.PVAC_HEAVY);
+    removeListener(event, listener) {
+      if (!this._listeners[event]) return this;
+      const idx = this._listeners[event].indexOf(listener);
+      if (idx > -1) this._listeners[event].splice(idx, 1);
+      return this;
     }
 
-    /**
-     * Encrypt a value client-side using the wallet's PVAC public key.
-     * Returns an hfhe_v1|... cipher ready for use in contract calls.
-     * Auto-executes — no popup needed.
-     */
-    async encryptValue(valueRaw) {
-      if (typeof valueRaw !== 'bigint' && typeof valueRaw !== 'number' && typeof valueRaw !== 'string')
-        throw new Error('valueRaw must be a bigint, number, or string');
-      return this._sendRequest('PVAC_ENCRYPT_VALUE', {
-        valueRaw: valueRaw.toString(),
-        appOrigin: window.location.origin,
-      }, TIMEOUT.PVAC_HEAVY);
+    // ── Internal: event emission ─────────────────────────────────────────────
+
+    _emit(event, ...args) {
+      const handlers = this._listeners[event];
+      if (!handlers) return;
+      for (const handler of handlers) {
+        try { handler(...args); } catch (_) { /* never let listener errors bubble */ }
+      }
     }
 
-    /**
-     * Scan a list of raw stealth outputs and return ones belonging to this wallet.
-     * Performs ECDH inside wallet context — private view key never leaves.
-     * Auto-executes — no popup needed.
-     * Timeout: 5 min (large output sets can take time).
-     */
-    async scanOutputs(outputs, onProgress) {
-      if (!Array.isArray(outputs)) throw new Error('outputs must be an array');
-      return this._sendRequest('PVAC_SCAN_OUTPUTS', {
-        outputs,
-        appOrigin: window.location.origin,
-      }, TIMEOUT.PVAC_HEAVY);
-    }
+    // ── Internal: message handling ───────────────────────────────────────────
 
-    /**
-     * Sign data for use as a ZK proof public input.
-     * Uses wallet's Ed25519 key. Always opens a popup for user approval.
-     */
-    async signForZK(input) {
-      if (!input?.data) throw new Error('input.data is required');
-      const dataArray = input.data instanceof Uint8Array
-        ? Array.from(input.data)
-        : Array.from(new TextEncoder().encode(String(input.data)));
-      return this._sendRequest('PVAC_SIGN_FOR_ZK', {
-        data: dataArray,
-        domain: input.domain || '',
-        appOrigin: window.location.origin,
-        appName: document.title || window.location.hostname,
-        appIcon: this._getAppIcon(),
-      }, TIMEOUT.SIGN);
-    }
+    _handleMessage(data) {
+      const { requestId, type, success, result, error, errorCode, errorData } = data;
 
-    // ── Response handler ─────────────────────────────────────────────────────
+      // Push events (no requestId) — map to RFC-O-1 events
+      if (type === 'PROVIDER_EVENT') {
+        this._handleProviderEvent(data);
+        return;
+      }
 
-    _handleResponse(data) {
-      const { requestId, type, success, result, error } = data;
-
-      // Push-events (no requestId)
+      // Legacy push events for backward compat during transition
       if (type === 'WALLET_DISCONNECTED') {
-        this._state = { state: 'DISCONNECTED' };
-        this._emit('disconnect', { appOrigin: data.appOrigin });
+        this._connected = false;
+        this._networkId = null;
+        this._emit('disconnect', providerError(4900, 'Disconnected'));
         return;
       }
-      if (type === 'BRANCH_CHANGED') {
-        this._emit('branchChanged', { branchId: data.branchId, epoch: data.epoch });
+      if (type === 'NETWORK_CHANGED') {
+        this._networkId = data.networkId;
+        this._emit('networkChanged', data.networkInfo);
         return;
       }
-      if (type === 'EPOCH_CHANGED') {
-        this._emit('epochChanged', { epoch: data.epoch });
+      if (type === 'ACCOUNTS_CHANGED') {
+        this._emit('accountsChanged', data.accounts || []);
         return;
       }
 
-      if (!this._pendingRequests.has(requestId)) return;
+      // Response to a pending request
+      if (!requestId || !this._pendingRequests.has(requestId)) return;
 
       const { resolve, reject } = this._pendingRequests.get(requestId);
       this._pendingRequests.delete(requestId);
 
       if (!success) {
-        if (error === 'User rejected request') {
-          this._emit('userRejectedRequest', { requestId });
-        }
-        reject(new Error(error || 'Unknown error'));
+        const code = errorCode || 4100;
+        const err = new OctraProviderError(code, error || 'Unknown error', errorData);
+        reject(err);
         return;
-      }
-
-      // Deserialize Uint8Array from transport format
-      if (type === 'INVOKE_RESPONSE' && result?.data) {
-        if (result.data._type === 'Uint8Array') {
-          result.data = new Uint8Array(result.data.data);
-        } else if (result.data.data?._type === 'Uint8Array') {
-          result.data.data = new Uint8Array(result.data.data.data);
-          if (result.data.metadata?._type === 'Uint8Array') {
-            result.data.metadata = new Uint8Array(result.data.metadata.data);
-          }
-        }
-      }
-
-      // Emit side-effects
-      if (type === 'CONNECTION_RESPONSE') {
-        this._state = { state: 'CONNECTED', ...result };
-        this._emit('connect', { connection: result });
-      }
-      if (type === 'CAPABILITY_RESPONSE' && result?.id) {
-        this._nonceControllers.set(result.id, result.nonceBase || 0);
-        this._emit('capabilityGranted', { capability: result });
       }
 
       resolve(result);
     }
 
-    // ── Internal helpers ─────────────────────────────────────────────────────
+    _handleProviderEvent(data) {
+      const { event, payload } = data;
+      switch (event) {
+        case 'connect':
+          this._connected = true;
+          this._networkId = payload?.networkId;
+          this._emit('connect', payload);
+          break;
+        case 'disconnect':
+          this._connected = false;
+          this._networkId = null;
+          this._emit('disconnect', providerError(4900, 'Disconnected'));
+          break;
+        case 'networkChanged':
+          this._networkId = payload?.id;
+          this._emit('networkChanged', payload);
+          break;
+        case 'accountsChanged':
+          this._emit('accountsChanged', payload);
+          break;
+        case 'permissionsChanged':
+          this._emit('permissionsChanged', payload);
+          break;
+        case 'balanceChanged':
+          this._emit('balanceChanged', payload);
+          break;
+        case 'transactionChanged':
+          this._emit('transactionChanged', payload);
+          break;
+        case 'message':
+          this._emit('message', payload);
+          break;
+      }
+    }
 
-    /**
-     * Send a request via postMessage and return a Promise that resolves
-     * when the matching response arrives, or rejects on timeout.
-     *
-     * @param {string}  type     - message type
-     * @param {object}  data     - payload
-     * @param {number}  timeout  - ms before auto-reject
-     */
-    _sendRequest(type, data, timeout = TIMEOUT.QUICK) {
+    // ── Internal: request transport ──────────────────────────────────────────
+
+    _sendRequest(method, params, timeout) {
       return new Promise((resolve, reject) => {
-        const requestId = this._generateRequestId();
+        const requestId = 'req_' + crypto.randomUUID();
         this._pendingRequests.set(requestId, { resolve, reject });
 
         window.postMessage({
           source: 'octra-provider',
-          type,
+          type: 'PROVIDER_REQUEST',
           requestId,
-          data,
+          data: { method, params },
         }, this._getTargetOrigin());
 
         setTimeout(() => {
           if (this._pendingRequests.has(requestId)) {
             this._pendingRequests.delete(requestId);
-            reject(new Error(`Request timeout: ${type}`));
+            reject(providerError(4900, `Request timeout: ${method}`));
           }
         }, timeout);
       });
-    }
-
-    /**
-     * Generate a cryptographically random request ID.
-     * crypto.randomUUID() is CSPRNG-backed — Math.random() is not.
-     */
-    _generateRequestId() {
-      return 'req_' + crypto.randomUUID();
     }
 
     _getTargetOrigin() {
@@ -355,23 +353,6 @@
       const origin = window.location.origin;
       return origin === 'null' || event.origin === origin;
     }
-
-    _getAppIcon() {
-      const selectors = [
-        'link[rel="icon"]',
-        'link[rel="shortcut icon"]',
-        'link[rel="apple-touch-icon"]',
-        'meta[property="og:image"]',
-      ];
-      for (const sel of selectors) {
-        const el = document.querySelector(sel);
-        if (el) {
-          const href = el.getAttribute('href') || el.getAttribute('content');
-          if (href) return new URL(href, window.location.origin).href;
-        }
-      }
-      return null;
-    }
   }
 
   // ── Inject ─────────────────────────────────────────────────────────────────
@@ -379,9 +360,7 @@
   if (typeof window !== 'undefined') {
     window.octra = new OctraProvider();
 
-    // ── Octra Provider Discovery (analog EIP-6963) ──────────────────────────
-    // Allows DApps to detect OctWa without polling window.octra.
-    // Multiple Octra-compatible wallets can coexist via this event bus.
+    // ── Provider Discovery (analog EIP-6963) ────────────────────────────────
     const _providerInfo = Object.freeze({
       uuid:    crypto.randomUUID(),
       name:    'OctWa',
@@ -398,7 +377,7 @@
     window.addEventListener('octra:requestProvider', _announceProvider);
     _announceProvider();
 
-    // ── Legacy compat ────────────────────────────────────────────────────────
+    // Legacy compat
     window.dispatchEvent(new Event('octraLoaded'));
 
     Object.defineProperty(window, 'isOctra', {

@@ -1,14 +1,15 @@
 ﻿/**
- * Browser-based PVAC stealth operations — hybrid mode.
+ * Browser-based PVAC stealth operations — fully self-contained.
  *
- *   1. stealthSend  — pvac-local-server (range proofs native)
+ *   1. stealthSend  — WASM (range proofs computed locally)
  *   2. stealthScan  — pure TypeScript (Web Crypto, no WASM)
- *   3. claimStealth — WASM + Web Crypto (no server needed)
+ *   3. claimStealth — WASM (no range proof needed)
  *
- * Hybrid strategy:
- *   - stealthSend: server handles both range proofs (~4 min each native)
- *   - stealthScan: 100% pure TS, fastest, no WASM
- *   - claimStealth: WASM for FHE encrypt + zero proof (no range proof needed)
+ * Strategy:
+ *   - Everything runs in the browser worker. No native sidecar.
+ *   - Stealth send needs two range proofs (~9 min total on browser MT
+ *     for a 12-core machine). Pass `input.rangeProofTickets` to halve
+ *     the user-visible latency by precomputing them in the background.
  */
 
 import { getPvacWasm } from './wasm-loader'
@@ -23,13 +24,12 @@ import {
   ecdhSharedSecret,
   computeStealthTag,
   computeClaimSecret,
+  computeClaimPub,
   decryptStealthAmount,
+  encryptStealthAmount,
   buildAndSignTx,
 } from './crypto-utils'
-import {
-  serverStealthSend,
-  RangeServerError,
-} from '@/services/rangeProofServer'
+import nacl from 'tweetnacl'
 import type {
   StealthSendInput,
   ScanStealthInput,
@@ -44,66 +44,141 @@ import type {
 const DEFAULT_STEALTH_OU = '5000'
 const STEALTH_PROTOCOL_VERSION = 5
 
-// ─── 1. Stealth send — hybrid (server for range proofs) ──────────────────────
+/** Yield to the event loop so progress messages and React renders can flush. */
+const tick = (): Promise<void> => new Promise((r) => setTimeout(r, 0))
+
+// ─── 1. Stealth send — WASM only ─────────────────────────────────────────────
 
 /**
- * Build a signed "stealth" transaction.
+ * Build a signed v5 stealth transaction.
  *
- * Hybrid strategy:
- *   - WASM (Web Worker): keygen, registration
- *   - pvac-local-server: ECDH, encrypt delta, range proofs, sign tx
- *
- * Falls back with isRangeServerRequired=true if server is not running.
+ * Pipeline (all in WASM, no native sidecar required):
+ *   1. Derive PVAC keypair, ensure registered on node
+ *   2. Compute current encrypted balance via local WASM decrypt
+ *   3. Generate ephemeral X25519 keypair, ECDH against recipient view pubkey
+ *   4. Stealth tag, claim secret, claim pubkey from shared secret + recipient
+ *   5. AES-GCM encrypt (amount, blinding) under shared secret
+ *   6. PVAC encrypt amount → ct_delta;  pedersen commit; bound zero proof
+ *   7. ct_new = ct_current ⊖ ct_delta
+ *   8. Build TWO range proofs:
+ *        rp_delta   on ct_delta at value=amount
+ *        rp_balance on ct_new   at value=balance-amount
+ *      Each ~4-5 min on browser MT. With `rangeProofTickets`, both run
+ *      in finalize-only mode (~halves latency).
+ *   9. Sign tx
  */
 export async function stealthSend(
   input: StealthSendInput,
   onProgress?: PvacProgressCallback,
-): Promise<PvacResult<TxPayloadResult> & { isRangeServerRequired?: boolean }> {
+): Promise<PvacResult<TxPayloadResult>> {
   try {
-    onProgress?.({ step: 'initializing', label: 'Connecting to local server...', percent: 10 })
+    onProgress?.({ step: 'initializing', label: 'Loading crypto engine...', percent: 5 })
 
     const ou = input.ou ?? DEFAULT_STEALTH_OU
     const sk64 = resolveSecretKey64(input.privateKey)
     const publicKeyB64 = hexPubkeyToBase64(input.publicKey)
 
-    onProgress?.({ step: 'keygen', label: 'Deriving PVAC keys...', percent: 15 })
+    onProgress?.({ step: 'keygen', label: 'Deriving PVAC keys...', percent: 10 })
     const pvac = await getPvacWasm(input.privateKey)
 
-    onProgress?.({ step: 'registering_pubkey', label: 'Registering PVAC key on node...', percent: 20 })
+    onProgress?.({ step: 'registering_pubkey', label: 'Registering PVAC key on node...', percent: 15 })
     await ensurePvacRegisteredOnNode(pvac, input.address, sk64, publicKeyB64)
 
-    onProgress?.({ step: 'encrypting', label: 'Building stealth tx on local server...', percent: 40 })
-
-    try {
-      const { getActiveRPCProvider } = await import('@/utils/rpc')
-      const rpcUrl = getActiveRPCProvider()?.url ?? ''
-
-      const result = await serverStealthSend({
-        privateKey:          input.privateKey,
-        publicKey:           input.publicKey,
-        fromAddress:         input.address,
-        toAddress:           input.toAddress,
-        amountRaw:           input.amountRaw,
-        currentCipher:       input.currentCipher,
-        recipientViewPubkey: input.recipientViewPubkey,
-        nonce:               input.nonce,
-        ou,
-        timestamp:           Date.now() / 1000,
-        rpcUrl,
-      })
-
-      onProgress?.({ step: 'done', label: 'Done', percent: 100 })
-      return { success: true, data: { tx: result.tx as ReturnType<typeof buildAndSignTx> } }
-    } catch (err) {
-      if (err instanceof RangeServerError && err.isUnavailable) {
-        return {
-          success: false,
-          error: 'pvac-local-server is required for stealth send. Please start it first.',
-          isRangeServerRequired: true,
-        }
-      }
-      throw err
+    onProgress?.({ step: 'decrypting', label: 'Reading encrypted balance...', percent: 18 })
+    await tick()
+    const currentBalance = pvac.decryptValue(input.currentCipher)
+    if (input.amountRaw > currentBalance) {
+      return { success: false, error: 'Insufficient encrypted balance' }
     }
+    const newBalance = currentBalance - input.amountRaw
+
+    // ── Stealth crypto (Web Crypto, fast) ─────────────────────────────────
+    onProgress?.({ step: 'ecdh', label: 'Building stealth address...', percent: 22 })
+    const ephSk = crypto.getRandomValues(new Uint8Array(32))
+    const ephPk = nacl.scalarMult.base(ephSk)
+    const recipientViewPub = decodeBase64(input.recipientViewPubkey)
+    if (recipientViewPub.length !== 32) {
+      return { success: false, error: 'Invalid recipient view pubkey' }
+    }
+    const shared = await ecdhSharedSecret(ephSk, recipientViewPub)
+    const stealthTagBytes = await computeStealthTag(shared)
+    const claimSecret = await computeClaimSecret(shared)
+    const claimPubBytes = await computeClaimPub(claimSecret, input.toAddress)
+
+    const blinding = pvac.randomBytesPublic(32)
+    const encAmount = await encryptStealthAmount(shared, input.amountRaw, blinding)
+
+    // ── PVAC heavy work ──────────────────────────────────────────────────
+    onProgress?.({ step: 'encrypting', label: 'Encrypting delta cipher...', percent: 28 })
+    await tick()
+    const seed = pvac.randomBytesPublic(32)
+    const ctDelta = pvac.encryptValue(input.amountRaw, seed)
+    const commitmentBytes = pvac.commitCipher(ctDelta)
+    const amountCommitment = pvac.pedersenCommit(input.amountRaw, blinding)
+
+    onProgress?.({ step: 'building_proof', label: 'Building bound zero proof...', percent: 32 })
+    await tick()
+    const sendZeroProof = pvac.makeZeroProofBound(ctDelta, input.amountRaw, blinding)
+
+    onProgress?.({ step: 'building_proof', label: 'Computing new balance cipher...', percent: 36 })
+    await tick()
+    const ctNewBalance = pvac.ctSub(input.currentCipher, ctDelta)
+
+    // ── Two range proofs ─────────────────────────────────────────────────
+    // No way to parallelise these inside one WASM thread pool — they
+    // would compete for the same workers. Run sequentially. With tickets
+    // each call runs only the finalise tail (~4 min instead of ~9 min).
+    onProgress?.({
+      step: 'building_proof',
+      label: 'Generating delta range proof (1/2 — this may take 4–9 min)...',
+      percent: 40,
+    })
+    await tick()
+    const rangeProofDelta = input.rangeProofTickets
+      ? pvac.finalizeRangeProofTicket(ctDelta, input.rangeProofTickets.delta)
+      : pvac.makeRangeProof(ctDelta, input.amountRaw)
+
+    onProgress?.({
+      step: 'building_proof',
+      label: 'Generating balance range proof (2/2 — this may take 4–9 min)...',
+      percent: 70,
+    })
+    await tick()
+    const rangeProofBalance = input.rangeProofTickets
+      ? pvac.finalizeRangeProofTicket(ctNewBalance, input.rangeProofTickets.balance)
+      : pvac.makeRangeProof(ctNewBalance, newBalance)
+
+    onProgress?.({ step: 'building_tx', label: 'Signing transaction...', percent: 95 })
+
+    const stealthData = {
+      version:             STEALTH_PROTOCOL_VERSION,
+      delta_cipher:        ctDelta,
+      commitment:          commitmentBytes,
+      range_proof_delta:   rangeProofDelta,
+      range_proof_balance: rangeProofBalance,
+      eph_pub:             encodeBase64(ephPk),
+      stealth_tag:         encodeHex(stealthTagBytes),
+      enc_amount:          encAmount,
+      claim_pub:           encodeHex(claimPubBytes),
+      amount_commitment:   amountCommitment,
+      send_zero_proof:     sendZeroProof,
+    }
+
+    const tx = buildAndSignTx({
+      from:           input.address,
+      to_:            'stealth',
+      amount:         '0',
+      nonce:          input.nonce,
+      ou,
+      timestamp:      Date.now() / 1000,
+      op_type:        'stealth',
+      encrypted_data: JSON.stringify(stealthData),
+      sk64,
+      publicKeyB64,
+    })
+
+    onProgress?.({ step: 'done', label: 'Done', percent: 100 })
+    return { success: true, data: { tx } }
   } catch (error) {
     return {
       success: false,

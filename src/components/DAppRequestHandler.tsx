@@ -1,2170 +1,708 @@
-// Unified handler for dApp requests: connection, capability, invoke, and sign message.
+// Unified handler for dApp requests (RFC-O-1).
+//
+// Listens for pending request keys written by background.js and renders
+// the appropriate approval UI. Sends results back to the background as
+// typed messages (CONNECTION_RESULT, SIGN_MESSAGE_RESULT, TX_RESULT, etc.).
 
 import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { 
-  Shield, 
-  Check, 
-  X, 
-  AlertTriangle, 
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import {
+  Shield,
+  Check,
+  X,
+  AlertTriangle,
   Globe,
+  Send,
+  FileText,
   Lock,
   Unlock,
-  Cpu,
   Eye,
   Edit,
-  Zap,
   Gift,
+  ChevronRight,
+  Wallet as WalletIcon,
 } from 'lucide-react';
 import { Wallet } from '../types/wallet';
 import { useToast } from '@/hooks/use-toast';
-import { 
-  signCapability, 
-  generateNonceBase, 
-  createCapabilityId,
-  type CapabilityPayload
-} from '../utils/capability';
-import { WalletManager } from '../utils/walletManager';
-import { createTransaction, sendTransaction, fetchBalance, fetchRecommendedFee, fetchEncryptedBalance, getViewPubkey } from '../utils/api';
-import { sendEVMTransaction, sendERC20Transaction } from '../utils/evmRpc';
-import { deriveEvmFromOctraKey } from '../utils/evmDerive';
+import { useAddressBook } from '@/hooks/useAddressBook';
+import {
+  createTransaction,
+  sendTransaction,
+  fetchBalance,
+  fetchRecommendedFee,
+  fetchEncryptedBalance,
+  getViewPubkey,
+  ouToOct,
+} from '../utils/api';
+import { scanStealthOutputs } from '@/services/stealthScanService';
 import { logger } from '@/utils/logger';
 import nacl from 'tweetnacl';
 
-// Decode invoke payload from various transport formats (Uint8Array, numeric-keyed object, etc.)
-function parseInvokePayload<T>(payload: unknown): T | null {
-  try {
-    if (!payload) return null;
-    if (payload instanceof Uint8Array) {
-      return JSON.parse(new TextDecoder().decode(payload)) as T;
-    }
-    if (typeof payload === 'object' && payload !== null) {
-      const obj = payload as Record<string, unknown>;
-      if ('_type' in obj && obj._type === 'Uint8Array' && Array.isArray(obj.data)) {
-        const bytes = new Uint8Array(obj.data as number[]);
-        return JSON.parse(new TextDecoder().decode(bytes)) as T;
-      }
-      // Numeric-keyed object (serialized Uint8Array from chrome messaging)
-      const keys = Object.keys(obj);
-      if (keys.length > 0 && keys.every(k => !isNaN(Number(k)))) {
-        const bytes = new Uint8Array(keys.length);
-        for (let i = 0; i < keys.length; i++) bytes[i] = obj[i.toString()] as number;
-        return JSON.parse(new TextDecoder().decode(bytes)) as T;
-      }
-      return obj as T;
-    }
-    return null;
-  } catch {
-    return null;
-  }
-}
+// =============================================================================
+// Request Types (RFC-O-1)
+// =============================================================================
 
-// Types
-interface ConnectionRequest {
-  circle: string;
+interface ConnectRequest {
+  pendingKey: string;
   appOrigin: string;
   appName?: string;
-  appIcon?: string;
-  requestedCapabilities?: CapabilityTemplate[];
-  pendingKey?: string;
-}
-
-interface CapabilityTemplate {
-  methods: string[];
-  scope: 'read' | 'write' | 'compute';
-  encrypted: boolean;
-}
-
-interface CapabilityRequest {
-  circle: string;
-  methods: string[];
-  scope: 'read' | 'write' | 'compute';
-  encrypted: boolean;
-  ttlSeconds?: number;
-  appOrigin: string;
-  appName?: string;
-  appIcon?: string;
-  pendingKey?: string;
-}
-
-interface TransactionPayload {
-  to: string;
-  amount: number;
-  message?: string;
-  op_type?: string;        // e.g. 'call' for contract calls, defaults to 'standard'
-  encrypted_data?: string; // e.g. 'lock_to_eth' for bridge contract method
-  ou?: number;             // optional fee override in raw OU (dApps can request e.g. 1000 for contract calls)
-}
-
-interface EVMTransactionPayload {
-  to: string;
-  amount?: string;
-  value?: string;
-  data?: string;
-  network?: string;  // optional network override, e.g. 'eth-mainnet'
-}
-
-interface ERC20TransactionPayload {
-  tokenContract: string; // ERC20 contract address
-  to: string;            // Recipient address
-  amount: string;        // Amount in smallest units (e.g., 6 decimals for USDC)
-  decimals: number;      // Token decimals
-  symbol: string;        // Token symbol (e.g., "USDC")
-  metadata?: unknown;    // Optional metadata for the transaction
-}
-
-interface InvokeRequest {
-  capabilityId: string;
-  method: string;
-  payload?: unknown;
-  nonce: number;
+  permissions: string[];
+  networkId?: string;
   timestamp: number;
-  appOrigin: string;
-  appName?: string;
-  capability: {
-    circle: string;
-    methods: string[];
-    scope: string;
-    encrypted: boolean;
-  };
-  connection?: {
-    walletPubKey: string;
-    network: string;
-  };
-  pendingKey?: string;
 }
 
 interface SignMessageRequest {
-  message: string;
+  pendingKey: string;
   appOrigin: string;
-  appName?: string;
-  appIcon?: string;
+  message: string;
+  address?: string;
   timestamp: number;
-  pendingKey?: string;
 }
 
-interface PvacZkSignRequest {
-  data: number[];
-  domain?: string;
-  appOrigin: string;
-  appName?: string;
-  appIcon?: string;
-  walletAddress: string;
+interface TxRequest {
   pendingKey: string;
+  appOrigin: string;
+  to: string;
+  amount: string;
+  fee?: string;
+  message?: string;
   timestamp: number;
 }
+
+interface SignTxRequest {
+  pendingKey: string;
+  appOrigin: string;
+  to: string;
+  amount: string;
+  fee: string;
+  nonce?: string;
+  message?: string;
+  timestamp: number;
+}
+
+interface ContractTxRequest {
+  pendingKey: string;
+  appOrigin: string;
+  address: string;
+  method: string;
+  params: unknown[];
+  amount: string;
+  fee?: string;
+  timestamp: number;
+}
+
+interface EncryptDecryptRequest {
+  pendingKey: string;
+  appOrigin: string;
+  amount: string;
+  fee?: string;
+  timestamp: number;
+}
+
+interface StealthRequest {
+  pendingKey: string;
+  appOrigin: string;
+  to: string;
+  amount: string;
+  fee?: string;
+  timestamp: number;
+}
+
+interface ClaimRequest {
+  pendingKey: string;
+  appOrigin: string;
+  outputId: string;
+  fee?: string;
+  timestamp: number;
+}
+
+interface SensitiveWriteRequest {
+  pendingKey: string;
+  appOrigin: string;
+  method: string;
+  params: unknown[];
+  timestamp: number;
+}
+
+// ── EVM Request Types ─────────────────────────────────────────────────────────
+
+interface EvmTxRequest {
+  pendingKey: string;
+  appOrigin: string;
+  to: string;
+  value: string;
+  data?: string;
+  gasLimit?: string;
+  chainId: number;
+  networkName: string;
+  symbol: string;
+  timestamp: number;
+}
+
+interface EvmSignMessageRequest {
+  pendingKey: string;
+  appOrigin: string;
+  message: string;
+  timestamp: number;
+}
+
+interface EvmTypedDataRequest {
+  pendingKey: string;
+  appOrigin: string;
+  domain: Record<string, unknown>;
+  types: Record<string, unknown>;
+  value: Record<string, unknown>;
+  primaryType?: string;
+  timestamp: number;
+}
+
+interface EvmTokenTxRequest {
+  pendingKey: string;
+  appOrigin: string;
+  token: string;
+  to: string;
+  amount: string;
+  chainId: number;
+  networkName: string;
+  symbol: string;
+  timestamp: number;
+}
+
+interface EvmApproveRequest {
+  pendingKey: string;
+  appOrigin: string;
+  token: string;
+  spender: string;
+  amount: string;
+  chainId: number;
+  networkName: string;
+  timestamp: number;
+}
+
+interface EvmSwitchChainRequest {
+  pendingKey: string;
+  appOrigin: string;
+  fromChainId: number;
+  fromName: string;
+  toChainId: number;
+  toName: string;
+  toSymbol: string;
+  timestamp: number;
+}
+
+interface SwitchNetworkRequest {
+  pendingKey: string;
+  appOrigin: string;
+  fromNetworkId: string;
+  fromName: string;
+  toNetworkId: string;
+  toName: string;
+  timestamp: number;
+}
+
+type ActiveRequest =
+  | { kind: 'connect'; data: ConnectRequest }
+  | { kind: 'signMessage'; data: SignMessageRequest }
+  | { kind: 'tx'; data: TxRequest }
+  | { kind: 'signTx'; data: SignTxRequest }
+  | { kind: 'contract'; data: ContractTxRequest }
+  | { kind: 'encrypt'; data: EncryptDecryptRequest }
+  | { kind: 'decrypt'; data: EncryptDecryptRequest }
+  | { kind: 'stealth'; data: StealthRequest }
+  | { kind: 'claim'; data: ClaimRequest }
+  | { kind: 'write'; data: SensitiveWriteRequest }
+  | { kind: 'evmTx'; data: EvmTxRequest }
+  | { kind: 'evmSign'; data: EvmSignMessageRequest }
+  | { kind: 'evmTypedData'; data: EvmTypedDataRequest }
+  | { kind: 'evmToken'; data: EvmTokenTxRequest }
+  | { kind: 'evmApprove'; data: EvmApproveRequest }
+  | { kind: 'evmSwitchChain'; data: EvmSwitchChainRequest }
+  | { kind: 'switchNetwork'; data: SwitchNetworkRequest };
 
 interface DAppRequestHandlerProps {
   wallets: Wallet[];
 }
 
-type RequestType = 'connection' | 'capability' | 'invoke' | 'signMessage' | 'pvacZkSign' | null;
+// =============================================================================
+// Helper: storage key lookup
+// =============================================================================
+
+const PENDING_KEYS = [
+  { keyName: 'pendingConnectRequestKey',     prefix: 'pendingConnectRequest_',     kind: 'connect' as const },
+  { keyName: 'pendingSignRequestKey',        prefix: 'pendingSignRequest_',        kind: 'signMessage' as const },
+  { keyName: 'pendingTxRequestKey',          prefix: 'pendingTxRequest_',          kind: 'tx' as const },
+  { keyName: 'pendingSignTxRequestKey',      prefix: 'pendingSignTxRequest_',      kind: 'signTx' as const },
+  { keyName: 'pendingContractRequestKey',    prefix: 'pendingContractRequest_',    kind: 'contract' as const },
+  { keyName: 'pendingEncryptRequestKey',     prefix: 'pendingEncryptRequest_',     kind: 'encrypt' as const },
+  { keyName: 'pendingDecryptRequestKey',     prefix: 'pendingDecryptRequest_',     kind: 'decrypt' as const },
+  { keyName: 'pendingStealthRequestKey',     prefix: 'pendingStealthRequest_',     kind: 'stealth' as const },
+  { keyName: 'pendingClaimRequestKey',       prefix: 'pendingClaimRequest_',       kind: 'claim' as const },
+  { keyName: 'pendingSensitiveWriteKey',     prefix: 'pendingSensitiveWrite_',     kind: 'write' as const },
+  { keyName: 'pendingEvmTxRequestKey',       prefix: 'pendingEvmTxRequest_',       kind: 'evmTx' as const },
+  { keyName: 'pendingEvmSignRequestKey',     prefix: 'pendingEvmSignRequest_',     kind: 'evmSign' as const },
+  { keyName: 'pendingEvmTypedDataRequestKey', prefix: 'pendingEvmTypedDataRequest_', kind: 'evmTypedData' as const },
+  { keyName: 'pendingEvmTokenRequestKey',    prefix: 'pendingEvmTokenRequest_',    kind: 'evmToken' as const },
+  { keyName: 'pendingEvmApproveRequestKey',  prefix: 'pendingEvmApproveRequest_',  kind: 'evmApprove' as const },
+  { keyName: 'pendingEvmSwitchRequestKey',  prefix: 'pendingEvmSwitchRequest_',  kind: 'evmSwitchChain' as const },
+  { keyName: 'pendingSwitchNetworkRequestKey', prefix: 'pendingSwitchNetworkRequest_', kind: 'switchNetwork' as const },
+] as const;
+
+async function loadPendingRequest(): Promise<ActiveRequest | null> {
+  if (typeof chrome === 'undefined' || !chrome.storage?.local) return null;
+
+  const allKeyNames = PENDING_KEYS.map(k => k.keyName);
+  const stored = await chrome.storage.local.get(allKeyNames);
+
+  for (const entry of PENDING_KEYS) {
+    const key = stored[entry.keyName];
+    if (!key) continue;
+
+    const dataKey = `${entry.prefix}${key}`;
+    const result = await chrome.storage.local.get([dataKey]);
+    const data = result[dataKey];
+    if (!data) continue;
+
+    return { kind: entry.kind, data } as ActiveRequest;
+  }
+
+  return null;
+}
+
+/**
+ * Canonicalize an origin so cosmetic differences ("https://x.com" vs
+ * "https://x.com/") collapse to a single key. Mirrors the rule used by
+ * `background.js` so lookups from either side match.
+ */
+function canonicalizeOrigin(origin: string | undefined | null): string {
+  if (!origin) return '';
+  const trimmed = origin.trim().replace(/\/+$/, '');
+  try { return new URL(trimmed).origin; } catch { return trimmed.toLowerCase(); }
+}
+
+// =============================================================================
+// Component
+// =============================================================================
 
 export function DAppRequestHandler({ wallets }: DAppRequestHandlerProps) {
-  logger.debug('DAppRequestHandler: Component mounted/rendered');
-  logger.debug('DAppRequestHandler: Render', { 
-    walletCount: wallets.length, 
-    addresses: wallets.map(w => w.address.slice(0, 10)) 
-  });
-  
-  const [requestType, setRequestType] = useState<RequestType>(null);
-  const [connectionRequest, setConnectionRequest] = useState<ConnectionRequest | null>(null);
-  const [capabilityRequest, setCapabilityRequest] = useState<CapabilityRequest | null>(null);
-  const [invokeRequest, setInvokeRequest] = useState<InvokeRequest | null>(null);
-  const [signMessageRequest, setSignMessageRequest] = useState<SignMessageRequest | null>(null);
-  const [pvacZkSignRequest, setPvacZkSignRequest] = useState<PvacZkSignRequest | null>(null);
-  const [parsedTxPayload, setParsedTxPayload] = useState<TransactionPayload | null>(null);
-  const [parsedEvmTxPayload, setParsedEvmTxPayload] = useState<EVMTransactionPayload | null>(null);
-  const [parsedErc20TxPayload, setParsedErc20TxPayload] = useState<ERC20TransactionPayload | null>(null);
+  const [request, setRequest] = useState<ActiveRequest | null>(null);
   const [selectedWallet, setSelectedWallet] = useState<Wallet | null>(wallets[0] || null);
   const [isProcessing, setIsProcessing] = useState(false);
-  // Custom gas settings for EVM transactions — defaults from successful bridge tx
-  const [customGasLimit, setCustomGasLimit] = useState('150000');
-  const [customMaxFeeGwei, setCustomMaxFeeGwei] = useState('2');
-  /**
-   * True when this popup was opened purely to service PVAC auto-execute
-   * requests (no approval UI). We show a minimal "processing" screen so the
-   * user sees something is happening instead of a blank popup.
-   */
-  const [processingPvac, setProcessingPvac] = useState(false);
   const { toast } = useToast();
 
-  // Sync selectedWallet when wallets prop changes
+  // Sync wallet selection when wallets prop updates.
+  // We never overwrite an explicitly-selected wallet here — the
+  // request-driven effect below picks the wallet bound to the
+  // dApp's saved connection, which takes precedence over any
+  // first-mount fallback.
   useEffect(() => {
     if (wallets.length > 0 && !selectedWallet) {
       setSelectedWallet(wallets[0]);
-    } else if (wallets.length > 0 && selectedWallet) {
-      // Ensure selectedWallet is still in the wallets list
-      const stillExists = wallets.find(w => w.address === selectedWallet.address);
-      if (!stillExists) {
-        setSelectedWallet(wallets[0]);
-      }
+    } else if (selectedWallet && !wallets.find(w => w.address === selectedWallet.address)) {
+      setSelectedWallet(wallets[0] || null);
     }
   }, [wallets, selectedWallet]);
 
-  /**
-   * Heartbeat the background service worker while this popup is alive so
-   * delegateToPvacPopup knows whether to open a fresh popup or route a new
-   * request into this one. chrome.extension.getViews() is unreliable in MV3
-   * service workers, so we ack-ourselves via a cheap message every 1.5 s.
-   */
+  // When a request loads (or its origin changes), resolve which wallet the
+  // dApp connected with by reading `connectedDApps[origin].walletAddress`
+  // from chrome.storage.local. This makes the approval popup operate on the
+  // wallet the user picked at connect-time, not the global "active" wallet.
+  //
+  // Connect requests are the exception — they're the user's chance to pick
+  // a wallet for a brand-new connection, so we leave selection alone there.
   useEffect(() => {
-    if (typeof chrome === 'undefined' || !chrome.runtime?.sendMessage) return;
+    if (!request) return;
+    if (request.kind === 'connect') return;
 
-    const send = () => {
-      try { chrome.runtime.sendMessage({ type: 'POPUP_HEARTBEAT' }).catch(() => { /* SW may be spinning up */ }); }
-      catch { /* noop */ }
-    };
-    send(); // fire immediately on mount
-    const interval = setInterval(send, 1500);
-    return () => clearInterval(interval);
-  }, []);
+    const origin = (request.data as { appOrigin?: string }).appOrigin;
+    if (!origin || typeof chrome === 'undefined' || !chrome.storage?.local) return;
 
-  // IMPORTANT: Select the correct wallet based on invoke request's connection
-  // This ensures we use the wallet that was originally connected to the dApp
-  useEffect(() => {
-    if (invokeRequest?.connection?.walletPubKey && wallets.length > 0) {
-      const connectedWallet = wallets.find(w => w.address === invokeRequest.connection!.walletPubKey);
-      if (connectedWallet) {
-        logger.debug('DAppRequestHandler: Using connected wallet:', connectedWallet.address);
-        setSelectedWallet(connectedWallet);
-      } else {
-        logger.warn('DAppRequestHandler: Connected wallet not found:', invokeRequest.connection.walletPubKey);
-        logger.warn('DAppRequestHandler: Available wallets:', wallets.map(w => w.address));
-      }
-    }
-  }, [invokeRequest, wallets]);
-
-  // For capabilityRequest: select wallet matching the stored connection for this origin.
-  // This fixes the bug where capability popup shows wallet A even though user picked wallet B
-  // during the connection popup — because selectedWallet defaults to wallets[0].
-  useEffect(() => {
-    if (!capabilityRequest || wallets.length === 0) return;
-    const selectWalletForCapability = async () => {
+    let cancelled = false;
+    (async () => {
       try {
-        if (typeof chrome !== 'undefined' && chrome.storage?.local) {
-          const data = await chrome.storage.local.get(['connectedDApps']);
-          const connections: Array<{ appOrigin: string; walletPubKey: string }> = data.connectedDApps || [];
-          const conn = connections.find(c => c.appOrigin === capabilityRequest.appOrigin);
-          if (conn?.walletPubKey) {
-            const wallet = wallets.find(w => w.address === conn.walletPubKey);
-            if (wallet) {
-              logger.debug('DAppRequestHandler: capability — using wallet from connection:', wallet.address);
-              setSelectedWallet(wallet);
-              return;
-            }
-          }
+        const stored = await chrome.storage.local.get(['connectedDApps']);
+        const dapps = stored.connectedDApps || {};
+        const key = canonicalizeOrigin(origin);
+        const conn = dapps[key] ?? dapps[origin];
+        const walletAddress: string | undefined = conn?.walletAddress;
+        if (!walletAddress) return;
+        const target = wallets.find(w => w.address === walletAddress);
+        if (cancelled || !target) return;
+        if (target.address !== selectedWallet?.address) {
+          setSelectedWallet(target);
         }
-      } catch (e) {
-        logger.warn('DAppRequestHandler: Could not resolve wallet for capability origin');
-      }
-    };
-    selectWalletForCapability();
-  }, [capabilityRequest, wallets]);
-
-  // For signMessage: select wallet matching the stored connection for this origin
-  useEffect(() => {
-    if (!signMessageRequest || wallets.length === 0) return;
-    const selectWalletForOrigin = async () => {
-      try {
-        if (typeof chrome !== 'undefined' && chrome.storage?.local) {
-          const data = await chrome.storage.local.get(['connectedDApps']);
-          const connections: Array<{ appOrigin: string; walletPubKey: string }> = data.connectedDApps || [];
-          const conn = connections.find(c => c.appOrigin === signMessageRequest.appOrigin);
-          if (conn?.walletPubKey) {
-            const wallet = wallets.find(w => w.address === conn.walletPubKey);
-            if (wallet) {
-              logger.debug('DAppRequestHandler: signMessage — using wallet from connection:', wallet.address);
-              setSelectedWallet(wallet);
-              return;
-            }
-          }
-        }
-      } catch (e) {
-        logger.warn('DAppRequestHandler: Could not resolve wallet for signMessage origin');
-      }
-    };
-    selectWalletForOrigin();
-  }, [signMessageRequest, wallets]);
-
-  useEffect(() => {
-    logger.debug('DAppRequestHandler: useEffect triggered - loading pending request');
-    loadPendingRequest();
-
-    // Listen for new pending requests while popup is open
-    if (typeof chrome !== 'undefined' && chrome.storage?.onChanged) {
-      const listener = (changes: Record<string, chrome.storage.StorageChange>, area: string) => {
-        if (area === 'local' && (changes.pendingInvokeRequestKey?.newValue || changes.pendingInvokeRequest?.newValue)) {
-          logger.debug('DAppRequestHandler: New invoke request detected via storage change');
-          // Reset state then load — ensures invoke screen shows fresh
-          setRequestType(null);
-          setIsProcessing(false);
-          setTimeout(() => loadPendingRequest(), 50);
-        }
-        // PVAC auto-execute ops — handle silently without UI
-        if (area === 'local' && changes.pendingPvacDecryptKey?.newValue) {
-          setProcessingPvac(true);
-          handlePvacDecryptRequest(changes.pendingPvacDecryptKey.newValue);
-        }
-        if (area === 'local' && changes.pendingPvacEncryptKey?.newValue) {
-          setProcessingPvac(true);
-          handlePvacEncryptRequest(changes.pendingPvacEncryptKey.newValue);
-        }
-        if (area === 'local' && changes.pendingPvacIdentityKey?.newValue) {
-          setProcessingPvac(true);
-          handlePvacIdentityRequest(changes.pendingPvacIdentityKey.newValue);
-        }
-        if (area === 'local' && changes.pendingPvacEcdhKey?.newValue) {
-          setProcessingPvac(true);
-          handlePvacEcdhRequest(changes.pendingPvacEcdhKey.newValue);
-        }
-        if (area === 'local' && changes.pendingPvacScanKey?.newValue) {
-          setProcessingPvac(true);
-          handlePvacScanRequest(changes.pendingPvacScanKey.newValue);
-        }
-        // ZK sign requires user approval — show UI
-        if (area === 'local' && changes.pendingPvacZkSignKey?.newValue) {
-          loadPvacZkSignRequest(changes.pendingPvacZkSignKey.newValue);
-        }
-      };
-      chrome.storage.onChanged.addListener(listener);
-      return () => chrome.storage.onChanged.removeListener(listener);
-    }
-  }, []);
-
-  const loadPendingRequest = async () => {
-    // Check for pending requests in order of priority
-    const urlParams = new URLSearchParams(window.location.search);
-    const action = urlParams.get('action');
-
-    if (action === 'zkSign') {
-      const pendingKey = urlParams.get('pendingKey');
-      if (pendingKey) {
-        loadPvacZkSignRequest(pendingKey);
-        return;
-      }
-    }
-
-    if (action === 'connect') {
-      const circle = urlParams.get('circle');
-      const appOrigin = urlParams.get('appOrigin');
-      if (circle && appOrigin) {
-        setRequestType('connection');
-        setConnectionRequest({
-          circle: decodeURIComponent(circle),
-          appOrigin: decodeURIComponent(appOrigin),
-          appName: urlParams.get('appName') ? decodeURIComponent(urlParams.get('appName')!) : undefined,
-          appIcon: urlParams.get('appIcon') ? decodeURIComponent(urlParams.get('appIcon')!) : undefined
-        });
-        return;
-      }
-    }
-
-    if (action === 'capability') {
-      const circle = urlParams.get('circle');
-      const methods = urlParams.get('methods');
-      const scope = urlParams.get('scope');
-      if (circle && methods && scope) {
-        setRequestType('capability');
-        setCapabilityRequest({
-          circle: decodeURIComponent(circle),
-          methods: JSON.parse(decodeURIComponent(methods)),
-          scope: decodeURIComponent(scope) as 'read' | 'write' | 'compute',
-          encrypted: urlParams.get('encrypted') === 'true',
-          appOrigin: urlParams.get('appOrigin') ? decodeURIComponent(urlParams.get('appOrigin')!) : window.location.origin,
-          appName: urlParams.get('appName') ? decodeURIComponent(urlParams.get('appName')!) : undefined
-        });
-        return;
-      }
-    }
-
-    if (action === 'signMessage') {
-      const appOrigin = urlParams.get('appOrigin');
-      const message = urlParams.get('message');
-      if (appOrigin && message) {
-        logger.debug('DAppRequestHandler: Loading sign message from URL params');
-        setRequestType('signMessage');
-        setSignMessageRequest({
-          message: decodeURIComponent(message),
-          appOrigin: decodeURIComponent(appOrigin),
-          appName: urlParams.get('appName') ? decodeURIComponent(urlParams.get('appName')!) : undefined,
-          appIcon: urlParams.get('appIcon') ? decodeURIComponent(urlParams.get('appIcon')!) : undefined,
-          timestamp: Date.now()
-        });
-        return;
-      }
-    }
-
-    // Check chrome storage for pending requests
-    if (typeof chrome !== 'undefined' && chrome.storage) {
-      logger.debug('DAppRequestHandler: Checking chrome.storage for pending requests...');
-
-      // Read the keyed pending request keys first (new format from background.js)
-      const keys = await chrome.storage.local.get([
-        'pendingConnectionRequestKey',
-        'pendingCapabilityRequestKey',
-        'pendingInvokeRequestKey',
-        'pendingSignMessageRequestKey',
-        'pendingPvacZkSignKey',
-        // PVAC auto-execute keys — checked on mount in case popup was opened for them
-        'pendingPvacIdentityKey',
-        'pendingPvacEcdhKey',
-        'pendingPvacDecryptKey',
-        'pendingPvacEncryptKey',
-        'pendingPvacScanKey',
-        // Legacy fallback keys (old single-slot format)
-        'pendingConnectionRequest',
-        'pendingCapabilityRequest',
-        'pendingInvokeRequest',
-        'pendingSignMessageRequest',
-      ]);
-
-      // Resolve keyed requests (new format) — preferred
-      const connKey  = keys.pendingConnectionRequestKey;
-      const capKey   = keys.pendingCapabilityRequestKey;
-      const invKey   = keys.pendingInvokeRequestKey;
-      const signKey  = keys.pendingSignMessageRequestKey;
-      const zkKey    = keys.pendingPvacZkSignKey;
-
-      // Dispatch PVAC auto-execute ops immediately on mount (no UI needed)
-      if (keys.pendingPvacIdentityKey) handlePvacIdentityRequest(keys.pendingPvacIdentityKey);
-      if (keys.pendingPvacEcdhKey)     handlePvacEcdhRequest(keys.pendingPvacEcdhKey);
-      if (keys.pendingPvacDecryptKey)  handlePvacDecryptRequest(keys.pendingPvacDecryptKey);
-      if (keys.pendingPvacEncryptKey)  handlePvacEncryptRequest(keys.pendingPvacEncryptKey);
-      if (keys.pendingPvacScanKey)     handlePvacScanRequest(keys.pendingPvacScanKey);
-
-      // If any PVAC key is pending and no UI request is queued, show the
-      // "processing wallet request" splash so the user knows why the popup
-      // is open.
-      if (
-        (keys.pendingPvacIdentityKey || keys.pendingPvacEcdhKey ||
-         keys.pendingPvacDecryptKey  || keys.pendingPvacEncryptKey ||
-         keys.pendingPvacScanKey) &&
-        !keys.pendingConnectionRequestKey && !keys.pendingCapabilityRequestKey &&
-        !keys.pendingInvokeRequestKey && !keys.pendingSignMessageRequestKey &&
-        !keys.pendingPvacZkSignKey
-      ) {
-        setProcessingPvac(true);
-      }
-
-      // Load the actual request objects by their keyed storage entries
-      const keyedEntries = await chrome.storage.local.get([
-        connKey  ? `pendingConnectionRequest_${connKey}`  : '__none__',
-        capKey   ? `pendingCapabilityRequest_${capKey}`   : '__none__',
-        invKey   ? `pendingInvokeRequest_${invKey}`       : '__none__',
-        signKey  ? `pendingSignMessageRequest_${signKey}` : '__none__',
-        zkKey    ? `pendingPvacZkSign_${zkKey}`           : '__none__',
-      ]);
-
-      const pendingConnection  = (connKey  && keyedEntries[`pendingConnectionRequest_${connKey}`])  || keys.pendingConnectionRequest;
-      const pendingCapability  = (capKey   && keyedEntries[`pendingCapabilityRequest_${capKey}`])   || keys.pendingCapabilityRequest;
-      const pendingSignMessage = (signKey  && keyedEntries[`pendingSignMessageRequest_${signKey}`]) || keys.pendingSignMessageRequest;
-      const pendingInvoke      = (invKey   && keyedEntries[`pendingInvokeRequest_${invKey}`])       || keys.pendingInvokeRequest;
-      const pendingZkSign      = zkKey ? keyedEntries[`pendingPvacZkSign_${zkKey}`] : null;
-
-      logger.debug('DAppRequestHandler: Pending requests:', {
-        connection:  !!pendingConnection,
-        capability:  !!pendingCapability,
-        invoke:      !!pendingInvoke,
-        signMessage: !!pendingSignMessage,
-      });
-
-      if (pendingConnection) {
-        logger.debug('DAppRequestHandler: Loading connection request');
-        setRequestType('connection');
-        setConnectionRequest(pendingConnection);
-      } else if (pendingCapability) {
-        logger.debug('DAppRequestHandler: Loading capability request');
-        setRequestType('capability');
-        setCapabilityRequest(pendingCapability);
-      } else if (pendingSignMessage) {
-        logger.debug('DAppRequestHandler: Loading sign message request:', pendingSignMessage);
-        setRequestType('signMessage');
-        setSignMessageRequest(pendingSignMessage);
-      } else if (pendingZkSign) {
-        logger.debug('DAppRequestHandler: Loading ZK sign request');
-        setRequestType('pvacZkSign');
-        setPvacZkSignRequest(pendingZkSign);
-      } else if (pendingInvoke) {
-        logger.debug('DAppRequestHandler: Loading invoke request');
-        setRequestType('invoke');
-        setInvokeRequest(pendingInvoke);
-        
-        // Parse transaction payload for send_transaction method
-        if (pendingInvoke.method === 'send_transaction') {
-          try {
-            const payload = pendingInvoke.payload;
-            let txParams: TransactionPayload | null = null;
-            
-            if (payload && typeof payload === 'object' && '_type' in payload && (payload as { _type: string })._type === 'Uint8Array') {
-              const payloadWithData = payload as unknown as { _type: string; data: number[] };
-              const bytes = new Uint8Array(payloadWithData.data);
-              txParams = JSON.parse(new TextDecoder().decode(bytes));
-            } else if (payload instanceof Uint8Array) {
-              txParams = JSON.parse(new TextDecoder().decode(payload));
-            } else if (typeof payload === 'object' && payload !== null && '0' in payload) {
-              const obj = payload as Record<string, number>;
-              const keys = Object.keys(obj).filter((k) => !isNaN(Number(k)));
-              const length = keys.length;
-              const bytes = new Uint8Array(length);
-              for (let i = 0; i < length; i++) {
-                bytes[i] = obj[i.toString()];
-              }
-              txParams = JSON.parse(new TextDecoder().decode(bytes));
-            } else if (payload) {
-              txParams = payload as TransactionPayload;
-            }
-            
-            if (txParams) {
-              setParsedTxPayload(txParams);
-              logger.debug('DAppRequestHandler: Parsed tx payload:', txParams);
-            }
-          } catch (e) {
-            logger.error('DAppRequestHandler: Failed to parse tx payload for display:', e);
-          }
-        }
-        
-        // Parse EVM transaction payload for send_evm_transaction method
-        if (pendingInvoke.method === 'send_evm_transaction') {
-          try {
-            const payload = pendingInvoke.payload;
-            let evmTxParams: EVMTransactionPayload | null = null;
-            
-            if (payload && typeof payload === 'object' && '_type' in payload && (payload as { _type: string })._type === 'Uint8Array') {
-              const payloadWithData = payload as unknown as { _type: string; data: number[] };
-              const bytes = new Uint8Array(payloadWithData.data);
-              evmTxParams = JSON.parse(new TextDecoder().decode(bytes));
-            } else if (payload instanceof Uint8Array) {
-              evmTxParams = JSON.parse(new TextDecoder().decode(payload));
-            } else if (typeof payload === 'object' && payload !== null && '0' in payload) {
-              const obj = payload as Record<string, number>;
-              const keys = Object.keys(obj).filter((k) => !isNaN(Number(k)));
-              const length = keys.length;
-              const bytes = new Uint8Array(length);
-              for (let i = 0; i < length; i++) {
-                bytes[i] = obj[i.toString()];
-              }
-              evmTxParams = JSON.parse(new TextDecoder().decode(bytes));
-            } else if (payload) {
-              evmTxParams = payload as EVMTransactionPayload;
-            }
-            
-            if (evmTxParams) {
-              setParsedEvmTxPayload(evmTxParams);
-              logger.debug('DAppRequestHandler: Parsed EVM tx payload:', evmTxParams);
-            }
-          } catch (e) {
-            logger.error('DAppRequestHandler: Failed to parse EVM tx payload for display:', e);
-          }
-        }
-        
-        // Parse ERC20 transaction payload for send_erc20_transaction method
-        if (pendingInvoke.method === 'send_erc20_transaction') {
-          try {
-            const payload = pendingInvoke.payload;
-            let erc20TxParams: ERC20TransactionPayload | null = null;
-            
-            if (payload && typeof payload === 'object' && '_type' in payload && (payload as { _type: string })._type === 'Uint8Array') {
-              const payloadWithData = payload as unknown as { _type: string; data: number[] };
-              const bytes = new Uint8Array(payloadWithData.data);
-              erc20TxParams = JSON.parse(new TextDecoder().decode(bytes));
-            } else if (payload instanceof Uint8Array) {
-              erc20TxParams = JSON.parse(new TextDecoder().decode(payload));
-            } else if (typeof payload === 'object' && payload !== null && '0' in payload) {
-              const obj = payload as Record<string, number>;
-              const keys = Object.keys(obj).filter((k) => !isNaN(Number(k)));
-              const length = keys.length;
-              const bytes = new Uint8Array(length);
-              for (let i = 0; i < length; i++) {
-                bytes[i] = obj[i.toString()];
-              }
-              erc20TxParams = JSON.parse(new TextDecoder().decode(bytes));
-            } else if (payload) {
-              erc20TxParams = payload as ERC20TransactionPayload;
-            }
-            
-            if (erc20TxParams) {
-              setParsedErc20TxPayload(erc20TxParams);
-              logger.debug('DAppRequestHandler: Parsed ERC20 tx payload:', erc20TxParams);
-            }
-          } catch (e) {
-            logger.error('DAppRequestHandler: Failed to parse ERC20 tx payload for display:', e);
-          }
-        }
-      }
-    }
-  };
-
-  const handleConnectionApprove = async () => {
-    if (!connectionRequest) return;
-    
-    // Ensure we have a wallet selected
-    if (!selectedWallet) {
-      logger.error('No wallet selected for connection approval');
-      toast({ title: 'Error', description: 'No wallet available', variant: 'destructive' });
-      return;
-    }
-    
-    setIsProcessing(true);
-
-    try {
-      // Get current network from active RPC provider
-      // Priority: 1) Active RPC provider's network, 2) chrome.storage selectedNetwork, 3) default mainnet
-      let currentNetwork: 'mainnet' | 'devnet' = 'mainnet';
-      
-      // First try to get from rpcProviders (most accurate source)
-      const rpcProviders = localStorage.getItem('rpcProviders');
-      if (rpcProviders) {
-        try {
-          const providers = JSON.parse(rpcProviders);
-          const activeProvider = providers.find((p: { isActive: boolean }) => p.isActive);
-          if (activeProvider?.network) {
-            currentNetwork = activeProvider.network;
-            logger.debug('DAppRequestHandler: Network from active RPC provider:', currentNetwork);
-          }
-        } catch (e) {
-          console.warn('Failed to parse rpcProviders:', e);
-        }
-      }
-      
-      // Fallback to chrome.storage.local if no active provider found
-      if (!rpcProviders && typeof chrome !== 'undefined' && chrome.storage?.local) {
-        const result = await chrome.storage.local.get(['selectedNetwork', 'rpcProviders']);
-        if (result.selectedNetwork) {
-          currentNetwork = result.selectedNetwork;
-        } else if (result.rpcProviders) {
-          try {
-            const providers = JSON.parse(result.rpcProviders);
-            const activeProvider = providers.find((p: { isActive: boolean }) => p.isActive);
-            if (activeProvider?.network) {
-              currentNetwork = activeProvider.network;
-            }
-          } catch (e) {
-            console.warn('Failed to parse rpcProviders from chrome.storage:', e);
-          }
-        }
-      }
-      
-      logger.debug('DAppRequestHandler: Final network:', currentNetwork);
-      
-      // Store connection
-      const connections = JSON.parse(localStorage.getItem('connectedDApps') || '[]');
-      const filtered = connections.filter((c: { appOrigin: string }) => c.appOrigin !== connectionRequest.appOrigin);
-      filtered.push({
-        circle: connectionRequest.circle,
-        appOrigin: connectionRequest.appOrigin,
-        appName: connectionRequest.appName || connectionRequest.appOrigin,
-        walletPubKey: selectedWallet.address,
-        network: currentNetwork,
-        connectedAt: Date.now()
-      });
-      localStorage.setItem('connectedDApps', JSON.stringify(filtered));
-
-      // Send response - include both field names for compatibility
-      if (typeof chrome !== 'undefined' && chrome.runtime) {
-        let evmAddress = '';
-
-        // Always derive EVM address from privateKey if available (most reliable)
-        if (selectedWallet.privateKey) {
-          try {
-            const derived = deriveEvmFromOctraKey(selectedWallet.privateKey);
-            evmAddress = derived.evmAddress;
-            logger.debug('DAppRequestHandler: Derived EVM address from privateKey:', evmAddress);
-          } catch (e) {
-            logger.error('DAppRequestHandler: Failed to derive EVM address:', e);
-          }
-        } else {
-          logger.warn('DAppRequestHandler: No privateKey in selectedWallet!');
-          // Fallback: try from storage
-          evmAddress = WalletManager.getEvmAddress(selectedWallet.address);
-          if (evmAddress) {
-            logger.debug('DAppRequestHandler: Got EVM address from storage:', evmAddress);
-          }
-        }
-
-        if (!evmAddress) {
-          logger.error('DAppRequestHandler: ERROR: Could not get EVM address!');
-          logger.error('DAppRequestHandler: selectedWallet:', {
-            address: selectedWallet.address,
-            hasPrivateKey: !!selectedWallet.privateKey,
-          });
-        }
-
-        const currentEpoch = Date.now();
-        const currentBranchId = 'main';
-        
-        logger.debug('DAppRequestHandler: Sending CONNECTION_RESULT:', {
-          appOrigin: connectionRequest.appOrigin,
-          walletPubKey: selectedWallet.address,
-          evmAddress: evmAddress || '(MISSING!)',
-          network: currentNetwork,
-          epoch: currentEpoch,
-          branchId: currentBranchId
-        });
-        
-        chrome.runtime.sendMessage({
-          type: 'CONNECTION_RESULT',
-          appOrigin: connectionRequest.appOrigin,
-          origin: connectionRequest.appOrigin,
-          approved: true,
-          walletPubKey: selectedWallet.address,
-          address: selectedWallet.address,
-          evmAddress,
-          network: currentNetwork,
-          epoch: currentEpoch,
-          branchId: currentBranchId,
-          pendingKey: connectionRequest?.pendingKey,
-        });
-        chrome.storage.local.remove([
-          'pendingConnectionRequest',
-          ...connectionRequest?.pendingKey
-            ? [`pendingConnectionRequest_${connectionRequest?.pendingKey}`, 'pendingConnectionRequestKey']
-            : [],
-        ]);
-      }
-
-      // Success - close popup immediately (no toast needed)
-      window.close();
-    } catch (error) {
-      console.error('Connection error:', error);
-      setIsProcessing(false);
-    }
-  };
-
-  const handleCapabilityApprove = async () => {
-    if (!capabilityRequest || !selectedWallet) {
-      logger.error('DAppRequestHandler: Missing capabilityRequest or selectedWallet');
-      return;
-    }
-    
-    logger.debug('DAppRequestHandler: Starting capability approval...');
-    logger.debug('DAppRequestHandler: Capability request:', capabilityRequest);
-    logger.debug('DAppRequestHandler: Selected wallet address:', selectedWallet.address);
-    // SECURITY: Do not log private key details
-    logger.debug('DAppRequestHandler: Wallet ready for signing:', !!selectedWallet.privateKey);
-    
-    // Validate private key exists
-    if (!selectedWallet.privateKey) {
-      logger.error('DAppRequestHandler: ERROR: Wallet has no private key!');
-      logger.error('DAppRequestHandler: Wallet object keys:', Object.keys(selectedWallet));
-      toast({ 
-        title: 'Error', 
-        description: 'Wallet private key not available. Please unlock your wallet.', 
-        variant: 'destructive' 
-      });
-      return;
-    }
-    
-    setIsProcessing(true);
-
-    try {
-      const now = Date.now();
-      const defaultTTL = 24 * 60 * 60 * 1000;
-      
-      const currentEpoch = Date.now();
-      const currentBranchId = 'main';
-      
-      const payload: CapabilityPayload = {
-        version: 2,
-        circle: capabilityRequest.circle,
-        methods: capabilityRequest.methods,
-        scope: capabilityRequest.scope,
-        encrypted: capabilityRequest.encrypted,
-        appOrigin: capabilityRequest.appOrigin,
-        branchId: currentBranchId,
-        epoch: currentEpoch,
-        issuedAt: now,
-        expiresAt: capabilityRequest.ttlSeconds 
-          ? now + capabilityRequest.ttlSeconds * 1000 
-          : now + defaultTTL,
-        nonceBase: generateNonceBase()
-      };
-
-      logger.debug('DAppRequestHandler: Capability payload:', payload);
-
-      // Sign capability with wallet's private key
-      logger.debug('DAppRequestHandler: Calling signCapability...');
-      const signedCapability = await signCapability(payload, selectedWallet.privateKey);
-      
-      logger.debug('DAppRequestHandler: Capability signed successfully!');
-      
-      // Create capability ID
-      const capabilityId = createCapabilityId(signedCapability);
-      
-      logger.debug('DAppRequestHandler: Signed capability:', {
-        id: capabilityId,
-        walletPubKey: signedCapability.walletPubKey,
-        signature: signedCapability.signature.slice(0, 32) + '...',
-        fullSignature: signedCapability.signature
-      });
-
-      // Send response with full signed capability
-      if (typeof chrome !== 'undefined' && chrome.runtime) {
-        logger.debug('DAppRequestHandler: Sending CAPABILITY_RESULT to background...');
-        
-        const message = {
-          type: 'CAPABILITY_RESULT',
-          appOrigin: capabilityRequest.appOrigin,
-          approved: true,
-          capabilityId,
-          signedCapability,
-          pendingKey: capabilityRequest?.pendingKey,
-        };
-        
-        logger.debug('DAppRequestHandler: Message to send:', message);
-        
-        chrome.runtime.sendMessage(message, (response) => {
-          logger.debug('DAppRequestHandler: Background response:', response);
-          if (chrome.runtime.lastError) {
-            logger.error('DAppRequestHandler: Chrome runtime error:', chrome.runtime.lastError);
-          }
-        });
-        
-        const capPendingKey = capabilityRequest?.pendingKey;
-        await chrome.storage.local.remove([
-          'pendingCapabilityRequest',
-          ...(capPendingKey ? [`pendingCapabilityRequest_${capPendingKey}`, 'pendingCapabilityRequestKey'] : []),
-        ]);
-      }
-
-      // Success — don't close popup. Wait for invoke request to arrive in storage,
-      // then switch to invoke screen. Background stores pendingInvokeRequest after
-      // processing CAPABILITY_RESULT, which triggers our storage change listener.
-      logger.debug('DAppRequestHandler: Capability approved, waiting for invoke request...');
-      setIsProcessing(false);
-      // Give background time to store pendingInvokeRequest (usually <500ms)
-      // Storage change listener will auto-switch to invoke screen
-      setTimeout(async () => {
-        if (typeof chrome !== 'undefined' && chrome.storage) {
-          // Check keyed format first (new), then legacy single-slot (old)
-          const keys = await chrome.storage.local.get(['pendingInvokeRequestKey', 'pendingInvokeRequest']);
-          const hasKeyedInvoke  = !!keys.pendingInvokeRequestKey;
-          const hasLegacyInvoke = !!keys.pendingInvokeRequest;
-          if (hasKeyedInvoke || hasLegacyInvoke) {
-            setRequestType(null);
-            setTimeout(() => loadPendingRequest(), 50);
-          } else {
-            // No invoke request — close popup
-            window.close();
-          }
-        } else {
-          window.close();
-        }
-      }, 1000);
-    } catch (error) {
-      logger.error('DAppRequestHandler: Capability error:', error);
-      logger.error('DAppRequestHandler: Error stack:', error instanceof Error ? error.stack : 'No stack');
-      toast({ title: 'Error', description: `Failed to sign capability: ${error instanceof Error ? error.message : 'Unknown error'}`, variant: 'destructive' });
-      setIsProcessing(false);
-    }
-  };
-
-  // Helper: send INVOKE_RESULT back to background and clean up storage
-  const sendInvokeResult = (approved: boolean, data?: Uint8Array, error?: string) => {
-    if (typeof chrome === 'undefined' || !chrome.runtime) return;
-    const invPendingKey = invokeRequest?.pendingKey;
-    chrome.runtime.sendMessage({
-      type: 'INVOKE_RESULT',
-      appOrigin: invokeRequest!.appOrigin,
-      approved,
-      data,
-      error,
-      pendingKey: invPendingKey,
-    });
-    chrome.storage.local.remove([
-      'pendingInvokeRequest',
-      ...(invPendingKey
-        ? [`pendingInvokeRequest_${invPendingKey}`, 'pendingInvokeRequestKey']
-        : []),
-    ]);
-  };
-
-  const handleInvokeApprove = async () => {
-    if (!invokeRequest || !selectedWallet) return;
-    setIsProcessing(true);
-
-    try {
-      logger.debug('DAppRequestHandler: Processing invoke:', invokeRequest.method);
-      
-      // Handle send_transaction method - use existing wallet transaction functions
-      if (invokeRequest.method === 'send_transaction') {
-        logger.debug('DAppRequestHandler: Executing send_transaction...');
-        
-        // Parse the transaction payload
-        let txParams: TransactionPayload;
-        const payload = invokeRequest.payload;
-        
-        try {
-          if (payload && typeof payload === 'object' && '_type' in payload && (payload as { _type: string })._type === 'Uint8Array') {
-            const payloadWithData = payload as unknown as { _type: string; data: number[] };
-            const bytes = new Uint8Array(payloadWithData.data);
-            txParams = JSON.parse(new TextDecoder().decode(bytes));
-          } else if (payload instanceof Uint8Array) {
-            txParams = JSON.parse(new TextDecoder().decode(payload));
-          } else if (typeof payload === 'object' && payload !== null && '0' in payload) {
-            // Handle serialized Uint8Array
-            const obj = payload as Record<string, number>;
-            const keys = Object.keys(obj).filter((k) => !isNaN(Number(k)));
-            const length = keys.length;
-            const bytes = new Uint8Array(length);
-            for (let i = 0; i < length; i++) {
-              bytes[i] = obj[i.toString()];
-            }
-            txParams = JSON.parse(new TextDecoder().decode(bytes));
-          } else {
-            txParams = payload as TransactionPayload;
-          }
-        } catch (e) {
-          logger.error('DAppRequestHandler: Failed to parse tx payload:', e);
-          throw new Error('Failed to parse transaction payload');
-        }
-        
-        logger.debug('DAppRequestHandler: Transaction params:', txParams);
-        logger.debug('DAppRequestHandler:   to:', txParams.to);
-        logger.debug('DAppRequestHandler:   amount:', txParams.amount);
-        logger.debug('DAppRequestHandler:   message:', txParams.message ? '(present)' : '(empty)');
-        
-        // Validate transaction parameters.
-        // Contract calls (op_type: 'call') and some non-standard ops legitimately
-        // pass amount = 0. Only plain transfers require a positive amount.
-        if (!txParams.to || typeof txParams.to !== 'string') {
-          throw new Error('Invalid recipient address');
-        }
-        if (typeof txParams.amount !== 'number' || !Number.isFinite(txParams.amount) || txParams.amount < 0) {
-          throw new Error('Invalid transaction amount');
-        }
-        const isStandardTransfer = !txParams.op_type || txParams.op_type === 'standard';
-        if (isStandardTransfer && txParams.amount <= 0) {
-          throw new Error('Invalid transaction amount');
-        }
-        
-        // Validate wallet has private key
-        if (!selectedWallet.privateKey) {
-          throw new Error('Wallet private key not available. Please unlock your wallet.');
-        }
-        
-        // Get current nonce and add 1 for new transaction
-        // IMPORTANT: Force refresh to get latest nonce from chain, not cached
-        logger.debug('DAppRequestHandler: Fetching nonce for:', selectedWallet.address);
-        const balanceData = await fetchBalance(selectedWallet.address, true); // Force refresh!
-        const currentNonce = balanceData.nonce;
-        const txNonce = currentNonce + 1; // IMPORTANT: nonce must be current + 1
-        
-        // Derive public key from private key using nacl
-        const privateKeyBuffer = Buffer.from(selectedWallet.privateKey, 'base64');
-        const keyPair = nacl.sign.keyPair.fromSeed(privateKeyBuffer.slice(0, 32));
-        const publicKeyHex = Buffer.from(keyPair.publicKey).toString('hex');
-        
-        logger.debug('DAppRequestHandler: Creating transaction...');
-        logger.debug('DAppRequestHandler:   currentNonce:', currentNonce);
-        logger.debug('DAppRequestHandler:   txNonce (current+1):', txNonce);
-        
-        // Create and sign transaction — pass op_type, encrypted_data and the
-        // optional ou from payload so contract calls (e.g. bridge lock_to_eth
-        // or any ONS/pONS / AML call) use the correct fee instead of the
-        // default transfer OU.
-        const transaction = createTransaction(
-          selectedWallet.address,
-          txParams.to,
-          txParams.amount,
-          txNonce,
-          selectedWallet.privateKey,
-          publicKeyHex,
-          txParams.message,
-          typeof txParams.ou === 'number' && Number.isFinite(txParams.ou) && txParams.ou > 0
-            ? txParams.ou
-            : undefined,         // customOu — fall back to default if not supplied
-          txParams.op_type,       // e.g. 'call' for contract calls
-          txParams.encrypted_data // e.g. 'lock_to_eth'
-        );
-        
-        logger.debug('DAppRequestHandler: Sending transaction to Octra chain...');
-        const txResult = await sendTransaction(transaction);
-        
-        logger.debug('DAppRequestHandler: Transaction result:', txResult);
-        
-        if (!txResult.success || !txResult.hash) {
-          throw new Error(txResult.error || 'Transaction failed');
-        }
-        
-        // Return the result to dApp
-        const resultData = {
-          success: true,
-          txHash: txResult.hash,
-          from: selectedWallet.address,
-          to: txParams.to,
-          amount: txParams.amount,
-          timestamp: Date.now(),
-        };
-        
-        logger.debug('DAppRequestHandler: ✅ Transaction sent! txHash:', txResult.hash);
-        
-        sendInvokeResult(true, new TextEncoder().encode(JSON.stringify(resultData)));
-        
-        // Success - close popup immediately (no toast needed)
-      } else if (invokeRequest.method === 'send_evm_transaction') {
-        // Handle EVM transaction (ETH on Sepolia)
-        logger.debug('DAppRequestHandler: Executing send_evm_transaction...');
-        
-        // Parse the EVM transaction payload
-        let evmTxParams: EVMTransactionPayload;
-        const payload = invokeRequest.payload;
-        
-        try {
-          if (payload && typeof payload === 'object' && '_type' in payload && (payload as { _type: string })._type === 'Uint8Array') {
-            const payloadWithData = payload as unknown as { _type: string; data: number[] };
-            const bytes = new Uint8Array(payloadWithData.data);
-            evmTxParams = JSON.parse(new TextDecoder().decode(bytes));
-          } else if (payload instanceof Uint8Array) {
-            evmTxParams = JSON.parse(new TextDecoder().decode(payload));
-          } else if (typeof payload === 'object' && payload !== null && '0' in payload) {
-            const obj = payload as Record<string, number>;
-            const keys = Object.keys(obj).filter((k) => !isNaN(Number(k)));
-            const length = keys.length;
-            const bytes = new Uint8Array(length);
-            for (let i = 0; i < length; i++) {
-              bytes[i] = obj[i.toString()];
-            }
-            evmTxParams = JSON.parse(new TextDecoder().decode(bytes));
-          } else {
-            evmTxParams = payload as EVMTransactionPayload;
-          }
-        } catch (e) {
-          logger.error('DAppRequestHandler: Failed to parse EVM tx payload:', e);
-          throw new Error('Failed to parse EVM transaction payload');
-        }
-        
-        // Convert value (wei) to amount (ETH) if amount not provided
-        let amountEth = evmTxParams.amount;
-        if (!amountEth && evmTxParams.value) {
-          // Convert wei to ETH
-          const weiValue = BigInt(evmTxParams.value);
-          amountEth = (Number(weiValue) / 1e18).toString();
-          logger.debug('DAppRequestHandler: Converted value', { wei: evmTxParams.value, eth: amountEth });
-        }
-        
-        // Contract calls (data present) don't need to send ETH — default to "0"
-        if (!amountEth && evmTxParams.data) {
-          amountEth = '0';
-        }
-        
-        if (!amountEth) {
-          throw new Error('No amount or value provided for EVM transaction');
-        }
-        
-        logger.debug('DAppRequestHandler: EVM Transaction params:', evmTxParams);
-        logger.debug('DAppRequestHandler:   to:', evmTxParams.to);
-        logger.debug('DAppRequestHandler: amount', { amount: amountEth, unit: 'ETH' });
-        logger.debug('DAppRequestHandler:   value (wei):', evmTxParams.value || '(not provided)');
-        logger.debug('DAppRequestHandler:   data:', evmTxParams.data ? '(present)' : '(empty)');
-        
-        // Validate EVM address format
-        if (!evmTxParams.to || !/^0x[a-fA-F0-9]{40}$/.test(evmTxParams.to)) {
-          throw new Error('Invalid EVM recipient address');
-        }
-        
-        // Validate amount
-        const amountNum = parseFloat(amountEth);
-        if (!Number.isFinite(amountNum) || amountNum < 0) {
-          throw new Error('Invalid transaction amount');
-        }
-        
-        // Validate wallet has private key
-        if (!selectedWallet.privateKey) {
-          throw new Error('Wallet private key not available. Please unlock your wallet.');
-        }
-        
-        // Get EVM private key from WalletManager (async - retrieves from session)
-        const evmPrivateKey = await WalletManager.getEvmPrivateKey(selectedWallet.address);
-        if (!evmPrivateKey) {
-          throw new Error('EVM private key not found. Please re-import your wallet.');
-        }
-
-        // Determine network: use payload network if provided, else active wallet network
-        let evmNetworkId = evmTxParams.network || 'eth-mainnet';
-        if (!evmTxParams.network) {
-          try {
-            const stored = await chrome.storage.local.get(['active_evm_network']);
-            if (stored.active_evm_network) evmNetworkId = stored.active_evm_network;
-          } catch { /* use default */ }
-        }
-        
-        logger.debug('DAppRequestHandler: Sending EVM transaction on network:', evmNetworkId);
-        
-        // Build gas overrides from custom inputs
-        const gasOverrides: { gasLimit?: bigint; maxFeePerGas?: bigint; maxPriorityFeePerGas?: bigint } = {}
-        if (customGasLimit && parseInt(customGasLimit) > 0) {
-          gasOverrides.gasLimit = BigInt(parseInt(customGasLimit))
-        }
-        if (customMaxFeeGwei && parseFloat(customMaxFeeGwei) > 0) {
-          const { ethers: e } = await import('ethers')
-          gasOverrides.maxFeePerGas = e.parseUnits(customMaxFeeGwei, 'gwei')
-          gasOverrides.maxPriorityFeePerGas = e.parseUnits('0.1', 'gwei')
-        }
-
-        // Send EVM transaction using sendEVMTransaction
-        const txHash = await sendEVMTransaction(
-          evmPrivateKey,
-          evmTxParams.to,
-          amountEth,
-          evmNetworkId,
-          evmTxParams.data,
-          Object.keys(gasOverrides).length > 0 ? gasOverrides : undefined
-        );
-        
-        logger.debug('DAppRequestHandler: ✅ EVM Transaction sent! txHash:', txHash);
-        
-        // Return the result to dApp
-        const resultData = {
-          success: true,
-          txHash,
-          from: WalletManager.getEvmAddress(selectedWallet.address),
-          to: evmTxParams.to,
-          amount: amountEth,
-          timestamp: Date.now(),
-        };
-        
-        sendInvokeResult(true, new TextEncoder().encode(JSON.stringify(resultData)));
-        
-        // Success - close popup immediately (no toast needed)
-      } else if (invokeRequest.method === 'send_erc20_transaction') {
-        // Handle ERC20 token transfer (e.g., USDC on Sepolia)
-        logger.debug('DAppRequestHandler: Executing send_erc20_transaction...');
-        
-        // Parse the ERC20 transaction payload
-        let erc20TxParams: ERC20TransactionPayload;
-        const payload = invokeRequest.payload;
-        
-        try {
-          if (payload && typeof payload === 'object' && '_type' in payload && (payload as { _type: string })._type === 'Uint8Array') {
-            const payloadWithData = payload as unknown as { _type: string; data: number[] };
-            const bytes = new Uint8Array(payloadWithData.data);
-            erc20TxParams = JSON.parse(new TextDecoder().decode(bytes));
-          } else if (payload instanceof Uint8Array) {
-            erc20TxParams = JSON.parse(new TextDecoder().decode(payload));
-          } else if (typeof payload === 'object' && payload !== null && '0' in payload) {
-            const obj = payload as Record<string, number>;
-            const keys = Object.keys(obj).filter((k) => !isNaN(Number(k)));
-            const length = keys.length;
-            const bytes = new Uint8Array(length);
-            for (let i = 0; i < length; i++) {
-              bytes[i] = obj[i.toString()];
-            }
-            erc20TxParams = JSON.parse(new TextDecoder().decode(bytes));
-          } else {
-            erc20TxParams = payload as ERC20TransactionPayload;
-          }
-        } catch (e) {
-          logger.error('DAppRequestHandler: Failed to parse ERC20 tx payload:', e);
-          throw new Error('Failed to parse ERC20 transaction payload');
-        }
-        
-        // Calculate human-readable amount
-        const amountHuman = Number(erc20TxParams.amount) / (10 ** erc20TxParams.decimals);
-        
-        logger.debug('DAppRequestHandler: ERC20 Transaction params:', erc20TxParams);
-        logger.debug('DAppRequestHandler:   tokenContract:', erc20TxParams.tokenContract);
-        logger.debug('DAppRequestHandler:   to:', erc20TxParams.to);
-        logger.debug('DAppRequestHandler:   amount (raw):', erc20TxParams.amount);
-        logger.debug('DAppRequestHandler: amount (human)', { amount: amountHuman, symbol: erc20TxParams.symbol });
-        logger.debug('DAppRequestHandler:   decimals:', erc20TxParams.decimals);
-        
-        // Validate EVM addresses format
-        if (!erc20TxParams.tokenContract || !/^0x[a-fA-F0-9]{40}$/.test(erc20TxParams.tokenContract)) {
-          throw new Error('Invalid token contract address');
-        }
-        if (!erc20TxParams.to || !/^0x[a-fA-F0-9]{40}$/.test(erc20TxParams.to)) {
-          throw new Error('Invalid recipient address');
-        }
-        
-        // Validate amount
-        if (!erc20TxParams.amount || !Number.isFinite(Number(erc20TxParams.amount)) || Number(erc20TxParams.amount) <= 0) {
-          throw new Error('Invalid token amount');
-        }
-        
-        // Validate decimals
-        if (typeof erc20TxParams.decimals !== 'number' || !Number.isInteger(erc20TxParams.decimals) || erc20TxParams.decimals < 0 || erc20TxParams.decimals > 18) {
-          throw new Error('Invalid token decimals');
-        }
-        
-        // Validate wallet has private key
-        if (!selectedWallet.privateKey) {
-          throw new Error('Wallet private key not available. Please unlock your wallet.');
-        }
-        
-        // Get EVM private key from WalletManager
-        const evmPrivateKey = await WalletManager.getEvmPrivateKey(selectedWallet.address);
-        if (!evmPrivateKey) {
-          throw new Error('EVM private key not found. Please re-import your wallet.');
-        }
-        
-        logger.debug('DAppRequestHandler: Sending ERC20 transfer to Sepolia...');
-        
-        // Send ERC20 transaction
-        const txHash = await sendERC20Transaction(
-          evmPrivateKey,
-          erc20TxParams.tokenContract,
-          erc20TxParams.to,
-          erc20TxParams.amount,
-          'eth-sepolia'
-        );
-        
-        logger.debug('DAppRequestHandler: ✅ ERC20 Transaction sent! txHash:', txHash);
-        
-        // Return the result to dApp
-        const resultData = {
-          success: true,
-          txHash,
-          from: WalletManager.getEvmAddress(selectedWallet.address),
-          to: erc20TxParams.to,
-          tokenContract: erc20TxParams.tokenContract,
-          amount: erc20TxParams.amount,
-          amountHuman,
-          symbol: erc20TxParams.symbol,
-          timestamp: Date.now(),
-        };
-        
-        sendInvokeResult(true, new TextEncoder().encode(JSON.stringify(resultData)));
-        
-        // Success - close popup immediately (no toast needed)
-      } else if (invokeRequest.method === 'encrypt_balance') {
-        const params = parseInvokePayload<{ amount: number }>(invokeRequest.payload);
-        if (!params?.amount || params.amount <= 0) throw new Error('Invalid amount for encrypt_balance');
-
-        const { runInWorker } = await import('@/lib/pvac/pvac-worker-client');
-        const balanceData = await fetchBalance(selectedWallet.address);
-        const ou = String(await fetchRecommendedFee('encrypt'));
-        const result = await runInWorker<{ tx: import('../types/wallet').Transaction }>('encryptBalance', {
-          privateKey: selectedWallet.privateKey!,
-          publicKey: selectedWallet.publicKey!,
-          address: selectedWallet.address,
-          amountRaw: BigInt(params.amount).toString(),
-          nonce: balanceData.nonce + 1,
-          ou,
-        });
-        if (!result.success || !result.data) throw new Error(result.error || 'Encrypt balance failed');
-        const submitResult = await sendTransaction(result.data.tx);
-        if (!submitResult.success) throw new Error(submitResult.error || 'Failed to submit encrypt transaction');
-
-        sendInvokeResult(true, new TextEncoder().encode(JSON.stringify({
-          txHash: submitResult.hash ?? 'pending',
-          amount: params.amount,
-        })));
-
-      } else if (invokeRequest.method === 'decrypt_balance') {
-        const params = parseInvokePayload<{ amount: number }>(invokeRequest.payload);
-        if (!params?.amount || params.amount <= 0) throw new Error('Invalid amount for decrypt_balance');
-
-        const { runInWorker } = await import('@/lib/pvac/pvac-worker-client');
-        const encData = await fetchEncryptedBalance(selectedWallet.address, selectedWallet.privateKey);
-        if (!encData?.cipher || encData.cipher === '0') throw new Error('No encrypted balance found');
-        const balanceData = await fetchBalance(selectedWallet.address);
-        const ou = String(await fetchRecommendedFee('decrypt'));
-        const result = await runInWorker<{ tx: import('../types/wallet').Transaction }>('decryptToPublic', {
-          privateKey: selectedWallet.privateKey!,
-          publicKey: selectedWallet.publicKey!,
-          address: selectedWallet.address,
-          amountRaw: BigInt(params.amount).toString(),
-          currentCipher: encData.cipher,
-          nonce: balanceData.nonce + 1,
-          ou,
-        });
-        if (!result.success || !result.data) throw new Error(result.error || 'Decrypt balance failed');
-        const submitResult = await sendTransaction(result.data.tx);
-        if (!submitResult.success) throw new Error(submitResult.error || 'Failed to submit decrypt transaction');
-
-        sendInvokeResult(true, new TextEncoder().encode(JSON.stringify({
-          txHash: submitResult.hash ?? 'pending',
-          amount: params.amount,
-        })));
-
-      } else if (invokeRequest.method === 'stealth_send') {
-        const params = parseInvokePayload<{ to: string; amount: number }>(invokeRequest.payload);
-        if (!params?.to) throw new Error('Recipient address required for stealth_send');
-        if (!params?.amount || params.amount <= 0) throw new Error('Invalid amount for stealth_send');
-
-        const { runInWorker } = await import('@/lib/pvac/pvac-worker-client');
-        const viewPubkey = await getViewPubkey(params.to);
-        if (!viewPubkey) throw new Error('Recipient has no view public key registered');
-        const encData = await fetchEncryptedBalance(selectedWallet.address, selectedWallet.privateKey);
-        if (!encData?.cipher || encData.cipher === '0') throw new Error('No encrypted balance for stealth send');
-        const balanceData = await fetchBalance(selectedWallet.address);
-        const ou = String(await fetchRecommendedFee('stealth'));
-        const result = await runInWorker<{ tx: import('../types/wallet').Transaction }>('stealthSend', {
-          privateKey: selectedWallet.privateKey!,
-          publicKey: selectedWallet.publicKey!,
-          address: selectedWallet.address,
-          toAddress: params.to,
-          amountRaw: BigInt(params.amount).toString(),
-          currentCipher: encData.cipher,
-          recipientViewPubkey: viewPubkey,
-          nonce: balanceData.nonce + 1,
-          ou,
-        });
-        if (!result.success || !result.data) throw new Error(result.error || 'Stealth send failed');
-        const submitResult = await sendTransaction(result.data.tx);
-        if (!submitResult.success) throw new Error(submitResult.error || 'Failed to submit stealth transaction');
-
-        sendInvokeResult(true, new TextEncoder().encode(JSON.stringify({
-          txHash: submitResult.hash ?? 'pending',
-          amount: params.amount,
-        })));
-
-      } else if (invokeRequest.method === 'stealth_claim') {
-        const params = parseInvokePayload<{ outputId: string }>(invokeRequest.payload);
-        if (!params?.outputId) throw new Error('Output ID required for stealth_claim');
-
-        const { runInWorker } = await import('@/lib/pvac/pvac-worker-client');
-        const { scanStealthOutputs } = await import('@/services/stealthScanService');
-        const claimable = await scanStealthOutputs(selectedWallet.privateKey!);
-        const output = claimable.find(o => o.id === params.outputId);
-        if (!output) throw new Error(`Stealth output ${params.outputId} not found or already claimed`);
-        const balanceData = await fetchBalance(selectedWallet.address);
-        const ou = String(await fetchRecommendedFee('stealth'));
-        const result = await runInWorker<{ tx: import('../types/wallet').Transaction }>('claimStealth', {
-          privateKey: selectedWallet.privateKey!,
-          publicKey: selectedWallet.publicKey!,
-          address: selectedWallet.address,
-          stealthOutput: output.rawOutput,
-          nonce: balanceData.nonce + 1,
-          ou,
-        });
-        if (!result.success || !result.data) throw new Error(result.error || 'Stealth claim failed');
-        const submitResult = await sendTransaction(result.data.tx);
-        if (!submitResult.success) throw new Error(submitResult.error || 'Failed to submit claim transaction');
-
-        sendInvokeResult(true, new TextEncoder().encode(JSON.stringify({
-          txHash: submitResult.hash ?? 'pending',
-          amount: output.amount,
-          outputId: params.outputId,
-        })));
-
-      } else {
-        // For other methods, return mock success (to be implemented)
-        logger.debug('DAppRequestHandler: Executing other method:', invokeRequest.method);
-        
-        sendInvokeResult(true, new Uint8Array([1, 2, 3]));
-        
-        // Success - close popup immediately (no toast needed)
-      }
-      
-      window.close();
-    } catch (error) {
-      logger.error('DAppRequestHandler: Invoke error:', error);
-      toast({ 
-        title: 'Transaction Failed', 
-        description: error instanceof Error ? error.message : 'Unknown error',
-        variant: 'destructive'
-      });
-      setIsProcessing(false);
-    }
-  };
-
-  // ── PVAC auto-execute handlers (no UI, run silently in background) ──────────
-
-  /** Load a ZK sign request from storage and show approval UI. */
-  const loadPvacZkSignRequest = async (pendingKey: string) => {
-    if (typeof chrome === 'undefined' || !chrome.storage) return;
-    const data = await chrome.storage.local.get([`pendingPvacZkSign_${pendingKey}`]);
-    const req = data[`pendingPvacZkSign_${pendingKey}`];
-    if (!req) return;
-    setPvacZkSignRequest(req);
-    setRequestType('pvacZkSign');
-  };
-
-  /** Send a PVAC result message back to background and clean up storage. */
-  const sendPvacResult = (type: string, pendingKey: string, storageKey: string, payload: Record<string, unknown>) => {
-    if (typeof chrome === 'undefined' || !chrome.runtime) return;
-
-    // Deep-sanitize the payload so chrome.runtime.sendMessage's structured-
-    // clone step cannot choke on BigInt, Uint8Array, Functions, Dates,
-    // Symbols, or cross-realm objects. We go via JSON round-trip as the
-    // ultimate fallback because chrome.runtime.sendMessage always ends up
-    // re-serializing anyway.
-    const safeJsonClone = (v: unknown): unknown => {
-      try {
-        const s = JSON.stringify(v, (_k, val) => {
-          if (typeof val === 'bigint')       return val.toString();
-          if (val instanceof Uint8Array)     return Array.from(val);
-          if (ArrayBuffer.isView(val))       return Array.from(new Uint8Array((val as ArrayBufferView).buffer));
-          if (val instanceof Date)           return val.toISOString();
-          if (typeof val === 'function')     return undefined;
-          if (typeof val === 'symbol')       return undefined;
-          return val;
-        });
-        return s === undefined ? null : JSON.parse(s);
-      } catch (err) {
-        return { _sanitizeError: err instanceof Error ? err.message : String(err) };
-      }
-    };
-
-    const safePayload = safeJsonClone(payload) as Record<string, unknown>;
-
-    try {
-      chrome.runtime.sendMessage({ type, pendingKey, ...safePayload });
-    } catch (err) {
-      // Last-resort: report the serialization failure back so the SDK
-      // surfaces a readable error instead of a silent timeout.
-      try {
-        chrome.runtime.sendMessage({
-          type,
-          pendingKey,
-          success: false,
-          error: `pvac result serialize failed: ${err instanceof Error ? err.message : String(err)}`,
-        });
-      } catch { /* give up */ }
-    }
-
-    chrome.storage.local.remove([`${storageKey}_${pendingKey}`, `${storageKey}Key`]);
-
-    // Keep the popup alive long enough that a follow-up SDK call can land in
-    // the same popup view. The heartbeat + storage listener do the actual
-    // routing; the idle window here just decides when to close if no more
-    // requests arrive.
-    //
-    // PVAC WASM ops can take several seconds each (first-call WASM boot,
-    // range proof generation, etc). Use a generous idle window so batches
-    // keep draining through one popup.
-    const IDLE_MS = 6000;
-    setTimeout(async () => {
-      if (requestType !== null) return; // UI request is being shown
-
-      try {
-        const keys = await chrome.storage.local.get([
-          'pendingPvacIdentityKey',
-          'pendingPvacEcdhKey',
-          'pendingPvacDecryptKey',
-          'pendingPvacEncryptKey',
-          'pendingPvacScanKey',
-          'pendingPvacZkSignKey',
-          'pendingConnectionRequestKey',
-          'pendingCapabilityRequestKey',
-          'pendingInvokeRequestKey',
-          'pendingSignMessageRequestKey',
-        ]);
-        const hasPending = Object.values(keys).some(v => !!v);
-        if (!hasPending) window.close();
       } catch {
-        window.close();
+        /* ignore — fall back to current selection */
       }
-    }, IDLE_MS);
-  };
+    })();
 
-  /** Handle PVAC_GET_IDENTITY — derive view keypair from wallet private key. */
-  const handlePvacIdentityRequest = async (pendingKey: string) => {
-    if (typeof chrome === 'undefined' || !chrome.storage) return;
-    const data = await chrome.storage.local.get([`pendingPvacIdentity_${pendingKey}`]);
-    const req = data[`pendingPvacIdentity_${pendingKey}`];
-    if (!req) return;
-    const wallet = wallets.find(w => w.address === req.walletAddress) || selectedWallet;
-    if (!wallet?.privateKey) {
-      sendPvacResult('PVAC_IDENTITY_RESULT', pendingKey, 'pendingPvacIdentity', { success: false, error: 'Wallet locked' });
-      return;
-    }
-    try {
-      const { runInWorker } = await import('@/lib/pvac/pvac-worker-client');
-      const result = await runInWorker<{ identity: unknown }>('pvacGetIdentity', {
-        privateKey: wallet.privateKey, walletAddress: wallet.address,
-      });
-      if (result.success && result.data) {
-        sendPvacResult('PVAC_IDENTITY_RESULT', pendingKey, 'pendingPvacIdentity', { success: true, identity: result.data.identity });
-      } else {
-        sendPvacResult('PVAC_IDENTITY_RESULT', pendingKey, 'pendingPvacIdentity', { success: false, error: result.error });
-      }
-    } catch (e) {
-      sendPvacResult('PVAC_IDENTITY_RESULT', pendingKey, 'pendingPvacIdentity', { success: false, error: String(e) });
-    }
-  };
+    return () => { cancelled = true; };
+  }, [request, wallets, selectedWallet]);
 
-  /** Handle PVAC_COMPUTE_SHARED_SECRET — ECDH with counterparty view pubkey. */
-  const handlePvacEcdhRequest = async (pendingKey: string) => {
-    if (typeof chrome === 'undefined' || !chrome.storage) return;
-    const data = await chrome.storage.local.get([`pendingPvacEcdh_${pendingKey}`]);
-    const req = data[`pendingPvacEcdh_${pendingKey}`];
-    if (!req) return;
-    const wallet = wallets.find(w => w.address === req.walletAddress) || selectedWallet;
-    if (!wallet?.privateKey) {
-      sendPvacResult('PVAC_ECDH_RESULT', pendingKey, 'pendingPvacEcdh', { success: false, error: 'Wallet locked' });
-      return;
-    }
-    try {
-      const { runInWorker } = await import('@/lib/pvac/pvac-worker-client');
-      const result = await runInWorker<{ sharedSecretResult: unknown }>('pvacComputeSharedSecret', {
-        privateKey: wallet.privateKey, theirViewPubkey: req.theirViewPubkey,
-      });
-      if (result.success && result.data) {
-        sendPvacResult('PVAC_ECDH_RESULT', pendingKey, 'pendingPvacEcdh', { success: true, sharedSecretResult: result.data.sharedSecretResult });
-      } else {
-        sendPvacResult('PVAC_ECDH_RESULT', pendingKey, 'pendingPvacEcdh', { success: false, error: result.error });
-      }
-    } catch (e) {
-      sendPvacResult('PVAC_ECDH_RESULT', pendingKey, 'pendingPvacEcdh', { success: false, error: String(e) });
-    }
-  };
+  // Initial load + storage change listener
+  useEffect(() => {
+    loadPendingRequest().then(setRequest);
 
-  /** Handle PVAC_DECRYPT_CIPHER — decrypt hfhe_v1|... cipher via WASM. */
-  const handlePvacDecryptRequest = async (pendingKey: string) => {
-    if (typeof chrome === 'undefined' || !chrome.storage) return;
-    const data = await chrome.storage.local.get([`pendingPvacDecrypt_${pendingKey}`]);
-    const req = data[`pendingPvacDecrypt_${pendingKey}`];
-    if (!req) return;
-    const wallet = wallets.find(w => w.address === req.walletAddress) || selectedWallet;
-    if (!wallet?.privateKey) {
-      sendPvacResult('PVAC_DECRYPT_RESULT', pendingKey, 'pendingPvacDecrypt', { success: false, error: 'Wallet locked' });
-      return;
-    }
-    try {
-      const { runInWorker } = await import('@/lib/pvac/pvac-worker-client');
-      const result = await runInWorker<{ valueRaw: string; valueOct: number }>('pvacDecryptCipher', {
-        privateKey: wallet.privateKey, cipher: req.cipher,
-      });
-      if (result.success && result.data) {
-        sendPvacResult('PVAC_DECRYPT_RESULT', pendingKey, 'pendingPvacDecrypt', {
-          success: true, valueRaw: result.data.valueRaw, valueOct: result.data.valueOct,
-        });
-      } else {
-        sendPvacResult('PVAC_DECRYPT_RESULT', pendingKey, 'pendingPvacDecrypt', { success: false, error: result.error });
-      }
-    } catch (e) {
-      sendPvacResult('PVAC_DECRYPT_RESULT', pendingKey, 'pendingPvacDecrypt', { success: false, error: String(e) });
-    }
-  };
+    const listener = (
+      _changes: Record<string, chrome.storage.StorageChange>,
+      area: string,
+    ) => {
+      if (area !== 'local') return;
+      loadPendingRequest().then(setRequest);
+    };
 
-  /** Handle PVAC_ENCRYPT_VALUE — encrypt a value via WASM. */
-  const handlePvacEncryptRequest = async (pendingKey: string) => {
-    if (typeof chrome === 'undefined' || !chrome.storage) return;
-    const data = await chrome.storage.local.get([`pendingPvacEncrypt_${pendingKey}`]);
-    const req = data[`pendingPvacEncrypt_${pendingKey}`];
-    if (!req) return;
-    const wallet = wallets.find(w => w.address === req.walletAddress) || selectedWallet;
-    if (!wallet?.privateKey || !wallet?.publicKey) {
-      sendPvacResult('PVAC_ENCRYPT_RESULT', pendingKey, 'pendingPvacEncrypt', { success: false, error: 'Wallet locked' });
-      return;
-    }
-    try {
-      const { runInWorker } = await import('@/lib/pvac/pvac-worker-client');
-      const result = await runInWorker<{ cipher: string }>('pvacEncryptValue', {
-        privateKey: wallet.privateKey, publicKey: wallet.publicKey,
-        address: wallet.address, valueRaw: String(req.valueRaw),
-      });
-      if (result.success && result.data) {
-        sendPvacResult('PVAC_ENCRYPT_RESULT', pendingKey, 'pendingPvacEncrypt', { success: true, cipher: result.data.cipher });
-      } else {
-        sendPvacResult('PVAC_ENCRYPT_RESULT', pendingKey, 'pendingPvacEncrypt', { success: false, error: result.error });
-      }
-    } catch (e) {
-      sendPvacResult('PVAC_ENCRYPT_RESULT', pendingKey, 'pendingPvacEncrypt', { success: false, error: String(e) });
-    }
-  };
+    chrome.storage?.onChanged.addListener(listener);
+    return () => chrome.storage?.onChanged.removeListener(listener);
+  }, []);
 
-  /** Handle PVAC_SCAN_OUTPUTS — scan stealth outputs via WASM. */
-  const handlePvacScanRequest = async (pendingKey: string) => {
-    if (typeof chrome === 'undefined' || !chrome.storage) return;
-    const data = await chrome.storage.local.get([`pendingPvacScan_${pendingKey}`]);
-    const req = data[`pendingPvacScan_${pendingKey}`];
-    if (!req) return;
-    const wallet = wallets.find(w => w.address === req.walletAddress) || selectedWallet;
-    if (!wallet?.privateKey) {
-      sendPvacResult('PVAC_SCAN_RESULT', pendingKey, 'pendingPvacScan', { success: false, error: 'Wallet locked' });
-      return;
-    }
-    try {
-      const { runInWorker } = await import('@/lib/pvac/pvac-worker-client');
-      const result = await runInWorker<{ scanResult: unknown }>('pvacScanOutputs', {
-        privateKey: wallet.privateKey, outputs: req.outputs,
-      });
-      if (result.success && result.data) {
-        sendPvacResult('PVAC_SCAN_RESULT', pendingKey, 'pendingPvacScan', { success: true, scanResult: result.data.scanResult });
-      } else {
-        sendPvacResult('PVAC_SCAN_RESULT', pendingKey, 'pendingPvacScan', { success: false, error: result.error });
-      }
-    } catch (e) {
-      sendPvacResult('PVAC_SCAN_RESULT', pendingKey, 'pendingPvacScan', { success: false, error: String(e) });
-    }
-  };
-
-  // ── ZK Sign approval handler ──────────────────────────────────────────────
-
-  const handleZkSignApprove = async () => {
-    if (!pvacZkSignRequest || !selectedWallet?.privateKey) return;
-    setIsProcessing(true);
-    try {
-      const dataBytes = new Uint8Array(pvacZkSignRequest.data);
-
-      // SHA-256 hash of the raw data (used as ZK public input)
-      const hashBuf = await crypto.subtle.digest('SHA-256', dataBytes);
-      const dataHash = Array.from(new Uint8Array(hashBuf))
-        .map(b => b.toString(16).padStart(2, '0')).join('');
-
-      // Domain-separate if domain provided: sign(data || domain)
-      let toSign = dataBytes;
-      if (pvacZkSignRequest.domain) {
-        const domainBytes = new TextEncoder().encode(pvacZkSignRequest.domain);
-        toSign = new Uint8Array(dataBytes.length + domainBytes.length);
-        toSign.set(dataBytes);
-        toSign.set(domainBytes, dataBytes.length);
-      }
-
-      // Ed25519 sign
-      const privateKeyBytes = Buffer.from(selectedWallet.privateKey, 'base64');
-      const keyPair = nacl.sign.keyPair.fromSeed(privateKeyBytes.slice(0, 32));
-      const signature = nacl.sign.detached(toSign, keyPair.secretKey);
-      const signatureHex = Array.from(signature).map(b => b.toString(16).padStart(2, '0')).join('');
-      const publicKeyHex = Array.from(keyPair.publicKey).map(b => b.toString(16).padStart(2, '0')).join('');
-
-      if (typeof chrome !== 'undefined' && chrome.runtime) {
-        const pk = pvacZkSignRequest.pendingKey;
-        chrome.runtime.sendMessage({
-          type: 'PVAC_ZK_SIGN_RESULT',
-          pendingKey: pk,
-          approved: true,
-          signature: signatureHex,
-          publicKey: publicKeyHex,
-          dataHash,
-        });
-        chrome.storage.local.remove([`pendingPvacZkSign_${pk}`, 'pendingPvacZkSignKey']);
-      }
-      window.close();
-    } catch (error) {
-      logger.error('DAppRequestHandler: ZK sign error:', error);
-      toast({
-        title: 'Signing Failed',
-        description: error instanceof Error ? error.message : 'Unknown error',
-        variant: 'destructive',
-      });
-      setIsProcessing(false);
-    }
-  };
-
-  const handleReject = () => {
-
-    if (typeof chrome !== 'undefined' && chrome.runtime) {
-      if (requestType === 'connection' && connectionRequest) {
-        const pk = connectionRequest?.pendingKey;
-        chrome.runtime.sendMessage({
-          type: 'CONNECTION_RESULT',
-          appOrigin: connectionRequest.appOrigin,
-          origin: connectionRequest.appOrigin,
-          approved: false,
-          pendingKey: pk,
-        });
-        chrome.storage.local.remove([
-          'pendingConnectionRequest',
-          ...(pk ? [`pendingConnectionRequest_${pk}`, 'pendingConnectionRequestKey'] : []),
-        ]);
-      } else if (requestType === 'capability' && capabilityRequest) {
-        const pk = capabilityRequest?.pendingKey;
-        chrome.runtime.sendMessage({
-          type: 'CAPABILITY_RESULT',
-          appOrigin: capabilityRequest.appOrigin,
-          origin: capabilityRequest.appOrigin,
-          approved: false,
-          pendingKey: pk,
-        });
-        chrome.storage.local.remove([
-          'pendingCapabilityRequest',
-          ...(pk ? [`pendingCapabilityRequest_${pk}`, 'pendingCapabilityRequestKey'] : []),
-        ]);
-      } else if (requestType === 'signMessage' && signMessageRequest) {
-        const pk = signMessageRequest?.pendingKey;
-        chrome.runtime.sendMessage({
-          type: 'SIGN_MESSAGE_RESULT',
-          appOrigin: signMessageRequest.appOrigin,
-          approved: false,
-          error: 'User rejected request',
-          pendingKey: pk,
-        });
-        chrome.storage.local.remove([
-          'pendingSignMessageRequest',
-          ...(pk ? [`pendingSignMessageRequest_${pk}`, 'pendingSignMessageRequestKey'] : []),
-        ]);
-      } else if (requestType === 'pvacZkSign' && pvacZkSignRequest) {
-        const pk = pvacZkSignRequest.pendingKey;
-        chrome.runtime.sendMessage({
-          type: 'PVAC_ZK_SIGN_RESULT',
-          pendingKey: pk,
-          approved: false,
-          error: 'User rejected ZK sign request',
-        });
-        chrome.storage.local.remove([`pendingPvacZkSign_${pk}`, 'pendingPvacZkSignKey']);
-      } else if (requestType === 'invoke' && invokeRequest) {
-        sendInvokeResult(false, undefined, 'User rejected request');
-      }
-    }
-
-    window.close();
-  };
-
-  const handleSignMessageApprove = async () => {
-    if (!signMessageRequest || !selectedWallet) {
-      logger.error('DAppRequestHandler: Missing signMessageRequest or selectedWallet');
-      return;
-    }
-
-    if (!selectedWallet.privateKey) {
-      logger.error('DAppRequestHandler: Wallet has no private key');
-      toast({ 
-        title: 'Error', 
-        description: 'Wallet private key not available. Please unlock your wallet.', 
-        variant: 'destructive' 
-      });
-      return;
-    }
-
-    setIsProcessing(true);
-
-    try {
-      logger.debug('DAppRequestHandler: Signing message...');
-      
-      // Sign message with Ed25519
-      const privateKeyBytes = Buffer.from(selectedWallet.privateKey, 'base64');
-      const keyPair = nacl.sign.keyPair.fromSeed(privateKeyBytes);
-      const messageBytes = Buffer.from(signMessageRequest.message);
-      const signature = nacl.sign.detached(messageBytes, keyPair.secretKey);
-      const signatureBase64 = Buffer.from(signature).toString('base64');
-
-      logger.debug('DAppRequestHandler: Message signed successfully');
-
-      // Send response
-      if (typeof chrome !== 'undefined' && chrome.runtime) {
-        const pk = signMessageRequest?.pendingKey;
-        chrome.runtime.sendMessage({
-          type: 'SIGN_MESSAGE_RESULT',
-          appOrigin: signMessageRequest.appOrigin,
-          approved: true,
-          signature: signatureBase64,
-          pendingKey: pk,
-        });
-        chrome.storage.local.remove([
-          'pendingSignMessageRequest',
-          ...(pk ? [`pendingSignMessageRequest_${pk}`, 'pendingSignMessageRequestKey'] : []),
-        ]);
-      }
-
-      // Success - close popup
-      window.close();
-    } catch (error) {
-      logger.error('DAppRequestHandler: Sign message error:', error);
-      toast({ 
-        title: 'Error', 
-        description: `Failed to sign message: ${error instanceof Error ? error.message : 'Unknown error'}`, 
-        variant: 'destructive' 
-      });
-      setIsProcessing(false);
-    }
-  };
-
-  const truncateAddress = (address: string) => `${address.slice(0, 8)}...${address.slice(-6)}`;
-
-  const getScopeIcon = (scope: string) => {
-    switch (scope) {
-      case 'read': return <Eye className="h-4 w-4" />;
-      case 'write': return <Edit className="h-4 w-4" />;
-      case 'compute': return <Cpu className="h-4 w-4" />;
-      default: return <Shield className="h-4 w-4" />;
-    }
-  };
-
-  const getScopeColor = (scope: string) => {
-    switch (scope) {
-      case 'read': return 'bg-green-100 text-green-800';
-      case 'write': return 'bg-amber-100 text-amber-800';
-      case 'compute': return 'bg-purple-100 text-purple-800';
-      default: return 'bg-gray-100 text-gray-800';
-    }
-  };
-
-  // No pending request
-  if (!requestType) return null;
-
-  // Render based on request type - optimized for popup size (400x600)
-
-  // When the popup is open only to service PVAC auto-execute requests, render
-  // a friendly "processing wallet request" splash instead of the empty
-  // approval skeleton. Keeps the user informed that something is happening.
-  if (requestType === null && processingPvac) {
+  if (!request) {
     return (
-      <div className="h-full flex flex-col items-center justify-center bg-background px-6 text-center">
-        <div className="flex items-center gap-2 mb-4">
-          <Shield className="h-5 w-5 text-primary" />
-          <span className="text-sm font-semibold">OctWa</span>
+      <div className="flex h-full items-center justify-center p-8 text-center">
+        <div className="text-sm text-muted-foreground">
+          No pending requests
         </div>
-        <div
-          className="w-10 h-10 rounded-full border-2 border-transparent animate-spin mb-3"
-          style={{ borderTopColor: '#a9c4ee', borderRightColor: '#a9c4ee' }}
-        />
-        <p className="text-sm font-medium mb-1">processing wallet request</p>
-        <p className="text-[11px] text-muted-foreground">
-          running PVAC / HFHE operation — this may take a few seconds the first time.
-        </p>
-        <p className="text-[10px] text-muted-foreground mt-3">
-          popup closes automatically when done.
-        </p>
       </div>
     );
   }
 
+  if (!selectedWallet) {
+    return (
+      <div className="flex h-full items-center justify-center p-8 text-center">
+        <div className="text-sm text-muted-foreground">No wallet available</div>
+      </div>
+    );
+  }
+
+  // ── Reject helper (used by all flows) ───────────────────────────────────
+  const rejectRequest = (resultType: string, pendingKey: string) => {
+    if (typeof chrome === 'undefined' || !chrome.runtime) return;
+    chrome.runtime.sendMessage({
+      type: resultType,
+      pendingKey,
+      approved: false,
+    });
+    window.close();
+  };
+
+  // Route to the right approval screen
+  switch (request.kind) {
+    case 'connect':
+      return (
+        <ConnectApproval
+          request={request.data}
+          wallet={selectedWallet}
+          wallets={wallets}
+          onSelectWallet={setSelectedWallet}
+          isProcessing={isProcessing}
+          setIsProcessing={setIsProcessing}
+          onReject={() => rejectRequest('CONNECTION_RESULT', request.data.pendingKey)}
+        />
+      );
+    case 'signMessage':
+      return (
+        <SignMessageApproval
+          request={request.data}
+          wallet={selectedWallet}
+          isProcessing={isProcessing}
+          setIsProcessing={setIsProcessing}
+          onReject={() => rejectRequest('SIGN_MESSAGE_RESULT', request.data.pendingKey)}
+          toast={toast}
+        />
+      );
+    case 'tx':
+      return (
+        <TransactionApproval
+          request={request.data}
+          wallet={selectedWallet}
+          isProcessing={isProcessing}
+          setIsProcessing={setIsProcessing}
+          onReject={() => rejectRequest('TX_RESULT', request.data.pendingKey)}
+          toast={toast}
+        />
+      );
+    case 'signTx':
+      return (
+        <SignTxApproval
+          request={request.data}
+          wallet={selectedWallet}
+          isProcessing={isProcessing}
+          setIsProcessing={setIsProcessing}
+          onReject={() => rejectRequest('SIGN_TX_RESULT', request.data.pendingKey)}
+          toast={toast}
+        />
+      );
+    case 'contract':
+      return (
+        <ContractApproval
+          request={request.data}
+          wallet={selectedWallet}
+          isProcessing={isProcessing}
+          setIsProcessing={setIsProcessing}
+          onReject={() => rejectRequest('CONTRACT_TX_RESULT', request.data.pendingKey)}
+          toast={toast}
+        />
+      );
+    case 'encrypt':
+    case 'decrypt':
+      return (
+        <EncryptDecryptApproval
+          request={request.data}
+          kind={request.kind}
+          wallet={selectedWallet}
+          isProcessing={isProcessing}
+          setIsProcessing={setIsProcessing}
+          onReject={() =>
+            rejectRequest(
+              request.kind === 'encrypt' ? 'ENCRYPT_BALANCE_RESULT' : 'DECRYPT_BALANCE_RESULT',
+              request.data.pendingKey,
+            )
+          }
+          toast={toast}
+        />
+      );
+    case 'stealth':
+      return (
+        <StealthSendApproval
+          request={request.data}
+          wallet={selectedWallet}
+          isProcessing={isProcessing}
+          setIsProcessing={setIsProcessing}
+          onReject={() => rejectRequest('STEALTH_SEND_RESULT', request.data.pendingKey)}
+          toast={toast}
+        />
+      );
+    case 'claim':
+      return (
+        <StealthClaimApproval
+          request={request.data}
+          wallet={selectedWallet}
+          isProcessing={isProcessing}
+          setIsProcessing={setIsProcessing}
+          onReject={() => rejectRequest('STEALTH_CLAIM_RESULT', request.data.pendingKey)}
+          toast={toast}
+        />
+      );
+    case 'write':
+      return (
+        <SensitiveWriteApproval
+          request={request.data}
+          wallet={selectedWallet}
+          isProcessing={isProcessing}
+          setIsProcessing={setIsProcessing}
+          onReject={() => rejectRequest('SENSITIVE_WRITE_RESULT', request.data.pendingKey)}
+        />
+      );
+    case 'evmTx':
+      return (
+        <EvmTxApproval
+          request={request.data}
+          wallet={selectedWallet}
+          isProcessing={isProcessing}
+          setIsProcessing={setIsProcessing}
+          onReject={() => rejectRequest('EVM_TX_RESULT', request.data.pendingKey)}
+          toast={toast}
+        />
+      );
+    case 'evmSign':
+      return (
+        <EvmSignApproval
+          request={request.data}
+          wallet={selectedWallet}
+          isProcessing={isProcessing}
+          setIsProcessing={setIsProcessing}
+          onReject={() => rejectRequest('EVM_SIGN_MESSAGE_RESULT', request.data.pendingKey)}
+          toast={toast}
+        />
+      );
+    case 'evmTypedData':
+      return (
+        <EvmTypedDataApproval
+          request={request.data}
+          wallet={selectedWallet}
+          isProcessing={isProcessing}
+          setIsProcessing={setIsProcessing}
+          onReject={() => rejectRequest('EVM_TYPED_DATA_RESULT', request.data.pendingKey)}
+          toast={toast}
+        />
+      );
+    case 'evmToken':
+      return (
+        <EvmTokenApproval
+          request={request.data}
+          wallet={selectedWallet}
+          isProcessing={isProcessing}
+          setIsProcessing={setIsProcessing}
+          onReject={() => rejectRequest('EVM_TOKEN_TX_RESULT', request.data.pendingKey)}
+          toast={toast}
+        />
+      );
+    case 'evmApprove':
+      return (
+        <EvmApproveTokenApproval
+          request={request.data}
+          wallet={selectedWallet}
+          isProcessing={isProcessing}
+          setIsProcessing={setIsProcessing}
+          onReject={() => rejectRequest('EVM_APPROVE_RESULT', request.data.pendingKey)}
+          toast={toast}
+        />
+      );
+    case 'evmSwitchChain':
+      return (
+        <EvmSwitchChainApproval
+          request={request.data}
+          wallet={selectedWallet}
+          isProcessing={isProcessing}
+          setIsProcessing={setIsProcessing}
+          onReject={() => rejectRequest('EVM_SWITCH_CHAIN_RESULT', request.data.pendingKey)}
+        />
+      );
+    case 'switchNetwork':
+      return (
+        <SwitchNetworkApproval
+          request={request.data}
+          wallet={selectedWallet}
+          isProcessing={isProcessing}
+          setIsProcessing={setIsProcessing}
+          onReject={() => rejectRequest('SWITCH_NETWORK_RESULT', request.data.pendingKey)}
+        />
+      );
+  }
+}
+
+
+// =============================================================================
+// Permission helpers
+// =============================================================================
+
+const PERMISSION_LABELS: Record<string, { label: string; icon: typeof Eye }> = {
+  read_address:           { label: 'Read your wallet address',         icon: Eye },
+  read_balance:           { label: 'Read your public balance',         icon: Eye },
+  read_public_key:        { label: 'Read your public key',             icon: Eye },
+  sign_messages:          { label: 'Sign messages with your wallet',   icon: Edit },
+  send_transactions:      { label: 'Send transactions on your behalf', icon: Send },
+  contract_calls:         { label: 'Call smart contracts',             icon: Edit },
+  view_encrypted_balance: { label: 'View your encrypted balance',      icon: Lock },
+  encrypt_balance:        { label: 'Move public OCT to encrypted',     icon: Lock },
+  decrypt_balance:        { label: 'Move encrypted OCT to public',     icon: Unlock },
+  private_transfers:      { label: 'Send private (stealth) transfers', icon: Lock },
+  stealth_scan:           { label: 'Scan stealth outputs',             icon: Eye },
+  stealth_claim:          { label: 'Claim stealth outputs',            icon: Gift },
+};
+
+function PermissionList({ permissions }: { permissions: string[] }) {
+  if (!permissions.length) {
+    return <div className="text-[11px] text-muted-foreground">No permissions requested.</div>;
+  }
   return (
-    <div className="h-full flex flex-col overflow-hidden bg-background">
+    <ul className="grid grid-cols-1 gap-y-0.5">
+      {permissions.map((perm) => {
+        const info = PERMISSION_LABELS[perm] || { label: perm, icon: Shield };
+        const Icon = info.icon;
+        return (
+          <li key={perm} className="flex items-center gap-1.5 text-[11px] leading-tight">
+            <Icon className="h-3 w-3 shrink-0 text-muted-foreground" />
+            <span className="truncate">{info.label}</span>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
 
-      {/* ── HEADER ── */}
-      <div className="flex-shrink-0 px-4 pt-4 pb-3 border-b border-border">
-        <div className="flex items-center gap-3">
-          <Avatar className="h-10 w-10 flex-shrink-0">
-            {(connectionRequest?.appIcon || capabilityRequest?.appIcon || signMessageRequest?.appIcon) && (
-              <AvatarImage src={connectionRequest?.appIcon || capabilityRequest?.appIcon || signMessageRequest?.appIcon} />
-            )}
-            <AvatarFallback className="bg-primary/10 text-primary">
-              {requestType === 'connection' && <Globe className="h-5 w-5" />}
-              {requestType === 'capability' && <Shield className="h-5 w-5" />}
-              {requestType === 'invoke' && <Zap className="h-5 w-5" />}
-              {requestType === 'signMessage' && <Edit className="h-5 w-5" />}
-            </AvatarFallback>
-          </Avatar>
-          <div className="flex-1 min-w-0">
-            <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-              {requestType === 'connection' && 'Connection Request'}
-              {requestType === 'capability' && 'Capability Request'}
-              {requestType === 'invoke' && 'Invoke Request'}
-              {requestType === 'signMessage' && 'Sign Message'}
-            </p>
-            <p className="text-sm font-semibold truncate">
-              {connectionRequest?.appName || capabilityRequest?.appName || invokeRequest?.appName || signMessageRequest?.appName || 'Unknown App'}
-            </p>
-            <p className="text-[11px] text-muted-foreground truncate">
-              {connectionRequest?.appOrigin || capabilityRequest?.appOrigin || invokeRequest?.appOrigin || signMessageRequest?.appOrigin}
-            </p>
-          </div>
-        </div>
+// =============================================================================
+// Three-region approval shell
+// =============================================================================
+//
+// The popup is locked at 400×600 — the outer body MUST never scroll.
+// Every approval renders into ApprovalShell which lays out:
+//   1. Header — origin, app name, action title           (fixed)
+//      + an optional connected-wallet line showing the active address
+//   2. Body   — request details                          (flex-1, scrolls only when content overflows)
+//   3. Footer — Reject + Approve button row              (fixed)
+//
+// Body padding is tight so the typical case fits without any inner
+// scrollbar; long messages / contract params get a contained scroll
+// area inside the body without ever surfacing through the shell.
+
+function ApprovalShell({
+  request,
+  title,
+  activeAddress,
+  body,
+  approveLabel,
+  approveIcon,
+  approveVariant = 'default',
+  onApprove,
+  onReject,
+  isProcessing,
+}: {
+  request: { appOrigin: string; appName?: string };
+  title: string;
+  /** When set, shown as a "signing as <addr>" line beneath the header — surfaces the active wallet to every approval after connect. */
+  activeAddress?: string;
+  body: React.ReactNode;
+  approveLabel: string;
+  approveIcon?: React.ReactNode;
+  approveVariant?: 'default' | 'destructive';
+  onApprove: () => void;
+  onReject: () => void;
+  isProcessing: boolean;
+}) {
+  return (
+    <div className="flex h-full max-h-full flex-col overflow-hidden bg-background">
+      {/* Header — fixed */}
+      <div className="shrink-0 border-b border-border bg-muted/30 px-3 py-2 space-y-1.5">
+        <CompactOriginHeader
+          origin={request.appOrigin}
+          appName={request.appName}
+          title={title}
+        />
+        {activeAddress ? (
+          <ActiveAddressBadge address={activeAddress} />
+        ) : null}
       </div>
 
-      {/* ── ACTIVE ADDRESS (below header) ── */}
-      {selectedWallet && (
-        <div className="flex-shrink-0 px-4 py-1.5 border-b border-border bg-muted/30">
-          <p className="text-[10px] text-muted-foreground font-mono break-all text-center leading-snug">{selectedWallet.address}</p>
-        </div>
-      )}
-
-      {/* ── CONTENT ── */}
-      <div className="flex-1 overflow-y-auto px-4 py-3 space-y-2.5 min-h-0">
-
-        {/* Connection */}
-        {requestType === 'connection' && connectionRequest && (
-          <>
-            <div className="p-2.5 bg-muted/50 border border-border rounded space-y-1.5">
-              <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1">
-                <Globe className="h-3 w-3" /><span className="font-medium">Circle</span>
-              </div>
-              <p className="text-xs font-mono break-all">{connectionRequest.circle}</p>
-            </div>
-            <div className="space-y-1.5">
-              <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Select Account</h3>
-              <select
-                className="w-full p-2 border border-border rounded bg-background text-sm focus:outline-none focus:border-primary"
-                value={selectedWallet?.address || ''}
-                onChange={(e) => { const w = wallets.find(w => w.address === e.target.value); if (w) setSelectedWallet(w); }}
-              >
-                {wallets.map((w, i) => (
-                  <option key={w.address} value={w.address}>Account {i + 1} — {truncateAddress(w.address)}</option>
-                ))}
-              </select>
-            </div>
-            <Alert className="py-2">
-              <Shield className="h-3 w-3" />
-              <AlertDescription className="text-xs">Creates a session. No authority granted until you approve capabilities.</AlertDescription>
-            </Alert>
-          </>
-        )}
-
-        {/* Capability */}
-        {requestType === 'capability' && capabilityRequest && (
-          <>
-            <div className="p-2.5 bg-muted/50 border border-border rounded space-y-2 text-xs">
-              <div className="flex items-center justify-between">
-                <span className="text-muted-foreground">Circle</span>
-                <span className="font-mono truncate max-w-[200px]">{capabilityRequest.circle}</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-muted-foreground">Scope</span>
-                <Badge className={`${getScopeColor(capabilityRequest.scope)} text-[10px] py-0 h-5`}>
-                  {getScopeIcon(capabilityRequest.scope)}<span className="ml-1 capitalize">{capabilityRequest.scope}</span>
-                </Badge>
-              </div>
-              {capabilityRequest.encrypted && (
-                <div className="flex items-center justify-between">
-                  <span className="text-muted-foreground">Encrypted</span>
-                  <Badge variant="secondary" className="text-[10px] py-0 h-5"><Lock className="h-3 w-3 mr-1" />Yes</Badge>
-                </div>
-              )}
-            </div>
-            <div>
-              <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1.5">Requested Methods</h3>
-              <div className="space-y-1">
-                {capabilityRequest.methods.map((m, i) => (
-                  <div key={i} className="flex items-center gap-2 px-2.5 py-1.5 bg-muted/50 border border-border rounded text-xs">
-                    <Check className="h-3 w-3 text-green-500 flex-shrink-0" />
-                    <span className="font-mono">{m}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-            {capabilityRequest.scope === 'write' || capabilityRequest.scope === 'compute' ? (
-              <Alert className="py-2 border-amber-500/30 bg-amber-500/10">
-                <AlertTriangle className="h-3 w-3 text-amber-500" />
-                <AlertDescription className="text-xs text-amber-600 dark:text-amber-400">
-                  Allows {capabilityRequest.scope} operations. Only approve if you trust this app.
-                </AlertDescription>
-              </Alert>
-            ) : (
-              <Alert className="py-2"><Shield className="h-3 w-3" /><AlertDescription className="text-xs">Read-only — cannot modify data.</AlertDescription></Alert>
-            )}
-          </>
-        )}
-
-        {/* Invoke */}
-        {requestType === 'invoke' && invokeRequest && (
-          <>
-            <div className="p-2.5 bg-muted/50 border border-border rounded space-y-2 text-xs">
-              <div className="flex items-center justify-between">
-                <span className="text-muted-foreground">Method</span>
-                <span className="font-mono font-medium">{invokeRequest.method}</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-muted-foreground">Circle</span>
-                <span className="font-mono truncate max-w-[200px]">{invokeRequest.capability.circle}</span>
-              </div>
-            </div>
-
-            {invokeRequest.method === 'send_transaction' && parsedTxPayload && (
-              <div className="p-2.5 bg-amber-500/10 border border-amber-500/30 rounded space-y-2 text-xs">
-                <h4 className="font-medium text-amber-600 dark:text-amber-400">OCT Transaction</h4>
-                <div className="space-y-1.5">
-                  <div className="flex flex-col gap-0.5">
-                    <span className="text-muted-foreground text-[10px] uppercase tracking-wider">To</span>
-                    <span className="font-mono text-[11px] break-all leading-snug">{parsedTxPayload.to}</span>
-                  </div>
-                  <div className="flex items-center justify-between"><span className="text-muted-foreground">Amount</span><span className="font-bold text-sm">{parsedTxPayload.amount} OCT</span></div>
-                  {parsedTxPayload.message && (
-                    <details className="pt-1 border-t border-amber-500/20">
-                      <summary className="text-muted-foreground cursor-pointer select-none">Message / Payload</summary>
-                      <div className="mt-1 p-1.5 bg-background rounded font-mono break-all max-h-24 overflow-y-auto">{parsedTxPayload.message}</div>
-                    </details>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {invokeRequest.method === 'send_evm_transaction' && parsedEvmTxPayload && (
-              <div className="p-2.5 bg-blue-500/10 border border-blue-500/30 rounded space-y-2 text-xs">
-                <h4 className="font-medium text-blue-600 dark:text-blue-400">ETH Transaction</h4>
-                <div className="space-y-1.5">
-                  <div className="flex items-center justify-between">
-                    <span className="text-muted-foreground">Network</span>
-                    <span className="font-medium">{parsedEvmTxPayload.network === 'eth-mainnet' ? 'Ethereum Mainnet' : parsedEvmTxPayload.network === 'eth-sepolia' ? 'Sepolia' : parsedEvmTxPayload.network || 'Ethereum Mainnet'}</span>
-                  </div>
-                  <div className="flex flex-col gap-0.5">
-                    <span className="text-muted-foreground text-[10px] uppercase tracking-wider">To</span>
-                    <span className="font-mono text-[11px] break-all leading-snug">{parsedEvmTxPayload.to}</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-muted-foreground">Amount</span>
-                    <span className="font-bold text-sm">{parsedEvmTxPayload.amount ? `${parsedEvmTxPayload.amount} ETH` : parsedEvmTxPayload.value ? `${(Number(parsedEvmTxPayload.value) / 1e18).toFixed(8)} ETH` : '0 ETH'}</span>
-                  </div>
-                  {parsedEvmTxPayload.data && (
-                    <details className="pt-1 border-t border-blue-500/20">
-                      <summary className="text-muted-foreground cursor-pointer select-none">Contract Data</summary>
-                      <div className="mt-1 p-1.5 bg-background rounded font-mono break-all max-h-20 overflow-y-auto text-[10px]">{parsedEvmTxPayload.data}</div>
-                    </details>
-                  )}
-                  <details className="pt-1 border-t border-blue-500/20">
-                    <summary className="text-muted-foreground cursor-pointer select-none">Gas Settings</summary>
-                    <div className="mt-2 flex gap-2">
-                      <div className="flex-1">
-                        <label className="text-[10px] text-muted-foreground block mb-0.5">Gas Limit</label>
-                        <input type="number" value={customGasLimit} onChange={e => setCustomGasLimit(e.target.value)} className="w-full text-xs px-2 py-1 border border-border bg-background rounded focus:outline-none focus:border-primary font-mono" />
-                      </div>
-                      <div className="flex-1">
-                        <label className="text-[10px] text-muted-foreground block mb-0.5">Max Fee (Gwei)</label>
-                        <input type="number" step="0.1" value={customMaxFeeGwei} onChange={e => setCustomMaxFeeGwei(e.target.value)} className="w-full text-xs px-2 py-1 border border-border bg-background rounded focus:outline-none focus:border-primary font-mono" />
-                      </div>
-                    </div>
-                    {customGasLimit && customMaxFeeGwei && (
-                      <p className="text-[10px] text-muted-foreground mt-1">Est. max: {(parseInt(customGasLimit) * parseFloat(customMaxFeeGwei) / 1e9).toFixed(6)} ETH</p>
-                    )}
-                  </details>
-                </div>
-              </div>
-            )}
-
-            {invokeRequest.method === 'send_erc20_transaction' && parsedErc20TxPayload && (
-              <div className="p-2.5 bg-green-500/10 border border-green-500/30 rounded space-y-2 text-xs">
-                <h4 className="font-medium text-green-600 dark:text-green-400">{parsedErc20TxPayload.symbol} Transfer</h4>
-                <div className="space-y-1.5">
-                  <div className="flex items-center justify-between"><span className="text-muted-foreground">Token</span><span className="font-mono">{parsedErc20TxPayload.symbol}</span></div>
-                  <div className="flex flex-col gap-0.5">
-                    <span className="text-muted-foreground text-[10px] uppercase tracking-wider">To</span>
-                    <span className="font-mono text-[11px] break-all leading-snug">{parsedErc20TxPayload.to}</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-muted-foreground">Amount</span>
-                    <span className="font-bold text-sm">{(Number(parsedErc20TxPayload.amount) / (10 ** parsedErc20TxPayload.decimals)).toFixed(2)} {parsedErc20TxPayload.symbol}</span>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {invokeRequest.method === 'encrypt_balance' && (() => {
-              const p = parseInvokePayload<{ amount: number }>(invokeRequest.payload);
-              return p ? (
-                <div className="p-2.5 bg-[#3B567F]/10 border border-[#3B567F]/30 rounded space-y-2 text-xs">
-                  <h4 className="font-medium text-[#3B567F] dark:text-blue-300 flex items-center gap-1.5">
-                    <Lock className="h-3.5 w-3.5" />Encrypt Balance
-                  </h4>
-                  <div className="space-y-1.5">
-                    <div className="flex items-center justify-between"><span className="text-muted-foreground">Amount</span><span className="font-bold">{p.amount} OCT</span></div>
-                    <p className="text-muted-foreground text-[10px]">Moves OCT from your public balance into encrypted balance.</p>
-                  </div>
-                </div>
-              ) : null;
-            })()}
-
-            {invokeRequest.method === 'decrypt_balance' && (() => {
-              const p = parseInvokePayload<{ amount: number }>(invokeRequest.payload);
-              return p ? (
-                <div className="p-2.5 bg-[#00E5C0]/10 border border-[#00E5C0]/30 rounded space-y-2 text-xs">
-                  <h4 className="font-medium text-[#00E5C0] flex items-center gap-1.5">
-                    <Unlock className="h-3.5 w-3.5" />Decrypt Balance
-                  </h4>
-                  <div className="space-y-1.5">
-                    <div className="flex items-center justify-between"><span className="text-muted-foreground">Amount</span><span className="font-bold">{p.amount} OCT</span></div>
-                    <p className="text-muted-foreground text-[10px]">Moves OCT from encrypted balance back to public balance.</p>
-                  </div>
-                </div>
-              ) : null;
-            })()}
-
-            {invokeRequest.method === 'stealth_send' && (() => {
-              const p = parseInvokePayload<{ to: string; amount: number }>(invokeRequest.payload);
-              return p ? (
-                <div className="p-2.5 bg-[#00E5C0]/10 border border-[#00E5C0]/30 rounded space-y-2 text-xs">
-                  <h4 className="font-medium text-[#00E5C0] flex items-center gap-1.5">
-                    <Shield className="h-3.5 w-3.5" />Stealth Transfer
-                  </h4>
-                  <div className="space-y-1.5">
-                    <div className="flex flex-col gap-0.5">
-                      <span className="text-muted-foreground text-[10px] uppercase tracking-wider">To</span>
-                      <span className="font-mono text-[11px] break-all leading-snug">{p.to}</span>
-                    </div>
-                    <div className="flex items-center justify-between"><span className="text-muted-foreground">Amount</span><span className="font-bold">{p.amount} OCT</span></div>
-                    <p className="text-muted-foreground text-[10px]">Private transfer from encrypted balance. Recipient must scan to claim.</p>
-                  </div>
-                </div>
-              ) : null;
-            })()}
-
-            {invokeRequest.method === 'stealth_claim' && (() => {
-              const p = parseInvokePayload<{ outputId: string }>(invokeRequest.payload);
-              return p ? (
-                <div className="p-2.5 bg-[#00E5C0]/10 border border-[#00E5C0]/30 rounded space-y-2 text-xs">
-                  <h4 className="font-medium text-[#00E5C0] flex items-center gap-1.5">
-                    <Gift className="h-3.5 w-3.5" />Claim Stealth Output
-                  </h4>
-                  <div className="space-y-1.5">
-                    <div className="flex flex-col gap-0.5">
-                      <span className="text-muted-foreground text-[10px] uppercase tracking-wider">Output ID</span>
-                      <span className="font-mono text-[11px] break-all leading-snug">{p.outputId}</span>
-                    </div>
-                    <p className="text-muted-foreground text-[10px]">Claims a stealth output into your encrypted balance.</p>
-                  </div>
-                </div>
-              ) : null;
-            })()}
-
-            <Alert className={`py-2 ${['send_transaction','send_evm_transaction','send_erc20_transaction','encrypt_balance','decrypt_balance','stealth_send','stealth_claim'].includes(invokeRequest.method) ? 'border-amber-500/30 bg-amber-500/10' : ''}`}>
-              {['send_transaction','send_evm_transaction','send_erc20_transaction','encrypt_balance','decrypt_balance','stealth_send','stealth_claim'].includes(invokeRequest.method) ? (
-                <><AlertTriangle className="h-3 w-3 text-amber-500" /><AlertDescription className="text-xs text-amber-600 dark:text-amber-400">This will send funds from your wallet. Only approve if you trust this dApp.</AlertDescription></>
-              ) : (
-                <><Zap className="h-3 w-3" /><AlertDescription className="text-xs">Executes the method using your granted capability.</AlertDescription></>
-              )}
-            </Alert>
-          </>
-        )}
-
-        {/* Sign Message */}
-        {requestType === 'signMessage' && signMessageRequest && (
-          <>
-            <div className="p-2.5 bg-purple-500/10 border border-purple-500/30 rounded space-y-2">
-              <h4 className="text-xs font-medium text-purple-600 dark:text-purple-400 flex items-center gap-1.5">
-                <Edit className="h-3.5 w-3.5" />Message to Sign
-              </h4>
-              <div className="p-2 bg-background border border-border rounded max-h-52 overflow-y-auto">
-                <pre className="text-xs font-mono whitespace-pre-wrap break-all">{signMessageRequest.message}</pre>
-              </div>
-            </div>
-            <Alert className="py-2 border-purple-500/30 bg-purple-500/10">
-              <AlertTriangle className="h-3 w-3 text-purple-500" />
-              <AlertDescription className="text-xs text-purple-600 dark:text-purple-400">Only sign messages you understand. This proves you own this wallet.</AlertDescription>
-            </Alert>
-          </>
-        )}
-
-        {/* ZK Proof Sign */}
-        {requestType === 'pvacZkSign' && pvacZkSignRequest && (
-          <>
-            <div className="p-2.5 bg-blue-500/10 border border-blue-500/30 rounded space-y-2">
-              <h4 className="text-xs font-medium text-blue-600 dark:text-blue-400 flex items-center gap-1.5">
-                <Lock className="h-3.5 w-3.5" />ZK Proof Signing
-              </h4>
-              <div className="space-y-1.5 text-xs">
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Data size</span>
-                  <span className="font-mono">{pvacZkSignRequest.data.length} bytes</span>
-                </div>
-                {pvacZkSignRequest.domain && (
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Domain</span>
-                    <span className="font-mono truncate max-w-[180px]">{pvacZkSignRequest.domain}</span>
-                  </div>
-                )}
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Purpose</span>
-                  <span className="text-blue-500">ZK circuit public input</span>
-                </div>
-              </div>
-            </div>
-            <Alert className="py-2 border-blue-500/30 bg-blue-500/10">
-              <AlertTriangle className="h-3 w-3 text-blue-500" />
-              <AlertDescription className="text-xs text-blue-600 dark:text-blue-400">
-                This signature will be used as a public input in a zero-knowledge proof. Only approve if you trust this dApp.
-              </AlertDescription>
-            </Alert>
-          </>
-        )}
+      {/* Body — only this region scrolls if the content really exceeds the available space */}
+      <div className="flex-1 min-h-0 overflow-y-auto px-3 py-2 space-y-2">
+        {body}
       </div>
 
-      {/* ── FOOTER ── */}
-      <div className="flex-shrink-0 px-4 py-3 border-t border-border bg-background">
+      {/* Footer — fixed */}
+      <div className="shrink-0 border-t border-border bg-muted/30 px-3 py-2">
         <div className="flex gap-2">
-          <Button variant="outline" onClick={handleReject} disabled={isProcessing}
-            className="flex-1 h-10 text-red-500 border-red-500/30 hover:bg-red-500/10 hover:text-red-500">
-            <X className="h-4 w-4 mr-1.5" />Reject
+          <Button
+            variant="outline"
+            className="h-9 flex-1 text-xs"
+            onClick={onReject}
+            disabled={isProcessing}
+          >
+            <X className="mr-1.5 h-3.5 w-3.5" />
+            Reject
           </Button>
           <Button
-            onClick={() => {
-              logger.debug('DAppRequestHandler: Approve clicked', { requestType, wallet: selectedWallet?.address });
-              if (requestType === 'connection') handleConnectionApprove();
-              else if (requestType === 'capability') handleCapabilityApprove();
-              else if (requestType === 'signMessage') handleSignMessageApprove();
-              else if (requestType === 'pvacZkSign') handleZkSignApprove();
-              else if (requestType === 'invoke') handleInvokeApprove();
-            }}
-            disabled={isProcessing || !selectedWallet}
-            className="flex-1 h-10">
-            <Check className="h-4 w-4 mr-1.5" />
-            {isProcessing ? 'Processing...' : !selectedWallet ? 'Loading...' : 'Approve'}
+            variant={approveVariant === 'destructive' ? 'destructive' : 'default'}
+            className="h-9 flex-1 text-xs"
+            onClick={onApprove}
+            disabled={isProcessing}
+          >
+            {isProcessing ? (
+              <>Processing…</>
+            ) : (
+              <>
+                {approveIcon ?? <Check className="mr-1.5 h-3.5 w-3.5" />}
+                {approveLabel}
+              </>
+            )}
           </Button>
         </div>
       </div>
@@ -2172,3 +710,2132 @@ export function DAppRequestHandler({ wallets }: DAppRequestHandlerProps) {
   );
 }
 
+// =============================================================================
+// Active wallet badge — full address, no truncation
+// =============================================================================
+
+function ActiveAddressBadge({ address }: { address: string }) {
+  // Pull the human label if the user has set one in the address book so the
+  // badge reads "Wallet 1 · oct…full address". The full address is always
+  // shown verbatim — never truncated — so the operator can verify which
+  // account is signing without expanding anything.
+  const { walletLabels } = useAddressBook();
+  const label = walletLabels.find((w) => w.address.toLowerCase() === address.toLowerCase())?.name;
+
+  return (
+    <div className="flex items-center gap-1.5 rounded border border-border/70 bg-background/60 px-2 py-1">
+      <WalletIcon className="h-3 w-3 shrink-0 text-muted-foreground" />
+      <div className="min-w-0 flex-1 leading-tight">
+        <div className="text-[9px] font-medium uppercase tracking-wider text-muted-foreground">
+          Signing as{label ? ` · ${label}` : ''}
+        </div>
+        <div className="break-all font-mono text-[10px]">{address}</div>
+      </div>
+    </div>
+  );
+}
+
+// =============================================================================
+// Collapsible — used inside approval bodies so each detail block can be
+// expanded/collapsed individually instead of forcing the popup body to
+// scroll. Every section starts with sensible defaults (the heaviest data
+// surfaces collapse by default to keep the popup fitting 600 px).
+// =============================================================================
+
+function Collapsible({
+  label,
+  badge,
+  defaultOpen = true,
+  children,
+}: {
+  label: string;
+  badge?: React.ReactNode;
+  defaultOpen?: boolean;
+  children: React.ReactNode;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <div className="rounded border border-border">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="flex w-full items-center justify-between gap-2 bg-muted/30 px-2 py-1.5 text-left transition-colors hover:bg-muted/60"
+      >
+        <span className="flex items-center gap-1.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+          <ChevronRight className={`h-3 w-3 transition-transform ${open ? 'rotate-90' : ''}`} />
+          {label}
+        </span>
+        {badge ? <span className="shrink-0">{badge}</span> : null}
+      </button>
+      {open ? <div className="border-t border-border bg-background p-2">{children}</div> : null}
+    </div>
+  );
+}
+
+// =============================================================================
+// Compact origin header — fits inside the shell header band
+// =============================================================================
+
+function CompactOriginHeader({
+  origin,
+  appName,
+  appIcon,
+  title,
+}: {
+  origin: string;
+  appName?: string;
+  appIcon?: string;
+  title: string;
+}) {
+  let host = origin;
+  try { host = new URL(origin).host; } catch { /* keep raw */ }
+  const displayName = appName || host;
+  const initial = displayName.slice(0, 1).toUpperCase();
+
+  return (
+    <div className="flex items-center gap-2">
+      <Avatar className="h-7 w-7 shrink-0">
+        {appIcon ? <AvatarImage src={appIcon} /> : null}
+        <AvatarFallback className="text-[10px]">{initial}</AvatarFallback>
+      </Avatar>
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-1.5">
+          <span className="truncate text-xs font-semibold">{displayName}</span>
+          <Badge variant="outline" className="h-4 shrink-0 px-1 py-0 text-[9px] font-mono">
+            <Globe className="mr-0.5 h-2.5 w-2.5" />
+            {host}
+          </Badge>
+        </div>
+        <div className="truncate text-[11px] leading-tight text-muted-foreground">{title}</div>
+      </div>
+    </div>
+  );
+}
+
+// Every approval body now uses ApprovalShell directly which embeds
+// CompactOriginHeader in its own header band — there's no need for a
+// stand-alone OriginHeader alias.
+
+// =============================================================================
+// Wallet picker — Select dropdown
+// =============================================================================
+//
+// The connect approval is the only screen where the operator can switch
+// signing wallet. Renders as a Radix Select so the popup stays compact
+// even with many wallets. Pulls the human label from the address book
+// (`useAddressBook`) so the dropdown shows "Wallet 1 · oct…full address".
+
+function WalletPicker({
+  wallets,
+  selected,
+  onSelect,
+}: {
+  wallets: Wallet[];
+  selected: Wallet;
+  onSelect: (w: Wallet) => void;
+}) {
+  const { walletLabels } = useAddressBook();
+
+  // For a single wallet there's nothing to choose — show the static badge
+  // alongside any other approval headers do.
+  if (wallets.length <= 1) {
+    return null;
+  }
+
+  const labelFor = (w: Wallet) =>
+    walletLabels.find((l) => l.address.toLowerCase() === w.address.toLowerCase())?.name
+    ?? `Wallet`;
+
+  return (
+    <div className="space-y-1">
+      <div className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+        Wallet ({wallets.length})
+      </div>
+      <Select
+        value={selected.address}
+        onValueChange={(addr) => {
+          const next = wallets.find((w) => w.address === addr);
+          if (next) onSelect(next);
+        }}
+      >
+        <SelectTrigger className="h-9 text-xs">
+          <SelectValue>
+            <div className="flex flex-col items-start leading-tight">
+              <span className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                {labelFor(selected)}
+              </span>
+              <span className="truncate font-mono text-[10px]">{selected.address}</span>
+            </div>
+          </SelectValue>
+        </SelectTrigger>
+        <SelectContent className="max-h-64">
+          {wallets.map((w) => (
+            <SelectItem key={w.address} value={w.address} className="py-1.5">
+              <div className="flex flex-col items-start leading-tight">
+                <span className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                  {labelFor(w)}
+                </span>
+                <span className="break-all font-mono text-[10px]">{w.address}</span>
+              </div>
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </div>
+  );
+}
+
+// Legacy ActionFooter is intentionally removed — every approval now wraps
+// itself with ApprovalShell which renders the footer.
+
+
+// =============================================================================
+// Connect Approval (octra_requestAccounts)
+// =============================================================================
+
+function ConnectApproval({
+  request,
+  wallet,
+  wallets,
+  onSelectWallet,
+  isProcessing,
+  setIsProcessing,
+  onReject,
+}: {
+  request: ConnectRequest;
+  wallet: Wallet;
+  wallets: Wallet[];
+  onSelectWallet: (w: Wallet) => void;
+  isProcessing: boolean;
+  setIsProcessing: (v: boolean) => void;
+  onReject: () => void;
+}) {
+  const handleApprove = async () => {
+    setIsProcessing(true);
+    try {
+      // Determine network from active RPC provider
+      let network: 'mainnet' | 'devnet' = 'mainnet';
+      try {
+        const rpcProviders = localStorage.getItem('rpcProviders');
+        if (rpcProviders) {
+          const providers = JSON.parse(rpcProviders);
+          const active = providers.find((p: { isActive: boolean }) => p.isActive);
+          if (active?.network) network = active.network;
+        }
+      } catch {}
+
+      chrome.runtime.sendMessage({
+        type: 'CONNECTION_RESULT',
+        pendingKey: request.pendingKey,
+        approved: true,
+        walletPubKey: wallet.address,
+        address: wallet.address,
+        network,
+      });
+      window.close();
+    } catch (error) {
+      logger.error('Connect approval failed:', error);
+      setIsProcessing(false);
+    }
+  };
+
+  return (
+    <ApprovalShell
+      request={request}
+      title="wants to connect"
+      isProcessing={isProcessing}
+      onApprove={handleApprove}
+      onReject={onReject}
+      approveLabel="Connect"
+      approveIcon={<Check className="mr-1.5 h-3.5 w-3.5" />}
+      body={
+        <>
+          <Alert className="py-2">
+            <Shield className="h-3.5 w-3.5" />
+            <AlertDescription className="text-[11px] leading-tight">
+              Only connect to sites you trust. The selected wallet's address will be exposed to this site.
+            </AlertDescription>
+          </Alert>
+
+          <WalletPicker wallets={wallets} selected={wallet} onSelect={onSelectWallet} />
+
+          {wallets.length === 1 ? (
+            <ActiveAddressBadge address={wallet.address} />
+          ) : null}
+
+          <Collapsible
+            label="Permissions"
+            badge={
+              <span className="text-[10px] text-muted-foreground">
+                {request.permissions.length}
+              </span>
+            }
+            defaultOpen
+          >
+            <PermissionList permissions={request.permissions} />
+          </Collapsible>
+        </>
+      }
+    />
+  );
+}
+
+// =============================================================================
+// Sign Message Approval (octra_signMessage)
+// =============================================================================
+
+type ToastFn = ReturnType<typeof useToast>['toast'];
+
+function SignMessageApproval({
+  request,
+  wallet,
+  isProcessing,
+  setIsProcessing,
+  onReject,
+  toast,
+}: {
+  request: SignMessageRequest;
+  wallet: Wallet;
+  isProcessing: boolean;
+  setIsProcessing: (v: boolean) => void;
+  onReject: () => void;
+  toast: ToastFn;
+}) {
+  const handleApprove = async () => {
+    if (!wallet.privateKey) {
+      toast({ title: 'Wallet locked', description: 'Please unlock your wallet', variant: 'destructive' });
+      return;
+    }
+    setIsProcessing(true);
+    try {
+      const privateKeyBuffer = Buffer.from(wallet.privateKey, 'base64');
+      const keyPair = nacl.sign.keyPair.fromSeed(privateKeyBuffer.slice(0, 32));
+      const messageBytes = new TextEncoder().encode(request.message);
+      const signature = nacl.sign.detached(messageBytes, keyPair.secretKey);
+
+      chrome.runtime.sendMessage({
+        type: 'SIGN_MESSAGE_RESULT',
+        pendingKey: request.pendingKey,
+        approved: true,
+        address: wallet.address,
+        publicKey: Buffer.from(keyPair.publicKey).toString('hex'),
+        signature: Buffer.from(signature).toString('hex'),
+      });
+      window.close();
+    } catch (error) {
+      logger.error('Sign message failed:', error);
+      toast({ title: 'Sign failed', description: String(error), variant: 'destructive' });
+      setIsProcessing(false);
+    }
+  };
+
+  return (
+    <ApprovalShell
+      request={request}
+      title="wants to sign a message"
+      activeAddress={wallet.address}
+      isProcessing={isProcessing}
+      onApprove={handleApprove}
+      onReject={onReject}
+      approveLabel="Sign"
+      approveIcon={<Edit className="mr-1.5 h-3.5 w-3.5" />}
+      body={
+        <>
+          <Alert className="py-2">
+            <FileText className="h-3.5 w-3.5" />
+            <AlertDescription className="text-[11px] leading-tight">
+              You are signing data with your wallet key. Verify the message before approving.
+            </AlertDescription>
+          </Alert>
+
+          <Collapsible
+            label="Message"
+            badge={
+              <span className="text-[10px] text-muted-foreground">
+                {request.message.length} chars
+              </span>
+            }
+            defaultOpen
+          >
+            <div className="max-h-40 overflow-y-auto whitespace-pre-wrap break-all font-mono text-[11px] leading-snug">
+              {request.message}
+            </div>
+          </Collapsible>
+        </>
+      }
+    />
+  );
+}
+
+// =============================================================================
+// Transaction Approval (octra_sendTransaction)
+// =============================================================================
+
+function TransactionApproval({
+  request,
+  wallet,
+  isProcessing,
+  setIsProcessing,
+  onReject,
+  toast,
+}: {
+  request: TxRequest;
+  wallet: Wallet;
+  isProcessing: boolean;
+  setIsProcessing: (v: boolean) => void;
+  onReject: () => void;
+  toast: ToastFn;
+}) {
+  const amountOct = formatRawToOct(request.amount);
+  const [chosenOu, setChosenOu] = useState<string>(request.fee || '');
+
+  const handleApprove = async () => {
+    if (!wallet.privateKey || !wallet.publicKey) {
+      toast({ title: 'Wallet locked', description: 'Please unlock your wallet', variant: 'destructive' });
+      return;
+    }
+    setIsProcessing(true);
+    try {
+      const balanceData = await fetchBalance(wallet.address, true);
+      const txNonce = balanceData.nonce + 1;
+
+      const amountInOct = Number(request.amount) / 1_000_000;
+      const customOu = Number(chosenOu) > 0
+        ? Number(chosenOu)
+        : (request.fee && Number(request.fee) > 0 ? Number(request.fee) : undefined);
+
+      const tx = createTransaction(
+        wallet.address,
+        request.to,
+        amountInOct,
+        txNonce,
+        wallet.privateKey,
+        wallet.publicKey,
+        request.message,
+        customOu,
+      );
+
+      const result = await sendTransaction(tx);
+      if (!result.success || !result.hash) {
+        throw new Error(result.error || 'Transaction submission failed');
+      }
+
+      chrome.runtime.sendMessage({
+        type: 'TX_RESULT',
+        pendingKey: request.pendingKey,
+        approved: true,
+        hash: result.hash,
+        nonce: txNonce,
+        ouCost: tx.ou,
+      });
+      window.close();
+    } catch (error) {
+      logger.error('Transaction failed:', error);
+      toast({
+        title: 'Transaction failed',
+        description: error instanceof Error ? error.message : String(error),
+        variant: 'destructive',
+      });
+      setIsProcessing(false);
+    }
+  };
+
+  return (
+    <ApprovalShell
+      request={request}
+      title="wants to send a transaction"
+      activeAddress={wallet.address}
+      isProcessing={isProcessing}
+      onApprove={handleApprove}
+      onReject={onReject}
+      approveLabel="Send"
+      approveIcon={<Send className="mr-1.5 h-3.5 w-3.5" />}
+      approveVariant="destructive"
+      body={
+        <>
+          <Alert variant="destructive" className="py-2">
+            <AlertTriangle className="h-3.5 w-3.5" />
+            <AlertDescription className="text-[11px] leading-tight">
+              This will transfer OCT from your wallet. Verify all details before approving.
+            </AlertDescription>
+          </Alert>
+
+          <Collapsible label="Transfer · op_type: standard" defaultOpen>
+            <div className="rounded border border-border divide-y divide-border bg-background">
+              <DetailRow label="To"     value={request.to} mono full />
+              <DetailRow label="Amount" value={`${amountOct} OCT`} />
+              <DetailRow
+                label="Fee"
+                value={chosenOu
+                  ? `${Number(chosenOu).toLocaleString()} OU ≈ ${ouToOct(Number(chosenOu))} OCT`
+                  : 'Auto'}
+              />
+              {request.message ? <DetailRow label="Message" value={request.message} /> : null}
+            </div>
+          </Collapsible>
+
+          <FeeSelector
+            feeContext="standard"
+            dappFee={request.fee}
+            onChange={setChosenOu}
+          />
+
+          <div className="rounded border border-border bg-muted/30 px-2 py-1.5 text-[10px] leading-tight text-muted-foreground">
+            Once submitted, the transaction enters Octra <strong className="text-foreground">staging</strong>.
+            Final confirmation may take several epochs.
+          </div>
+        </>
+      }
+    />
+  );
+}
+
+// =============================================================================
+// Sign Tx Approval (octra_signTransaction — sign without submitting)
+// =============================================================================
+
+function SignTxApproval({
+  request,
+  wallet,
+  isProcessing,
+  setIsProcessing,
+  onReject,
+  toast,
+}: {
+  request: SignTxRequest;
+  wallet: Wallet;
+  isProcessing: boolean;
+  setIsProcessing: (v: boolean) => void;
+  onReject: () => void;
+  toast: ToastFn;
+}) {
+  const amountOct = formatRawToOct(request.amount);
+  const [chosenOu, setChosenOu] = useState<string>(request.fee);
+
+  const handleApprove = async () => {
+    if (!wallet.privateKey || !wallet.publicKey) {
+      toast({ title: 'Wallet locked', description: 'Please unlock your wallet', variant: 'destructive' });
+      return;
+    }
+    setIsProcessing(true);
+    try {
+      const txNonce = request.nonce
+        ? Number(request.nonce)
+        : (await fetchBalance(wallet.address, true)).nonce + 1;
+
+      const amountInOct = Number(request.amount) / 1_000_000;
+      const customOu = Number(chosenOu) > 0 ? Number(chosenOu) : Number(request.fee);
+
+      const tx = createTransaction(
+        wallet.address,
+        request.to,
+        amountInOct,
+        txNonce,
+        wallet.privateKey,
+        wallet.publicKey,
+        request.message,
+        customOu,
+      );
+
+      chrome.runtime.sendMessage({
+        type: 'SIGN_TX_RESULT',
+        pendingKey: request.pendingKey,
+        approved: true,
+        signedTx: tx,
+      });
+      window.close();
+    } catch (error) {
+      toast({
+        title: 'Sign failed',
+        description: error instanceof Error ? error.message : String(error),
+        variant: 'destructive',
+      });
+      setIsProcessing(false);
+    }
+  };
+
+  return (
+    <ApprovalShell
+      request={request}
+      title="wants to sign a transaction"
+      activeAddress={wallet.address}
+      isProcessing={isProcessing}
+      onApprove={handleApprove}
+      onReject={onReject}
+      approveLabel="Sign"
+      approveIcon={<Edit className="mr-1.5 h-3.5 w-3.5" />}
+      body={
+        <>
+          <Alert className="py-2">
+            <FileText className="h-3.5 w-3.5" />
+            <AlertDescription className="text-[11px] leading-tight">
+              The transaction will be signed but <strong>not submitted</strong>. The dApp will receive the signed transaction.
+            </AlertDescription>
+          </Alert>
+
+          <Collapsible label="Sign tx · op_type: standard" defaultOpen>
+            <div className="rounded border border-border divide-y divide-border bg-background">
+              <DetailRow label="To"     value={request.to} mono full />
+              <DetailRow label="Amount" value={`${amountOct} OCT`} />
+              <DetailRow
+                label="Fee"
+                value={`${Number(chosenOu).toLocaleString()} OU ≈ ${ouToOct(Number(chosenOu))} OCT`}
+              />
+              {request.nonce ? <DetailRow label="Nonce" value={request.nonce} /> : null}
+              {request.message ? <DetailRow label="Message" value={request.message} /> : null}
+            </div>
+          </Collapsible>
+
+          <FeeSelector
+            feeContext="standard"
+            dappFee={request.fee}
+            onChange={setChosenOu}
+          />
+        </>
+      }
+    />
+  );
+}
+
+
+// =============================================================================
+// Contract Approval (octra_sendContractTransaction)
+// =============================================================================
+
+function ContractApproval({
+  request,
+  wallet,
+  isProcessing,
+  setIsProcessing,
+  onReject,
+  toast,
+}: {
+  request: ContractTxRequest;
+  wallet: Wallet;
+  isProcessing: boolean;
+  setIsProcessing: (v: boolean) => void;
+  onReject: () => void;
+  toast: ToastFn;
+}) {
+  const amountOct = formatRawToOct(request.amount || '0');
+  const [chosenOu, setChosenOu] = useState<string>(request.fee || '');
+
+  const handleApprove = async () => {
+    if (!wallet.privateKey || !wallet.publicKey) {
+      toast({ title: 'Wallet locked', description: 'Please unlock your wallet', variant: 'destructive' });
+      return;
+    }
+    setIsProcessing(true);
+    try {
+      const balanceData = await fetchBalance(wallet.address, true);
+      const txNonce = balanceData.nonce + 1;
+      const amountInOct = Number(request.amount || '0') / 1_000_000;
+      // Prefer the user's selection from the FeeSelector; fall back to the
+      // dApp-provided fee, then to the node's default.
+      const customOu = Number(chosenOu) > 0
+        ? Number(chosenOu)
+        : (request.fee && Number(request.fee) > 0 ? Number(request.fee) : undefined);
+
+      // Contract calls in Octra: encrypted_data = method, message = JSON params
+      const tx = createTransaction(
+        wallet.address,
+        request.address,
+        amountInOct,
+        txNonce,
+        wallet.privateKey,
+        wallet.publicKey,
+        JSON.stringify(request.params || []),
+        customOu,
+        'call',
+        request.method,
+      );
+
+      const result = await sendTransaction(tx);
+      if (!result.success || !result.hash) {
+        throw new Error(result.error || 'Contract call submission failed');
+      }
+
+      chrome.runtime.sendMessage({
+        type: 'CONTRACT_TX_RESULT',
+        pendingKey: request.pendingKey,
+        approved: true,
+        hash: result.hash,
+        nonce: txNonce,
+        ouCost: tx.ou,
+      });
+      window.close();
+    } catch (error) {
+      logger.error('Contract call failed:', error);
+      toast({
+        title: 'Contract call failed',
+        description: error instanceof Error ? error.message : String(error),
+        variant: 'destructive',
+      });
+      setIsProcessing(false);
+    }
+  };
+
+  return (
+    <ApprovalShell
+      request={request}
+      title="wants to call a contract"
+      activeAddress={wallet.address}
+      isProcessing={isProcessing}
+      onApprove={handleApprove}
+      onReject={onReject}
+      approveLabel="Call"
+      approveIcon={<Send className="mr-1.5 h-3.5 w-3.5" />}
+      approveVariant="destructive"
+      body={
+        <>
+          <Alert variant="destructive" className="py-2">
+            <AlertTriangle className="h-3.5 w-3.5" />
+            <AlertDescription className="text-[11px] leading-tight">
+              Contract calls can mutate on-chain state. Verify the contract and method.
+            </AlertDescription>
+          </Alert>
+
+          <Collapsible
+            label={`Contract · op_type: call · method: ${request.method}`}
+            defaultOpen
+          >
+            <div className="rounded border border-border divide-y divide-border bg-background">
+              <DetailRow label="Contract" value={request.address} mono full />
+              <DetailRow label="Method"   value={request.method}  mono />
+              {request.amount && request.amount !== '0' ? (
+                <DetailRow label="Attached" value={`${amountOct} OCT`} />
+              ) : null}
+              <DetailRow
+                label="Fee"
+                value={chosenOu
+                  ? `${Number(chosenOu).toLocaleString()} OU ≈ ${ouToOct(Number(chosenOu))} OCT`
+                  : 'Auto'}
+              />
+            </div>
+          </Collapsible>
+
+          <FeeSelector
+            feeContext="call"
+            dappFee={request.fee}
+            onChange={setChosenOu}
+          />
+
+          <Collapsible
+            label="Params"
+            badge={
+              <span className="text-[10px] text-muted-foreground">
+                {Array.isArray(request.params) ? `${request.params.length} arg(s)` : '0'}
+              </span>
+            }
+            defaultOpen={false}
+          >
+            <div className="max-h-32 overflow-y-auto whitespace-pre-wrap break-all font-mono text-[11px] leading-snug">
+              {JSON.stringify(request.params || [], null, 2)}
+            </div>
+          </Collapsible>
+        </>
+      }
+    />
+  );
+}
+
+// =============================================================================
+// Encrypt / Decrypt Balance Approval
+// =============================================================================
+
+function EncryptDecryptApproval({
+  request,
+  kind,
+  wallet,
+  isProcessing,
+  setIsProcessing,
+  onReject,
+  toast,
+}: {
+  request: EncryptDecryptRequest;
+  kind: 'encrypt' | 'decrypt';
+  wallet: Wallet;
+  isProcessing: boolean;
+  setIsProcessing: (v: boolean) => void;
+  onReject: () => void;
+  toast: ToastFn;
+}) {
+  const amountOct = formatRawToOct(request.amount);
+  const isEncrypt = kind === 'encrypt';
+  const [chosenOu, setChosenOu] = useState<string>(request.fee || '');
+
+  const handleApprove = async () => {
+    if (!wallet.privateKey || !wallet.publicKey) {
+      toast({ title: 'Wallet locked', description: 'Please unlock your wallet', variant: 'destructive' });
+      return;
+    }
+    setIsProcessing(true);
+    try {
+      const { runInWorker } = await import('@/lib/pvac/pvac-worker-client');
+
+      // Build the canonical payload for whichever op is being approved.
+      // Encrypt is straightforward — public balance → encrypted, no
+      // ciphertext input. Decrypt MUST supply the wallet's current
+      // encrypted cipher so the worker can subtract the requested
+      // amount and produce a range proof against the new balance;
+      // the previous version of this approval forgot that and the
+      // node rejected the resulting tx as malformed.
+      const balanceData = await fetchBalance(wallet.address, true);
+      // Resolve the OU: explicit user choice > dApp-provided > node default.
+      const ou = Number(chosenOu) > 0
+        ? chosenOu
+        : String(request.fee || (await fetchRecommendedFee(isEncrypt ? 'encrypt' : 'decrypt')));
+
+      let workerOp: 'encryptBalance' | 'decryptToPublic';
+      let workerInput: Record<string, unknown>;
+
+      if (isEncrypt) {
+        workerOp = 'encryptBalance';
+        workerInput = {
+          privateKey: wallet.privateKey,
+          publicKey: wallet.publicKey,
+          address: wallet.address,
+          amountRaw: request.amount,
+          nonce: balanceData.nonce + 1,
+          ou,
+        };
+      } else {
+        // Fetch the freshest encrypted-balance cipher straight from
+        // the node so we don't operate against stale state.
+        const enc = await fetchEncryptedBalance(wallet.address, wallet.privateKey, true);
+        const cipher = enc?.cipher;
+        if (!cipher || cipher === '0' || !cipher.startsWith('hfhe_v1|')) {
+          throw new Error('No encrypted balance to decrypt — call encryptBalance first');
+        }
+        const enoughEncrypted = (enc?.encrypted ?? 0) * 1_000_000;
+        if (enoughEncrypted < Number(request.amount)) {
+          throw new Error(`Insufficient encrypted balance: have ${enc?.encrypted ?? 0} OCT`);
+        }
+        // Use the worker's transaction-building op (decryptToPublic),
+        // not the read-only `decryptBalance` cipher reader.
+        workerOp = 'decryptToPublic';
+        workerInput = {
+          privateKey: wallet.privateKey,
+          publicKey: wallet.publicKey,
+          address: wallet.address,
+          amountRaw: request.amount,
+          currentCipher: cipher,
+          nonce: balanceData.nonce + 1,
+          ou,
+        };
+      }
+
+      const result = await runInWorker<{ tx: import('../types/wallet').Transaction }>(
+        workerOp,
+        workerInput,
+      );
+      if (!result.success || !result.data) throw new Error(result.error || 'Operation failed');
+
+      const submit = await sendTransaction(result.data.tx);
+      if (!submit.success || !submit.hash) {
+        throw new Error(submit.error || 'Submission failed');
+      }
+
+      chrome.runtime.sendMessage({
+        type: isEncrypt ? 'ENCRYPT_BALANCE_RESULT' : 'DECRYPT_BALANCE_RESULT',
+        pendingKey: request.pendingKey,
+        approved: true,
+        hash: submit.hash,
+      });
+      window.close();
+    } catch (error) {
+      logger.error(`${kind} failed:`, error);
+      toast({
+        title: `${isEncrypt ? 'Encrypt' : 'Decrypt'} failed`,
+        description: error instanceof Error ? error.message : String(error),
+        variant: 'destructive',
+      });
+      setIsProcessing(false);
+    }
+  };
+
+  return (
+    <ApprovalShell
+      request={request}
+      title={isEncrypt ? 'wants to encrypt balance' : 'wants to decrypt balance'}
+      activeAddress={wallet.address}
+      isProcessing={isProcessing}
+      onApprove={handleApprove}
+      onReject={onReject}
+      approveLabel={isEncrypt ? 'Encrypt' : 'Decrypt'}
+      approveIcon={
+        isEncrypt
+          ? <Lock className="mr-1.5 h-3.5 w-3.5" />
+          : <Unlock className="mr-1.5 h-3.5 w-3.5" />
+      }
+      body={
+        <>
+          <Alert className="py-2">
+            {isEncrypt ? <Lock className="h-3.5 w-3.5" /> : <Unlock className="h-3.5 w-3.5" />}
+            <AlertDescription className="text-[11px] leading-tight">
+              {isEncrypt
+                ? 'OCT will be moved from your public balance into encrypted balance.'
+                : 'OCT will be moved from encrypted balance back to public balance.'}
+            </AlertDescription>
+          </Alert>
+
+          <Collapsible
+            label={`${isEncrypt ? 'Encrypt' : 'Decrypt'} · op_type: ${isEncrypt ? 'encrypt' : 'decrypt'}`}
+            defaultOpen
+          >
+            <div className="rounded border border-border divide-y divide-border bg-background">
+              <DetailRow label="Amount" value={`${amountOct} OCT`} />
+              <DetailRow
+                label="Fee"
+                value={chosenOu
+                  ? `${Number(chosenOu).toLocaleString()} OU ≈ ${ouToOct(Number(chosenOu))} OCT`
+                  : 'Auto'}
+              />
+            </div>
+          </Collapsible>
+
+          <FeeSelector
+            feeContext={isEncrypt ? 'encrypt' : 'decrypt'}
+            dappFee={request.fee}
+            onChange={setChosenOu}
+          />
+
+          {!isEncrypt ? (
+            <div className="rounded border border-border bg-muted/30 px-2 py-1.5 text-[10px] leading-tight text-muted-foreground">
+              Decrypting requires a range proof and may take several minutes inside the wallet worker.
+            </div>
+          ) : null}
+        </>
+      }
+    />
+  );
+}
+
+// =============================================================================
+// Stealth Send Approval (octra_sendPrivateTransfer)
+// =============================================================================
+
+function StealthSendApproval({
+  request,
+  wallet,
+  isProcessing,
+  setIsProcessing,
+  onReject,
+  toast,
+}: {
+  request: StealthRequest;
+  wallet: Wallet;
+  isProcessing: boolean;
+  setIsProcessing: (v: boolean) => void;
+  onReject: () => void;
+  toast: ToastFn;
+}) {
+  const amountOct = formatRawToOct(request.amount);
+  const [chosenOu, setChosenOu] = useState<string>(request.fee || '');
+
+  const handleApprove = async () => {
+    if (!wallet.privateKey || !wallet.publicKey) {
+      toast({ title: 'Wallet locked', description: 'Please unlock your wallet', variant: 'destructive' });
+      return;
+    }
+    setIsProcessing(true);
+    try {
+      const { runInWorker } = await import('@/lib/pvac/pvac-worker-client');
+
+      // Stealth send needs three pieces of state the dApp can't supply:
+      //   - the sender's current encrypted balance cipher (for the
+      //     range proof against the new balance)
+      //   - the recipient's view pubkey (for the ECDH that produces
+      //     the stealth tag)
+      //   - the latest sender nonce (for replay protection)
+      // Fetch them all in parallel before invoking the worker so we
+      // don't ship a malformed payload that the node would reject.
+      const [balanceData, encrypted, recipientViewPubkey] = await Promise.all([
+        fetchBalance(wallet.address, true),
+        fetchEncryptedBalance(wallet.address, wallet.privateKey, true),
+        getViewPubkey(request.to),
+      ]);
+      const cipher = encrypted?.cipher;
+      if (!cipher || cipher === '0' || !cipher.startsWith('hfhe_v1|')) {
+        throw new Error('No encrypted balance — call encryptBalance first');
+      }
+      if (!recipientViewPubkey) {
+        throw new Error('Recipient has no view pubkey — they must register PVAC first');
+      }
+      const enoughEncrypted = (encrypted?.encrypted ?? 0) * 1_000_000;
+      if (enoughEncrypted < Number(request.amount)) {
+        throw new Error(`Insufficient encrypted balance: have ${encrypted?.encrypted ?? 0} OCT`);
+      }
+
+      const ou = Number(chosenOu) > 0
+        ? chosenOu
+        : String(request.fee || (await fetchRecommendedFee('stealth')));
+
+      const result = await runInWorker<{ tx: import('../types/wallet').Transaction }>(
+        'stealthSend',
+        {
+          privateKey:           wallet.privateKey,
+          publicKey:            wallet.publicKey,
+          address:              wallet.address,
+          // Worker expects `toAddress`, not `to` — the previous version
+          // shipped the wrong field name and the worker built a tx
+          // against an empty recipient.
+          toAddress:            request.to,
+          amountRaw:            request.amount,
+          currentCipher:        cipher,
+          recipientViewPubkey,
+          nonce:                balanceData.nonce + 1,
+          ou,
+        },
+      );
+      if (!result.success || !result.data) throw new Error(result.error || 'Stealth send failed');
+
+      const submit = await sendTransaction(result.data.tx);
+      if (!submit.success || !submit.hash) {
+        throw new Error(submit.error || 'Submission failed');
+      }
+
+      chrome.runtime.sendMessage({
+        type: 'STEALTH_SEND_RESULT',
+        pendingKey: request.pendingKey,
+        approved: true,
+        hash: submit.hash,
+      });
+      window.close();
+    } catch (error) {
+      logger.error('Stealth send failed:', error);
+      toast({
+        title: 'Private transfer failed',
+        description: error instanceof Error ? error.message : String(error),
+        variant: 'destructive',
+      });
+      setIsProcessing(false);
+    }
+  };
+
+  return (
+    <ApprovalShell
+      request={request}
+      title="wants to send a private transfer"
+      activeAddress={wallet.address}
+      isProcessing={isProcessing}
+      onApprove={handleApprove}
+      onReject={onReject}
+      approveLabel="Send Private"
+      approveIcon={<Lock className="mr-1.5 h-3.5 w-3.5" />}
+      approveVariant="destructive"
+      body={
+        <>
+          <Alert className="py-2">
+            <Lock className="h-3.5 w-3.5" />
+            <AlertDescription className="text-[11px] leading-tight">
+              The amount and recipient will be encrypted on-chain. Recipient must have a registered view public key.
+            </AlertDescription>
+          </Alert>
+
+          <Collapsible label="Stealth send · op_type: stealth" defaultOpen>
+            <div className="rounded border border-border divide-y divide-border bg-background">
+              <DetailRow label="To"     value={request.to} mono full />
+              <DetailRow label="Amount" value={`${amountOct} OCT`} />
+              <DetailRow
+                label="Fee"
+                value={chosenOu
+                  ? `${Number(chosenOu).toLocaleString()} OU ≈ ${ouToOct(Number(chosenOu))} OCT`
+                  : 'Auto'}
+              />
+            </div>
+          </Collapsible>
+
+          <FeeSelector
+            feeContext="stealth"
+            dappFee={request.fee}
+            onChange={setChosenOu}
+          />
+
+          <div className="rounded border border-border bg-muted/30 px-2 py-1.5 text-[10px] leading-tight text-muted-foreground">
+            Stealth send generates two range proofs locally — expect several minutes inside the wallet worker.
+          </div>
+        </>
+      }
+    />
+  );
+}
+
+// =============================================================================
+// Stealth Claim Approval (octra_claimStealth)
+// =============================================================================
+
+function StealthClaimApproval({
+  request,
+  wallet,
+  isProcessing,
+  setIsProcessing,
+  onReject,
+  toast,
+}: {
+  request: ClaimRequest;
+  wallet: Wallet;
+  isProcessing: boolean;
+  setIsProcessing: (v: boolean) => void;
+  onReject: () => void;
+  toast: ToastFn;
+}) {
+  const [chosenOu, setChosenOu] = useState<string>(request.fee || '');
+
+  const handleApprove = async () => {
+    if (!wallet.privateKey || !wallet.publicKey) {
+      toast({ title: 'Wallet locked', description: 'Please unlock your wallet', variant: 'destructive' });
+      return;
+    }
+    setIsProcessing(true);
+    try {
+      const { runInWorker } = await import('@/lib/pvac/pvac-worker-client');
+
+      // The dApp only knows the output id — the worker needs the full
+      // stealth output (eph_pub / stealth_tag / enc_amount). Scan the
+      // wallet's claimable outputs locally and pick the matching one
+      // by id. If no match is found the requested output either was
+      // never directed at this wallet or has already been claimed.
+      const claimable = await scanStealthOutputs(wallet.privateKey, wallet.address);
+      const match = claimable.find((c) => c.id === request.outputId);
+      if (!match) {
+        throw new Error(`Output ${request.outputId} not found in claimable set`);
+      }
+
+      const balanceData = await fetchBalance(wallet.address, true);
+      const ou = Number(chosenOu) > 0
+        ? chosenOu
+        : String(request.fee || (await fetchRecommendedFee('standard')));
+
+      const result = await runInWorker<{ tx: import('../types/wallet').Transaction }>(
+        'claimStealth',
+        {
+          privateKey:    wallet.privateKey,
+          publicKey:     wallet.publicKey,
+          address:       wallet.address,
+          // Worker expects the full output object, not just the id —
+          // the previous version shipped only `outputId` and the
+          // worker couldn't reconstruct the claim cipher.
+          stealthOutput: match.rawOutput,
+          nonce:         balanceData.nonce + 1,
+          ou,
+        },
+      );
+      if (!result.success || !result.data) throw new Error(result.error || 'Claim failed');
+
+      const submit = await sendTransaction(result.data.tx);
+      if (!submit.success || !submit.hash) {
+        throw new Error(submit.error || 'Submission failed');
+      }
+
+      chrome.runtime.sendMessage({
+        type: 'STEALTH_CLAIM_RESULT',
+        pendingKey: request.pendingKey,
+        approved: true,
+        hash: submit.hash,
+      });
+      window.close();
+    } catch (error) {
+      logger.error('Stealth claim failed:', error);
+      toast({
+        title: 'Claim failed',
+        description: error instanceof Error ? error.message : String(error),
+        variant: 'destructive',
+      });
+      setIsProcessing(false);
+    }
+  };
+
+  return (
+    <ApprovalShell
+      request={request}
+      title="wants to claim a stealth output"
+      activeAddress={wallet.address}
+      isProcessing={isProcessing}
+      onApprove={handleApprove}
+      onReject={onReject}
+      approveLabel="Claim"
+      approveIcon={<Gift className="mr-1.5 h-3.5 w-3.5" />}
+      body={
+        <>
+          <Alert className="py-2">
+            <Gift className="h-3.5 w-3.5" />
+            <AlertDescription className="text-[11px] leading-tight">
+              Claiming will add the output amount to your encrypted balance.
+            </AlertDescription>
+          </Alert>
+
+          <Collapsible label="Claim · op_type: claim" defaultOpen>
+            <div className="rounded border border-border divide-y divide-border bg-background">
+              <DetailRow label="Output ID" value={request.outputId} mono full />
+              <DetailRow
+                label="Fee"
+                value={chosenOu
+                  ? `${Number(chosenOu).toLocaleString()} OU ≈ ${ouToOct(Number(chosenOu))} OCT`
+                  : 'Auto'}
+              />
+            </div>
+          </Collapsible>
+
+          <FeeSelector
+            feeContext="standard"
+            dappFee={request.fee}
+            onChange={setChosenOu}
+          />
+        </>
+      }
+    />
+  );
+}
+
+// =============================================================================
+// Sensitive Write Approval (raw RPC pass-through requiring confirmation)
+// =============================================================================
+
+function SensitiveWriteApproval({
+  request,
+  wallet,
+  isProcessing,
+  setIsProcessing,
+  onReject,
+}: {
+  request: SensitiveWriteRequest;
+  wallet: Wallet;
+  isProcessing: boolean;
+  setIsProcessing: (v: boolean) => void;
+  onReject: () => void;
+}) {
+  const handleApprove = () => {
+    setIsProcessing(true);
+    chrome.runtime.sendMessage({
+      type: 'SENSITIVE_WRITE_RESULT',
+      pendingKey: request.pendingKey,
+      approved: true,
+    });
+    window.close();
+  };
+
+  // Map raw RPC method onto the matching tx op_type so the operator sees
+  // the on-chain effect in plain language alongside the method name.
+  const opType = methodToOpType(request.method);
+
+  return (
+    <ApprovalShell
+      request={request}
+      title="wants to perform a write operation"
+      activeAddress={wallet.address}
+      isProcessing={isProcessing}
+      onApprove={handleApprove}
+      onReject={onReject}
+      approveLabel="Approve"
+      approveIcon={<Check className="mr-1.5 h-3.5 w-3.5" />}
+      approveVariant="destructive"
+      body={
+        <>
+          <Alert variant="destructive" className="py-2">
+            <AlertTriangle className="h-3.5 w-3.5" />
+            <AlertDescription className="text-[11px] leading-tight">
+              This is a low-level RPC write call that may modify on-chain state.
+            </AlertDescription>
+          </Alert>
+
+          <Collapsible
+            label={`RPC · op_type: ${opType}`}
+            defaultOpen
+          >
+            <div className="rounded border border-border divide-y divide-border bg-background">
+              <DetailRow label="Method" value={request.method} mono full />
+            </div>
+          </Collapsible>
+
+          <Collapsible
+            label="Params"
+            badge={
+              <span className="text-[10px] text-muted-foreground">
+                {Array.isArray(request.params) ? `${request.params.length} arg(s)` : '0'}
+              </span>
+            }
+            defaultOpen={false}
+          >
+            <div className="max-h-40 overflow-y-auto whitespace-pre-wrap break-all font-mono text-[11px] leading-snug">
+              {JSON.stringify(request.params || [], null, 2)}
+            </div>
+          </Collapsible>
+        </>
+      }
+    />
+  );
+}
+
+// =============================================================================
+// Detail row helper
+// =============================================================================
+
+function DetailRow({
+  label,
+  value,
+  mono = false,
+  full = false,
+}: {
+  label: string;
+  value: string;
+  mono?: boolean;
+  /** When true, render the value on its own line so long strings (contract addresses,
+   *  output ids, RPC methods) are shown verbatim without truncation. */
+  full?: boolean;
+}) {
+  if (full) {
+    return (
+      <div className="px-2 py-1.5 space-y-0.5">
+        <div className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+          {label}
+        </div>
+        <div className={`break-all text-[11px] leading-snug ${mono ? 'font-mono' : ''}`}>
+          {value}
+        </div>
+      </div>
+    );
+  }
+  return (
+    <div className="flex items-start justify-between gap-2 px-2 py-1.5">
+      <div className="shrink-0 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+        {label}
+      </div>
+      <div className={`break-all text-right text-[11px] leading-snug ${mono ? 'font-mono' : ''}`}>
+        {value}
+      </div>
+    </div>
+  );
+}
+
+// =============================================================================
+// Helpers
+// =============================================================================
+
+/** Format raw OU string to OCT (1 OCT = 1_000_000 OU). */
+function formatRawToOct(raw: string): string {
+  try {
+    const num = Number(raw);
+    if (!Number.isFinite(num)) return raw;
+    const oct = num / 1_000_000;
+    if (oct >= 1) return oct.toFixed(6).replace(/0+$/, '').replace(/\.$/, '');
+    return oct.toString();
+  } catch {
+    return raw;
+  }
+}
+
+/**
+ * Map a raw RPC method name onto the canonical Octra `op_type` it produces.
+ * Used by the SensitiveWriteApproval header so the operator sees the on-chain
+ * effect at a glance — a method like `octra_submit` or `staging_remove` is
+ * meaningless to most users, but `op_type: standard` or `op_type: revert`
+ * is.
+ *
+ * Falls back to the original method when there's no clean mapping.
+ */
+function methodToOpType(method: string): string {
+  switch (method) {
+    case 'octra_submit':              return 'standard';
+    case 'octra_submitBatch':         return 'standard (batch)';
+    case 'octra_privateTransfer':     return 'stealth';
+    case 'octra_registerPublicKey':   return 'register pubkey';
+    case 'octra_registerPvacPubkey':  return 'register pvac pubkey';
+    case 'staging_remove':            return 'revert (staging)';
+    case 'contract_verify':           return 'verify (off-chain)';
+    case 'contract_saveAbi':          return 'save abi (off-chain)';
+    default:                          return method;
+  }
+}
+
+
+// =============================================================================
+// EVM Approval Components
+// =============================================================================
+
+interface EvmApprovalProps<T> {
+  request: T;
+  wallet: Wallet;
+  isProcessing: boolean;
+  setIsProcessing: (v: boolean) => void;
+  onReject: () => void;
+  toast: ReturnType<typeof useToast>['toast'];
+}
+
+/**
+ * Shared helper: derive EVM private key from the current wallet's Octra key,
+ * sign with ethers inside the popup, return the tx hash to background.
+ * This keeps the private key isolated to the popup process only.
+ */
+async function getEvmPrivateKeyHex(wallet: Wallet): Promise<string> {
+  const { deriveEvmFromOctraKey } = await import('../utils/evmDerive');
+  return deriveEvmFromOctraKey(wallet.privateKey).privateKeyHex;
+}
+
+async function getEvmRpcUrlForChain(chainId: number): Promise<string> {
+  const { getEVMRpcUrl, getAllNetworks } = await import('../utils/evmRpc');
+  const all = getAllNetworks();
+  const net = all.find(n => n.chainId === chainId);
+  if (!net) throw new Error(`No network with chainId ${chainId}`);
+  return getEVMRpcUrl(net.id);
+}
+
+// ── EVM Send Transaction ─────────────────────────────────────────────────────
+
+function EvmTxApproval({ request, wallet, isProcessing, setIsProcessing, onReject, toast }: EvmApprovalProps<EvmTxRequest>) {
+  const [gasOverrides, setGasOverrides] = useState<EvmGasOverrides>({
+    gasLimit: request.gasLimit ?? '',
+    maxFeePerGasGwei: '',
+    maxPriorityFeePerGasGwei: AUTO_PRIORITY_TIP_GWEI,
+  });
+  const [rpcUrl, setRpcUrl] = useState<string>('');
+
+  useEffect(() => {
+    void getEvmRpcUrlForChain(request.chainId).then(setRpcUrl).catch(() => {});
+  }, [request.chainId]);
+
+  const handleApprove = async () => {
+    setIsProcessing(true);
+    try {
+      const pkHex = await getEvmPrivateKeyHex(wallet);
+      const url = rpcUrl || (await getEvmRpcUrlForChain(request.chainId));
+      const { ethers } = await import('ethers');
+      const provider = new ethers.JsonRpcProvider(url);
+      const signer = new ethers.Wallet(pkHex.startsWith('0x') ? pkHex : `0x${pkHex}`, provider);
+
+      const txReq: Record<string, unknown> = { to: request.to };
+      if (request.value && request.value !== '0') txReq.value = ethers.parseEther(request.value);
+      if (request.data) txReq.data = request.data.startsWith('0x') ? request.data : `0x${request.data}`;
+
+      // Apply user-selected gas overrides on top of the dApp-supplied
+      // baseline. ethers will fill in anything we leave blank from
+      // live network fee data.
+      const gasPatch = await buildEvmGasPatch(gasOverrides);
+      Object.assign(txReq, gasPatch);
+
+      const tx = await signer.sendTransaction(txReq as Parameters<typeof signer.sendTransaction>[0]);
+
+      chrome.runtime.sendMessage({
+        type: 'EVM_TX_RESULT',
+        pendingKey: request.pendingKey,
+        approved: true,
+        hash: tx.hash,
+        chainId: request.chainId,
+      });
+      window.close();
+    } catch (err) {
+      setIsProcessing(false);
+      toast({ title: 'Transaction Failed', description: (err as Error).message, variant: 'destructive' });
+    }
+  };
+
+  const valueDisplay = request.value && request.value !== '0'
+    ? `${request.value} ${request.symbol}`
+    : `0 ${request.symbol}`;
+
+  return (
+    <ApprovalShell
+      request={request}
+      title="wants to send an EVM transaction"
+      activeAddress={wallet.address}
+      isProcessing={isProcessing}
+      onApprove={handleApprove}
+      onReject={onReject}
+      approveLabel="Send"
+      approveIcon={<Check className="mr-1.5 h-3.5 w-3.5" />}
+      body={
+        <>
+          <Collapsible label={`evm · ${request.networkName}`} defaultOpen>
+            <DetailRow label="to" value={request.to} full />
+            <DetailRow label="value" value={valueDisplay} />
+            <DetailRow label="chain" value={`${request.networkName} (${request.chainId})`} />
+            {request.data && <DetailRow label="data" value={request.data.slice(0, 66) + (request.data.length > 66 ? '…' : '')} />}
+            {request.gasLimit && <DetailRow label="gas hint" value={request.gasLimit} />}
+          </Collapsible>
+
+          {rpcUrl && (
+            <EvmGasSelector
+              rpcUrl={rpcUrl}
+              dappGasLimit={request.gasLimit}
+              onChange={setGasOverrides}
+            />
+          )}
+        </>
+      }
+    />
+  );
+}
+
+// ── EVM Sign Message ─────────────────────────────────────────────────────────
+
+function EvmSignApproval({ request, wallet, isProcessing, setIsProcessing, onReject, toast }: EvmApprovalProps<EvmSignMessageRequest>) {
+  const handleApprove = async () => {
+    setIsProcessing(true);
+    try {
+      const pkHex = await getEvmPrivateKeyHex(wallet);
+      const { ethers } = await import('ethers');
+      const signer = new ethers.Wallet(pkHex.startsWith('0x') ? pkHex : `0x${pkHex}`);
+      const signature = await signer.signMessage(request.message);
+
+      chrome.runtime.sendMessage({
+        type: 'EVM_SIGN_MESSAGE_RESULT',
+        pendingKey: request.pendingKey,
+        approved: true,
+        signature,
+        address: signer.address,
+      });
+      window.close();
+    } catch (err) {
+      setIsProcessing(false);
+      toast({ title: 'Sign Failed', description: (err as Error).message, variant: 'destructive' });
+    }
+  };
+
+  return (
+    <ApprovalShell
+      request={request}
+      title="wants to sign a message (EVM)"
+      activeAddress={wallet.address}
+      isProcessing={isProcessing}
+      onApprove={handleApprove}
+      onReject={onReject}
+      approveLabel="Sign"
+      approveIcon={<Check className="mr-1.5 h-3.5 w-3.5" />}
+      body={
+        <Collapsible label="evm · personal_sign" defaultOpen>
+          <div className="rounded bg-muted p-2 text-[11px] font-mono break-all max-h-32 overflow-y-auto">
+            {request.message}
+          </div>
+        </Collapsible>
+      }
+    />
+  );
+}
+
+// ── EVM Sign Typed Data (EIP-712) ────────────────────────────────────────────
+
+function EvmTypedDataApproval({ request, wallet, isProcessing, setIsProcessing, onReject, toast }: EvmApprovalProps<EvmTypedDataRequest>) {
+  const handleApprove = async () => {
+    setIsProcessing(true);
+    try {
+      const pkHex = await getEvmPrivateKeyHex(wallet);
+      const { ethers } = await import('ethers');
+      const signer = new ethers.Wallet(pkHex.startsWith('0x') ? pkHex : `0x${pkHex}`);
+
+      // Remove EIP712Domain from types before calling signTypedData
+      const types = { ...(request.types as Record<string, Array<{ name: string; type: string }>>) };
+      delete types['EIP712Domain'];
+
+      const signature = await signer.signTypedData(
+        request.domain as Parameters<typeof signer.signTypedData>[0],
+        types,
+        request.value,
+      );
+
+      chrome.runtime.sendMessage({
+        type: 'EVM_TYPED_DATA_RESULT',
+        pendingKey: request.pendingKey,
+        approved: true,
+        signature,
+        address: signer.address,
+      });
+      window.close();
+    } catch (err) {
+      setIsProcessing(false);
+      toast({ title: 'Sign Failed', description: (err as Error).message, variant: 'destructive' });
+    }
+  };
+
+  return (
+    <ApprovalShell
+      request={request}
+      title="wants to sign structured data (EIP-712)"
+      activeAddress={wallet.address}
+      isProcessing={isProcessing}
+      onApprove={handleApprove}
+      onReject={onReject}
+      approveLabel="Sign"
+      approveIcon={<Check className="mr-1.5 h-3.5 w-3.5" />}
+      body={
+        <>
+          <Collapsible label="domain" defaultOpen>
+            <div className="rounded bg-muted p-2 text-[11px] font-mono break-all max-h-24 overflow-y-auto">
+              {JSON.stringify(request.domain, null, 2)}
+            </div>
+          </Collapsible>
+          <Collapsible label="message">
+            <div className="rounded bg-muted p-2 text-[11px] font-mono break-all max-h-40 overflow-y-auto">
+              {JSON.stringify(request.value, null, 2)}
+            </div>
+          </Collapsible>
+        </>
+      }
+    />
+  );
+}
+
+// ── EVM Token Transfer ───────────────────────────────────────────────────────
+
+function EvmTokenApproval({ request, wallet, isProcessing, setIsProcessing, onReject, toast }: EvmApprovalProps<EvmTokenTxRequest>) {
+  const [gasOverrides, setGasOverrides] = useState<EvmGasOverrides>({
+    gasLimit: '',
+    maxFeePerGasGwei: '',
+    maxPriorityFeePerGasGwei: AUTO_PRIORITY_TIP_GWEI,
+  });
+  const [rpcUrl, setRpcUrl] = useState<string>('');
+
+  useEffect(() => {
+    void getEvmRpcUrlForChain(request.chainId).then(setRpcUrl).catch(() => {});
+  }, [request.chainId]);
+
+  const handleApprove = async () => {
+    setIsProcessing(true);
+    try {
+      const pkHex = await getEvmPrivateKeyHex(wallet);
+      const url = rpcUrl || (await getEvmRpcUrlForChain(request.chainId));
+      const { ethers } = await import('ethers');
+      const provider = new ethers.JsonRpcProvider(url);
+      const signer = new ethers.Wallet(pkHex.startsWith('0x') ? pkHex : `0x${pkHex}`, provider);
+
+      const erc20 = new ethers.Contract(request.token, ['function transfer(address to, uint256 amount) returns (bool)'], signer);
+      const gasPatch = await buildEvmGasPatch(gasOverrides);
+      const tx = await erc20.transfer(request.to, BigInt(request.amount), gasPatch);
+
+      chrome.runtime.sendMessage({
+        type: 'EVM_TOKEN_TX_RESULT',
+        pendingKey: request.pendingKey,
+        approved: true,
+        hash: tx.hash,
+        chainId: request.chainId,
+      });
+      window.close();
+    } catch (err) {
+      setIsProcessing(false);
+      toast({ title: 'Transfer Failed', description: (err as Error).message, variant: 'destructive' });
+    }
+  };
+
+  return (
+    <ApprovalShell
+      request={request}
+      title="wants to transfer tokens (ERC-20)"
+      activeAddress={wallet.address}
+      isProcessing={isProcessing}
+      onApprove={handleApprove}
+      onReject={onReject}
+      approveLabel="Transfer"
+      approveIcon={<Check className="mr-1.5 h-3.5 w-3.5" />}
+      body={
+        <>
+          <Collapsible label={`erc-20 · ${request.networkName}`} defaultOpen>
+            <DetailRow label="token" value={request.token} full />
+            <DetailRow label="to" value={request.to} full />
+            <DetailRow label="amount" value={`${request.amount} (smallest unit)`} />
+            <DetailRow label="chain" value={`${request.networkName} (${request.chainId})`} />
+          </Collapsible>
+
+          {rpcUrl && (
+            <EvmGasSelector
+              rpcUrl={rpcUrl}
+              onChange={setGasOverrides}
+            />
+          )}
+        </>
+      }
+    />
+  );
+}
+
+// ── EVM Token Approve ────────────────────────────────────────────────────────
+
+function EvmApproveTokenApproval({ request, wallet, isProcessing, setIsProcessing, onReject, toast }: EvmApprovalProps<EvmApproveRequest>) {
+  const isUnlimited = request.amount === '0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff';
+
+  const [gasOverrides, setGasOverrides] = useState<EvmGasOverrides>({
+    gasLimit: '',
+    maxFeePerGasGwei: '',
+    maxPriorityFeePerGasGwei: AUTO_PRIORITY_TIP_GWEI,
+  });
+  const [rpcUrl, setRpcUrl] = useState<string>('');
+
+  useEffect(() => {
+    void getEvmRpcUrlForChain(request.chainId).then(setRpcUrl).catch(() => {});
+  }, [request.chainId]);
+
+  const handleApprove = async () => {
+    setIsProcessing(true);
+    try {
+      const pkHex = await getEvmPrivateKeyHex(wallet);
+      const url = rpcUrl || (await getEvmRpcUrlForChain(request.chainId));
+      const { ethers } = await import('ethers');
+      const provider = new ethers.JsonRpcProvider(url);
+      const signer = new ethers.Wallet(pkHex.startsWith('0x') ? pkHex : `0x${pkHex}`, provider);
+
+      const erc20 = new ethers.Contract(request.token, ['function approve(address spender, uint256 amount) returns (bool)'], signer);
+      const gasPatch = await buildEvmGasPatch(gasOverrides);
+      const tx = await erc20.approve(request.spender, BigInt(request.amount), gasPatch);
+
+      chrome.runtime.sendMessage({
+        type: 'EVM_APPROVE_RESULT',
+        pendingKey: request.pendingKey,
+        approved: true,
+        hash: tx.hash,
+        chainId: request.chainId,
+      });
+      window.close();
+    } catch (err) {
+      setIsProcessing(false);
+      toast({ title: 'Approve Failed', description: (err as Error).message, variant: 'destructive' });
+    }
+  };
+
+  return (
+    <ApprovalShell
+      request={request}
+      title="wants to approve token spending"
+      activeAddress={wallet.address}
+      isProcessing={isProcessing}
+      onApprove={handleApprove}
+      onReject={onReject}
+      approveLabel="Approve"
+      approveIcon={<Check className="mr-1.5 h-3.5 w-3.5" />}
+      approveVariant="destructive"
+      body={
+        <>
+          {isUnlimited && (
+            <Alert variant="destructive" className="py-2">
+              <AlertTriangle className="h-3.5 w-3.5" />
+              <AlertDescription className="text-[11px] leading-tight">
+                This grants unlimited spending approval. The spender can transfer all your tokens of this type.
+              </AlertDescription>
+            </Alert>
+          )}
+          <Collapsible label={`erc-20 approve · ${request.networkName}`} defaultOpen>
+            <DetailRow label="token" value={request.token} full />
+            <DetailRow label="spender" value={request.spender} full />
+            <DetailRow label="amount" value={isUnlimited ? '∞ (unlimited)' : request.amount} />
+            <DetailRow label="chain" value={`${request.networkName} (${request.chainId})`} />
+          </Collapsible>
+
+          {rpcUrl && (
+            <EvmGasSelector
+              rpcUrl={rpcUrl}
+              onChange={setGasOverrides}
+            />
+          )}
+        </>
+      }
+    />
+  );
+}
+
+
+// ── EVM Switch Chain Approval ────────────────────────────────────────────────
+
+function EvmSwitchChainApproval({ request, wallet, isProcessing, setIsProcessing, onReject }: Omit<EvmApprovalProps<EvmSwitchChainRequest>, 'toast'>) {
+  // Re-resolve the "from" chain at popup mount time to overcome any
+  // staleness in the background's chrome.storage.local — the wallet UI's
+  // localStorage is the source of truth for what the user actually sees.
+  const [fromOverride, setFromOverride] = useState<{ chainId: number; name: string } | null>(null);
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const { getActiveEVMNetwork } = await import('../utils/evmRpc');
+        const active = getActiveEVMNetwork();
+        if (active.chainId !== request.fromChainId) {
+          setFromOverride({ chainId: active.chainId, name: active.name });
+        }
+      } catch { /* keep request.fromChainId */ }
+    })();
+  }, [request.fromChainId]);
+
+  const fromChainId = fromOverride?.chainId ?? request.fromChainId;
+  const fromName = fromOverride?.name ?? request.fromName;
+
+  const handleApprove = async () => {
+    setIsProcessing(true);
+    // Write to localStorage directly from the popup — background can't access it.
+    // This ensures the wallet UI picks up the new chain when it next renders.
+    const { setActiveEVMNetwork, getAllNetworks } = await import('../utils/evmRpc');
+    const targetNetworks = getAllNetworks();
+    const target = targetNetworks.find(n => n.chainId === request.toChainId);
+    if (target) {
+      setActiveEVMNetwork(target.id);
+    }
+    await chrome.runtime.sendMessage({
+      type: 'EVM_SWITCH_CHAIN_RESULT',
+      pendingKey: request.pendingKey,
+      approved: true,
+    });
+    await new Promise(r => setTimeout(r, 100));
+    window.close();
+  };
+
+  return (
+    <ApprovalShell
+      request={request}
+      title="wants to switch your EVM network"
+      activeAddress={wallet.address}
+      isProcessing={isProcessing}
+      onApprove={handleApprove}
+      onReject={onReject}
+      approveLabel="Switch"
+      approveIcon={<Check className="mr-1.5 h-3.5 w-3.5" />}
+      body={
+        <Collapsible label="evm · switch chain" defaultOpen>
+          <DetailRow label="from" value={`${fromName} (chain ${fromChainId})`} />
+          <DetailRow label="to" value={`${request.toName} (chain ${request.toChainId})`} />
+          <DetailRow label="native token" value={request.toSymbol} />
+        </Collapsible>
+      }
+    />
+  );
+}
+
+
+// ── Octra Switch Network Approval ────────────────────────────────────────────
+
+function SwitchNetworkApproval({ request, wallet, isProcessing, setIsProcessing, onReject }: Omit<EvmApprovalProps<SwitchNetworkRequest>, 'toast'>) {
+  const handleApprove = async () => {
+    setIsProcessing(true);
+    // Write rpcProviders to localStorage directly — background can't.
+    // Find the matching provider and flip isActive so the wallet UI reads
+    // the correct active network on its next mount.
+    try {
+      const providersJson = localStorage.getItem('rpcProviders');
+      if (providersJson) {
+        const providers = JSON.parse(providersJson) as Array<{ id: string; url: string; network?: string; isActive: boolean }>;
+        const wantsDevnet = request.toNetworkId.includes('devnet');
+        const targetProvider = providers.find(p => {
+          if (p.network === 'devnet') return wantsDevnet;
+          if (p.network === 'mainnet') return !wantsDevnet;
+          return wantsDevnet ? p.url.includes('165.227.225.79') : !p.url.includes('165.227.225.79');
+        });
+        if (targetProvider) {
+          const updated = providers.map(p => ({ ...p, isActive: p.id === targetProvider.id }));
+          localStorage.setItem('rpcProviders', JSON.stringify(updated));
+          localStorage.setItem('selectedNetwork', targetProvider.network ?? (wantsDevnet ? 'devnet' : 'mainnet'));
+        }
+      }
+    } catch (e) {
+      console.warn('[SwitchNetworkApproval] Failed to sync localStorage:', e);
+    }
+    await chrome.runtime.sendMessage({
+      type: 'SWITCH_NETWORK_RESULT',
+      pendingKey: request.pendingKey,
+      approved: true,
+    });
+    await new Promise(r => setTimeout(r, 100));
+    window.close();
+  };
+
+  return (
+    <ApprovalShell
+      request={request}
+      title="wants to switch your Octra network"
+      activeAddress={wallet.address}
+      isProcessing={isProcessing}
+      onApprove={handleApprove}
+      onReject={onReject}
+      approveLabel="Switch"
+      approveIcon={<Check className="mr-1.5 h-3.5 w-3.5" />}
+      body={
+        <Collapsible label="octra · switch network" defaultOpen>
+          <DetailRow label="from" value={`${request.fromName} (${request.fromNetworkId})`} />
+          <DetailRow label="to" value={`${request.toName} (${request.toNetworkId})`} />
+        </Collapsible>
+      }
+    />
+  );
+}
+
+
+// =============================================================================
+// FeeSelector — choose between auto / fast / custom OU for any approval flow
+// =============================================================================
+
+type FeeOption = 'auto' | 'fast' | 'custom';
+
+interface FeeSelectorProps {
+  /** Octra op_type used to ask the node for a recommended fee. */
+  feeContext: 'standard' | 'call' | 'encrypt' | 'decrypt' | 'stealth';
+  /** Optional fixed fee suggested by the dApp. When present and the user
+   *  picks "auto", we use this instead of the node's recommendation. */
+  dappFee?: string;
+  /** Returns the resolved OU value as a string whenever the selection changes. */
+  onChange: (ouValue: string) => void;
+}
+
+/**
+ * Mirror of the SendTransaction fee picker, scaled down for the popup body.
+ * Three modes:
+ *   - auto:   node's recommended fee for the op_type
+ *   - fast:   2× recommended (priority pricing)
+ *   - custom: user-provided OU value
+ *
+ * The component is fully self-contained and stateless above it — every
+ * change is reported back through `onChange` so the parent can include
+ * the chosen OU in its signed transaction.
+ */
+function FeeSelector({ feeContext, dappFee, onChange }: FeeSelectorProps) {
+  const [option, setOption] = useState<FeeOption>('auto');
+  const [customOu, setCustomOu] = useState('');
+  const [recommendedOu, setRecommendedOu] = useState<number>(1000);
+  const [isFetching, setIsFetching] = useState(false);
+
+  // Node-recommended fee — fetched once on mount, refreshed only on context change.
+  useEffect(() => {
+    let cancelled = false;
+    setIsFetching(true);
+    fetchRecommendedFee(feeContext)
+      .then((ou) => { if (!cancelled) setRecommendedOu(ou); })
+      .catch(() => {})
+      .finally(() => { if (!cancelled) setIsFetching(false); });
+    return () => { cancelled = true; };
+  }, [feeContext]);
+
+  // Resolve the chosen OU value any time the inputs change.
+  useEffect(() => {
+    let resolved: number;
+    if (option === 'fast') {
+      resolved = recommendedOu * 2;
+    } else if (option === 'custom') {
+      const parsed = parseInt(customOu, 10);
+      resolved = Number.isFinite(parsed) && parsed > 0 ? parsed : recommendedOu;
+    } else {
+      // auto: prefer dApp-provided fee, else node recommendation
+      const dappOu = dappFee ? Number(dappFee) : NaN;
+      resolved = Number.isFinite(dappOu) && dappOu > 0 ? dappOu : recommendedOu;
+    }
+    onChange(String(resolved));
+  }, [option, customOu, recommendedOu, dappFee, onChange]);
+
+  const recommendedLabel = isFetching
+    ? 'fetching…'
+    : `${recommendedOu.toLocaleString()} OU ≈ ${ouToOct(recommendedOu)} OCT`;
+
+  return (
+    <div className="space-y-1.5">
+      <div className="flex items-center justify-between">
+        <span className="text-[11px] text-muted-foreground">Network fee</span>
+        <span className="text-[10px] text-muted-foreground">
+          recommended: {recommendedLabel}
+        </span>
+      </div>
+      <Select value={option} onValueChange={(v) => setOption(v as FeeOption)}>
+        <SelectTrigger className="h-7 text-[11px]">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="auto" className="text-[11px]">
+            Auto ({recommendedOu.toLocaleString()} OU ≈ {ouToOct(recommendedOu)} OCT)
+          </SelectItem>
+          <SelectItem value="fast" className="text-[11px]">
+            Fast ({(recommendedOu * 2).toLocaleString()} OU ≈ {ouToOct(recommendedOu * 2)} OCT)
+          </SelectItem>
+          <SelectItem value="custom" className="text-[11px]">
+            Custom
+          </SelectItem>
+        </SelectContent>
+      </Select>
+      {option === 'custom' && (
+        <input
+          type="number"
+          min="1"
+          step="1"
+          value={customOu}
+          onChange={(e) => setCustomOu(e.target.value)}
+          placeholder={`Enter OU (recommended: ${recommendedOu})`}
+          className="h-7 w-full rounded-md border border-input bg-background px-2 text-[11px] outline-none ring-offset-background placeholder:text-muted-foreground focus-visible:ring-1 focus-visible:ring-ring"
+        />
+      )}
+    </div>
+  );
+}
+
+
+// =============================================================================
+// EvmGasSelector — auto / fast / custom gas controls for EVM approvals
+// =============================================================================
+
+type EvmGasOption = 'auto' | 'fast' | 'custom';
+
+export interface EvmGasOverrides {
+  /** Custom gas-limit override (decimal, e.g. "150000"). Empty string = auto. */
+  gasLimit: string;
+  /** Custom maxFeePerGas in Gwei. Empty string = auto. */
+  maxFeePerGasGwei: string;
+  /** Custom maxPriorityFeePerGas in Gwei. Empty string = auto. */
+  maxPriorityFeePerGasGwei: string;
+}
+
+interface EvmGasSelectorProps {
+  /** RPC URL used to read the network's current fee data. */
+  rpcUrl: string;
+  /** Optional dApp-supplied gas-limit hint (decimal string). Used as the
+   *  baseline when the user picks "auto". */
+  dappGasLimit?: string;
+  onChange: (overrides: EvmGasOverrides) => void;
+}
+
+const FAST_PRIORITY_TIP_GWEI = '1.0';   // bumped from the typical 0.1 tip
+const AUTO_PRIORITY_TIP_GWEI = '0.1';   // mirrors what evmRpc.ts uses today
+
+/**
+ * EVM gas picker — three modes:
+ *   - auto:   baseFee × 1.10 + 0.1 Gwei tip, dApp's gasLimit hint if present
+ *   - fast:   baseFee × 1.10 + 1.0 Gwei tip — same gas limit
+ *   - custom: user-typed limit + max fee + priority tip in Gwei
+ *
+ * The selector polls the network's `eth_feeData` once on mount so the
+ * "auto" / "fast" labels can show realistic gwei numbers. The parent
+ * handler is responsible for converting Gwei strings to wei via
+ * `ethers.parseUnits(_, 'gwei')` before signing.
+ */
+function EvmGasSelector({ rpcUrl, dappGasLimit, onChange }: EvmGasSelectorProps) {
+  const [option, setOption] = useState<EvmGasOption>('auto');
+  const [customGasLimit, setCustomGasLimit] = useState('');
+  const [customMaxFee, setCustomMaxFee] = useState('');
+  const [customPriority, setCustomPriority] = useState('');
+
+  const [baseFeeGwei, setBaseFeeGwei] = useState<string | null>(null);
+  const [isFetching, setIsFetching] = useState(false);
+
+  // Pull live network fee data so the labels reflect actual mainnet pricing.
+  useEffect(() => {
+    let cancelled = false;
+    setIsFetching(true);
+    (async () => {
+      try {
+        const { ethers } = await import('ethers');
+        const provider = new ethers.JsonRpcProvider(rpcUrl);
+        const fee = await provider.getFeeData();
+        if (cancelled || !fee.maxFeePerGas || !fee.maxPriorityFeePerGas) return;
+        const base = fee.maxFeePerGas - fee.maxPriorityFeePerGas;
+        setBaseFeeGwei(ethers.formatUnits(base, 'gwei'));
+      } catch {
+        /* keep null — auto/fast labels fall back to "—" */
+      } finally {
+        if (!cancelled) setIsFetching(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [rpcUrl]);
+
+  // Resolve the chosen overrides any time inputs change.
+  useEffect(() => {
+    if (option === 'custom') {
+      onChange({
+        gasLimit:                 customGasLimit.trim(),
+        maxFeePerGasGwei:         customMaxFee.trim(),
+        maxPriorityFeePerGasGwei: customPriority.trim(),
+      });
+      return;
+    }
+    // For auto / fast we let the underlying ethers signer compute most of
+    // the fee data, but propagate the user's intent for the priority tip.
+    // The signer has access to live base fee through getFeeData() at sign
+    // time, so we don't have to repeat that lookup here.
+    onChange({
+      gasLimit:                 dappGasLimit ?? '',
+      maxFeePerGasGwei:         '',
+      maxPriorityFeePerGasGwei: option === 'fast' ? FAST_PRIORITY_TIP_GWEI : AUTO_PRIORITY_TIP_GWEI,
+    });
+  }, [option, customGasLimit, customMaxFee, customPriority, dappGasLimit, onChange]);
+
+  const baseLabel = isFetching
+    ? 'fetching…'
+    : baseFeeGwei
+      ? `base ≈ ${parseFloat(baseFeeGwei).toFixed(3)} Gwei`
+      : 'base —';
+
+  return (
+    <div className="space-y-1.5">
+      <div className="flex items-center justify-between">
+        <span className="text-[11px] text-muted-foreground">Gas</span>
+        <span className="text-[10px] text-muted-foreground">{baseLabel}</span>
+      </div>
+      <Select value={option} onValueChange={(v) => setOption(v as EvmGasOption)}>
+        <SelectTrigger className="h-7 text-[11px]">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="auto" className="text-[11px]">
+            Auto (tip {AUTO_PRIORITY_TIP_GWEI} Gwei)
+          </SelectItem>
+          <SelectItem value="fast" className="text-[11px]">
+            Fast (tip {FAST_PRIORITY_TIP_GWEI} Gwei)
+          </SelectItem>
+          <SelectItem value="custom" className="text-[11px]">
+            Custom
+          </SelectItem>
+        </SelectContent>
+      </Select>
+      {option === 'custom' && (
+        <div className="grid grid-cols-3 gap-1.5">
+          <input
+            type="number"
+            min="0"
+            step="any"
+            value={customGasLimit}
+            onChange={(e) => setCustomGasLimit(e.target.value)}
+            placeholder="gas limit"
+            className="h-7 rounded-md border border-input bg-background px-2 text-[11px] outline-none focus-visible:ring-1 focus-visible:ring-ring"
+          />
+          <input
+            type="number"
+            min="0"
+            step="any"
+            value={customMaxFee}
+            onChange={(e) => setCustomMaxFee(e.target.value)}
+            placeholder="max fee Gwei"
+            className="h-7 rounded-md border border-input bg-background px-2 text-[11px] outline-none focus-visible:ring-1 focus-visible:ring-ring"
+          />
+          <input
+            type="number"
+            min="0"
+            step="any"
+            value={customPriority}
+            onChange={(e) => setCustomPriority(e.target.value)}
+            placeholder="tip Gwei"
+            className="h-7 rounded-md border border-input bg-background px-2 text-[11px] outline-none focus-visible:ring-1 focus-visible:ring-ring"
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Translate `EvmGasOverrides` into ethers TransactionRequest fields. Returns
+ * an empty patch when nothing is overridden — ethers will then fall back to
+ * its automatic estimation. Defined here so the four EVM approval
+ * components can share one parser.
+ */
+async function buildEvmGasPatch(
+  overrides: EvmGasOverrides,
+): Promise<Record<string, bigint | number>> {
+  const patch: Record<string, bigint | number> = {};
+  if (!overrides) return patch;
+
+  const { ethers } = await import('ethers');
+
+  if (overrides.gasLimit) {
+    const n = BigInt(Math.floor(Number(overrides.gasLimit)));
+    if (n > 0n) patch.gasLimit = n;
+  }
+  if (overrides.maxFeePerGasGwei) {
+    try {
+      patch.maxFeePerGas = ethers.parseUnits(overrides.maxFeePerGasGwei, 'gwei');
+      patch.type = 2;
+    } catch { /* ignore parse errors */ }
+  }
+  if (overrides.maxPriorityFeePerGasGwei) {
+    try {
+      patch.maxPriorityFeePerGas = ethers.parseUnits(overrides.maxPriorityFeePerGasGwei, 'gwei');
+      patch.type = 2;
+    } catch { /* ignore parse errors */ }
+  }
+  return patch;
+}

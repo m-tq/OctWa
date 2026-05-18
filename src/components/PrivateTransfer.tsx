@@ -18,8 +18,6 @@ import { PvacProgressBar } from './PvacProgressBar';
 import { PvacOperationModal } from './PvacOperationModal';
 import { FeeSelector, FeeOption, getEffectiveFee } from './FeeSelector';
 import { usePvacOperation } from '@/hooks/usePvacOperation';
-import { RangeServerSetup } from './RangeServerSetup';
-import { isRangeServerAvailable } from '@/services/rangeProofServer';
 import { isOctAddress, isValidLabel, normalizeLabel } from '@/integrations/ons';
 
 interface PrivateTransferProps {
@@ -107,7 +105,6 @@ export function PrivateTransfer({
   const [customFee, setCustomFee] = useState('');
   const [feeOption, setFeeOption] = useState<FeeOption>('recommended');
   const [recommendedFee, setRecommendedFee] = useState(5000);
-  const [rangeServerReady, setRangeServerReady] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const isSendingRef = useRef(false);
   const { toast } = useToast();
@@ -117,7 +114,6 @@ export function PrivateTransfer({
   // Fetch dynamic stealth fee on mount + pre-warm WASM so first send is instant
   useEffect(() => {
     fetchRecommendedFee('stealth').then(fee => setRecommendedFee(fee)).catch(() => {});
-    isRangeServerAvailable().then(setRangeServerReady);
     // Pre-warm: delegate WASM load to the worker so the main thread never
     // pulls in the PVAC crypto engine. Subsequent sends reuse the cached
     // keypair inside the worker.
@@ -664,14 +660,6 @@ export function PrivateTransfer({
               />
             </div>
 
-            {/* Range server setup — compact */}
-            {!rangeServerReady && (
-              <RangeServerSetup
-                onAvailable={() => setRangeServerReady(true)}
-                compact
-              />
-            )}
-
             {/* Custom Fee - Compact Mode */}
             <div className="space-y-1">
               <Label className="text-xs text-muted-foreground">Network Fee</Label>
@@ -696,8 +684,7 @@ export function PrivateTransfer({
                 !recipientInfo ||
                 !!recipientInfo.error ||
                 !recipientInfo.has_public_key ||
-                parseFloat(amount) > (encryptedBalance?.encrypted ?? 0) ||
-                !rangeServerReady
+                parseFloat(amount) > (encryptedBalance?.encrypted ?? 0)
               }
               className="w-full h-9 text-xs bg-[#00E5C0] hover:bg-[#00E5C0]/80"
             >
@@ -810,11 +797,6 @@ export function PrivateTransfer({
             )}
           </div>
 
-          {/* Range server setup — full mode */}
-          {!rangeServerReady && (
-            <RangeServerSetup onAvailable={() => setRangeServerReady(true)} />
-          )}
-
           {/* Custom Fee - Full Mode */}
           <div className="space-y-1.5">
             <Label className="text-sm text-muted-foreground">Network Fee</Label>
@@ -843,8 +825,7 @@ export function PrivateTransfer({
               !recipientInfo ||
               !!recipientInfo.error ||
               !recipientInfo.has_public_key ||
-              parseFloat(amount) > (encryptedBalance?.encrypted ?? 0) ||
-              !rangeServerReady
+              parseFloat(amount) > (encryptedBalance?.encrypted ?? 0)
             }
             className="w-full bg-[#00E5C0] hover:bg-[#00E5C0]/80"
             size="lg"

@@ -1,7 +1,7 @@
 {
   "name": "@octwa/sdk",
-  "version": "1.6.0",
-  "description": "Official TypeScript SDK for integrating dApps with OctWa Wallet Extension. Implements capability-based authorization with full HFHE/PVAC crypto identity support.",
+  "version": "2.2.0",
+  "description": "Official TypeScript SDK for integrating dApps with OctWa Wallet Extension. RFC-O-1 compliant provider API with typed access to Octra RPC, transactions, contracts, and privacy methods.",
   "main": "dist/index.js",
   "module": "dist/index.mjs",
   "types": "dist/index.d.ts",
@@ -19,9 +19,6 @@
   ],
   "scripts": {
     "build": "tsup src/index.ts --format cjs,esm --dts",
-    "test": "vitest run",
-    "test:watch": "vitest",
-    "test:harness": "tsx tests/harness/cli.ts",
     "lint": "eslint src --ext .ts",
     "prepublishOnly": "npm run build"
   },
@@ -51,12 +48,8 @@
   },
   "devDependencies": {
     "@types/node": "^20.10.0",
-    "fast-check": "^3.15.0",
-    "jsdom": "^27.3.0",
     "tsup": "^8.0.1",
-    "tsx": "^4.21.0",
-    "typescript": "^5.3.0",
-    "vitest": "^4.0.18"
+    "typescript": "^5.3.0"
   },
   "engines": {
     "node": ">=16.0.0"

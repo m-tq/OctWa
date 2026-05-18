@@ -68,7 +68,7 @@ export default defineConfig({
     __APP_NAME__: JSON.stringify(APP_NAME),
     __APP_TITLE__: JSON.stringify(APP_TITLE),
   },
-  // Allow Vite to serve .wasm files from pvac_server/build-wasm
+  // Allow Vite to serve .wasm files from src/lib/pvac/wasm-runtime/build
   assetsInclude: ['**/*.wasm'],
   // Web Worker configuration — must use es format for code-splitting builds
   worker: {
@@ -84,8 +84,7 @@ export default defineConfig({
       input: {
         main: path.resolve(__dirname, 'index.html'),
         popup: path.resolve(__dirname, 'src/popup.tsx'),
-        expanded: path.resolve(__dirname, 'src/expanded.tsx'),
-        offscreen: path.resolve(__dirname, 'offscreen.html')
+        expanded: path.resolve(__dirname, 'src/expanded.tsx')
       },
       output: {
         entryFileNames: 'assets/[name].js',

@@ -4,8 +4,7 @@
   "version": "1.4.0",
   "description": "Private-first wallet for seamless interaction with the Octra encrypted network.",
   "permissions": [
-    "storage",
-    "offscreen"
+    "storage"
   ],
   "host_permissions": [
     "https://*/*",
@@ -44,7 +43,7 @@
   },
   "web_accessible_resources": [
     {
-      "resources": ["index.html", "offscreen.html", "provider.js", "core.js"],
+      "resources": ["index.html", "provider.js"],
       "matches": ["<all_urls>"]
     }
   ]

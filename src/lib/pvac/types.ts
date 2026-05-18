@@ -55,6 +55,13 @@ export interface DecryptBalanceInput extends WalletCredentials {
   currentCipher: string
   nonce: number
   ou?: string
+  /**
+   * Optional aggregated range-proof ticket pre-computed for the new
+   * balance value (currentBalance - amountRaw). Halves user-visible
+   * latency when set; the heavy phase ran during background pre-compute.
+   * Single-use — the ticket is consumed by this call.
+   */
+  aggTicket?: number
 }
 
 export interface DecryptReadInput {
@@ -71,6 +78,12 @@ export interface StealthSendInput extends WalletCredentials {
   recipientViewPubkey: string
   nonce: number
   ou?: string
+  /**
+   * Optional pair of pre-computed range-proof tickets — `delta` for the
+   * amount-cipher proof and `balance` for the new-balance-cipher proof.
+   * Both single-use, both consumed by this call. Halves user latency.
+   */
+  rangeProofTickets?: { delta: number; balance: number }
 }
 
 export interface StealthOutput {

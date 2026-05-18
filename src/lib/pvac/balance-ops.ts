@@ -1,16 +1,17 @@
 /**
- * Browser-based PVAC balance operations — hybrid mode.
+ * Browser-based PVAC balance operations — fully self-contained.
  *
  *   1. decryptBalance   — read encrypted balance (WASM, no server)
  *   2. encryptBalance   — public -> private (WASM, no server)
- *   3. decryptToPublic  — private -> public (pvac-local-server for range proof)
+ *   3. decryptToPublic  — private -> public (WASM, no server)
  *
- * Hybrid strategy:
- *   - Light ops (keygen, encrypt, zero proof): WASM in Web Worker
- *   - Heavy ops (aggregated range proof): pvac-local-server native binary
- *
- * pvac-local-server handles the ~4 min range proof natively (AES-NI).
- * WASM handles everything else so no server is needed for most operations.
+ * Strategy:
+ *   - All operations run in WASM inside a Web Worker.
+ *   - The aggregated range proof for `decryptToPublic` is computed locally;
+ *     it's heavy (5-10 minutes browser MT) but doesn't need a sidecar.
+ *   - Optional precompute tickets cut foreground latency in half — pass
+ *     `aggTicket` to `decryptToPublic` after pre-warming via PvacWasm's
+ *     `makeAggRangeProofTicket` while the user is browsing.
  */
 
 import { getPvacWasm } from './wasm-loader'
@@ -20,10 +21,6 @@ import {
   hexPubkeyToBase64,
   buildAndSignTx,
 } from './crypto-utils'
-import {
-  serverDecryptToPublic,
-  RangeServerError,
-} from '@/services/rangeProofServer'
 import type {
   DecryptReadInput,
   DecryptReadResult,
@@ -145,39 +142,43 @@ export async function encryptBalance(
   }
 }
 
-// ─── 3. Decrypt to public (private -> public) — hybrid ───────────────────────
+// ─── 3. Decrypt to public (private -> public) — WASM only ───────────────────
 
 /**
  * Build a signed "decrypt" transaction.
  *
- * Hybrid strategy:
- *   - WASM (Web Worker): keygen, registration, balance decrypt
- *   - pvac-local-server: encrypt amount, zero proof, range proof, sign tx
+ * Pipeline (all in WASM, no native sidecar required):
+ *   1. Derive PVAC keypair from privateKey
+ *   2. Make sure the PVAC pubkey is registered on the node
+ *   3. Decrypt currentCipher locally to get the plaintext balance
+ *   4. Encrypt amount → ct_amount
+ *   5. ct_new = ct_current ⊖ ct_amount   (homomorphic subtract)
+ *   6. Build amount commitment + bound zero proof
+ *   7. Build aggregated range proof on ct_new at value (balance - amount)
+ *   8. Sign tx
  *
- * The server handles the ~4 min aggregated range proof natively (AES-NI).
- * Falls back with isRangeServerRequired=true if server is not running.
+ * Step 7 dominates wall time (5-10 min on browser MT). Pass an optional
+ * pre-computed ticket via `input.aggTicket` to skip the value-dependent
+ * heavy phase (~5 min savings).
  */
 export async function decryptToPublic(
   input: DecryptBalanceInput,
   onProgress?: PvacProgressCallback,
-): Promise<PvacResult<TxPayloadResult> & { isRangeServerRequired?: boolean }> {
+): Promise<PvacResult<TxPayloadResult>> {
   try {
-    onProgress?.({ step: 'initializing', label: 'Connecting to local server...', percent: 10 })
+    onProgress?.({ step: 'initializing', label: 'Loading crypto engine...', percent: 5 })
 
     const ou = input.ou ?? DEFAULT_DECRYPT_OU
     const sk64 = resolveSecretKey64(input.privateKey)
     const publicKeyB64 = hexPubkeyToBase64(input.publicKey)
 
-    onProgress?.({ step: 'keygen', label: 'Deriving PVAC keys...', percent: 15 })
+    onProgress?.({ step: 'keygen', label: 'Deriving PVAC keys...', percent: 10 })
     const pvac = await getPvacWasm(input.privateKey)
 
-    onProgress?.({ step: 'registering_pubkey', label: 'Registering PVAC key on node...', percent: 20 })
+    onProgress?.({ step: 'registering_pubkey', label: 'Registering PVAC key on node...', percent: 15 })
     await ensurePvacRegisteredOnNode(pvac, input.address, sk64, publicKeyB64)
 
-    // Decrypt current balance in WASM — pass as hint to server so it doesn't
-    // need to re-decrypt (avoids pvac_dec_value_fp vs pvac_dec_value mismatch).
-    // Server will fetch fresh cipher from node and invalidate hint if changed.
-    onProgress?.({ step: 'decrypting', label: 'Reading current balance...', percent: 30 })
+    onProgress?.({ step: 'decrypting', label: 'Reading current balance...', percent: 20 })
     await tick()
     const currentBalance = pvac.decryptValue(input.currentCipher)
 
@@ -185,37 +186,61 @@ export async function decryptToPublic(
       return { success: false, error: 'Insufficient encrypted balance' }
     }
 
-    onProgress?.({ step: 'encrypting', label: 'Building decrypt tx on local server...', percent: 40 })
+    const newBalance = currentBalance - input.amountRaw
 
-    try {
-      const { getActiveRPCProvider } = await import('@/utils/rpc')
-      const rpcUrl = getActiveRPCProvider()?.url ?? ''
+    onProgress?.({ step: 'encrypting', label: 'Encrypting amount...', percent: 25 })
+    await tick()
+    const seed = pvac.randomBytesPublic(32)
+    const blinding = pvac.randomBytesPublic(32)
+    const ctAmount = pvac.encryptValue(input.amountRaw, seed)
 
-      const result = await serverDecryptToPublic({
-        privateKey:     input.privateKey,
-        publicKey:      input.publicKey,
-        address:        input.address,
-        amountRaw:      input.amountRaw,
-        currentCipher:  input.currentCipher,
-        currentBalance,
-        nonce:          input.nonce,
-        ou,
-        timestamp:      Date.now() / 1000,
-        rpcUrl,
-      })
+    onProgress?.({ step: 'building_proof', label: 'Building amount commitment...', percent: 30 })
+    await tick()
+    const amountCommitment = pvac.pedersenCommit(input.amountRaw, blinding)
 
-      onProgress?.({ step: 'done', label: 'Done', percent: 100 })
-      return { success: true, data: { tx: result.tx as ReturnType<typeof buildAndSignTx> } }
-    } catch (err) {
-      if (err instanceof RangeServerError && err.isUnavailable) {
-        return {
-          success: false,
-          error: 'pvac-local-server is required for decrypt operations. Please start it first.',
-          isRangeServerRequired: true,
-        }
-      }
-      throw err
+    onProgress?.({ step: 'building_proof', label: 'Building zero-knowledge proof...', percent: 35 })
+    await tick()
+    const zeroProof = pvac.makeZeroProofBound(ctAmount, input.amountRaw, blinding)
+
+    onProgress?.({ step: 'building_proof', label: 'Computing new balance cipher...', percent: 40 })
+    await tick()
+    const ctNewBalance = pvac.ctSub(input.currentCipher, ctAmount)
+
+    onProgress?.({
+      step: 'building_proof',
+      label: 'Generating range proof (this may take 5–10 min)...',
+      percent: 45,
+    })
+    await tick()
+    const rangeProofBalance = input.aggTicket
+      ? pvac.finalizeAggRangeProofTicket(ctNewBalance, input.aggTicket)
+      : pvac.makeAggRangeProof(ctNewBalance, newBalance)
+
+    onProgress?.({ step: 'building_tx', label: 'Signing transaction...', percent: 92 })
+
+    const payload = {
+      cipher:              ctAmount,
+      amount_commitment:   amountCommitment,
+      zero_proof:          zeroProof,
+      blinding:            btoa(String.fromCharCode(...blinding)),
+      range_proof_balance: rangeProofBalance,
     }
+
+    const tx = buildAndSignTx({
+      from:           input.address,
+      to_:            input.address,
+      amount:         input.amountRaw.toString(),
+      nonce:          input.nonce,
+      ou,
+      timestamp:      Date.now() / 1000,
+      op_type:        'decrypt',
+      encrypted_data: JSON.stringify(payload),
+      sk64,
+      publicKeyB64,
+    })
+
+    onProgress?.({ step: 'done', label: 'Done', percent: 100 })
+    return { success: true, data: { tx } }
   } catch (error) {
     return {
       success: false,

@@ -1,4 +1,8 @@
-import type { OctraProvider, CapabilityScope } from './types';
+/**
+ * @octwa/sdk — Utility Functions
+ */
+
+import type { OctraProvider } from './types';
 
 const DEFAULT_DETECTION_TIMEOUT = 3000;
 const POLLING_INTERVAL = 100;
@@ -9,7 +13,7 @@ const POLLING_INTERVAL = 100;
 export function getProvider(): OctraProvider | null {
   if (typeof window === 'undefined') return null;
   const p = window.octra;
-  return p && p.isOctra === true ? p : null;
+  return p && p.isOctra === true ? (p as OctraProvider) : null;
 }
 
 /** Synchronous check — is the provider installed? */
@@ -20,7 +24,7 @@ export function isProviderInstalled(): boolean {
 /**
  * Wait for the provider to be injected into window.
  *
- * Listens for both legacy `octraLoaded` event and the new
+ * Listens for both legacy `octraLoaded` event and the
  * `octra:announceProvider` CustomEvent (EIP-6963 analog).
  * Falls back to polling every 100 ms until timeout.
  */
@@ -42,7 +46,7 @@ export function detectProvider(timeout = DEFAULT_DETECTION_TIMEOUT): Promise<Oct
     // Legacy event
     window.addEventListener('octraLoaded', tryResolve);
 
-    // EIP-6963 analog — octra:announceProvider
+    // EIP-6963 analog
     const handleAnnounce = (e: Event) => {
       if (resolved) return;
       const detail = (e as CustomEvent).detail;
@@ -73,32 +77,4 @@ export function detectProvider(timeout = DEFAULT_DETECTION_TIMEOUT): Promise<Oct
       clearTimeout(timeoutId);
     };
   });
-}
-
-/** Validate that a value is a non-empty string. */
-export function isNonEmptyString(value: unknown): value is string {
-  return typeof value === 'string' && value.trim().length > 0;
-}
-
-/** Validate that a scope is valid. */
-export function isValidScope(scope: unknown): scope is CapabilityScope {
-  return scope === 'read' || scope === 'write' || scope === 'compute';
-}
-
-/** Validate Circle ID format. */
-export function isValidCircleId(circleId: unknown): circleId is string {
-  return isNonEmptyString(circleId);
-}
-
-/** Check if a value is an EncryptedBlob. */
-export function isEncryptedBlob(value: unknown): boolean {
-  if (!value || typeof value !== 'object') return false;
-  const blob = value as Record<string, unknown>;
-  return blob.scheme === 'HFHE' && blob.data instanceof Uint8Array;
-}
-
-/** Get current origin safely. */
-export function getCurrentOrigin(): string {
-  if (typeof window === 'undefined') return '';
-  try { return window.location?.origin || ''; } catch { return ''; }
 }

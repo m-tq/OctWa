@@ -10,86 +10,74 @@ import { ExtensionStorageManager } from './utils/extensionStorage';
 import { syncOnsConfigFromActiveProvider } from './utils/onsBootstrap';
 import { Wallet } from './types/wallet';
 import { Toaster } from '@/components/ui/toaster';
+import { useBackgroundDecryptResponder } from './hooks/useBackgroundDecryptResponder';
+import { useBackgroundSyncResponder } from './hooks/useBackgroundSyncResponder';
 
 function App() {
   const [wallet, setWallet] = useState<Wallet | null>(null);
   const [wallets, setWallets] = useState<Wallet[]>([]);
   const [isLocked, setIsLocked] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
-  const [connectionRequest, setConnectionRequest] = useState<unknown>(null);
-  const [capabilityRequest, setCapabilityRequest] = useState<unknown>(null);
-  const [invokeRequest, setInvokeRequest] = useState<unknown>(null);
+  const [hasDAppRequest, setHasDAppRequest] = useState(false);
 
-  // Check for connection request in URL parameters
+  // Respond to BG_DECRYPT_BALANCE_REQUEST messages from the service worker
+  // so dApps that call octra_getEncryptedBalance get a populated
+  // `decryptedAmount` whenever this view is open.
+  useBackgroundDecryptResponder(wallets);
+  useBackgroundSyncResponder(wallets);
+
+  // Check for pending dApp requests (RFC-O-1)
   useEffect(() => {
-    const urlParams = new URLSearchParams(window.location.search);
-    const action = urlParams.get('action');
-    
-    if (action === 'connect') {
-      const origin = urlParams.get('origin');
-      const appName = urlParams.get('appName');
-      const permissions = urlParams.get('permissions');
-      
-      if (origin && permissions) {
-        setConnectionRequest({
-          origin: decodeURIComponent(origin),
-          appName: decodeURIComponent(appName || ''),
-          appIcon: decodeURIComponent(appName || ''),
-          permissions: JSON.parse(decodeURIComponent(permissions))
-        });
-      }
-    }
-    
-    // Check for capability request
-    if (action === 'capability') {
-      const circle = urlParams.get('circle');
-      const methods = urlParams.get('methods');
-      const scope = urlParams.get('scope');
-      if (circle && methods && scope) {
-        setCapabilityRequest({
-          circle: decodeURIComponent(circle),
-          methods: JSON.parse(decodeURIComponent(methods)),
-          scope: decodeURIComponent(scope),
-          encrypted: urlParams.get('encrypted') === 'true',
-          appOrigin: urlParams.get('appOrigin') ? decodeURIComponent(urlParams.get('appOrigin')!) : window.location.origin
-        });
-      }
-    }
-    
-    // Check for invoke request
-    if (action === 'invoke') {
-      const capabilityId = urlParams.get('capabilityId');
-      const method = urlParams.get('method');
-      if (capabilityId && method) {
-        setInvokeRequest({
-          capabilityId: decodeURIComponent(capabilityId),
-          method: decodeURIComponent(method)
-        });
-      }
-    }
-    
-    // Also check chrome.storage for pending requests
-    const checkPendingRequests = async () => {
-      if (typeof chrome !== 'undefined' && chrome.storage?.local) {
-        const pending = await chrome.storage.local.get([
-          'pendingCapabilityRequest',
-          'pendingInvokeRequest'
-        ]);
-        
-        if (pending.pendingCapabilityRequest) {
-          
-          setCapabilityRequest(pending.pendingCapabilityRequest);
-        }
-        
-        if (pending.pendingInvokeRequest) {
-          
-          setInvokeRequest(pending.pendingInvokeRequest);
-        }
-      }
+    const checkPending = async () => {
+      if (typeof chrome === 'undefined' || !chrome.storage?.local) return;
+      const dappKeyNames = [
+        'pendingConnectRequestKey',
+        'pendingSignRequestKey',
+        'pendingTxRequestKey',
+        'pendingSignTxRequestKey',
+        'pendingContractRequestKey',
+        'pendingEncryptRequestKey',
+        'pendingDecryptRequestKey',
+        'pendingStealthRequestKey',
+        'pendingClaimRequestKey',
+        'pendingSensitiveWriteKey',
+        'pendingEvmTxRequestKey',
+        'pendingEvmSignRequestKey',
+        'pendingEvmTypedDataRequestKey',
+        'pendingEvmTokenRequestKey',
+        'pendingEvmApproveRequestKey',
+        'pendingEvmSwitchRequestKey',
+        'pendingSwitchNetworkRequestKey',
+      ];
+      const raw = await chrome.storage.local.get(dappKeyNames);
+      if (dappKeyNames.some(k => !!raw[k])) setHasDAppRequest(true);
     };
-    
-    checkPendingRequests();
-  }, []);
+
+    checkPending();
+
+    if (typeof chrome !== 'undefined' && chrome.storage?.onChanged) {
+      const listener = (
+        changes: Record<string, chrome.storage.StorageChange>,
+        area: string,
+      ) => {
+        if (area !== 'local' || hasDAppRequest) return;
+        const dappKeyNames = [
+          'pendingConnectRequestKey', 'pendingSignRequestKey',
+          'pendingTxRequestKey', 'pendingSignTxRequestKey',
+          'pendingContractRequestKey', 'pendingEncryptRequestKey',
+          'pendingDecryptRequestKey', 'pendingStealthRequestKey',
+          'pendingClaimRequestKey', 'pendingSensitiveWriteKey',
+          'pendingEvmTxRequestKey', 'pendingEvmSignRequestKey',
+          'pendingEvmTypedDataRequestKey', 'pendingEvmTokenRequestKey',
+          'pendingEvmApproveRequestKey', 'pendingEvmSwitchRequestKey',
+          'pendingSwitchNetworkRequestKey',
+        ];
+        if (dappKeyNames.some(k => changes[k]?.newValue)) setHasDAppRequest(true);
+      };
+      chrome.storage.onChanged.addListener(listener);
+      return () => chrome.storage.onChanged.removeListener(listener);
+    }
+  }, [hasDAppRequest]);
 
   // ONLY load data once on mount - THIS MUST RUN FIRST
   useEffect(() => {
@@ -544,36 +532,8 @@ function App() {
     );
   }
 
-  // Show connection approval if there's a connection request
-  if (connectionRequest && wallets.length > 0 && !isLocked) {
-    return (
-      <ThemeProvider defaultTheme="dark" storageKey="octra-wallet-theme">
-        <div className="min-h-screen bg-background overflow-hidden">
-          <PageTransition variant="scale">
-            <DAppRequestHandler wallets={wallets} />
-          </PageTransition>
-          <Toaster />
-        </div>
-      </ThemeProvider>
-    );
-  }
-
-  // Show capability approval if there's a capability request
-  if (capabilityRequest && wallets.length > 0 && !isLocked) {
-    return (
-      <ThemeProvider defaultTheme="dark" storageKey="octra-wallet-theme">
-        <div className="min-h-screen bg-background overflow-hidden">
-          <PageTransition variant="scale">
-            <DAppRequestHandler wallets={wallets} />
-          </PageTransition>
-          <Toaster />
-        </div>
-      </ThemeProvider>
-    );
-  }
-
-  // Show invoke approval if there's an invoke request
-  if (invokeRequest && wallets.length > 0 && !isLocked) {
+  // Show dApp request approval UI for any pending RFC-O-1 request
+  if (hasDAppRequest && wallets.length > 0 && !isLocked) {
     return (
       <ThemeProvider defaultTheme="dark" storageKey="octra-wallet-theme">
         <div className="min-h-screen bg-background overflow-hidden">

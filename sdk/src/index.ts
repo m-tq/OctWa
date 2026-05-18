@@ -1,143 +1,81 @@
 /**
- * Octra Web Wallet SDK
- * @octwa/sdk
+ * @octwa/sdk — RFC-O-1 Compliant Octra Wallet SDK
+ *
+ * Thin wrapper around window.octra.request() providing
+ * typed, ergonomic access to all RFC-O-1 provider methods.
  */
 
 export { OctraSDK } from './sdk';
 
+export { EvmBridge } from './evm';
+
 export {
-  OctraError,
-  NotInstalledError,
-  NotConnectedError,
+  OctraProviderError,
   UserRejectedError,
+  UnauthorizedError,
+  UnsupportedMethodError,
+  DisconnectedError,
+  NetworkUnavailableError,
+  NotInstalledError,
   TimeoutError,
-  ValidationError,
-  CapabilityError,
-  ScopeViolationError,
-  SignatureInvalidError,
-  CapabilityExpiredError,
-  CapabilityRevokedError,
-  OriginMismatchError,
-  BranchMismatchError,
-  EpochMismatchError,
-  NonceViolationError,
-  DomainSeparationError,
-  isUserRejectionError,
+  isUserRejection,
   wrapProviderError,
 } from './errors';
 
-export {
-  canonicalize,
-  canonicalizeCapability,
-  canonicalizeInvocation,
-  hashCapabilityWithDomain,
-  hashInvocationWithDomain,
-  hashPayload,
-  applyDomainSeparation,
-  sha256Bytes,
-  sha256String,
-  bytesToHex,
-  OCTRA_DOMAIN_PREFIX,
-  OCTRA_CAPABILITY_PREFIX,
-  OCTRA_INVOCATION_PREFIX,
-} from './canonical';
-
-export {
-  canonicalizeCapabilityPayload,
-  hashCapabilityPayload,
-  verifyCapabilitySignature,
-  verifyEd25519Signature,
-  isCapabilityExpired,
-  isOriginValid,
-  validateCapability,
-  generateNonce,
-  hexToBytes,
-  sha256,
-  domainSeparator,
-  verifyDomainSeparation,
-  deriveSessionKey,
-} from './crypto';
-
-export {
-  decodeResponseData,
-  decodeBalanceResponse,
-} from './response-utils';
+export { detectProvider, getProvider, isProviderInstalled } from './utils';
 
 export type {
-  // Connect
-  ConnectRequest,
-  Connection,
-  // Capabilities
-  CapabilityScope,
-  CapabilityState,
-  CapabilityTemplate,
-  CapabilityRequest,
-  CapabilityPayload,
-  Capability,
-  // Invocations
-  InvocationRequest,
-  InvocationResult,
-  SignedInvocation,
-  InvocationHeader,
-  InvocationBody,
-  // Encryption (HFHE payload)
-  EncryptedPayload,
-  EncryptedBlob,
-  // Gas
-  GasEstimate,
-  // Session
-  SessionState,
-  // Balance
-  BalanceResponse,
-  // Sign Message (Phase 1)
-  SignMessageResult,
-  // EVM Operations (Phase 3)
-  EvmTransactionPayload,
-  EvmTransactionResult,
-  Erc20TransactionPayload,
-  // Encrypted Balance (Phase 4)
-  EncryptedBalanceInfo,
-  EncryptBalanceResult,
-  DecryptBalanceResult,
-  // Stealth Transfers (Phase 5)
-  ClaimableOutput,
-  StealthSendPayload,
-  StealthSendResult,
-  StealthClaimResult,
-  // Contract Interactions (Phase 6)
-  ContractCallPayload,
-  ContractCallResult,
-  // Reads (Phase 9)
-  TransactionStatus,
-  TransactionInfo,
-  WaitForConfirmationOptions,
-  RecommendedFee,
-  EpochInfo,
-  ContractViewResult,
-  ContractViewPayload,
-  // PVAC / HFHE Crypto (Phase 7)
-  CryptoIdentity,
-  CipherDecryptResult,
-  CipherEncryptResult,
-  RawStealthOutput,
-  ScannedOutput,
-  ScanOutputsResult,
-  SharedSecretResult,
-  ZkSignInput,
-  ZkSignResult,
-  PvacProgress,
-  PvacOperationStep,
-  PvacProgressCallback,
-  // EVM Token Balances (Phase 8)
-  Erc20TokenBalance,
-  GetEvmTokensResult,
-  // Config
-  InitOptions,
-  // Events
-  EventName,
-  EventCallback,
-  // Errors
-  ErrorCode,
   // Provider
   OctraProvider,
+  OctraRequestArguments,
+  // Network
+  OctraNetworkInfo,
+  // Permissions
+  OctraPermission,
+  // Transactions
+  SendTransactionParams,
+  SignTransactionParams,
+  SignedOctraTransaction,
+  OctraTransactionResult,
+  // Contracts
+  CallContractParams,
+  SendContractTransactionParams,
+  // Privacy
+  EncryptedBalanceInfo,
+  PrivateTransferParams,
+  // Sign Message
+  SignMessageParams,
+  SignMessageResult,
+  // Events
+  OctraProviderEvent,
+  ConnectEventPayload,
+  BalanceChangedPayload,
+  TransactionChangedPayload,
+  ProviderMessage,
+  // Errors
+  OctraErrorCode,
+  OctraErrorReason,
+  // Config
+  OctraSDKOptions,
+  ConnectOptions,
+  WatchTransactionOptions,
 } from './types';
+
+export type {
+  EvmNetworkInfo,
+  EvmBalanceResult,
+  EvmTokenBalanceResult,
+  EvmTokenInfo,
+  EvmSendTransactionParams,
+  EvmTransactionResult,
+  EvmTransferTokenParams,
+  EvmApproveTokenParams,
+  EvmAllowanceParams,
+  EvmAllowanceResult,
+  EvmSignMessageResult,
+  EvmSignTypedDataParams,
+  EvmCallParams,
+  EvmEstimateGasParams,
+  EvmGasEstimate,
+  EvmGasPrice,
+} from './evm-types';

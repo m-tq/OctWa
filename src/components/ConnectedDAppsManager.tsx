@@ -1,7 +1,10 @@
 /**
- * ConnectedDAppsManager - Manage connected dApps and their capabilities
- * 
- * Syncs with both localStorage (web) and chrome.storage.local (extension)
+ * ConnectedDAppsManager — list and revoke RFC-O-1 dApp sessions.
+ *
+ * Reads `connectedDApps` from `chrome.storage.local` (or the `localStorage`
+ * mirror in non-extension contexts). Each entry is a connection that
+ * background.js created during `octra_requestAccounts`. Disconnecting
+ * removes the entry — the dApp must call `connect()` again to regain access.
  */
 
 import { useState, useEffect, useCallback } from 'react';
@@ -9,18 +12,29 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog';
 
-import { 
-  Globe, 
-  Shield, 
+import {
+  Globe,
   ExternalLink,
   MoreVertical,
   Unplug,
-  Eye,
-  Edit,
-  Cpu,
   RefreshCw,
   Wallet as WalletIcon,
 } from 'lucide-react';
@@ -28,119 +42,19 @@ import { Wallet } from '../types/wallet';
 import { useToast } from '@/hooks/use-toast';
 import { startMinDuration } from '@/utils/minLoading';
 
-// Connection stored in localStorage/chrome.storage
+/**
+ * Shape written by `background.js → saveConnection`.
+ * `connectedDApps` is stored as a map keyed by canonical origin.
+ */
 interface StoredConnection {
-  circle: string;
   appOrigin: string;
-  appName: string;
-  walletPubKey: string;
-  evmAddress?: string;
-  network: 'devnet' | 'mainnet';
+  walletAddress: string;
+  permissions: string[];
+  network: 'mainnet' | 'devnet';
   connectedAt: number;
 }
 
-// Capability stored in localStorage (matches SDK Capability type)
-interface StoredCapability {
-  id: string;
-  version: 1;
-  circle: string;
-  methods: string[];
-  scope: 'read' | 'write' | 'compute';
-  encrypted: boolean;
-  appOrigin: string;
-  issuedAt: number;
-  expiresAt: number;
-  nonce: string;
-  issuerPubKey: string;
-  signature: string;
-}
-
-/**
- * Canonicalize an `appOrigin` so that two stored entries that came in
- * with cosmetic differences ("https://ons.octra.org" vs
- * "https://ons.octra.org/", or differing host casing) collapse to the
- * same key.
- *
- * Falls back to the raw value if the input cannot be parsed as a URL.
- */
-function canonicalizeOrigin(origin: string | undefined | null): string {
-  if (!origin) return '';
-  const trimmed = origin.trim().replace(/\/+$/, '');
-  try {
-    const url = new URL(trimmed);
-    // URL.origin already lowercases the hostname and strips path/query.
-    return url.origin;
-  } catch {
-    return trimmed.toLowerCase();
-  }
-}
-
-/**
- * Defensive dedup of stored connections.
- *
- * background.js' `saveConnection` already filters by `appOrigin` before
- * persisting, but earlier extension builds did not — and a few existing
- * installs still carry duplicate rows from that period. Older code paths
- * that wrote directly to chrome.storage.local (capability flows, manual
- * imports) can also leave stragglers, sometimes with cosmetically
- * different origins (trailing slash, casing) that bypass the existing
- * exact-match filter.
- *
- * Rule: keep the most recent entry per canonicalized `appOrigin`. The
- * surviving row's stored `appOrigin` is rewritten to the canonical form
- * so subsequent writes from background.js continue to match it. If a
- * user has the same dApp connected from two different origins (e.g.
- * localhost dev vs production), both rows survive — that's intentional,
- * those are separate authorizations.
- */
-function dedupeConnections(list: StoredConnection[]): StoredConnection[] {
-  const byOrigin = new Map<string, StoredConnection>();
-  for (const conn of list) {
-    if (!conn?.appOrigin) continue;
-    const key = canonicalizeOrigin(conn.appOrigin);
-    if (!key) continue;
-    const existing = byOrigin.get(key);
-    if (!existing || (conn.connectedAt ?? 0) > (existing.connectedAt ?? 0)) {
-      byOrigin.set(key, { ...conn, appOrigin: key });
-    }
-  }
-  return [...byOrigin.values()].sort(
-    (a, b) => (b.connectedAt ?? 0) - (a.connectedAt ?? 0),
-  );
-}
-
-/**
- * Defensive dedup of capabilities per origin.
- * Same idea — older builds could record duplicate capability records
- * for the same (origin, scope) pair. Keep the freshest by `issuedAt`.
- * Capability map keys are also canonicalized so they line up with the
- * deduped connections list.
- */
-function dedupeCapabilityMap(
-  raw: Record<string, StoredCapability[]>,
-): Record<string, StoredCapability[]> {
-  const cleaned: Record<string, StoredCapability[]> = {};
-  for (const [origin, caps] of Object.entries(raw)) {
-    if (!Array.isArray(caps)) continue;
-    const key = canonicalizeOrigin(origin);
-    if (!key) continue;
-    const byScope = new Map<string, StoredCapability>();
-    // Seed with anything we already collected under the canonical key,
-    // so two raw keys that canonicalize to the same value merge.
-    for (const cap of cleaned[key] ?? []) {
-      byScope.set(cap.scope, cap);
-    }
-    for (const cap of caps) {
-      if (!cap?.scope) continue;
-      const existing = byScope.get(cap.scope);
-      if (!existing || (cap.issuedAt ?? 0) > (existing.issuedAt ?? 0)) {
-        byScope.set(cap.scope, { ...cap, appOrigin: key });
-      }
-    }
-    if (byScope.size) cleaned[key] = [...byScope.values()];
-  }
-  return cleaned;
-}
+type ConnectionMap = Record<string, StoredConnection>;
 
 interface ConnectedDAppsManagerProps {
   wallets: Wallet[];
@@ -148,143 +62,154 @@ interface ConnectedDAppsManagerProps {
   isPopupMode?: boolean;
 }
 
-// Check if running in extension context
-const isExtension = typeof chrome !== 'undefined' && chrome.storage?.local;
+const STORAGE_KEY = 'connectedDApps';
+const isExtension =
+  typeof chrome !== 'undefined' && !!chrome.storage?.local;
+
+/**
+ * Canonicalize an origin so cosmetic differences ("https://x.com" vs
+ * "https://x.com/") collapse to a single key.
+ */
+function canonicalizeOrigin(origin: string | undefined | null): string {
+  if (!origin) return '';
+  const trimmed = origin.trim().replace(/\/+$/, '');
+  try {
+    return new URL(trimmed).origin;
+  } catch {
+    return trimmed.toLowerCase();
+  }
+}
+
+/**
+ * Normalise the stored value to a canonical-key map. Older builds may have
+ * persisted an array — accept both shapes and emit the map shape consistently.
+ */
+function normalizeConnections(raw: unknown): ConnectionMap {
+  if (!raw) return {};
+  const out: ConnectionMap = {};
+
+  const insert = (entry: Partial<StoredConnection> | null | undefined) => {
+    if (!entry?.appOrigin) return;
+    const key = canonicalizeOrigin(entry.appOrigin);
+    if (!key) return;
+    const existing = out[key];
+    if (!existing || (entry.connectedAt ?? 0) > (existing.connectedAt ?? 0)) {
+      out[key] = {
+        appOrigin: key,
+        walletAddress: entry.walletAddress ?? '',
+        permissions: Array.isArray(entry.permissions) ? entry.permissions : [],
+        network: entry.network === 'devnet' ? 'devnet' : 'mainnet',
+        connectedAt: entry.connectedAt ?? 0,
+      };
+    }
+  };
+
+  if (Array.isArray(raw)) {
+    for (const conn of raw) insert(conn as Partial<StoredConnection>);
+  } else if (typeof raw === 'object') {
+    for (const conn of Object.values(raw as Record<string, unknown>)) {
+      insert(conn as Partial<StoredConnection>);
+    }
+  }
+  return out;
+}
 
 export function ConnectedDAppsManager({
   wallets,
   isPopupMode = false,
 }: ConnectedDAppsManagerProps) {
   const [connections, setConnections] = useState<StoredConnection[]>([]);
-  const [capabilities, setCapabilities] = useState<Record<string, StoredCapability[]>>({});
   const [isRefreshing, setIsRefreshing] = useState(false);
   const { toast } = useToast();
 
-  // Load data from both localStorage and chrome.storage
   const loadData = useCallback(async () => {
     setIsRefreshing(true);
     try {
-      let storedConnections: StoredConnection[] = [];
-      let storedCapabilities: Record<string, StoredCapability[]> = {};
-
+      let raw: unknown;
       if (isExtension) {
-        // Load from chrome.storage.local (extension)
-        const result = await chrome.storage.local.get(['connectedDApps', 'capabilities']);
-        storedConnections = result.connectedDApps || [];
-        storedCapabilities = result.capabilities || {};
+        const result = await chrome.storage.local.get([STORAGE_KEY]);
+        raw = result[STORAGE_KEY];
       } else {
-        // Load from localStorage (web)
-        storedConnections = JSON.parse(localStorage.getItem('connectedDApps') || '[]');
-        storedCapabilities = JSON.parse(localStorage.getItem('capabilities') || '{}');
+        const stored = localStorage.getItem(STORAGE_KEY);
+        raw = stored ? JSON.parse(stored) : {};
       }
 
-      // Defensive dedup. If anything was duplicated, write the cleaned
-      // list back so the duplicates stop coming back on next refresh.
-      const dedupedConnections = dedupeConnections(storedConnections);
-      const dedupedCapabilities = dedupeCapabilityMap(storedCapabilities);
+      const map = normalizeConnections(raw);
+      const entries = Object.values(map).sort(
+        (a, b) => (b.connectedAt ?? 0) - (a.connectedAt ?? 0),
+      );
 
-      const connectionsChanged = dedupedConnections.length !== storedConnections.length;
-      const capabilitiesChanged =
-        Object.keys(dedupedCapabilities).length !== Object.keys(storedCapabilities).length ||
-        Object.entries(dedupedCapabilities).some(
-          ([origin, caps]) => (storedCapabilities[origin]?.length ?? 0) !== caps.length,
-        );
-
-      if (connectionsChanged || capabilitiesChanged) {
-        localStorage.setItem('connectedDApps', JSON.stringify(dedupedConnections));
-        localStorage.setItem('capabilities', JSON.stringify(dedupedCapabilities));
-        if (isExtension) {
-          await chrome.storage.local.set({
-            connectedDApps: dedupedConnections,
-            capabilities: dedupedCapabilities,
-          });
-        }
-      } else if (isExtension) {
-        // Mirror chrome.storage to localStorage for cross-context consistency
-        localStorage.setItem('connectedDApps', JSON.stringify(dedupedConnections));
-        localStorage.setItem('capabilities', JSON.stringify(dedupedCapabilities));
+      // Mirror canonical map back to storage so the next read is clean.
+      if (isExtension) {
+        await chrome.storage.local.set({ [STORAGE_KEY]: map });
       }
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(map));
 
-      setConnections(dedupedConnections);
-      setCapabilities(dedupedCapabilities);
+      setConnections(entries);
     } catch (error) {
-      console.error('[ConnectedDAppsManager] Failed to load data:', error);
-      // Fallback to localStorage
-      const storedConnections = JSON.parse(localStorage.getItem('connectedDApps') || '[]');
-      const storedCapabilities = JSON.parse(localStorage.getItem('capabilities') || '{}');
-      setConnections(dedupeConnections(storedConnections));
-      setCapabilities(dedupeCapabilityMap(storedCapabilities));
+      console.error('[ConnectedDAppsManager] Failed to load:', error);
+      setConnections([]);
     } finally {
       setIsRefreshing(false);
     }
   }, []);
 
   useEffect(() => {
-    loadData();
+    void loadData();
 
-    // Listen for storage changes (extension)
     if (isExtension) {
-      const handleStorageChange = (changes: { [key: string]: chrome.storage.StorageChange }, namespace: string) => {
-        if (namespace === 'local') {
-          if (changes.connectedDApps) {
-            const fresh = dedupeConnections(changes.connectedDApps.newValue || []);
-            setConnections(fresh);
-            localStorage.setItem('connectedDApps', JSON.stringify(fresh));
-          }
-          if (changes.capabilities) {
-            const fresh = dedupeCapabilityMap(changes.capabilities.newValue || {});
-            setCapabilities(fresh);
-            localStorage.setItem('capabilities', JSON.stringify(fresh));
-          }
-        }
+      const onChanged = (
+        changes: { [key: string]: chrome.storage.StorageChange },
+        namespace: string,
+      ) => {
+        if (namespace !== 'local' || !changes[STORAGE_KEY]) return;
+        const map = normalizeConnections(changes[STORAGE_KEY].newValue);
+        setConnections(
+          Object.values(map).sort(
+            (a, b) => (b.connectedAt ?? 0) - (a.connectedAt ?? 0),
+          ),
+        );
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(map));
       };
-      
-      chrome.storage.onChanged.addListener(handleStorageChange);
-      return () => chrome.storage.onChanged.removeListener(handleStorageChange);
+      chrome.storage.onChanged.addListener(onChanged);
+      return () => chrome.storage.onChanged.removeListener(onChanged);
     }
 
-    // Listen for localStorage changes (web - cross-tab sync)
-    const handleStorageEvent = (e: StorageEvent) => {
-      if (e.key === 'connectedDApps' && e.newValue) {
-        setConnections(dedupeConnections(JSON.parse(e.newValue)));
-      }
-      if (e.key === 'capabilities' && e.newValue) {
-        setCapabilities(dedupeCapabilityMap(JSON.parse(e.newValue)));
+    const onStorage = (event: StorageEvent) => {
+      if (event.key !== STORAGE_KEY || !event.newValue) return;
+      try {
+        const map = normalizeConnections(JSON.parse(event.newValue));
+        setConnections(
+          Object.values(map).sort(
+            (a, b) => (b.connectedAt ?? 0) - (a.connectedAt ?? 0),
+          ),
+        );
+      } catch {
+        /* ignore malformed payloads */
       }
     };
-    
-    window.addEventListener('storage', handleStorageEvent);
-    return () => window.removeEventListener('storage', handleStorageEvent);
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
   }, [loadData]);
+
+  const persistMap = async (map: ConnectionMap) => {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(map));
+    if (isExtension) {
+      await chrome.storage.local.set({ [STORAGE_KEY]: map });
+    }
+  };
 
   const handleDisconnect = async (connection: StoredConnection) => {
     try {
-      // Remove connection
-      const updatedConnections = connections.filter(
-        (c) => c.appOrigin !== connection.appOrigin
-      );
-
-      // Remove capabilities for this origin
-      const updatedCapabilities = { ...capabilities };
-      delete updatedCapabilities[connection.appOrigin];
-
-      // Save to both storages
-      localStorage.setItem('connectedDApps', JSON.stringify(updatedConnections));
-      localStorage.setItem('capabilities', JSON.stringify(updatedCapabilities));
-
-      if (isExtension) {
-        await chrome.storage.local.set({
-          connectedDApps: updatedConnections,
-          capabilities: updatedCapabilities,
-        });
+      const next: ConnectionMap = {};
+      for (const c of connections) {
+        if (c.appOrigin !== connection.appOrigin) next[c.appOrigin] = c;
       }
-
-      setConnections(updatedConnections);
-      setCapabilities(updatedCapabilities);
-
+      await persistMap(next);
+      setConnections(Object.values(next));
       toast({
         title: 'Disconnected',
-        description: `${connection.appName} has been disconnected. The dApp will need to request connection again.`,
+        description: `${formatHostname(connection.appOrigin)} can no longer access this wallet until it requests connection again.`,
       });
     } catch (error) {
       console.error('[ConnectedDAppsManager] Disconnect error:', error);
@@ -298,23 +223,11 @@ export function ConnectedDAppsManager({
 
   const handleDisconnectAll = async () => {
     try {
-      // Clear all connections and capabilities
-      localStorage.setItem('connectedDApps', '[]');
-      localStorage.setItem('capabilities', '{}');
-
-      if (isExtension) {
-        await chrome.storage.local.set({
-          connectedDApps: [],
-          capabilities: {},
-        });
-      }
-
+      await persistMap({});
       setConnections([]);
-      setCapabilities({});
-
       toast({
         title: 'All Disconnected',
-        description: 'All dApps have been disconnected. They will need to request connection again.',
+        description: 'All dApps have been disconnected.',
       });
     } catch (error) {
       console.error('[ConnectedDAppsManager] Disconnect all error:', error);
@@ -334,51 +247,6 @@ export function ConnectedDAppsManager({
       title: 'Refreshed',
       description: 'dApp connections list updated',
     });
-  };
-
-  const formatDate = (timestamp: number) =>
-    new Date(timestamp).toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-
-  const shortenAddress = (addr: string) =>
-    addr ? `${addr.slice(0, 8)}...${addr.slice(-4)}` : '';
-
-  const getWalletLabel = (pubKey: string) => {
-    const idx = wallets.findIndex(w => w.address === pubKey);
-    return {
-      index: idx >= 0 ? idx + 1 : null,
-      address: shortenAddress(pubKey),
-    };
-  };
-
-  const getScopeIcon = (scope: string) => {
-    switch (scope) {
-      case 'read':
-        return <Eye className="h-3 w-3" />;
-      case 'write':
-        return <Edit className="h-3 w-3" />;
-      case 'compute':
-        return <Cpu className="h-3 w-3" />;
-      default:
-        return <Shield className="h-3 w-3" />;
-    }
-  };
-
-  const getScopeColor = (scope: string) => {
-    switch (scope) {
-      case 'read':
-        return 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200';
-      case 'write':
-        return 'bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200';
-      case 'compute':
-        return 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200';
-      default:
-        return 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200';
-    }
   };
 
   return (
@@ -412,7 +280,11 @@ export function ConnectedDAppsManager({
               className={isPopupMode ? 'h-7 w-7 p-0' : ''}
               title="Refresh connections"
             >
-              <RefreshCw className={`${isPopupMode ? 'h-3 w-3' : 'h-4 w-4'} ${isRefreshing ? 'animate-spin' : ''}`} />
+              <RefreshCw
+                className={`${isPopupMode ? 'h-3 w-3' : 'h-4 w-4'} ${
+                  isRefreshing ? 'animate-spin' : ''
+                }`}
+              />
             </Button>
             {connections.length > 0 && (
               <AlertDialog>
@@ -424,11 +296,13 @@ export function ConnectedDAppsManager({
                       isPopupMode ? 'h-7 text-[10px] px-2' : ''
                     }`}
                   >
-                    <Unplug className={isPopupMode ? 'h-3 w-3 mr-1' : 'h-4 w-4 mr-2'} />
+                    <Unplug
+                      className={isPopupMode ? 'h-3 w-3 mr-1' : 'h-4 w-4 mr-2'}
+                    />
                     {isPopupMode ? 'All' : 'Disconnect All'}
                   </Button>
                 </AlertDialogTrigger>
-                <AlertDialogContent 
+                <AlertDialogContent
                   className={isPopupMode ? 'w-[320px] p-4' : ''}
                   aria-describedby="disconnect-all-description"
                 >
@@ -436,16 +310,19 @@ export function ConnectedDAppsManager({
                     <AlertDialogTitle className={isPopupMode ? 'text-sm' : ''}>
                       Disconnect All dApps
                     </AlertDialogTitle>
-                    <AlertDialogDescription 
+                    <AlertDialogDescription
                       id="disconnect-all-description"
                       className={isPopupMode ? 'text-xs' : ''}
                     >
-                      This will disconnect all dApps and revoke all capabilities. 
-                      Each dApp will need to request a new connection to interact with your wallet.
+                      This will remove every dApp's session. Each dApp must
+                      call <code>connect()</code> again before it can interact
+                      with your wallet.
                     </AlertDialogDescription>
                   </AlertDialogHeader>
                   <AlertDialogFooter>
-                    <AlertDialogCancel className={isPopupMode ? 'h-8 text-xs' : ''}>
+                    <AlertDialogCancel
+                      className={isPopupMode ? 'h-8 text-xs' : ''}
+                    >
                       Cancel
                     </AlertDialogCancel>
                     <AlertDialogAction
@@ -465,154 +342,205 @@ export function ConnectedDAppsManager({
 
         <CardContent className={isPopupMode ? 'p-0' : ''}>
           {connections.length === 0 ? (
-            <div className={`flex items-center gap-2 text-muted-foreground ${isPopupMode ? 'py-2 text-xs' : 'py-4'}`}>
-              <Globe className={`${isPopupMode ? 'h-3 w-3' : 'h-4 w-4'} shrink-0`} />
-              <span>No connected dApps. Connect to a dApp to see it here.</span>
+            <div
+              className={`flex items-center gap-2 text-muted-foreground ${
+                isPopupMode ? 'py-2 text-xs' : 'py-4'
+              }`}
+            >
+              <Globe
+                className={`${isPopupMode ? 'h-3 w-3' : 'h-4 w-4'} shrink-0`}
+              />
+              <span>
+                No connected dApps. Connect to a dApp to see it here.
+              </span>
             </div>
           ) : (
             <div className={isPopupMode ? 'space-y-2' : 'space-y-4'}>
-              {connections.map((connection) => {
-                const originCapabilities = capabilities[connection.appOrigin] || [];
-                const activeCapabilities = originCapabilities.filter(
-                  (c) => !c.expiresAt || c.expiresAt > Date.now()
-                );
-
-                return (
-                  <div
-                    key={connection.appOrigin}
-                    className={`border rounded-lg hover:bg-muted/50 transition-colors ${
-                      isPopupMode ? 'p-2' : 'p-4'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2 flex-1 min-w-0">
-                        <Avatar className={isPopupMode ? 'h-8 w-8' : 'h-10 w-10'}>
-                          <AvatarFallback className="bg-primary text-primary-foreground text-xs">
-                            {connection.appName.charAt(0).toUpperCase()}
-                          </AvatarFallback>
-                        </Avatar>
-
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2">
-                            <h3
-                              className={`font-medium truncate ${
-                                isPopupMode ? 'text-xs' : 'text-sm'
-                              }`}
-                            >
-                              {connection.appName}
-                            </h3>
-                            <Badge
-                              variant="outline"
-                              className={isPopupMode ? 'text-[8px] px-1' : 'text-xs'}
-                            >
-                              {connection.network}
-                            </Badge>
-                          </div>
-                          <p
-                            className={`text-muted-foreground truncate ${
-                              isPopupMode ? 'text-[10px]' : 'text-xs'
-                            }`}
-                          >
-                            Circle: {connection.circle}
-                          </p>
-                          <p
-                            className={`text-muted-foreground truncate ${
-                              isPopupMode ? 'text-[10px]' : 'text-xs'
-                            }`}
-                          >
-                            Connected: {formatDate(connection.connectedAt)}
-                          </p>
-                          {/* Wallet info */}
-                          {(() => {
-                            const { index, address } = getWalletLabel(connection.walletPubKey);
-                            return (
-                              <div className={`flex items-center gap-1 mt-0.5 ${isPopupMode ? 'text-[10px]' : 'text-xs'}`}>
-                                <WalletIcon className={`shrink-0 text-[#3B567F] ${isPopupMode ? 'h-2.5 w-2.5' : 'h-3 w-3'}`} />
-                                <span className="text-[#3B567F] font-medium font-mono truncate">
-                                  {index ? `Wallet ${index} · ` : ''}{address}
-                                </span>
-                              </div>
-                            );
-                          })()}
-                        </div>
-                      </div>
-
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className={isPopupMode ? 'h-6 w-6 p-0' : 'h-8 w-8 p-0'}
-                          >
-                            <MoreVertical className={isPopupMode ? 'h-3 w-3' : 'h-4 w-4'} />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end" className="z-[9999]">
-                          <DropdownMenuItem
-                            onClick={() => window.open(connection.appOrigin, '_blank')}
-                            className={isPopupMode ? 'text-xs' : ''}
-                          >
-                            <ExternalLink className={`${isPopupMode ? 'h-3 w-3' : 'h-4 w-4'} mr-2`} />
-                            Visit
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            onClick={() => handleDisconnect(connection)}
-                            className={`text-red-600 ${isPopupMode ? 'text-xs' : ''}`}
-                          >
-                            <Unplug className={`${isPopupMode ? 'h-3 w-3' : 'h-4 w-4'} mr-2`} />
-                            Disconnect
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </div>
-
-                    {/* Active Capabilities - deduplicated by scope */}
-                    {activeCapabilities.length > 0 && (() => {
-                      // Deduplicate by scope, keep the latest one
-                      const deduped = activeCapabilities.reduce((acc, cap) => {
-                        const existing = acc.find(c => c.scope === cap.scope);
-                        if (!existing || cap.issuedAt > existing.issuedAt) {
-                          return [...acc.filter(c => c.scope !== cap.scope), cap];
-                        }
-                        return acc;
-                      }, [] as StoredCapability[]);
-                      
-                      return (
-                        <div className={`mt-2 pt-2 ${isPopupMode ? 'space-y-1' : 'space-y-2'}`}>
-                          <p className={`text-muted-foreground ${isPopupMode ? 'text-[10px]' : 'text-xs'}`}>
-                            Active Capabilities:
-                          </p>
-                          <div className="flex flex-col gap-1">
-                            {deduped.map((cap) => (
-                              <div key={cap.id} className="flex flex-col">
-                                <Badge
-                                  variant="secondary"
-                                  className={`${getScopeColor(cap.scope)} w-fit ${
-                                    isPopupMode ? 'text-[8px] px-1' : 'text-xs'
-                                  }`}
-                                >
-                                  {getScopeIcon(cap.scope)}
-                                  <span className="ml-1">{cap.scope}</span>
-                                  <span className="ml-1 opacity-70">
-                                    ({cap.methods.length} methods)
-                                  </span>
-                                </Badge>
-                                <p className={`text-muted-foreground ml-1 ${isPopupMode ? 'text-[8px]' : 'text-[10px]'}`}>
-                                  {cap.methods.join(', ')}
-                                </p>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      );
-                    })()}
-                  </div>
-                );
-              })}
+              {connections.map((connection) => (
+                <ConnectionRow
+                  key={connection.appOrigin}
+                  connection={connection}
+                  wallets={wallets}
+                  isPopupMode={isPopupMode}
+                  onDisconnect={() => handleDisconnect(connection)}
+                />
+              ))}
             </div>
           )}
         </CardContent>
       </Card>
     </div>
   );
+}
+
+// =============================================================================
+// Sub-components & helpers
+// =============================================================================
+
+function ConnectionRow({
+  connection,
+  wallets,
+  isPopupMode,
+  onDisconnect,
+}: {
+  connection: StoredConnection;
+  wallets: Wallet[];
+  isPopupMode: boolean;
+  onDisconnect: () => void;
+}) {
+  const hostname = formatHostname(connection.appOrigin);
+  const walletInfo = describeWallet(connection.walletAddress, wallets);
+
+  return (
+    <div
+      className={`border rounded-lg hover:bg-muted/50 transition-colors ${
+        isPopupMode ? 'p-2' : 'p-4'
+      }`}
+    >
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2 flex-1 min-w-0">
+          <Avatar className={isPopupMode ? 'h-8 w-8' : 'h-10 w-10'}>
+            <AvatarFallback className="bg-primary text-primary-foreground text-xs">
+              {hostname.charAt(0).toUpperCase()}
+            </AvatarFallback>
+          </Avatar>
+
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2">
+              <h3
+                className={`font-medium truncate ${
+                  isPopupMode ? 'text-xs' : 'text-sm'
+                }`}
+              >
+                {hostname}
+              </h3>
+              <Badge
+                variant="outline"
+                className={isPopupMode ? 'text-[8px] px-1' : 'text-xs'}
+              >
+                {connection.network}
+              </Badge>
+            </div>
+            <p
+              className={`text-muted-foreground truncate ${
+                isPopupMode ? 'text-[10px]' : 'text-xs'
+              }`}
+            >
+              {connection.appOrigin}
+            </p>
+            <p
+              className={`text-muted-foreground truncate ${
+                isPopupMode ? 'text-[10px]' : 'text-xs'
+              }`}
+            >
+              Connected {formatDate(connection.connectedAt)}
+            </p>
+            <div
+              className={`flex items-center gap-1 mt-0.5 ${
+                isPopupMode ? 'text-[10px]' : 'text-xs'
+              }`}
+            >
+              <WalletIcon
+                className={`shrink-0 text-[#3B567F] ${
+                  isPopupMode ? 'h-2.5 w-2.5' : 'h-3 w-3'
+                }`}
+              />
+              <span className="text-[#3B567F] font-medium font-mono truncate">
+                {walletInfo.label}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              variant="ghost"
+              size="sm"
+              className={isPopupMode ? 'h-6 w-6 p-0' : 'h-8 w-8 p-0'}
+            >
+              <MoreVertical
+                className={isPopupMode ? 'h-3 w-3' : 'h-4 w-4'}
+              />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="z-[9999]">
+            <DropdownMenuItem
+              onClick={() => window.open(connection.appOrigin, '_blank')}
+              className={isPopupMode ? 'text-xs' : ''}
+            >
+              <ExternalLink
+                className={`${isPopupMode ? 'h-3 w-3' : 'h-4 w-4'} mr-2`}
+              />
+              Visit
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onClick={onDisconnect}
+              className={`text-red-600 ${isPopupMode ? 'text-xs' : ''}`}
+            >
+              <Unplug
+                className={`${isPopupMode ? 'h-3 w-3' : 'h-4 w-4'} mr-2`}
+              />
+              Disconnect
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
+
+      {connection.permissions.length > 0 && (
+        <div className={`mt-2 pt-2 ${isPopupMode ? 'space-y-1' : 'space-y-2'}`}>
+          <p
+            className={`text-muted-foreground ${
+              isPopupMode ? 'text-[10px]' : 'text-xs'
+            }`}
+          >
+            Granted Permissions ({connection.permissions.length}):
+          </p>
+          <div className="flex flex-wrap gap-1">
+            {connection.permissions.map((perm) => (
+              <Badge
+                key={perm}
+                variant="secondary"
+                className={`font-mono ${
+                  isPopupMode ? 'text-[8px] px-1' : 'text-[10px]'
+                }`}
+              >
+                {perm}
+              </Badge>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function describeWallet(
+  address: string,
+  wallets: Wallet[],
+): { label: string } {
+  if (!address) return { label: '—' };
+  const idx = wallets.findIndex((w) => w.address === address);
+  const short = `${address.slice(0, 8)}…${address.slice(-4)}`;
+  return {
+    label: idx >= 0 ? `Wallet ${idx + 1} · ${short}` : short,
+  };
+}
+
+function formatHostname(origin: string): string {
+  try {
+    return new URL(origin).hostname;
+  } catch {
+    return origin;
+  }
+}
+
+function formatDate(timestamp: number): string {
+  if (!timestamp) return '—';
+  return new Date(timestamp).toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
 }

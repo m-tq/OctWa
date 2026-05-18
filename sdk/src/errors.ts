@@ -1,168 +1,137 @@
-import type { ErrorCode } from './types';
+/**
+ * @octwa/sdk — Error Classes (RFC-O-1 Compliant)
+ *
+ * Standard error codes:
+ *   4001 — User rejected
+ *   4100 — Unauthorized
+ *   4200 — Unsupported method
+ *   4900 — Disconnected
+ *   4901 — Network unavailable
+ */
 
-export class OctraError extends Error {
-  readonly code: ErrorCode;
-  readonly details?: unknown;
+import { OctraErrorCode } from './types';
+import type { OctraErrorReason } from './types';
 
-  constructor(code: ErrorCode, message: string, details?: unknown) {
+export class OctraProviderError extends Error {
+  readonly code: number;
+  readonly data?: { reason?: OctraErrorReason; [key: string]: unknown };
+
+  constructor(code: number, message: string, reason?: OctraErrorReason) {
     super(message);
-    this.name = 'OctraError';
+    this.name = 'OctraProviderError';
     this.code = code;
-    this.details = details;
-
-    const ErrorWithCapture = Error as typeof Error & {
-      captureStackTrace?: (target: object, constructor: Function) => void;
-    };
-    if (ErrorWithCapture.captureStackTrace) {
-      ErrorWithCapture.captureStackTrace(this, this.constructor);
-    }
+    this.data = reason ? { reason } : undefined;
   }
 }
 
-export class NotInstalledError extends OctraError {
-  constructor(details?: unknown) {
-    super('NOT_INSTALLED', 'Octra Wallet extension is not installed', details);
-    this.name = 'NotInstalledError';
-  }
-}
-
-export class NotConnectedError extends OctraError {
-  constructor(details?: unknown) {
-    super('NOT_CONNECTED', 'Not connected to a Circle', details);
-    this.name = 'NotConnectedError';
-  }
-}
-
-export class UserRejectedError extends OctraError {
-  constructor(message = 'User rejected the request', details?: unknown) {
-    super('USER_REJECTED', message, details);
+export class UserRejectedError extends OctraProviderError {
+  constructor(message = 'User rejected the request') {
+    super(OctraErrorCode.UserRejected, message);
     this.name = 'UserRejectedError';
   }
 }
 
-export class TimeoutError extends OctraError {
-  constructor(operation = 'Operation', details?: unknown) {
-    super('TIMEOUT', `${operation} timed out`, details);
+export class UnauthorizedError extends OctraProviderError {
+  constructor(message = 'Unauthorized', reason?: OctraErrorReason) {
+    super(OctraErrorCode.Unauthorized, message, reason);
+    this.name = 'UnauthorizedError';
+  }
+}
+
+export class UnsupportedMethodError extends OctraProviderError {
+  constructor(method: string) {
+    super(OctraErrorCode.UnsupportedMethod, `Unsupported method: ${method}`);
+    this.name = 'UnsupportedMethodError';
+  }
+}
+
+export class DisconnectedError extends OctraProviderError {
+  constructor(message = 'Provider is disconnected from all Octra networks') {
+    super(OctraErrorCode.Disconnected, message);
+    this.name = 'DisconnectedError';
+  }
+}
+
+export class NetworkUnavailableError extends OctraProviderError {
+  constructor(networkId?: string) {
+    super(
+      OctraErrorCode.NetworkUnavailable,
+      networkId
+        ? `Cannot service network: ${networkId}`
+        : 'Requested network is unavailable',
+    );
+    this.name = 'NetworkUnavailableError';
+  }
+}
+
+export class NotInstalledError extends OctraProviderError {
+  constructor() {
+    super(OctraErrorCode.Disconnected, 'Octra Wallet extension is not installed');
+    this.name = 'NotInstalledError';
+  }
+}
+
+export class TimeoutError extends OctraProviderError {
+  constructor(operation = 'Operation') {
+    super(OctraErrorCode.Disconnected, `${operation} timed out`);
     this.name = 'TimeoutError';
   }
 }
 
-export class ValidationError extends OctraError {
-  constructor(message: string, details?: unknown) {
-    super('VALIDATION_ERROR', message, details);
-    this.name = 'ValidationError';
-  }
-}
-
-export class CapabilityError extends OctraError {
-  constructor(message: string, details?: unknown) {
-    super('CAPABILITY_ERROR', message, details);
-    this.name = 'CapabilityError';
-  }
-}
-
-export class ScopeViolationError extends OctraError {
-  constructor(method: string, capabilityId: string, details?: unknown) {
-    super('SCOPE_VIOLATION', `Method '${method}' is not allowed by capability '${capabilityId}'`, details);
-    this.name = 'ScopeViolationError';
-  }
-}
-
-export class SignatureInvalidError extends OctraError {
-  constructor(capabilityId: string, details?: unknown) {
-    super('SIGNATURE_INVALID', `Capability '${capabilityId}' has invalid signature`, details);
-    this.name = 'SignatureInvalidError';
-  }
-}
-
-export class CapabilityExpiredError extends OctraError {
-  constructor(capabilityId: string, expiresAt: number, details?: unknown) {
-    super(
-      'CAPABILITY_EXPIRED',
-      `Capability '${capabilityId}' expired at ${new Date(expiresAt).toISOString()}`,
-      details,
-    );
-    this.name = 'CapabilityExpiredError';
-  }
-}
-
-export class CapabilityRevokedError extends OctraError {
-  constructor(capabilityId: string, details?: unknown) {
-    super('CAPABILITY_REVOKED', `Capability '${capabilityId}' has been revoked`, details);
-    this.name = 'CapabilityRevokedError';
-  }
-}
-
-export class BranchMismatchError extends OctraError {
-  constructor(expected: string, actual: string, details?: unknown) {
-    super('BRANCH_MISMATCH', `Branch mismatch: expected '${expected}', got '${actual}'`, details);
-    this.name = 'BranchMismatchError';
-  }
-}
-
-export class EpochMismatchError extends OctraError {
-  constructor(expected: number, actual: number, details?: unknown) {
-    super('EPOCH_MISMATCH', `Epoch mismatch: expected ${expected}, got ${actual}`, details);
-    this.name = 'EpochMismatchError';
-  }
-}
-
-export class NonceViolationError extends OctraError {
-  constructor(capabilityId: string, lastNonce: number, attemptedNonce: number, details?: unknown) {
-    super(
-      'NONCE_VIOLATION',
-      `Nonce violation for capability '${capabilityId}': attempted ${attemptedNonce}, must be > ${lastNonce}`,
-      details,
-    );
-    this.name = 'NonceViolationError';
-  }
-}
-
-export class DomainSeparationError extends OctraError {
-  constructor(message: string, details?: unknown) {
-    super('DOMAIN_SEPARATION_ERROR', message, details);
-    this.name = 'DomainSeparationError';
-  }
-}
-
-export class OriginMismatchError extends OctraError {
-  constructor(expected: string, actual: string, details?: unknown) {
-    super(
-      'ORIGIN_MISMATCH',
-      `Origin mismatch: capability bound to '${expected}', current origin is '${actual}'`,
-      details,
-    );
-    this.name = 'OriginMismatchError';
-  }
-}
-
-export function isUserRejectionError(error: unknown): boolean {
+/**
+ * Check if an error is a user rejection (code 4001).
+ */
+export function isUserRejection(error: unknown): boolean {
+  if (error instanceof OctraProviderError) return error.code === OctraErrorCode.UserRejected;
   if (error instanceof Error) {
-    const message = error.message.toLowerCase();
-    return (
-      message.includes('user rejected') ||
-      message.includes('user denied') ||
-      message.includes('rejected by user')
-    );
+    const msg = error.message.toLowerCase();
+    return msg.includes('user rejected') || msg.includes('user denied');
   }
   return false;
 }
 
-export function wrapProviderError(error: unknown): OctraError {
-  if (error instanceof OctraError) return error;
-  if (isUserRejectionError(error)) {
-    return new UserRejectedError(
-      error instanceof Error ? error.message : 'User rejected the request',
-      error,
-    );
+/**
+ * Wrap a raw provider error into a typed OctraProviderError.
+ *
+ * Maps each RFC-O-1 standard code onto its dedicated subclass so
+ * downstream code can do `err instanceof UnauthorizedError` rather
+ * than checking `.code` manually. Falls back to the base class only
+ * for non-standard codes.
+ */
+export function wrapProviderError(error: unknown): OctraProviderError {
+  if (error instanceof OctraProviderError) return error;
+
+  if (error && typeof error === 'object' && 'code' in error) {
+    const e = error as { code: number; message?: string; data?: { reason?: OctraErrorReason } };
+    const message = e.message || 'Unknown error';
+    const reason = e.data?.reason;
+    switch (e.code) {
+      case OctraErrorCode.UserRejected:        return new UserRejectedError(message);
+      case OctraErrorCode.Unauthorized:        return new UnauthorizedError(message, reason);
+      case OctraErrorCode.UnsupportedMethod:   return new UnsupportedMethodError(extractMethod(message));
+      case OctraErrorCode.Disconnected:        return new DisconnectedError(message);
+      case OctraErrorCode.NetworkUnavailable:  return new NetworkUnavailableError(extractNetworkId(message));
+      default:                                 return new OctraProviderError(e.code, message, reason);
+    }
   }
 
   if (error instanceof Error) {
-    const msg = error.message.toLowerCase();
-    if (msg.includes('timeout'))    return new TimeoutError('Request', error);
-    if (msg.includes('capability')) return new CapabilityError(error.message, error);
-    return new ValidationError(error.message, error);
+    if (isUserRejection(error)) return new UserRejectedError(error.message);
+    if (error.message.toLowerCase().includes('timeout')) return new TimeoutError();
+    return new OctraProviderError(OctraErrorCode.Unauthorized, error.message);
   }
 
-  return new ValidationError('Unknown error occurred', error);
+  return new OctraProviderError(OctraErrorCode.Unauthorized, 'Unknown error');
+}
+
+/** Extract the method name from a `Unsupported method: <name>` style message. */
+function extractMethod(message: string): string {
+  const m = message.match(/method:\s*([\w_]+)/i);
+  return m ? m[1] : message;
+}
+
+/** Extract the network id from a `Network unavailable: <id>` style message. */
+function extractNetworkId(message: string): string | undefined {
+  const m = message.match(/network[^:]*:\s*([\w:.\-]+)/i);
+  return m ? m[1] : undefined;
 }

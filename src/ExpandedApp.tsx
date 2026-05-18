@@ -11,22 +11,64 @@ import { useToast } from '@/hooks/use-toast';
 import { ExtensionStorageManager } from './utils/extensionStorage';
 import { WalletManager } from './utils/walletManager';
 import { syncOnsConfigFromActiveProvider } from './utils/onsBootstrap';
+import { useBackgroundDecryptResponder } from './hooks/useBackgroundDecryptResponder';
+import { useBackgroundSyncResponder } from './hooks/useBackgroundSyncResponder';
 
 function ExpandedApp() {
   const [wallet, setWallet] = useState<Wallet | null>(null);
   const [wallets, setWallets] = useState<Wallet[]>([]);
   const [isLocked, setIsLocked] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+
+  // Respond to BG_DECRYPT_BALANCE_REQUEST messages from the service worker
+  // so dApps that call octra_getEncryptedBalance get a populated
+  // `decryptedAmount` whenever this view is open.
+  useBackgroundDecryptResponder(wallets);
+  useBackgroundSyncResponder(wallets);
   // Only show splash on fresh install (no stored wallet) to avoid
   // a 1.5 s delay every time the expanded view is opened.
   const [isDAppRequest, setIsDAppRequest] = useState(false);
   const { toast: _toast } = useToast();
 
-  // Check if this is a dApp request
+  // Check if this is a dApp request (URL action or pending storage key)
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
     const action = urlParams.get('action');
-    setIsDAppRequest(action === 'connect' || action === 'transaction' || action === 'contract');
+    const isUrlAction = (
+      action === 'connect' ||
+      action === 'sign' ||
+      action === 'tx' ||
+      action === 'transaction' ||
+      action === 'contract' ||
+      action === 'encrypt' ||
+      action === 'decrypt' ||
+      action === 'stealth' ||
+      action === 'claim' ||
+      action === 'write'
+    );
+    if (isUrlAction) {
+      setIsDAppRequest(true);
+      return;
+    }
+
+    // Also detect via storage (RFC-O-1 pending request keys)
+    const checkStorage = async () => {
+      if (typeof chrome === 'undefined' || !chrome.storage?.local) return;
+      const dappKeyNames = [
+        'pendingConnectRequestKey', 'pendingSignRequestKey',
+        'pendingTxRequestKey', 'pendingSignTxRequestKey',
+        'pendingContractRequestKey', 'pendingEncryptRequestKey',
+        'pendingDecryptRequestKey', 'pendingStealthRequestKey',
+        'pendingClaimRequestKey', 'pendingSensitiveWriteKey',
+        'pendingEvmTxRequestKey', 'pendingEvmSignRequestKey',
+        'pendingEvmTypedDataRequestKey', 'pendingEvmTokenRequestKey',
+        'pendingEvmApproveRequestKey', 'pendingEvmSwitchRequestKey',
+        'pendingSwitchNetworkRequestKey',
+      ];
+      const raw = await chrome.storage.local.get(dappKeyNames);
+      if (dappKeyNames.some(k => !!raw[k])) setIsDAppRequest(true);
+    };
+    checkStorage();
   }, []);
 
   // ONLY load data once on mount - NO dependencies to prevent loops

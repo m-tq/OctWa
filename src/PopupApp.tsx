@@ -5,26 +5,35 @@ import { UnlockWallet } from './components/UnlockWallet';
 import { DAppRequestHandler } from './components/DAppRequestHandler';
 import { ThemeProvider } from './components/ThemeProvider';
 import { PageTransition } from './components/PageTransition';
-import { Wallet, DAppConnectionRequest } from './types/wallet';
+import { Wallet } from './types/wallet';
 import { Toaster } from '@/components/ui/toaster';
 import { useToast } from '@/hooks/use-toast';
 import { ExtensionStorageManager } from './utils/extensionStorage';
 import { WalletManager } from './utils/walletManager';
 import { syncOnsConfigFromActiveProvider } from './utils/onsBootstrap';
+import { useBackgroundDecryptResponder } from './hooks/useBackgroundDecryptResponder';
+import { useBackgroundSyncResponder } from './hooks/useBackgroundSyncResponder';
 
 function PopupApp() {
   const [wallet, setWallet] = useState<Wallet | null>(null);
   const [wallets, setWallets] = useState<Wallet[]>([]);
   const [isLocked, setIsLocked] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+
+  // Respond to BG_DECRYPT_BALANCE_REQUEST messages from the service worker
+  // so dApps that call octra_getEncryptedBalance get a populated
+  // `decryptedAmount` whenever the popup is open.
+  useBackgroundDecryptResponder(wallets);
+  useBackgroundSyncResponder(wallets);
   // Only show splash on very first open (no stored wallet data) to avoid
   // a 1.5 s delay every time the popup is opened.
   const [isPopupMode, setIsPopupMode] = useState(true);
-  const [connectionRequest, setConnectionRequest] = useState<DAppConnectionRequest | null>(null);
-  const [contractRequest, setContractRequest] = useState<unknown>(null);
-  const [capabilityRequest, setCapabilityRequest] = useState<unknown>(null);
-  const [invokeRequest, setInvokeRequest] = useState<unknown>(null);
-  const [signMessageRequest, setSignMessageRequest] = useState<unknown>(null);
+  /**
+   * True when any RFC-O-1 dApp request is pending (connect, sign, tx,
+   * contract, encrypt/decrypt, stealth, claim, sensitive write).
+   * Triggers DAppRequestHandler to render the appropriate approval UI.
+   */
+  const [hasDAppRequest, setHasDAppRequest] = useState(false);
   /**
    * True when the background service worker has a pending PVAC auto-execute
    * request (identity / ECDH / decrypt / encrypt / scan). These never show a
@@ -86,63 +95,39 @@ function PopupApp() {
           if (localIsLocked) await ExtensionStorageManager.set('isWalletLocked', localIsLocked);
         }
         
-        // ── Resolve pending dApp requests (keyed format + legacy fallback) ──────
-        // Background stores requests as pendingXxxRequest_${pendingKey} (keyed).
-        // Read the key pointer first, then load the actual request object.
-        const resolveKeyed = async (keyName: string, legacyKey: string) => {
-          const key = await ExtensionStorageManager.get(keyName);
-          if (key) {
-            const val = await ExtensionStorageManager.get(`${legacyKey}_${key}`);
-            if (val) return typeof val === 'string' ? JSON.parse(val) : val;
+        // ── Resolve pending dApp requests ─────────────────────────────────────
+        // Background writes pending<Type>RequestKey + pending<Type>Request_<key>.
+        // DAppRequestHandler reads the actual data; we just need to flag presence.
+
+        // ── Detect pending RFC-O-1 dApp requests ──────────────────────────────
+        // Background writes pending<Type>RequestKey when a request is staged.
+        // DAppRequestHandler handles loading the actual request data internally.
+        try {
+          const dappKeyNames = [
+            'pendingConnectRequestKey',
+            'pendingSignRequestKey',
+            'pendingTxRequestKey',
+            'pendingSignTxRequestKey',
+            'pendingContractRequestKey',
+            'pendingEncryptRequestKey',
+            'pendingDecryptRequestKey',
+            'pendingStealthRequestKey',
+            'pendingClaimRequestKey',
+            'pendingSensitiveWriteKey',
+            'pendingEvmTxRequestKey',
+            'pendingEvmSignRequestKey',
+            'pendingEvmTypedDataRequestKey',
+            'pendingEvmTokenRequestKey',
+            'pendingEvmApproveRequestKey',
+            'pendingEvmSwitchRequestKey',
+            'pendingSwitchNetworkRequestKey',
+          ];
+          if (typeof chrome !== 'undefined' && chrome.storage?.local) {
+            const raw = await chrome.storage.local.get(dappKeyNames);
+            if (dappKeyNames.some(k => !!raw[k])) setHasDAppRequest(true);
           }
-          // Legacy fallback (single-slot, pre-keyed format)
-          const legacy = await ExtensionStorageManager.get(legacyKey);
-          if (legacy) return typeof legacy === 'string' ? JSON.parse(legacy) : legacy;
-          return null;
-        };
-
-        // Check for pending connection request
-        try {
-          const connectionReq = await resolveKeyed('pendingConnectionRequestKey', 'pendingConnectionRequest');
-          if (connectionReq) setConnectionRequest(connectionReq);
         } catch (error) {
-          console.error('Failed to parse connection request:', error);
-        }
-
-        // Check for pending contract request (legacy only — no keyed version)
-        try {
-          const pendingContractRequest = await ExtensionStorageManager.get('pendingContractRequest');
-          if (pendingContractRequest) {
-            setContractRequest(typeof pendingContractRequest === 'string'
-              ? JSON.parse(pendingContractRequest) : pendingContractRequest);
-          }
-        } catch (error) {
-          console.error('Failed to parse contract request:', error);
-          await ExtensionStorageManager.remove('pendingContractRequest');
-        }
-
-        // Check for pending capability request
-        try {
-          const capabilityReq = await resolveKeyed('pendingCapabilityRequestKey', 'pendingCapabilityRequest');
-          if (capabilityReq) setCapabilityRequest(capabilityReq);
-        } catch (error) {
-          console.error('Failed to parse capability request:', error);
-        }
-
-        // Check for pending invoke request
-        try {
-          const invokeReq = await resolveKeyed('pendingInvokeRequestKey', 'pendingInvokeRequest');
-          if (invokeReq) setInvokeRequest(invokeReq);
-        } catch (error) {
-          console.error('Failed to parse invoke request:', error);
-        }
-
-        // Check for pending sign message request
-        try {
-          const signMessageReq = await resolveKeyed('pendingSignMessageRequestKey', 'pendingSignMessageRequest');
-          if (signMessageReq) setSignMessageRequest(signMessageReq);
-        } catch (error) {
-          console.error('Failed to parse sign message request:', error);
+          console.error('Failed to probe pending dApp requests:', error);
         }
 
         // Check for pending PVAC auto-execute or ZK-sign requests. These do not
@@ -329,6 +314,36 @@ function PopupApp() {
           for (const k of pvacKeyNames) {
             if (changes[k]?.newValue) {
               setHasPvacRequest(true);
+              break;
+            }
+          }
+        }
+
+        // Detect newly arriving RFC-O-1 dApp requests so DAppRequestHandler
+        // can render the appropriate approval UI.
+        if (areaName === 'local' && !hasDAppRequest) {
+          const dappKeyNames = [
+            'pendingConnectRequestKey',
+            'pendingSignRequestKey',
+            'pendingTxRequestKey',
+            'pendingSignTxRequestKey',
+            'pendingContractRequestKey',
+            'pendingEncryptRequestKey',
+            'pendingDecryptRequestKey',
+            'pendingStealthRequestKey',
+            'pendingClaimRequestKey',
+            'pendingSensitiveWriteKey',
+            'pendingEvmTxRequestKey',
+            'pendingEvmSignRequestKey',
+            'pendingEvmTypedDataRequestKey',
+            'pendingEvmTokenRequestKey',
+            'pendingEvmApproveRequestKey',
+            'pendingEvmSwitchRequestKey',
+            'pendingSwitchNetworkRequestKey',
+          ];
+          for (const k of dappKeyNames) {
+            if (changes[k]?.newValue) {
+              setHasDAppRequest(true);
               break;
             }
           }
@@ -529,38 +544,27 @@ function PopupApp() {
       setWallets(unlockedWallets);
       setWallet(activeWallet);
       
-      // Handle pending requests asynchronously (non-blocking)
+      // Handle pending dApp requests asynchronously (non-blocking)
       setTimeout(async () => {
         try {
-          // Check for pending connection request
-          const pendingRequest = await ExtensionStorageManager.get('pendingConnectionRequest');
-          if (pendingRequest) {
-            try {
-              const connectionReq = typeof pendingRequest === 'string' 
-                ? JSON.parse(pendingRequest) 
-                : pendingRequest;
-              setConnectionRequest(connectionReq);
-            } catch (error) {
-              console.error('Failed to parse pending connection request after unlock:', error);
-              await ExtensionStorageManager.remove('pendingConnectionRequest');
-            }
-          }
-          
-          // Check for pending contract request
-          const pendingContractRequest = await ExtensionStorageManager.get('pendingContractRequest');
-          if (pendingContractRequest) {
-            try {
-              const contractReq = typeof pendingContractRequest === 'string' 
-                ? JSON.parse(pendingContractRequest) 
-                : pendingContractRequest;
-              setContractRequest(contractReq);
-            } catch (error) {
-              console.error('Failed to parse pending contract request after unlock:', error);
-              await ExtensionStorageManager.remove('pendingContractRequest');
-            }
+          const dappKeyNames = [
+            'pendingConnectRequestKey',
+            'pendingSignRequestKey',
+            'pendingTxRequestKey',
+            'pendingSignTxRequestKey',
+            'pendingContractRequestKey',
+            'pendingEncryptRequestKey',
+            'pendingDecryptRequestKey',
+            'pendingStealthRequestKey',
+            'pendingClaimRequestKey',
+            'pendingSensitiveWriteKey',
+          ];
+          if (typeof chrome !== 'undefined' && chrome.storage?.local) {
+            const raw = await chrome.storage.local.get(dappKeyNames);
+            if (dappKeyNames.some(k => !!raw[k])) setHasDAppRequest(true);
           }
         } catch (error) {
-          console.error('Error checking pending requests:', error);
+          console.error('Error checking pending dApp requests:', error);
         }
       }, 100);
       
@@ -730,85 +734,17 @@ function PopupApp() {
     );
   }
 
-  // Handle connection request - Show even if no wallets loaded yet
-  if (connectionRequest) {
+  // Any pending dApp request (RFC-O-1) or PVAC auto-execute — render the
+  // unified DAppRequestHandler. It loads the actual request data internally
+  // via storage listeners and routes to the correct approval screen.
+  if (hasDAppRequest || hasPvacRequest) {
     return (
       <ThemeProvider defaultTheme="dark" storageKey="octra-wallet-theme">
         <div className="w-[400px] h-[600px] bg-background popup-view overflow-hidden">
           <div className="popup-container h-full overflow-hidden">
-            <PageTransition variant="scale" className="h-full"><DAppRequestHandler wallets={wallets} /></PageTransition>
-          </div>
-          <Toaster />
-        </div>
-      </ThemeProvider>
-    );
-  }
-
-  // Handle contract request - Show contract interaction interface
-  if (contractRequest) {
-    return (
-      <ThemeProvider defaultTheme="dark" storageKey="octra-wallet-theme">
-        <div className="w-[400px] h-[600px] bg-background popup-view overflow-hidden">
-          <div className="popup-container h-full overflow-hidden">
-            <PageTransition variant="scale" className="h-full"><DAppRequestHandler wallets={wallets} /></PageTransition>
-          </div>
-          <Toaster />
-        </div>
-      </ThemeProvider>
-    );
-  }
-
-  // Handle capability request - Show capability approval interface
-  if (capabilityRequest) {
-    return (
-      <ThemeProvider defaultTheme="dark" storageKey="octra-wallet-theme">
-        <div className="w-[400px] h-[600px] bg-background popup-view overflow-hidden">
-          <div className="popup-container h-full overflow-hidden">
-            <PageTransition variant="scale" className="h-full"><DAppRequestHandler wallets={wallets} /></PageTransition>
-          </div>
-          <Toaster />
-        </div>
-      </ThemeProvider>
-    );
-  }
-
-  // Handle invoke request - Show invoke approval interface
-  if (invokeRequest) {
-    return (
-      <ThemeProvider defaultTheme="dark" storageKey="octra-wallet-theme">
-        <div className="w-[400px] h-[600px] bg-background popup-view overflow-hidden">
-          <div className="popup-container h-full overflow-hidden">
-            <PageTransition variant="scale" className="h-full"><DAppRequestHandler wallets={wallets} /></PageTransition>
-          </div>
-          <Toaster />
-        </div>
-      </ThemeProvider>
-    );
-  }
-
-  // Handle sign message request - Show sign message approval interface
-  if (signMessageRequest) {
-    return (
-      <ThemeProvider defaultTheme="dark" storageKey="octra-wallet-theme">
-        <div className="w-[400px] h-[600px] bg-background popup-view overflow-hidden">
-          <div className="popup-container h-full overflow-hidden">
-            <PageTransition variant="scale" className="h-full"><DAppRequestHandler wallets={wallets} /></PageTransition>
-          </div>
-          <Toaster />
-        </div>
-      </ThemeProvider>
-    );
-  }
-
-  // PVAC auto-execute / ZK-sign requests — DAppRequestHandler runs them silently.
-  // We render it without a splash so the user sees at most a brief blank popup
-  // while the PVAC worker does its job and background closes the flow.
-  if (hasPvacRequest) {
-    return (
-      <ThemeProvider defaultTheme="dark" storageKey="octra-wallet-theme">
-        <div className="w-[400px] h-[600px] bg-background popup-view overflow-hidden">
-          <div className="popup-container h-full overflow-hidden">
-            <DAppRequestHandler wallets={wallets} />
+            <PageTransition variant="scale" className="h-full">
+              <DAppRequestHandler wallets={wallets} />
+            </PageTransition>
           </div>
           <Toaster />
         </div>

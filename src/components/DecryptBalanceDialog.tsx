@@ -13,8 +13,6 @@ import { FeeSelector, FeeOption, getEffectiveFee } from './FeeSelector';
 import { InfoTooltip } from './InfoTooltip';
 import { sendTransaction, fetchBalance, fetchEncryptedBalance, invalidateCacheAfterDecrypt, fetchRecommendedFee } from '@/utils/api';
 import { usePvacOperation } from '@/hooks/usePvacOperation';
-import { RangeServerSetup } from './RangeServerSetup';
-import { isRangeServerAvailable } from '@/services/rangeProofServer';
 
 interface DecryptBalanceDialogProps {
   open: boolean;
@@ -51,14 +49,12 @@ export function DecryptBalanceDialog({
   const [recommendedFee, setRecommendedFee] = useState(3000);
   const [feeOption, setFeeOption] = useState<FeeOption>('recommended');
   const [customFee, setCustomFee] = useState('');
-  const [rangeServerReady, setRangeServerReady] = useState(false);
   const { toast } = useToast();
   const pvacOp = usePvacOperation();
   
   useEffect(() => {
     if (open) {
       fetchRecommendedFee('decrypt').then(fee => setRecommendedFee(fee)).catch(() => {});
-      isRangeServerAvailable().then(setRangeServerReady);
     }
   }, [open]);
 
@@ -223,14 +219,6 @@ export function DecryptBalanceDialog({
         </div>
       )}
 
-      {/* Range server setup — shown when server is not running */}
-      {!rangeServerReady && (
-        <RangeServerSetup
-          onAvailable={() => setRangeServerReady(true)}
-          compact={isPopupMode}
-        />
-      )}
-
       <div className={isPopupMode ? "space-y-1 pt-4" : "space-y-2 pt-6"}>
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-1">
@@ -309,7 +297,7 @@ export function DecryptBalanceDialog({
         </Button>
         <Button
           onClick={handleDecrypt}
-          disabled={isDecrypting || !amount || parseFloat(amount) <= 0 || parseFloat(amount) > encryptedBalance || !rangeServerReady}
+          disabled={isDecrypting || !amount || parseFloat(amount) <= 0 || parseFloat(amount) > encryptedBalance}
           className={`flex-1 ${isPopupMode ? 'h-10 text-sm' : 'h-12 text-base'}`}
         >
           {isDecrypting ? (

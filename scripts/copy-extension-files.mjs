@@ -144,8 +144,6 @@ async function main() {
     'manifest.json',
     'popup.html',
     'content.js',
-    'core.js',
-    'octra-sdk.js'
   ];
 
   for (const f of files) {
