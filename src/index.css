@@ -622,9 +622,45 @@
   max-width: 100% !important;
 }
 
-.popup-view *:focus-visible {
-  outline: 1px solid hsl(var(--oc-primary));
-  outline-offset: 1px;
+/**
+ * Global focus reset for clickable controls inside popup/expanded view.
+ *
+ * Targets every variant of focus styling that ships in this codebase:
+ *   - browser default outline
+ *   - shadcn Button cva's `focus-visible:[box-shadow:var(--oct-shadow-focus)]`
+ *     (compiled by Tailwind into a low-specificity class selector that lands
+ *     LATER in the cascade than `.popup-view button:focus-visible`, so we
+ *     need higher specificity AND `!important` to beat it reliably)
+ *   - Nova's input box-shadow ring
+ *
+ * The triple-class selector (`.popup-view.popup-view button`) bumps
+ * specificity to 0,3,1 which beats the tailwind utility (0,2,0) regardless
+ * of cascade order.
+ *
+ * Inputs / textareas / selects keep their own focus styles defined in
+ * their components — this rule does NOT touch them.
+ */
+.popup-view.popup-view button:focus,
+.popup-view.popup-view button:focus-visible,
+.popup-view.popup-view a[role="button"]:focus,
+.popup-view.popup-view a[role="button"]:focus-visible,
+.expanded-view.expanded-view button:focus,
+.expanded-view.expanded-view button:focus-visible,
+.expanded-view.expanded-view a[role="button"]:focus,
+.expanded-view.expanded-view a[role="button"]:focus-visible {
+  outline: none !important;
+  box-shadow: none !important;
+}
+
+/**
+ * Opt-out class. Apply where a focus outline would visually compete with
+ * the active-state styling (e.g. underline-tab triggers, segmented action
+ * buttons). Triple-class selector for max specificity.
+ */
+.no-focus-ring.no-focus-ring.no-focus-ring:focus,
+.no-focus-ring.no-focus-ring.no-focus-ring:focus-visible {
+  outline: none !important;
+  box-shadow: none !important;
 }
 
 .popup-container {

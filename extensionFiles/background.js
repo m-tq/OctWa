@@ -1330,6 +1330,7 @@ const RPC_PASSTHROUGH_METHODS = new Set([
   'octra_encryptedCipher', 'octra_encryptedBalance', 'octra_pvacPubkey',
   'octra_viewPubkey', 'octra_stealthOutputs',
   'contract_source',
+  'octra_tokensByAddress',
 ]);
 
 async function handleRpcPassthrough(method, params) {

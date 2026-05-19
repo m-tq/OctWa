@@ -70,6 +70,7 @@ import { AddressBook } from './AddressBook';
 import { DraggableWalletList } from './DraggableWalletList';
 import { WalletDisplayName } from './WalletLabelEditor';
 import { BalancePieChart } from './BalancePieChart';
+import { OctraAssets } from './OctraAssets';
 import { Wallet, TransactionDetails, EncryptedBalanceResponse, PendingTransaction } from '../types/wallet';
 
 type TxDetails = TransactionDetails | PendingTransaction;
@@ -244,7 +245,8 @@ export function WalletDashboard({
   };
   
   // Popup mode fullscreen states
-  const [popupScreen, setPopupScreen] = useState<'main' | 'encrypt' | 'decrypt' | 'send' | 'receive' | 'claim' | 'txDetail'>('main');
+  const [popupScreen, setPopupScreen] = useState<'main' | 'encrypt' | 'decrypt' | 'send' | 'receive' | 'claim' | 'txDetail' | 'assets'>('main');
+  const [popupBottomTab, setPopupBottomTab] = useState<'activity' | 'assets'>('activity');
   const [showReceiveDialog, setShowReceiveDialog] = useState(false);
   const [selectedTxHash, setSelectedTxHash] = useState<string | null>(null);
   const [selectedTxDetails, setSelectedTxDetails] = useState<TxDetails | null>(null);
@@ -269,6 +271,8 @@ export function WalletDashboard({
   const [expandedSendModal, setExpandedSendModal] = useState<'standard' | 'multi' | 'bulk' | null>(null);
   const [sendModalAnimating, setSendModalAnimating] = useState(false);
   const [sendModalClosing, setSendModalClosing] = useState(false);
+  // Expanded mode Octra Assets modal
+  const [expandedAssetsOpen, setExpandedAssetsOpen] = useState(false);
   const [bulkResetTrigger, setBulkResetTrigger] = useState(0);
   const [multiResetTrigger, setMultiResetTrigger] = useState(0);
   const [copiedField, setCopiedField] = useState<string | null>(null);
@@ -2324,6 +2328,19 @@ export function WalletDashboard({
             />
           )}
 
+          {/* Fullscreen Octra Assets */}
+          {popupScreen === 'assets' && (
+            <div className="flex flex-col h-full pb-10">
+              <OctraAssets
+                wallet={wallet}
+                nonce={nonce}
+                onBack={() => setPopupScreen('main')}
+                onTransactionSuccess={handleTransactionSuccess}
+                onNonceUpdate={handleNonceUpdate}
+              />
+            </div>
+          )}
+
           {/* Fullscreen Claim */}
           {popupScreen === 'claim' && (
             <div className="flex flex-col h-full pb-10">
@@ -3768,38 +3785,100 @@ export function WalletDashboard({
                 )}
               </div>
 
-              {/* Recent Activity - Unified (same as expanded mode) */}
-              <div className="flex items-center justify-between pt-3 pb-1">
-                <h3 className={`text-sm font-semibold ${operationMode === 'private' ? 'text-[#00E5C0]' : ''}`}>
-                  Recent Activity
-                </h3>
-                <div className="flex items-center gap-1.5">
-                  <a 
+              {/* Recent Activity / Assets Tab Switcher */}
+              <div className="flex items-center justify-between pt-3">
+                <div className="flex items-end">
+                  <button
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => setPopupBottomTab('activity')}
+                    style={{
+                      outline: 'none',
+                      boxShadow: 'none',
+                      borderRadius: 0,
+                      borderTop: 0,
+                      borderLeft: 0,
+                      borderRight: 0,
+                      borderBottom: popupBottomTab === 'activity'
+                        ? operationMode === 'private'
+                          ? '2px solid #00E5C0'
+                          : '2px solid hsl(var(--primary))'
+                        : '2px solid transparent',
+                    }}
+                    className={`no-focus-ring text-sm font-medium px-3 pb-1.5 transition-colors ${
+                      popupBottomTab === 'activity'
+                        ? operationMode === 'private'
+                          ? 'text-[#00E5C0]'
+                          : 'text-foreground'
+                        : 'text-muted-foreground hover:text-foreground'
+                    }`}
+                  >
+                    Activity
+                  </button>
+                  <button
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => setPopupBottomTab('assets')}
+                    style={{
+                      outline: 'none',
+                      boxShadow: 'none',
+                      borderRadius: 0,
+                      borderTop: 0,
+                      borderLeft: 0,
+                      borderRight: 0,
+                      borderBottom: popupBottomTab === 'assets'
+                        ? operationMode === 'private'
+                          ? '2px solid #00E5C0'
+                          : '2px solid hsl(var(--primary))'
+                        : '2px solid transparent',
+                    }}
+                    className={`no-focus-ring text-sm font-medium px-3 pb-1.5 transition-colors ${
+                      popupBottomTab === 'assets'
+                        ? operationMode === 'private'
+                          ? 'text-[#00E5C0]'
+                          : 'text-foreground'
+                        : 'text-muted-foreground hover:text-foreground'
+                    }`}
+                  >
+                    Assets
+                  </button>
+                </div>
+                {popupBottomTab === 'activity' && (
+                  <a
                     href={`${scannerAddressUrl(wallet.address)}`}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="p-1 rounded hover:bg-muted transition-colors"
+                    className="p-1 rounded hover:bg-muted transition-colors mr-1 mb-1"
                     title="View All on Explorer"
                   >
                     <ExternalLink className="h-3 w-3 text-muted-foreground" />
                   </a>
-                </div>
+                )}
               </div>
             </div>
 
-            {/* Transaction List - UnifiedHistory (same as expanded mode) */}
+            {/* Tab Content */}
             <div className="flex-1 min-h-0 overflow-hidden">
-              <UnifiedHistory
-                wallet={wallet}
-                transactions={transactions}
-                onTransactionsUpdate={handleTransactionsUpdate}
-                isLoading={isLoadingTransactions}
-                isPopupMode={true}
-                hideBorder={true}
-                operationMode={operationMode}
-                isCompact={false}
-                onViewTxDetails={handleViewTxDetails}
-              />
+              {popupBottomTab === 'activity' ? (
+                <UnifiedHistory
+                  wallet={wallet}
+                  transactions={transactions}
+                  onTransactionsUpdate={handleTransactionsUpdate}
+                  isLoading={isLoadingTransactions}
+                  isPopupMode={true}
+                  hideBorder={true}
+                  operationMode={operationMode}
+                  isCompact={false}
+                  onViewTxDetails={handleViewTxDetails}
+                />
+              ) : (
+                <OctraAssets
+                  wallet={wallet}
+                  nonce={nonce}
+                  onBack={() => setPopupBottomTab('activity')}
+                  onTransactionSuccess={handleTransactionSuccess}
+                  onNonceUpdate={handleNonceUpdate}
+                  inline={true}
+                />
+              )}
             </div>
           </div>
         ) : (
@@ -4084,26 +4163,55 @@ export function WalletDashboard({
                       </div>
                     )}
 
-                    {/* EVM Assets — placed after pie chart / total balance so it
-                         sits at the bottom of the public dashboard. */}
+                    {/* Octra Assets + EVM Assets — placed after pie chart so they
+                         sit at the bottom of the public dashboard. Two buttons
+                         side-by-side separated by a vertical dashed divider. */}
                     <div className="pt-6">
-                      <Button
-                        variant="outline"
-                        className="group w-full flex items-center justify-center gap-2 h-14 rounded-none bg-transparent border-0 shadow-none text-orange-600 dark:text-orange-400 hover:bg-transparent transition-colors"
-                        onClick={() => {
-                          if (isPopupMode) {
-                            onExpandedView?.('evm');
-                          } else {
-                            enterEvmMode();
-                          }
-                        }}
-                      >
-                        <Coins className="h-5 w-5 transition-colors group-hover:text-orange-600 dark:group-hover:text-orange-300 group-hover:drop-shadow-[0_0_6px_rgba(249,115,22,0.6)]" />
-                        <div className="flex flex-col items-start">
-                          <span className="text-[16px] leading-tight font-medium transition-colors group-hover:text-orange-600 dark:group-hover:text-orange-300 group-hover:drop-shadow-[0_0_6px_rgba(249,115,22,0.6)]">EVM Assets</span>
-                          <span className="text-[12px] leading-tight text-muted-foreground">Manage Ethereum VM Assets</span>
-                        </div>
-                      </Button>
+                      <div className="grid grid-cols-2 items-stretch">
+                        {/* Octra Assets button */}
+                        <Button
+                          variant="ghost"
+                          onMouseDown={(e) => e.preventDefault()}
+                          style={{ outline: 'none', boxShadow: 'none', borderRadius: 0 }}
+                          className="no-focus-ring group flex items-center justify-center gap-2 h-14 rounded-none bg-transparent text-primary hover:bg-muted/40 transition-colors"
+                          onClick={() => setExpandedAssetsOpen(true)}
+                        >
+                          <Coins className="h-5 w-5 transition-colors group-hover:drop-shadow-[0_0_6px_currentColor]" />
+                          <div className="flex flex-col items-start">
+                            <span className="text-[14px] leading-tight font-medium transition-colors group-hover:drop-shadow-[0_0_6px_currentColor]">Octra Assets</span>
+                            <span className="text-[11px] leading-tight text-muted-foreground">OCS01 tokens</span>
+                          </div>
+                        </Button>
+
+                        {/* EVM Assets button (with vertical dashed left border only) */}
+                        <Button
+                          variant="ghost"
+                          onMouseDown={(e) => e.preventDefault()}
+                          style={{
+                            outline: 'none',
+                            boxShadow: 'none',
+                            borderRadius: 0,
+                            borderTop: 0,
+                            borderRight: 0,
+                            borderBottom: 0,
+                            borderLeft: '1px dashed hsl(var(--border))',
+                          }}
+                          className="no-focus-ring group flex items-center justify-center gap-2 h-14 rounded-none bg-transparent text-orange-600 dark:text-orange-400 hover:bg-muted/40 transition-colors"
+                          onClick={() => {
+                            if (isPopupMode) {
+                              onExpandedView?.('evm');
+                            } else {
+                              enterEvmMode();
+                            }
+                          }}
+                        >
+                          <Coins className="h-5 w-5 transition-colors group-hover:text-orange-600 dark:group-hover:text-orange-300 group-hover:drop-shadow-[0_0_6px_rgba(249,115,22,0.6)]" />
+                          <div className="flex flex-col items-start">
+                            <span className="text-[14px] leading-tight font-medium transition-colors group-hover:text-orange-600 dark:group-hover:text-orange-300 group-hover:drop-shadow-[0_0_6px_rgba(249,115,22,0.6)]">EVM Assets</span>
+                            <span className="text-[11px] leading-tight text-muted-foreground">Ethereum VM</span>
+                          </div>
+                        </Button>
+                      </div>
                     </div>
                   </div>
                 )}
@@ -4697,6 +4805,48 @@ export function WalletDashboard({
               )}
             </div>
           )}
+        </div>
+      )}
+
+      {/* Expanded Mode Octra Assets Modal */}
+      {!isPopupMode && expandedAssetsOpen && (
+        <div 
+          className="fixed z-[45] bg-background/95 backdrop-blur-sm flex flex-col"
+          style={{ 
+            top: showWalletSidebar ? '49px' : '69px', 
+            left: sidebarLeftOffset,
+            right: historySidebarRightOffset,
+            bottom: '40px'
+          }}
+        >
+          <div className="flex items-center justify-between px-6 pt-4 pb-2">
+            <div className="flex items-center gap-3">
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                onClick={() => setExpandedAssetsOpen(false)} 
+                className="h-9 w-9 p-0"
+              >
+                <ChevronDown className="h-5 w-5 rotate-90" />
+              </Button>
+              <div className="flex items-center gap-2">
+                <Coins className="h-5 w-5" />
+                <h2 className="text-lg font-semibold">Octra Assets</h2>
+              </div>
+            </div>
+          </div>
+          <div className="flex-1 overflow-hidden">
+            <div className="h-full max-w-2xl mx-auto px-6 pb-6">
+              <OctraAssets
+                wallet={wallet}
+                nonce={nonce}
+                onBack={() => setExpandedAssetsOpen(false)}
+                onTransactionSuccess={handleTransactionSuccess}
+                onNonceUpdate={handleNonceUpdate}
+                inline={true}
+              />
+            </div>
+          </div>
         </div>
       )}
 
