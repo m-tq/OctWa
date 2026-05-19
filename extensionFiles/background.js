@@ -272,7 +272,25 @@ function getSenderOrigin(sender) {
 // RPC Infrastructure
 // =============================================================================
 
-const DEFAULT_RPC_URL = '__VITE_OCTRA_RPC_URL__';
+const DEFAULT_RPC_URL        = '__VITE_OCTRA_RPC_URL__';
+const DEFAULT_RPC_URL_DEVNET = '__VITE_OCTRA_RPC_URL_DEVNET__';
+
+/**
+ * Hostname-substring matcher used to classify a stored RPC URL as devnet.
+ * Driven by build-time `__VITE_OCTRA_RPC_URL_DEVNET__` so rotating the devnet
+ * IP only requires updating `.env`. The legacy hostname `devnet.octrascan` is
+ * kept so older user installs that still have it stored continue to be
+ * recognised correctly.
+ */
+function isDevnetRpcUrl(url) {
+  if (!url) return false;
+  const lower = String(url).toLowerCase();
+  if (DEFAULT_RPC_URL_DEVNET) {
+    const host = DEFAULT_RPC_URL_DEVNET.replace(/^https?:\/\//, '').toLowerCase();
+    if (host && lower.includes(host)) return true;
+  }
+  return lower.includes('devnet.octrascan');
+}
 
 async function getActiveOctraRpcUrl() {
   let baseUrl = DEFAULT_RPC_URL;
@@ -336,7 +354,7 @@ async function getActiveNetwork() {
       const providers = JSON.parse(result.rpcProviders);
       const active = providers.find(p => p.isActive);
       if (active) {
-        if (active.url && active.url.includes('165.227.225.79')) {
+        if (isDevnetRpcUrl(active.url)) {
           networkId = 'octra:devnet';
         }
       }
@@ -610,7 +628,7 @@ async function handleSwitchNetwork(origin, params, sender) {
     if (!p?.url) return false;
     if (p.network === 'devnet') return wantsDevnet;
     if (p.network === 'mainnet') return !wantsDevnet;
-    return wantsDevnet ? p.url.includes('165.227.225.79') : !p.url.includes('165.227.225.79');
+    return wantsDevnet ? isDevnetRpcUrl(p.url) : !isDevnetRpcUrl(p.url);
   };
 
   const target = providers.find(matchProvider);

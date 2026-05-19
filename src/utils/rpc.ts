@@ -1,9 +1,10 @@
 import { RPCProvider } from '../types/wallet';
+import {
+  DEFAULT_OCTRA_MAINNET_URL,
+  DEFAULT_OCTRA_DEVNET_URL,
+} from './rpcDefaults';
 
-const MAINNET_URL = 'http://46.101.86.250:8080';
-const DEVNET_URL  = 'http://165.227.225.79:8080';
-
-/** Stale devnet URLs that must be migrated to the correct IP. */
+/** Stale devnet URLs that must be migrated to the configured devnet URL. */
 const STALE_DEVNET_URLS = ['devnet.octrascan', ':8081'];
 
 function isStaleDevnetUrl(url: string): boolean {
@@ -19,7 +20,7 @@ function migrateStaleUrls(providers: RPCProvider[]): { providers: RPCProvider[];
   const migrated = providers.map((p) => {
     if (p.id === 'devnet' && isStaleDevnetUrl(p.url)) {
       changed = true;
-      return { ...p, url: DEVNET_URL };
+      return { ...p, url: DEFAULT_OCTRA_DEVNET_URL };
     }
     return p;
   });
@@ -41,7 +42,7 @@ function buildDefaultProvider(): RPCProvider {
   return {
     id: 'default',
     name: 'Octra Mainnet',
-    url: MAINNET_URL,
+    url: DEFAULT_OCTRA_MAINNET_URL,
     headers: {},
     priority: 1,
     isActive: true,

@@ -9,6 +9,7 @@
  */
 
 import { getActiveRPCProvider } from '../utils/rpc';
+import { DEFAULT_OCTRA_MAINNET_URL } from '../utils/rpcDefaults';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -31,7 +32,7 @@ export interface TokenTransferResult {
 
 function getRpcUrl(): string {
   const provider = getActiveRPCProvider();
-  return (provider?.url ?? 'http://46.101.86.250:8080').replace(/\/$/, '');
+  return (provider?.url ?? DEFAULT_OCTRA_MAINNET_URL).replace(/\/$/, '');
 }
 
 async function rpc<T>(method: string, params: unknown[] = []): Promise<T> {

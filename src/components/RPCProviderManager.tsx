@@ -11,6 +11,7 @@ import { Wifi, Plus, MoreVertical, Trash2, Star, Settings } from 'lucide-react';
 import { RPCProvider } from '../types/wallet';
 import { useToast } from '@/hooks/use-toast';
 import { syncOnsConfigFromActiveProvider } from '@/utils/onsBootstrap';
+import { DEFAULT_OCTRA_MAINNET_URL, DEFAULT_OCTRA_DEVNET_URL } from '@/utils/rpcDefaults';
 
 interface RPCProviderManagerProps {
   onClose?: () => void;
@@ -49,7 +50,7 @@ export function RPCProviderManager({ onRPCChange, isPopupMode = false }: RPCProv
     const DEVNET_ENTRY: RPCProvider = {
       id: 'devnet',
       name: 'Octra DevNet',
-      url: 'http://165.227.225.79:8080',
+      url: DEFAULT_OCTRA_DEVNET_URL,
       headers: {},
       priority: 2,
       isActive: false,
@@ -92,7 +93,7 @@ export function RPCProviderManager({ onRPCChange, isPopupMode = false }: RPCProv
         {
           id: 'default',
           name: 'Octra Mainnet',
-          url: 'http://46.101.86.250:8080',
+          url: DEFAULT_OCTRA_MAINNET_URL,
           headers: {},
           priority: 1,
           isActive: true,
@@ -102,7 +103,7 @@ export function RPCProviderManager({ onRPCChange, isPopupMode = false }: RPCProv
         {
           id: 'devnet',
           name: 'Octra DevNet',
-          url: 'http://165.227.225.79:8080',
+          url: DEFAULT_OCTRA_DEVNET_URL,
           headers: {},
           priority: 2,
           isActive: false,
@@ -443,7 +444,7 @@ export function RPCProviderManager({ onRPCChange, isPopupMode = false }: RPCProv
                   <Label htmlFor="provider-url" className={isPopupMode ? "text-xs" : ""}>URL</Label>
                   <Input
                     id="provider-url"
-                    placeholder="http://46.101.86.250:8080"
+                    placeholder={DEFAULT_OCTRA_MAINNET_URL}
                     value={formData.url}
                     onChange={(e) => setFormData({ ...formData, url: e.target.value })}
                     className={isPopupMode ? "h-8 text-xs" : ""}

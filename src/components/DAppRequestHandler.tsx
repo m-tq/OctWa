@@ -47,6 +47,7 @@ import {
 import { scanStealthOutputs } from '@/services/stealthScanService';
 import { logger } from '@/utils/logger';
 import nacl from 'tweetnacl';
+import { isDevnetUrl } from '@/utils/rpcDefaults';
 
 // =============================================================================
 // Request Types (RFC-O-1)
@@ -2510,7 +2511,7 @@ function SwitchNetworkApproval({ request, wallet, isProcessing, setIsProcessing,
         const targetProvider = providers.find(p => {
           if (p.network === 'devnet') return wantsDevnet;
           if (p.network === 'mainnet') return !wantsDevnet;
-          return wantsDevnet ? p.url.includes('165.227.225.79') : !p.url.includes('165.227.225.79');
+          return wantsDevnet ? isDevnetUrl(p.url) : !isDevnetUrl(p.url);
         });
         if (targetProvider) {
           const updated = providers.map(p => ({ ...p, isActive: p.id === targetProvider.id }));

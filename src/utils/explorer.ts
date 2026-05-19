@@ -6,6 +6,7 @@
  */
 
 import { getActiveRPCProvider } from './rpc'
+import { isDevnetUrl } from './rpcDefaults'
 
 const MAINNET_EXPLORER = 'https://octrascan.io'
 const DEVNET_EXPLORER  = 'https://devnet.octrascan.io'
@@ -15,10 +16,7 @@ export function getActiveNetwork(): 'mainnet' | 'devnet' {
   try {
     const provider = getActiveRPCProvider()
     if (!provider) return 'mainnet'
-    const url = provider.url.toLowerCase()
-    // Devnet node IP
-    if (url.includes('165.227.225.79')) return 'devnet'
-    if (url.includes('devnet')) return 'devnet'
+    if (isDevnetUrl(provider.url)) return 'devnet'
     // Check by provider id or network field
     if ((provider as { network?: string }).network === 'devnet') return 'devnet'
     if ((provider as { id?: string }).id === 'devnet') return 'devnet'

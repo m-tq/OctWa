@@ -3,6 +3,11 @@
 // Hosts customize this via `configureOns({ ... })` or by constructing a
 // scoped client via `createOnsClient({ ... })`.
 
+import {
+  DEFAULT_OCTRA_MAINNET_URL,
+  DEFAULT_OCTRA_DEVNET_URL,
+} from '../../utils/rpcDefaults'
+
 export type OnsNetwork = 'devnet' | 'mainnet'
 
 export interface OnsConfig {
@@ -20,9 +25,16 @@ const DEFAULT_CONTRACT: Record<OnsNetwork, string> = {
 }
 
 const DEFAULT_RPC: Record<OnsNetwork, string> = {
-  devnet:  'http://165.227.225.79:8080',
+  devnet:  DEFAULT_OCTRA_DEVNET_URL,
+  // Mainnet ONS lookups historically use the public proxy host since some
+  // ONS clients run from contexts (e.g. content scripts) where direct IP
+  // access is blocked. If you want all ONS traffic to follow the wallet's
+  // configured RPC, swap this to DEFAULT_OCTRA_MAINNET_URL.
   mainnet: 'https://rpc.octra.network',
 }
+
+// Re-export so consumers can pick up the configured mainnet URL too.
+export const ONS_MAINNET_DIRECT_URL = DEFAULT_OCTRA_MAINNET_URL
 
 const DEFAULT_CONFIG: OnsConfig = {
   network:          'devnet',

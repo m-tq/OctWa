@@ -1,4 +1,4 @@
-import { defineConfig, Plugin } from 'vite';
+import { defineConfig, Plugin, loadEnv } from 'vite';
 import react from '@vitejs/plugin-react';
 import { NodeGlobalsPolyfillPlugin } from '@esbuild-plugins/node-globals-polyfill';
 import { visualizer } from 'rollup-plugin-visualizer';
@@ -8,6 +8,20 @@ import fs from 'fs';
 // Read version and name from manifest.json
 const manifestPath = path.resolve(__dirname, 'extensionFiles/manifest.json');
 const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf-8'));
+
+// Read default Octra mainnet RPC from .env so the dev-server proxy points to
+// the same node the production build uses. Falls back to the public mainnet
+// node IP so the proxy still works on a fresh checkout without an .env file.
+const devEnv = loadEnv('development', process.cwd(), 'VITE_');
+const DEV_PROXY_OCTRA_TARGET =
+  (devEnv.VITE_OCTRA_RPC_URL_MAINNET as string | undefined) || 'http://46.101.86.250:8080';
+const DEV_PROXY_OCTRA_HOST = (() => {
+  try {
+    return new URL(DEV_PROXY_OCTRA_TARGET).host;
+  } catch {
+    return '46.101.86.250';
+  }
+})();
 const APP_VERSION = manifest.version;
 const APP_NAME = manifest.name;
 const APP_TITLE = manifest.action?.default_title || APP_NAME;
@@ -185,7 +199,7 @@ export default defineConfig({
     port: 5173,
     proxy: {
       '/api': {
-        target: 'http://46.101.86.250:8080',
+        target: DEV_PROXY_OCTRA_TARGET,
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api/, ''),
         secure: true,
@@ -197,20 +211,20 @@ export default defineConfig({
             if (rpcUrl && typeof rpcUrl === 'string') {
               try {
                 const url = new URL(rpcUrl);
-                
+
                 // Update the target host for this request
                 proxyReq.setHeader('host', url.host);
-                
+
                 // Log the dynamic routing
                 // console.log(`Proxying request to: ${url.protocol}//${url.host}${req.url}`);
               } catch {
                 console.warn('Invalid RPC URL in header:', rpcUrl);
-                // Keep default host
-                proxyReq.setHeader('host', '46.101.86.250');
+                // Keep default host (sourced from .env)
+                proxyReq.setHeader('host', DEV_PROXY_OCTRA_HOST);
               }
             } else {
-              // Default host if no header provided
-              proxyReq.setHeader('host', '46.101.86.250');
+              // Default host if no header provided (sourced from .env)
+              proxyReq.setHeader('host', DEV_PROXY_OCTRA_HOST);
             }
           });
         }

@@ -91,9 +91,11 @@ async function injectVersionToProvider(extDir, distDir) {
  * Inject environment variables into background.js.
  *
  * Placeholders replaced:
- *   __VITE_OCTRA_RPC_URL__      — default Octra node URL
- *   __VITE_INFURA_API_KEY__     — Infura Project ID (from VITE_INFURA_API_KEY in .env)
- *   __VITE_ETHERSCAN_API_KEY__  — Etherscan API key (from VITE_ETHERSCAN_API_KEY in .env)
+ *   __VITE_OCTRA_RPC_URL__         — default mainnet Octra node URL
+ *   __VITE_OCTRA_RPC_URL_DEVNET__  — default devnet Octra node URL (used by
+ *                                    background-side devnet detection)
+ *   __VITE_INFURA_API_KEY__        — Infura Project ID (from VITE_INFURA_API_KEY)
+ *   __VITE_ETHERSCAN_API_KEY__     — Etherscan API key (from VITE_ETHERSCAN_API_KEY)
  *
  * Keys from .env are the build-time defaults. Users can override them at runtime
  * via Wallet Settings → EVM API Keys (stored in chrome.storage.local).
@@ -106,12 +108,15 @@ async function injectEnvToBackground(extDir, distDir, env) {
   
   const infuraKey    = env.VITE_INFURA_API_KEY    || '';
   const etherscanKey = env.VITE_ETHERSCAN_API_KEY || '';
-  const octraRpc     = env.VITE_OCTRA_RPC_URL     || 'http://46.101.86.250:8080';
+  // Mainnet — back-compat: also accept the older single-key VITE_OCTRA_RPC_URL.
+  const octraRpc       = env.VITE_OCTRA_RPC_URL_MAINNET || env.VITE_OCTRA_RPC_URL || 'http://46.101.86.250:8080';
+  const octraRpcDevnet = env.VITE_OCTRA_RPC_URL_DEVNET  || 'http://165.227.225.79:8080';
 
   const envVars = {
-    '__VITE_OCTRA_RPC_URL__':     octraRpc,
-    '__VITE_INFURA_API_KEY__':    infuraKey,
-    '__VITE_ETHERSCAN_API_KEY__': etherscanKey,
+    '__VITE_OCTRA_RPC_URL__':        octraRpc,
+    '__VITE_OCTRA_RPC_URL_DEVNET__': octraRpcDevnet,
+    '__VITE_INFURA_API_KEY__':       infuraKey,
+    '__VITE_ETHERSCAN_API_KEY__':    etherscanKey,
   };
   
   for (const [placeholder, value] of Object.entries(envVars)) {
@@ -125,7 +130,8 @@ async function injectEnvToBackground(extDir, distDir, env) {
   
   process.stdout.write(
     `Injected env into background.js` +
-    ` (Octra RPC: ${octraRpc},` +
+    ` (Octra mainnet: ${octraRpc},` +
+    ` Octra devnet: ${octraRpcDevnet},` +
     ` Infura: ${infuraKey ? 'set' : 'not set'},` +
     ` Etherscan: ${etherscanKey ? 'set' : 'not set'})\n`
   );

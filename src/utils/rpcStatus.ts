@@ -1,4 +1,5 @@
 // Shared RPC status manager — prevents duplicate fetching between popup and expanded views.
+import { DEFAULT_OCTRA_MAINNET_URL } from './rpcDefaults';
 
 interface RPCStatusData {
   status: 'connected' | 'disconnected' | 'checking' | 'connecting';
@@ -128,7 +129,7 @@ export async function checkRPCStatus(forceRefresh = false): Promise<RPCStatusDat
 
   // Get active provider
   const activeProvider = await getActiveRPCProvider();
-  const rpcUrl = activeProvider?.url || 'http://46.101.86.250:8080';
+  const rpcUrl = activeProvider?.url || DEFAULT_OCTRA_MAINNET_URL;
   const network = activeProvider?.network || 'mainnet';
 
   const result: RPCStatusData = {
